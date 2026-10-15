@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Septa Software — Automate End-to-End Conversations</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600&family=Playfair+Display:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet">
+<style>
+* { font-family: 'Inter Tight', sans-serif; }
+.serif { font-family: 'Playfair Display', serif; }
+.mask-line { overflow: hidden; display: block; }
+.mask-inner { display: block; transform: translateY(110%); }
+::selection { background: #2dd4bf; color: #080909; }
+html { background: #080909; }
+@media (prefers-reduced-motion: reduce) {
+* { animation: none !important; transition: none !important; }
+}
+</style></head>
+  <body class="bg-[#080909] text-stone-100 antialiased overflow-x-hidden">
+    <!-- ==================== NAV ==================== -->
+    <nav id="nav" class="fixed top-0 left-0 right-0 z-50 transition-all duration-500 opacity-0 -translate-y-4">
+      <div class="max-w-[1320px] mx-auto px-6 lg:px-10 flex items-center justify-between h-16 lg:h-[72px]">
+        <a href="#" class="flex items-center gap-2" aria-label="Septa home">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/user-files/e685f236-fa71-46d1-8dbe-b283365719ea/9d32e267-a7f7-422c-9336-331dc1a9d2a8-SVG-Septa.svg?v=1787238044450" alt="Septa logo" class="h-7 w-auto">
+        </a>
+        <div class="hidden lg:flex items-center gap-8 text-xs font-medium tracking-widest uppercase text-stone-400">
+          <a href="#" class="hover:text-white transition-colors">Septa AI</a>
+          <a href="#" class="hover:text-white transition-colors">About Us</a>
+          <a href="#" class="hover:text-white transition-colors">
+            Our Programs
+          </a>
+          <a href="#" class="hover:text-white transition-colors">Academy</a>
+          <a href="#services" class="hover:text-white transition-colors">
+            Services
+          </a>
+          <a href="#" class="hover:text-white transition-colors">Blog</a>
+        </div>
+        <div class="flex items-center gap-4">
+          <button aria-label="Search" class="hidden md:flex text-stone-400 hover:text-white transition-colors">
+            <i data-lucide="search" class="w-4 h-4"></i>
+          </button>
+          <a href="#cta" class="bg-teal-400 hover:bg-teal-300 text-[#080909] text-xs font-semibold px-5 py-2.5 rounded-full transition-all duration-300 hover:shadow-[0_0_24px_rgba(45,212,191,0.35)]">
+            Contact Us
+          </a>
+          <button aria-label="Menu" class="lg:hidden text-white min-w-[44px] min-h-[44px] flex items-center justify-center">
+            <i data-lucide="menu" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- ==================== HERO ==================== -->
+    <header class="relative min-h-screen flex flex-col justify-end overflow-hidden">
+      <div class="absolute inset-0">
+        <img id="hero-bg" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/user-files/e685f236-fa71-46d1-8dbe-b283365719ea/9b95a76d-0980-4826-be41-45d8481a4e36-Hero-bg-Image.png?v=1787238055048" alt="Futuristic human with AI interface" class="w-full h-full object-cover object-[70%_center] scale-[1.04] blur-sm" fetchpriority="high" style=" filter: blur(0px);">
+        <div class="absolute inset-0 bg-gradient-to-r from-[#080909] via-[#080909]/70 to-transparent"></div>
+        <div class="absolute inset-0 bg-gradient-to-t from-[#080909] via-transparent to-[#080909]/60"></div>
+        <div class="absolute bottom-0 right-0 w-2/3 h-2/3 bg-teal-500/10 blur-[120px] rounded-full pointer-events-none"></div>
+      </div>
+      <div class="relative max-w-[1320px] mx-auto px-6 lg:px-10 w-full pb-16 lg:pb-24 pt-40">
+        <h1 class="hero-title font-extrabold tracking-tight leading-[0.92] text-white uppercase" style="font-size: clamp(3.2rem, 11vw, 9.5rem);">
+          <span class="mask-line">
+            <span class="mask-inner font-black">Septa</span>
+          </span>
+          <span class="mask-line">
+            <span class="mask-inner">Software</span>
+          </span>
+        </h1>
+        <div class="mt-8 max-w-xl">
+          <p id="hero-sub" class="text-2xl sm:text-3xl font-medium tracking-tight text-white opacity-0 translate-y-6">
+            Automate End-to-End
+            <br>
+            Conversations
+            <span class="text-teal-400 font-semibold">✚</span>
+          </p>
+          <div id="hero-ctas" class="mt-8 flex flex-wrap items-center gap-4 opacity-0 translate-y-6">
+            <a href="#services" class="group inline-flex items-center gap-2 bg-teal-400 hover:bg-teal-300 text-[#080909] text-sm font-semibold px-6 py-3.5 rounded-full transition-all duration-300 hover:shadow-[0_0_30px_rgba(45,212,191,0.4)]">
+              Explore Septa AI
+              <span class="w-6 h-6 rounded-full bg-[#080909]/15 flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1">
+                <i data-lucide="arrow-up-right" class="w-3.5 h-3.5"></i>
+              </span>
+            </a>
+            <a href="#cta" class="inline-flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/15 text-white text-sm font-medium px-6 py-3.5 rounded-full backdrop-blur transition-all duration-300">
+              Request a Demo
+            </a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ==================== INTRO ==================== -->
+    <section class="intro-section relative py-24 lg:py-36">
+      <div class="max-w-[1320px] mx-auto px-6 lg:px-10">
+        <p class="text-xs font-semibold tracking-[0.25em] uppercase text-teal-400 mb-8">
+          Introduction / How We Build
+        </p>
+        <div class="intro-line h-px w-0 bg-gradient-to-r from-teal-400 to-transparent mb-10" style="width: 9rem;"></div>
+        <p class="intro-copy max-w-3xl text-2xl sm:text-3xl lg:text-4xl leading-snug font-normal tracking-tight text-stone-200" style=" letter-spacing: 0.02em;">
+          From instant responses to automated end-to-end customer journeys, our
+          AI solution helps your business deliver
+          <span class="text-white font-medium">
+            smarter, and faster interactions
+          </span>
+          across multi channels
+        </p>
+      </div>
+    </section>
+
+    <!-- ==================== SECTION 02 — PRODUCT DEVELOPMENT ==================== -->
+    <section class="product-section relative py-20 lg:py-32">
+      <div class="max-w-[1320px] mx-auto px-6 lg:px-10 grid lg:grid-cols-2 gap-14 lg:gap-20 items-center">
+        <div class="">
+          <h2 class="section-heading font-bold tracking-tight leading-[0.98] text-white uppercase" style="font-size: clamp(2.4rem, 4.5vw, 4rem);">
+            <span class="mask-line">
+              <span class="mask-inner">Great Products</span>
+            </span>
+            <span class="mask-line">
+              <span class="mask-inner">Start With</span>
+            </span>
+            <span class="mask-line">
+              <span class="mask-inner serif italic normal-case text-teal-300 font-medium">
+                Great Partnerships
+              </span>
+            </span>
+          </h2>
+          <p class="fade-up mt-8 max-w-md text-base leading-relaxed text-stone-400">
+            We turn ideas into solutions that solve problems, delight users, and
+            drive growth through smart strategy, thoughtful design, and powerful
+            technology.
+          </p>
+          <div class="fade-up mt-10 flex flex-wrap items-center gap-5">
+            <a href="#cta" class="group inline-flex items-center gap-2 bg-teal-400 hover:bg-teal-300 text-[#080909] text-sm font-semibold px-6 py-3.5 rounded-full transition-all duration-300 hover:shadow-[0_0_28px_rgba(45,212,191,0.35)]">
+              Build with us
+              <i data-lucide="arrow-right" class="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1.5"></i>
+            </a>
+            <a href="#cta" class="inline-flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-sm font-medium px-6 py-3.5 rounded-full transition-all duration-300">
+              Let's work together
+            </a>
+          </div>
+        </div>
+        <div class="clip-reveal relative rounded-2xl overflow-hidden border border-white/10" style="clip-path: inset(0% 0px 0px);">
+          <img class="parallax-img w-full h-[420px] lg:h-[520px] object-cover scale-[1.08]" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/7f78131e-65e9-49b2-aa1f-ccc33e28df9f_1600w.webp" alt="Technology workspace" loading="lazy">
+          <div class="absolute inset-0 bg-gradient-to-t from-[#080909]/60 via-transparent to-transparent pointer-events-none"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SECTION 03 — TALENT ==================== -->
+    <section class="talent-section py-16 lg:py-24">
+      <div class="max-w-[1320px] mx-auto px-6 lg:px-10">
+        <div class="talent-card relative rounded-3xl bg-gradient-to-br from-[#111414] to-[#0c1514] border border-white/10 p-8 sm:p-12 lg:p-16 overflow-hidden">
+          <div class="absolute -top-32 -right-32 w-96 h-96 bg-teal-500/10 blur-[100px] rounded-full pointer-events-none"></div>
+          <div class="relative grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+            <div class="">
+              <h2 class="section-heading font-bold tracking-tight leading-[1.02] text-white uppercase" style="font-size: clamp(2rem, 3.8vw, 3.4rem);">
+                <span class="mask-line">
+                  <span class="mask-inner">Hiring Designed</span>
+                </span>
+                <span class="mask-line">
+                  <span class="mask-inner">To Fuel Your</span>
+                </span>
+                <span class="mask-line">
+                  <span class="mask-inner">Vision</span>
+                </span>
+              </h2>
+              <p class="fade-up mt-6 max-w-md text-base leading-relaxed text-stone-400">
+                Connecting you with top tech talents to fuel innovation and
+                accelerate growth.
+              </p>
+              <div class="fade-up mt-10 flex flex-wrap items-center gap-6">
+                <a href="#cta" class="group inline-flex items-center gap-2 bg-white text-[#080909] text-sm font-semibold px-6 py-3.5 rounded-full hover:bg-teal-300 transition-all duration-300">
+                  Hire Top Tech Talents Now
+                  <i data-lucide="arrow-up-right" class="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1"></i>
+                </a>
+                <a href="#cta" class="group text-xs font-semibold tracking-widest uppercase text-stone-300 hover:text-white transition-colors inline-flex items-center gap-2 border-b border-teal-400/50 pb-1">
+                  Work With Us
+                  <i data-lucide="arrow-right" class="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-x-1"></i>
+                </a>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="portrait rounded-2xl overflow-hidden border border-white/10 aspect-[4/5]">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/eca707cc-a5b7-439a-b4fd-247f6106c2e1_1600w.jpg" alt="Tech professional portrait" class="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.02]" loading="lazy">
+              </div>
+              <div class="portrait rounded-2xl overflow-hidden border border-white/10 aspect-[4/5] mt-6">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/4f5668c5-fc4a-44e0-bc5e-a664189d3c31_1600w.jpg" alt="Tech professional portrait" class="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.02]" loading="lazy">
+              </div>
+              <div class="portrait rounded-2xl overflow-hidden border border-white/10 aspect-[4/5] -mt-6">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2f563338-39fa-47ea-9761-658d4f3f84db_1600w.jpg" alt="Tech professional portrait" class="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.02]" loading="lazy">
+              </div>
+              <div class="portrait rounded-2xl overflow-hidden border border-white/10 aspect-[4/5]">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/c92852bb-a510-405a-85ab-ffa0fde136a4_1600w.jpg" alt="Tech professional portrait" class="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.02]" loading="lazy">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SECTION 04 — ADVANTAGE ==================== -->
+    <section class="advantage-section py-24 lg:py-36">
+      <div class="max-w-[1320px] mx-auto px-6 lg:px-10">
+        <p class="text-xs font-semibold tracking-[0.25em] uppercase text-teal-400 mb-8">
+          The Advantage
+        </p>
+        <p class="fade-up max-w-3xl text-2xl sm:text-3xl lg:text-4xl leading-snug tracking-tight text-stone-200 mb-16 lg:mb-20" aria-label="Septa combines modern engineering, product innovation, and AI-powered insights to help organizations scale faster, simplify complexity, and capture opportunities with confidence."><span aria-hidden="true"><span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">Septa</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">combines</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">modern</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">engineering,</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">product</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">innovation,</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">and</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">AI-powered</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">insights</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">to</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">help</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">organizations</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block text-white font-medium will-change-[transform,opacity,filter]" style=" filter: blur(8px);">scale</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block text-white font-medium will-change-[transform,opacity,filter]" style=" filter: blur(8px);">faster,</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">simplify</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">complexity,</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">and</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">capture</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">opportunities</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">with</span></span> <span class="inline-block overflow-hidden align-bottom"><span data-reveal-word="" class="inline-block will-change-[transform,opacity,filter]" style=" filter: blur(8px);">confidence.</span></span></span><script>(()=>{const root=document.currentScript.parentElement;const words=Array.from(root.querySelectorAll("[data-reveal-word]"));const show=()=>words.forEach(word=>{word.style.transform="translateY(0)";word.style.opacity="1";word.style.filter="blur(0px)"});const init=()=>{if(root.dataset.revealInitialized==="true")return true;if(matchMedia("(prefers-reduced-motion: reduce)").matches){root.dataset.revealInitialized="true";show();return true}if(!window.gsap||!window.ScrollTrigger)return false;root.dataset.revealInitialized="true";gsap.registerPlugin(ScrollTrigger);const timeline=gsap.timeline({scrollTrigger:{trigger:root,start:"top 82%",once:true}});words.forEach((word,index)=>{const start=index*.06;timeline.to(word,{yPercent:0,opacity:1,filter:"blur(0px)",duration:.8,ease:"power4.out"},start).to(word,{filter:"blur(0.65px)",duration:.07,ease:"power1.inOut"},start+.8).to(word,{filter:"blur(0px)",duration:.16,ease:"power2.out",clearProps:"willChange"},start+.87)});return true};if(!init())window.addEventListener("load",()=>{if(!init())show()},{once:true})})();</script></p>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div class="adv-card group rounded-2xl bg-[#101312] border border-white/10 p-7 transition-all duration-300 hover:-translate-y-1 hover:border-teal-400/40 hover:shadow-[0_0_40px_rgba(45,212,191,0.08)]">
+            <div class="w-10 h-10 rounded-lg bg-teal-400/10 border border-teal-400/20 flex items-center justify-center mb-6 transition-all duration-300 group-hover:shadow-[0_0_16px_rgba(45,212,191,0.3)]">
+              <i data-lucide="cpu" class="w-5 h-5 text-teal-300"></i>
+            </div>
+            <h3 class="text-base font-semibold text-white mb-2">
+              Intelligent by Design
+            </h3>
+            <p class="text-sm leading-relaxed text-stone-400">
+              Solutions tailored to your unique goals are never
+              one-size-fits-all. We build for your specific DNA.
+            </p>
+          </div>
+          <div class="adv-card group rounded-2xl bg-[#101312] border border-white/10 p-7 transition-all duration-300 hover:-translate-y-1 hover:border-teal-400/40 hover:shadow-[0_0_40px_rgba(45,212,191,0.08)]">
+            <div class="w-10 h-10 rounded-lg bg-teal-400/10 border border-teal-400/20 flex items-center justify-center mb-6 transition-all duration-300 group-hover:shadow-[0_0_16px_rgba(45,212,191,0.3)]">
+              <i data-lucide="maximize-2" class="w-5 h-5 text-teal-300"></i>
+            </div>
+            <h3 class="text-base font-semibold text-white mb-2">
+              Built to Scale
+            </h3>
+            <p class="text-sm leading-relaxed text-stone-400">
+              Flexible products and workflows designed to grow with you.
+              Infrastructure that moves at your speed.
+            </p>
+          </div>
+          <div class="adv-card group rounded-2xl bg-[#101312] border border-white/10 p-7 transition-all duration-300 hover:-translate-y-1 hover:border-teal-400/40 hover:shadow-[0_0_40px_rgba(45,212,191,0.08)]">
+            <div class="w-10 h-10 rounded-lg bg-teal-400/10 border border-teal-400/20 flex items-center justify-center mb-6 transition-all duration-300 group-hover:shadow-[0_0_16px_rgba(45,212,191,0.3)]">
+              <i data-lucide="users" class="w-5 h-5 text-teal-300"></i>
+            </div>
+            <h3 class="text-base font-semibold text-white mb-2">
+              Human-Centered Tech
+            </h3>
+            <p class="text-sm leading-relaxed text-stone-400">
+              Smart automation powered by human insight for better decisions.
+              Technology that understands people.
+            </p>
+          </div>
+          <div class="adv-card group rounded-2xl bg-[#101312] border border-white/10 p-7 transition-all duration-300 hover:-translate-y-1 hover:border-teal-400/40 hover:shadow-[0_0_40px_rgba(45,212,191,0.08)]">
+            <div class="w-10 h-10 rounded-lg bg-teal-400/10 border border-teal-400/20 flex items-center justify-center mb-6 transition-all duration-300 group-hover:shadow-[0_0_16px_rgba(45,212,191,0.3)]">
+              <i data-lucide="shield-check" class="w-5 h-5 text-teal-300"></i>
+            </div>
+            <h3 class="text-base font-semibold text-white mb-2">
+              Delivery You Can Trust
+            </h3>
+            <p class="text-sm leading-relaxed text-stone-400">
+              Agile execution with transparency, reliability, and measurable
+              outcomes. We ship real results.
+            </p>
+          </div>
+          <div class="adv-card group sm:col-span-2 rounded-2xl bg-gradient-to-r from-[#101312] to-[#0d1a18] border border-white/10 p-7 flex flex-col sm:flex-row sm:items-center gap-6 transition-all duration-300 hover:-translate-y-1 hover:border-teal-400/40 hover:shadow-[0_0_40px_rgba(45,212,191,0.08)]">
+            <div class="flex-1">
+              <div class="w-10 h-10 rounded-lg bg-teal-400/10 border border-teal-400/20 flex items-center justify-center mb-6 transition-all duration-300 group-hover:shadow-[0_0_16px_rgba(45,212,191,0.3)]">
+                <i data-lucide="zap" class="w-5 h-5 text-teal-300"></i>
+              </div>
+              <h3 class="text-base font-semibold text-white mb-2">
+                Proactive, End-to-End Support
+              </h3>
+              <p class="text-sm leading-relaxed text-stone-400 max-w-md">
+                Septa AI handles requests and resolves issues seamlessly before
+                they impact your business.
+              </p>
+            </div>
+            <div class="hidden sm:flex w-28 h-28 rounded-xl border border-teal-400/20 bg-teal-400/5 items-center justify-center shrink-0">
+              <i data-lucide="hexagon" class="w-12 h-12 text-teal-400/60" stroke-width="1"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SECTION 05 — SERVICES ==================== -->
+    <section id="services" class="services-section py-24 lg:py-36 border-t border-white/5">
+      <div class="max-w-[1320px] mx-auto px-6 lg:px-10">
+        <h2 class="section-heading font-bold tracking-tight uppercase text-white mb-6" style="font-size: clamp(2.2rem, 4vw, 3.6rem);">
+          <span class="mask-line">
+            <span class="mask-inner">Our Services</span>
+          </span>
+        </h2>
+        <p class="fade-up max-w-xl text-base leading-relaxed text-stone-400 mb-14 lg:mb-20">
+          From startups to enterprises, we craft custom software solutions,
+          provide top-tier tech talent, and upskill professionals for the future
+          of work.
+        </p>
+
+        <div class="grid lg:grid-cols-2 gap-12 lg:gap-16 items-start">
+          <!-- Service list -->
+          <div id="service-list" class="divide-y divide-white/10 border-t border-b border-white/10">
+            <button data-index="0" class="service-item group w-full text-left flex items-center gap-5 py-7 min-h-[44px] transition-colors" aria-label="Product Development">
+              <span class="text-xs font-semibold text-teal-400/70 w-6">01</span>
+              <span class="svc-indicator w-1 h-8 rounded-full bg-teal-400 transition-opacity duration-300"></span>
+              <span class="flex-1 text-lg sm:text-xl lg:text-2xl font-semibold tracking-tight uppercase text-white transition-colors duration-300">
+                Product Development
+              </span>
+              <span class="text-xs font-semibold tracking-widest uppercase text-stone-500 group-hover:text-teal-300 transition-colors hidden sm:inline">
+                Get Started
+              </span>
+              <i data-lucide="arrow-right" class="w-4 h-4 text-stone-500 group-hover:text-teal-300 transition-all duration-300 group-hover:translate-x-1.5"></i>
+            </button>
+            <button data-index="1" class="service-item group w-full text-left flex items-center gap-5 py-7 min-h-[44px] transition-colors" aria-label="Talent Solutions">
+              <span class="text-xs font-semibold text-teal-400/70 w-6">02</span>
+              <span class="svc-indicator w-1 h-8 rounded-full bg-teal-400 opacity-0 transition-opacity duration-300"></span>
+              <span class="flex-1 text-lg sm:text-xl lg:text-2xl font-semibold tracking-tight uppercase text-stone-500 transition-colors duration-300">
+                Talent Solutions
+              </span>
+              <span class="text-xs font-semibold tracking-widest uppercase text-stone-500 group-hover:text-teal-300 transition-colors hidden sm:inline">
+                Get Started
+              </span>
+              <i data-lucide="arrow-right" class="w-4 h-4 text-stone-500 group-hover:text-teal-300 transition-all duration-300 group-hover:translate-x-1.5"></i>
+            </button>
+            <button data-index="2" class="service-item group w-full text-left flex items-center gap-5 py-7 min-h-[44px] transition-colors" aria-label="Workflow Automation">
+              <span class="text-xs font-semibold text-teal-400/70 w-6">03</span>
+              <span class="svc-indicator w-1 h-8 rounded-full bg-teal-400 opacity-0 transition-opacity duration-300"></span>
+              <span class="flex-1 text-lg sm:text-xl lg:text-2xl font-semibold tracking-tight uppercase text-stone-500 transition-colors duration-300">
+                Workflow Automation
+              </span>
+              <span class="text-xs font-semibold tracking-widest uppercase text-stone-500 group-hover:text-teal-300 transition-colors hidden sm:inline">
+                Get Started
+              </span>
+              <i data-lucide="arrow-right" class="w-4 h-4 text-stone-500 group-hover:text-teal-300 transition-all duration-300 group-hover:translate-x-1.5"></i>
+            </button>
+            <button data-index="3" class="service-item group w-full text-left flex items-center gap-5 py-7 min-h-[44px] transition-colors" aria-label="Observability and Monitoring">
+              <span class="text-xs font-semibold text-teal-400/70 w-6">04</span>
+              <span class="svc-indicator w-1 h-8 rounded-full bg-teal-400 opacity-0 transition-opacity duration-300"></span>
+              <span class="flex-1 text-lg sm:text-xl lg:text-2xl font-semibold tracking-tight uppercase text-stone-500 transition-colors duration-300">
+                Observability &amp; Monitoring
+              </span>
+              <span class="text-xs font-semibold tracking-widest uppercase text-stone-500 group-hover:text-teal-300 transition-colors hidden sm:inline">
+                Get Started
+              </span>
+              <i data-lucide="arrow-right" class="w-4 h-4 text-stone-500 group-hover:text-teal-300 transition-all duration-300 group-hover:translate-x-1.5"></i>
+            </button>
+            <button data-index="4" class="service-item group w-full text-left flex items-center gap-5 py-7 min-h-[44px] transition-colors" aria-label="Digital Transformation">
+              <span class="text-xs font-semibold text-teal-400/70 w-6">05</span>
+              <span class="svc-indicator w-1 h-8 rounded-full bg-teal-400 opacity-0 transition-opacity duration-300"></span>
+              <span class="flex-1 text-lg sm:text-xl lg:text-2xl font-semibold tracking-tight uppercase text-stone-500 transition-colors duration-300">
+                Digital Transformation
+              </span>
+              <span class="text-xs font-semibold tracking-widest uppercase text-stone-500 group-hover:text-teal-300 transition-colors hidden sm:inline">
+                Get Started
+              </span>
+              <i data-lucide="arrow-right" class="w-4 h-4 text-stone-500 group-hover:text-teal-300 transition-all duration-300 group-hover:translate-x-1.5"></i>
+            </button>
+            <p id="service-desc" class="text-sm leading-relaxed text-stone-400 py-6 max-w-md">
+              We design, engineer and ship AI-powered products end-to-end — from
+              strategy and prototyping to launch and iteration.
+            </p>
+          </div>
+
+          <!-- Sticky preview -->
+          <div class="lg:sticky lg:top-[16vh]">
+            <div class="relative rounded-2xl overflow-hidden border border-white/10 aspect-[4/3]">
+              <img data-preview="0" class="svc-img absolute inset-0 w-full h-full object-cover opacity-100" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/fa51902b-c2a4-4c33-a96e-a8f1ef67edc6_1600w.jpg" alt="Product development preview" loading="lazy">
+              <img data-preview="1" class="svc-img absolute inset-0 w-full h-full object-cover opacity-0" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/4f5668c5-fc4a-44e0-bc5e-a664189d3c31_1600w.jpg" alt="Talent solutions preview" loading="lazy">
+              <img data-preview="2" class="svc-img absolute inset-0 w-full h-full object-cover opacity-0" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/e534354d-c5f2-4399-a1d9-2f50338e8c47_1600w.jpg" alt="Workflow automation preview" loading="lazy">
+              <img data-preview="3" class="svc-img absolute inset-0 w-full h-full object-cover opacity-0" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/d14dc069-558a-4c51-8aad-5cc237f9b61d_1600w.jpg" alt="Observability and monitoring preview" loading="lazy">
+              <img data-preview="4" class="svc-img absolute inset-0 w-full h-full object-cover opacity-0" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/5ee0a38a-b5d3-4531-8793-98beed4af162_1600w.jpg" alt="Digital transformation preview" loading="lazy">
+              <div class="absolute inset-0 bg-gradient-to-t from-[#080909]/50 to-transparent pointer-events-none"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SECTION 06 — GALLERY ==================== -->
+    <section class="gallery-section py-16 lg:py-24 overflow-hidden">
+      <div class="max-w-[1320px] mx-auto px-6 lg:px-10 mb-10">
+        <p class="text-xs font-semibold tracking-[0.25em] uppercase text-teal-400">
+          Gallery
+        </p>
+      </div>
+      <div class="gallery-track flex gap-5 px-6 lg:px-10 w-max">
+        <div class="w-72 sm:w-96 shrink-0 rounded-2xl overflow-hidden border border-white/10 aspect-[4/3]">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/724142aa-44a6-48d3-9cf3-761e00d05b78_1600w.jpg" alt="Project visual" class="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.025]" loading="lazy">
+        </div>
+        <div class="w-72 sm:w-96 shrink-0 rounded-2xl overflow-hidden border border-white/10 aspect-[4/3]">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/005600e5-f6ab-4e59-bc86-eaeb02797dfa_1600w.jpg" alt="Project visual" class="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.025]" loading="lazy">
+        </div>
+        <div class="w-72 sm:w-96 shrink-0 rounded-2xl overflow-hidden border border-white/10 aspect-[4/3]">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/bfef5098-c30f-4cd9-b4ac-04b2673ab943_1600w.jpg" alt="Project visual" class="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.025]" loading="lazy">
+        </div>
+        <div class="w-72 sm:w-96 shrink-0 rounded-2xl overflow-hidden border border-white/10 aspect-[4/3]">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/4734259a-bad7-422f-981e-ce01e79184f2_1600w.jpg" alt="Project visual" class="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.025]" loading="lazy">
+        </div>
+        <div class="w-72 sm:w-96 shrink-0 rounded-2xl overflow-hidden border border-white/10 aspect-[4/3]">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/fb6415fd-bf4d-4ccf-8e9d-7ab445e99207_1600w.jpg" alt="Project visual" class="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.025]" loading="lazy">
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SECTION 07 — PARTNERS ==================== -->
+    <section class="partners-section py-20 lg:py-28 border-t border-white/5">
+      <div class="max-w-[1320px] mx-auto px-6 lg:px-10">
+        <p class="text-xs font-semibold tracking-[0.25em] uppercase text-stone-500 mb-12">
+          Trusted by Industry Leaders
+        </p>
+        <div class="flex flex-wrap items-center justify-between gap-x-10 gap-y-8">
+          <span class="partner-logo text-xl font-semibold tracking-tight text-stone-500 opacity-50 hover:opacity-100 hover:text-white transition-all duration-500">
+            MTN
+          </span>
+          <span class="partner-logo text-xl font-semibold tracking-tight text-stone-500 opacity-50 hover:opacity-100 hover:text-white transition-all duration-500">
+            Halogen Group
+          </span>
+          <span class="partner-logo text-xl font-semibold tracking-tight text-stone-500 opacity-50 hover:opacity-100 hover:text-white transition-all duration-500">
+            enyata
+          </span>
+          <span class="partner-logo text-xl font-semibold tracking-widest uppercase text-stone-500 opacity-50 hover:opacity-100 hover:text-white transition-all duration-500">
+            Preppod
+          </span>
+          <span class="partner-logo text-xl font-semibold tracking-tight text-stone-500 opacity-50 hover:opacity-100 hover:text-white transition-all duration-500">
+            AtoS
+          </span>
+          <span class="partner-logo text-xl font-semibold tracking-tight text-stone-500 opacity-50 hover:opacity-100 hover:text-white transition-all duration-500">
+            Blusalt
+          </span>
+          <span class="partner-logo text-xl font-semibold tracking-tight text-stone-500 opacity-50 hover:opacity-100 hover:text-white transition-all duration-500">
+            Chinat Group
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SECTION 08 — TESTIMONIAL ==================== -->
+    <section class="testimonial-section py-24 lg:py-40">
+      <div class="max-w-4xl mx-auto px-6 lg:px-10 text-center">
+        <div class="fade-up text-teal-400 mb-10 flex justify-center">
+          <i data-lucide="quote" class="w-12 h-12" stroke-width="1"></i>
+        </div>
+        <blockquote class="testimonial-quote serif italic text-2xl sm:text-3xl lg:text-4xl leading-snug text-stone-100">
+          <span class="mask-line">
+            <span class="mask-inner">
+              "Septa didn't just build us a platform;
+            </span>
+          </span>
+          <span class="mask-line">
+            <span class="mask-inner">
+              they built us a future. Their ability to blend
+            </span>
+          </span>
+          <span class="mask-line">
+            <span class="mask-inner">
+              deep technical expertise with strategic product
+            </span>
+          </span>
+          <span class="mask-line">
+            <span class="mask-inner">
+              vision transformed our operations and accelerated
+            </span>
+          </span>
+          <span class="mask-line">
+            <span class="mask-inner">
+              our growth by 300% in a single year."
+            </span>
+          </span>
+        </blockquote>
+        <div class="fade-up mt-12 flex flex-col items-center gap-4">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2f563338-39fa-47ea-9761-658d4f3f84db_1600w.jpg" alt="David Chen portrait" class="w-14 h-14 rounded-full object-cover border border-white/20" loading="lazy">
+          <div>
+            <p class="text-sm font-semibold text-white">David Chen</p>
+            <p class="text-xs text-stone-500 mt-1">CEO, TechFrontiers Global</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SECTION 09 — FINAL CTA ==================== -->
+    <section id="cta" class="cta-section py-16 lg:py-24">
+      <div class="max-w-[1320px] mx-auto px-6 lg:px-10">
+        <div class="cta-card relative rounded-[2rem] overflow-hidden bg-gradient-to-br from-teal-500 via-teal-400 to-teal-600 px-8 sm:px-14 py-20 lg:py-28 text-center" style="transform: scale(0.97);">
+          <div class="absolute -top-24 -left-24 w-80 h-80 bg-white/20 blur-[100px] rounded-full pointer-events-none"></div>
+          <div class="relative">
+            <h2 class="section-heading font-bold tracking-tight leading-[1.02] uppercase text-[#062421]" style="font-size: clamp(2.2rem, 5vw, 4.2rem);">
+              <span class="mask-line">
+                <span class="mask-inner">Let's Build What's</span>
+              </span>
+              <span class="mask-line">
+                <span class="mask-inner">Next, Together!</span>
+              </span>
+            </h2>
+            <p class="fade-up mt-6 max-w-lg mx-auto text-base leading-relaxed text-[#062421]/80 font-medium">
+              Whether you need an AI powered product, smarter workflows, or
+              complete product development, Septa is your partner for building
+              the future.
+            </p>
+            <a href="#" class="cta-btn group mt-10 inline-flex items-center gap-2 bg-[#080909] hover:bg-[#111414] text-white text-sm font-semibold px-8 py-4 rounded-full transition-all duration-300 opacity-0 translate-y-4">
+              Get Started Today
+              <i data-lucide="arrow-right" class="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1.5"></i>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== FOOTER ==================== -->
+    <footer class="border-t border-white/10 pt-16 pb-8">
+      <div class="max-w-[1320px] mx-auto px-6 lg:px-10">
+        <div class="grid md:grid-cols-2 lg:grid-cols-5 gap-12 mb-16">
+          <div class="lg:col-span-2">
+            <a href="#" class="flex items-center gap-2 mb-5" aria-label="Septa home">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/user-files/e685f236-fa71-46d1-8dbe-b283365719ea/9d32e267-a7f7-422c-9336-331dc1a9d2a8-SVG-Septa.svg?v=1787238044450" alt="Septa logo" class="h-7 w-auto">
+            </a>
+            <p class="text-sm leading-relaxed text-stone-400 max-w-xs mb-6">
+              Elevating enterprise efficiency through intelligent software and
+              top-tier talent.
+            </p>
+            <div class="flex items-center gap-3">
+              <a href="#" aria-label="Twitter" class="w-9 h-9 rounded-full border border-white/15 flex items-center justify-center text-stone-400 hover:text-white hover:border-teal-400/50 transition-colors">
+                <i data-lucide="twitter" class="w-4 h-4"></i>
+              </a>
+              <a href="#" aria-label="LinkedIn" class="w-9 h-9 rounded-full border border-white/15 flex items-center justify-center text-stone-400 hover:text-white hover:border-teal-400/50 transition-colors">
+                <i data-lucide="linkedin" class="w-4 h-4"></i>
+              </a>
+              <a href="#" aria-label="Instagram" class="w-9 h-9 rounded-full border border-white/15 flex items-center justify-center text-stone-400 hover:text-white hover:border-teal-400/50 transition-colors">
+                <i data-lucide="instagram" class="w-4 h-4"></i>
+              </a>
+              <a href="#" aria-label="Facebook" class="w-9 h-9 rounded-full border border-white/15 flex items-center justify-center text-stone-400 hover:text-white hover:border-teal-400/50 transition-colors">
+                <i data-lucide="facebook" class="w-4 h-4"></i>
+              </a>
+            </div>
+          </div>
+          <div>
+            <p class="text-xs font-semibold tracking-widest uppercase text-stone-500 mb-5">
+              Navigation
+            </p>
+            <ul class="space-y-3 text-sm text-stone-400">
+              <li>
+                <a href="#services" class="hover:text-white transition-colors">
+                  Services
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-white transition-colors">
+                  Process
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-white transition-colors">
+                  Capabilities
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-white transition-colors">Blog</a>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <p class="text-xs font-semibold tracking-widest uppercase text-stone-500 mb-5">
+              Company
+            </p>
+            <ul class="space-y-3 text-sm text-stone-400">
+              <li>
+                <a href="#" class="hover:text-white transition-colors">
+                  About Us
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-white transition-colors">
+                  Careers
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-white transition-colors">
+                  Case Studies
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-white transition-colors">
+                  Contact
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <p class="text-xs font-semibold tracking-widest uppercase text-stone-500 mb-5">
+              Newsletter
+            </p>
+            <p class="text-sm text-stone-400 mb-4 leading-relaxed">
+              Stay updated with the latest in AI and software engineering.
+            </p>
+            <form class="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full p-1.5 focus-within:border-teal-400/50 transition-colors">
+              <input type="email" placeholder="Your email address" aria-label="Email address" class="flex-1 bg-transparent text-sm text-white placeholder-stone-500 px-3 py-2 outline-none min-w-0">
+              <button type="submit" aria-label="Subscribe" class="w-9 h-9 rounded-full bg-teal-400 hover:bg-teal-300 text-[#080909] flex items-center justify-center shrink-0 transition-colors">
+                <i data-lucide="arrow-right" class="w-4 h-4"></i>
+              </button>
+            </form>
+          </div>
+        </div>
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8 border-t border-white/10 text-xs text-stone-500">
+          <p>© 2024 Septa Software. All rights reserved.</p>
+          <div class="flex items-center gap-6">
+            <a href="#" class="hover:text-white transition-colors">
+              Privacy Policy
+            </a>
+            <a href="#" class="hover:text-white transition-colors">
+              Terms of Service
+            </a>
+            <a href="#" class="hover:text-white transition-colors">
+              Cookie Policy
+            </a>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      lucide.createIcons({ attrs: { 'stroke-width': 1.5 } });
+      gsap.registerPlugin(ScrollTrigger);
+
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      const ctx = gsap.context(() => {
+
+        /* ---------- HERO INTRO ---------- */
+        const heroTl = gsap.timeline({ defaults: { ease: "power3.out" } });
+        heroTl
+          .to("#nav", { opacity: 1, y: 0, duration: 0.8 })
+          .to("#hero-bg", { scale: 1, filter: "blur(0px)", duration: 1.8, ease: "expo.out" }, 0)
+          .to(".hero-title .mask-inner", { y: 0, duration: 1.1, stagger: 0.1, ease: "power4.out" }, 0.3)
+          .to("#hero-sub", { opacity: 1, y: 0, duration: 0.9 }, 0.9)
+          .to("#hero-ctas", { opacity: 1, y: 0, duration: 0.9 }, 1.15);
+
+        if (reduced) heroTl.progress(1);
+
+        /* ---------- NAV GLASS ON SCROLL ---------- */
+        ScrollTrigger.create({
+          start: 80,
+          onToggle: self => {
+            const nav = document.getElementById('nav');
+            nav.classList.toggle('bg-[#080909]/70', self.isActive);
+            nav.classList.toggle('backdrop-blur-xl', self.isActive);
+            nav.classList.toggle('border-b', self.isActive);
+            nav.classList.toggle('border-white/5', self.isActive);
+          }
+        });
+
+        /* ---------- MASKED HEADING REVEALS ---------- */
+        document.querySelectorAll('.section-heading, .testimonial-quote').forEach(h => {
+          gsap.to(h.querySelectorAll('.mask-inner'), {
+            y: 0, duration: 1, stagger: 0.08, ease: "power4.out",
+            scrollTrigger: { trigger: h, start: "top 82%", once: true }
+          });
+        });
+
+        /* ---------- FADE UPS ---------- */
+        gsap.utils.toArray('.fade-up').forEach(el => {
+          gsap.from(el, {
+            y: 28, autoAlpha: 0, duration: 0.9, ease: "power3.out",
+            scrollTrigger: { trigger: el, start: "top 88%", once: true }
+          });
+        });
+
+        /* ---------- INTRO SECTION ---------- */
+        gsap.from(".intro-copy", {
+          y: 32, autoAlpha: 0, letterSpacing: "0.02em", duration: 1.1, ease: "power3.out",
+          scrollTrigger: { trigger: ".intro-section", start: "top 78%", once: true }
+        });
+        gsap.to(".intro-line", {
+          width: "9rem", duration: 1.2, ease: "expo.out",
+          scrollTrigger: { trigger: ".intro-section", start: "top 78%", once: true }
+        });
+
+        /* ---------- PRODUCT IMAGE CLIP REVEAL + PARALLAX ---------- */
+        gsap.to(".clip-reveal", {
+          clipPath: "inset(0% 0 0 0)", duration: 1.3, ease: "power4.out",
+          scrollTrigger: { trigger: ".product-section", start: "top 70%", once: true }
+        });
+        gsap.to(".parallax-img", {
+          scale: 1, duration: 1.6, ease: "power3.out",
+          scrollTrigger: { trigger: ".product-section", start: "top 70%", once: true }
+        });
+        if (!reduced) {
+          gsap.to(".parallax-img", {
+            yPercent: 6, ease: "none",
+            scrollTrigger: { trigger: ".product-section", start: "top bottom", end: "bottom top", scrub: 1 }
+          });
+        }
+
+        /* ---------- TALENT ---------- */
+        gsap.from(".talent-card", {
+          y: 40, autoAlpha: 0, duration: 1, ease: "power3.out",
+          scrollTrigger: { trigger: ".talent-section", start: "top 78%", once: true }
+        });
+        gsap.from(".portrait", {
+          y: 18, autoAlpha: 0, duration: 0.8, stagger: 0.1, ease: "power3.out",
+          scrollTrigger: { trigger: ".talent-section", start: "top 65%", once: true }
+        });
+
+        /* ---------- ADVANTAGE CARDS ---------- */
+        gsap.from(".adv-card", {
+          y: 24, autoAlpha: 0, duration: 0.8, stagger: 0.09, ease: "power3.out",
+          scrollTrigger: { trigger: ".advantage-section", start: "top 70%", once: true }
+        });
+
+        /* ---------- SERVICES INTERACTIVE ---------- */
+        const descs = [
+          "We design, engineer and ship AI-powered products end-to-end — from strategy and prototyping to launch and iteration.",
+          "Vetted senior engineers, designers and product leaders embedded into your team within days, not months.",
+          "Intelligent automation that removes repetitive work and connects your systems into one seamless flow.",
+          "Full-stack observability so you can see, measure and trust every part of your infrastructure in real time.",
+          "A guided path from legacy operations to a modern, AI-native organization built for the future of work."
+        ];
+        const items = gsap.utils.toArray('.service-item');
+        const imgs = gsap.utils.toArray('.svc-img');
+        const descEl = document.getElementById('service-desc');
+        let active = 0;
+
+        function setService(i) {
+          if (i === active) return;
+          active = i;
+          items.forEach((it, idx) => {
+            it.querySelector('.svc-indicator').style.opacity = idx === i ? '1' : '0';
+            const label = it.children[2];
+            label.classList.toggle('text-white', idx === i);
+            label.classList.toggle('text-stone-500', idx !== i);
+          });
+          imgs.forEach((img, idx) => {
+            gsap.to(img, { autoAlpha: idx === i ? 1 : 0, duration: 0.6, ease: "power2.out" });
+            if (idx === i && !reduced) gsap.fromTo(img, { scale: 1.06 }, { scale: 1, duration: 1, ease: "power3.out" });
+          });
+          gsap.fromTo(descEl, { autoAlpha: 0, y: 8 }, { autoAlpha: 1, y: 0, duration: 0.5, ease: "power2.out" });
+          descEl.textContent = descs[i];
+        }
+
+        items.forEach((it, i) => {
+          it.addEventListener('mouseenter', () => setService(i));
+          it.addEventListener('click', () => setService(i));
+          it.addEventListener('focus', () => setService(i));
+        });
+
+        /* ---------- HORIZONTAL GALLERY ---------- */
+        if (!reduced && window.innerWidth >= 768) {
+          gsap.to(".gallery-track", {
+            xPercent: -22, ease: "none",
+            scrollTrigger: { trigger: ".gallery-section", start: "top bottom", end: "bottom top", scrub: 1 }
+          });
+        }
+
+        /* ---------- PARTNERS ---------- */
+        gsap.from(".partner-logo", {
+          y: 16, autoAlpha: 0, duration: 0.7, stagger: 0.06, ease: "power2.out",
+          scrollTrigger: { trigger: ".partners-section", start: "top 82%", once: true }
+        });
+
+        /* ---------- CTA ---------- */
+        const ctaTl = gsap.timeline({
+          scrollTrigger: { trigger: ".cta-section", start: "top 72%", once: true }
+        });
+        ctaTl.to(".cta-card", { scale: 1, duration: 1.1, ease: "power3.out" })
+             .to(".cta-btn", { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" }, "-=0.4");
+
+        if (reduced) {
+          ScrollTrigger.getAll().forEach(t => { if (t.vars && t.vars.scrub) t.kill(); });
+          gsap.set(".clip-reveal", { clipPath: "inset(0% 0 0 0)" });
+          gsap.set(".parallax-img", { scale: 1 });
+          gsap.set(".cta-card", { scale: 1 });
+          gsap.set(".cta-btn", { opacity: 1, y: 0 });
+        }
+      });
+
+      window.addEventListener('load', () => ScrollTrigger.refresh());
+    </script>
+  
+</body></html>

@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>A P P L E</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Inter', sans-serif; }
+/* Hide scrollbar for cleaner UI */
+::-webkit-scrollbar { width: 0px; background: transparent; }
+.floating-number {
+position: absolute;
+pointer-events: none;
+user-select: none;
+z-index: 50;
+animation: floatUp 0.8s ease-out forwards;
+}
+@keyframes floatUp {
+0% {
+opacity: 1;
+transform: translateY(0) scale(1);
+}
+100% {
+opacity: 0;
+transform: translateY(-80px) scale(1.2);
+}
+}
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="bg-zinc-950 text-zinc-50 h-screen w-screen overflow-hidden flex flex-col antialiased selection:bg-red-500/30">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-zinc-800/60 bg-zinc-950/80 backdrop-blur-md flex items-center justify-between px-6 z-20 shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-rose-700 flex items-center justify-center shadow-[0_0_15px_rgba(239,68,68,0.3)]">
+                <iconify-icon icon="solar:apple-linear" style="color: white;" width="18"></iconify-icon>
+            </div>
+            <h1 class="text-sm font-medium tracking-[0.2em] text-zinc-200">A P P L E</h1>
+        </div>
+        <div class="flex items-center gap-4 text-xs font-medium text-zinc-400">
+            <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900/50 border border-zinc-800/50">
+                <iconify-icon icon="solar:mouse-circle-linear" width="14"></iconify-icon>
+                <span id="click-power-display">1 / click</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col lg:flex-row relative z-10 overflow-hidden">
+        
+        <!-- Left: Play Area -->
+        <section class="flex-1 flex flex-col items-center justify-center relative p-8 lg:p-12 min-h-[50vh]">
+            
+            <!-- Background Glow -->
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40vw] h-[40vw] max-w-[500px] max-h-[500px] bg-red-500/5 rounded-full blur-[100px] pointer-events-none"></div>
+
+            <!-- Score Display -->
+            <div class="text-center z-10 mb-12 flex flex-col items-center">
+                <div class="text-sm font-medium text-zinc-500 mb-2 tracking-wide uppercase">Apples Harvested</div>
+                <div id="score-display" class="text-6xl md:text-8xl lg:text-9xl font-medium tracking-tighter tabular-nums bg-clip-text text-transparent bg-gradient-to-b from-white to-zinc-400 drop-shadow-sm">
+                    0
+                </div>
+                <div class="mt-4 flex items-center gap-2 text-sm text-zinc-400 font-medium px-4 py-2 rounded-2xl bg-zinc-900/40 border border-zinc-800/40 backdrop-blur-sm">
+                    <iconify-icon icon="solar:clock-circle-linear" width="16"></iconify-icon>
+                    <span id="aps-display" class="tabular-nums">0</span> / sec
+                </div>
+            </div>
+
+            <!-- The Apple -->
+            <button id="apple-btn" class="relative group outline-none focus:outline-none z-20 touch-manipulation">
+                <div class="absolute inset-0 bg-gradient-to-b from-red-500/20 to-transparent blur-2xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                
+                <div class="relative transition-transform duration-100 ease-out active:scale-95 hover:scale-[1.02]">
+                    <!-- Custom Abstract Apple SVG -->
+                    <svg width="240" height="240" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg" class="drop-shadow-2xl md:w-[320px] md:h-[320px]">
+                        <!-- Glow -->
+                        <circle cx="120" cy="120" r="100" fill="url(#paint0_radial)" fill-opacity="0.1" filter="blur(20px)"/>
+                        <!-- Main Body -->
+                        <path d="M120 220C175.228 220 210 180.228 210 125C210 69.7715 180 30 120 30C60 30 30 69.7715 30 125C30 180.228 64.7715 220 120 220Z" fill="url(#paint1_linear)" stroke="url(#paint2_linear)" stroke-width="2"/>
+                        <!-- Inner Highlight -->
+                        <path d="M120 218C174.124 218 208 178.653 208 124C208 69.3467 178.5 32 120 32C61.5 32 32 69.3467 32 124C32 178.653 65.8756 218 120 218Z" stroke="white" stroke-opacity="0.1" stroke-width="2"/>
+                        <!-- Leaf -->
+                        <path d="M120 35C120 35 115 15 140 10C140 10 150 25 120 35Z" fill="url(#paint3_linear)"/>
+                        <!-- Stem -->
+                        <path d="M120 35C120 35 118 20 125 15" stroke="#713F12" stroke-width="4" stroke-linecap="round"/>
+                        
+                        <defs>
+                            <radialGradient id="paint0_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(120 120) rotate(90) scale(100)">
+                                <stop stop-color="#EF4444"/>
+                                <stop offset="1" stop-color="#EF4444" stop-opacity="0"/>
+                            </radialGradient>
+                            <linearGradient id="paint1_linear" x1="120" y1="30" x2="120" y2="220" gradientUnits="userSpaceOnUse">
+                                <stop stop-color="#F43F5E"/>
+                                <stop offset="1" stop-color="#BE123C"/>
+                            </linearGradient>
+                            <linearGradient id="paint2_linear" x1="120" y1="30" x2="120" y2="220" gradientUnits="userSpaceOnUse">
+                                <stop stop-color="#FDA4AF"/>
+                                <stop offset="1" stop-color="#881337"/>
+                            </linearGradient>
+                            <linearGradient id="paint3_linear" x1="120" y1="10" x2="140" y2="35" gradientUnits="userSpaceOnUse">
+                                <stop stop-color="#4ADE80"/>
+                                <stop offset="1" stop-color="#166534"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+            </button>
+
+        </section>
+
+        <!-- Right: Shop Area -->
+        <aside class="w-full lg:w-[420px] bg-zinc-950/50 backdrop-blur-xl border-t lg:border-t-0 lg:border-l border-zinc-800/60 flex flex-col h-[50vh] lg:h-auto shadow-[-20px_0_40px_rgba(0,0,0,0.2)]">
+            <div class="px-6 py-5 border-b border-zinc-800/60 flex items-center justify-between sticky top-0 bg-zinc-950/80 backdrop-blur z-10 shrink-0">
+                <h2 class="text-lg font-medium tracking-tight text-zinc-100">Infrastructure</h2>
+                <div class="text-xs font-medium text-zinc-500 bg-zinc-900/50 px-2.5 py-1 rounded-md border border-zinc-800/50">Market</div>
+            </div>
+            
+            <div id="shop-container" class="flex-1 overflow-y-auto p-4 space-y-3 pb-24 lg:pb-4">
+                <!-- Upgrades injected via JS -->
+            </div>
+        </aside>
+
+    </main>
+
+    <script>
+        // Game State
+        let apples = 0;
+        let applesPerClick = 1;
+        let applesPerSecond = 0;
+
+        // Configuration
+        const upgrades = [
+            { id: 'cursor', name: 'Auto Cursor', icon: 'solar:mouse-minimalistic-linear', baseCost: 15, costMult: 1.15, aps: 0.1, clickPower: 0, desc: 'Clicks automatically', color: 'text-zinc-300' },
+            { id: 'finger', name: 'Golden Finger', icon: 'solar:hand-pointer-linear', baseCost: 50, costMult: 1.5, aps: 0, clickPower: 1, desc: '+1 Apple per click', color: 'text-amber-400' },
+            { id: 'picker', name: 'Apple Picker', icon: 'solar:user-hands-linear', baseCost: 100, costMult: 1.15, aps: 1, clickPower: 0, desc: 'Hires a dedicated picker', color: 'text-blue-400' },
+            { id: 'fertilizer', name: 'Fertilizer', icon: 'solar:leaf-linear', baseCost: 500, costMult: 1.15, aps: 5, clickPower: 0, desc: 'Boosts tree growth', color: 'text-green-400' },
+            { id: 'tree', name: 'Apple Tree', icon: 'solar:tree-linear', baseCost: 1100, costMult: 1.15, aps: 8, clickPower: 0, desc: 'Plant a new tree', color: 'text-emerald-500' },
+            { id: 'orchard', name: 'Orchard', icon: 'solar:map-linear', baseCost: 12000, costMult: 1.15, aps: 47, clickPower: 0, desc: 'A whole field of trees', color: 'text-orange-400' },
+            { id: 'factory', name: 'Juice Factory', icon: 'solar:buildings-linear', baseCost: 130000, costMult: 1.15, aps: 260, clickPower: 0, desc: 'Industrial processing', color: 'text-purple-400' },
+            { id: 'genetics', name: 'Genetic Lab', icon: 'solar:test-tube-linear', baseCost: 1000000, costMult: 1.15, aps: 1400, clickPower: 0, desc: 'Mutated mega-apples', color: 'text-cyan-400' }
+        ];
+
+        const state = upgrades.reduce((acc, upg) => {
+            acc[upg.id] = { count: 0, currentCost: upg.baseCost };
+            return acc;
+        }, {});
+
+        // DOM Elements
+        const scoreDisplay = document.getElementById('score-display');
+        const apsDisplay = document.getElementById('aps-display');
+        const clickPowerDisplay = document.getElementById('click-power-display');
+        const appleBtn = document.getElementById('apple-btn');
+        const shopContainer = document.getElementById('shop-container');
+
+        // Utility: Format numbers cleanly
+        function formatNumber(num) {
+            if (num < 1000) return Math.floor(num).toString();
+            const suffixes = ["", "k", "M", "B", "T", "Qa"];
+            const suffixNum = Math.floor(("" + Math.floor(num)).length / 3);
+            let shortValue = parseFloat((suffixNum != 0 ? (num / Math.pow(1000, suffixNum)) : num).toPrecision(3));
+            if (shortValue % 1 != 0) shortValue = shortValue.toFixed(1);
+            return shortValue + suffixes[suffixNum];
+        }
+
+        // Initialize Shop UI
+        function renderShop() {
+            shopContainer.innerHTML = '';
+            upgrades.forEach((upg, index) => {
+                const itemState = state[upg.id];
+                
+                const btn = document.createElement('button');
+                btn.id = `upgrade-btn-${upg.id}`;
+                btn.className = `w-full flex items-center justify-between p-4 rounded-2xl border border-zinc-800/60 bg-zinc-900/30 hover:bg-zinc-800/60 transition-all group outline-none focus:ring-2 focus:ring-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-zinc-900/30 text-left`;
+                
+                const effectText = upg.aps > 0 ? `+${formatNumber(upg.aps)} APS` : `+${formatNumber(upg.clickPower)} Click`;
+
+                btn.innerHTML = `
+                    <div class="flex items-center gap-4 pointer-events-none">
+                        <div class="w-12 h-12 rounded-xl bg-zinc-800/80 flex items-center justify-center ${upg.color} shadow-inner shadow-black/20 group-hover:scale-105 transition-transform">
+                            <iconify-icon icon="${upg.icon}" width="24" stroke-width="1.5"></iconify-icon>
+                        </div>
+                        <div>
+                            <div class="text-sm font-medium text-zinc-200 tracking-tight">${upg.name}</div>
+                            <div class="text-xs text-zinc-500 mt-0.5">${upg.desc}</div>
+                        </div>
+                    </div>
+                    <div class="text-right pointer-events-none">
+                        <div class="text-sm font-medium text-zinc-100 tabular-nums flex items-center justify-end gap-1.5">
+                            <iconify-icon icon="solar:apple-linear" width="12" class="text-red-400"></iconify-icon>
+                            <span id="cost-${upg.id}">${formatNumber(itemState.currentCost)}</span>
+                        </div>
+                        <div class="text-xs text-zinc-500 mt-0.5 tabular-nums font-medium">Lvl <span id="count-${upg.id}">${itemState.count}</span></div>
+                    </div>
+                `;
+
+                btn.addEventListener('click', () => buyUpgrade(upg.id));
+                shopContainer.appendChild(btn);
+            });
+        }
+
+        // Logic Functions
+        function recalculateStats() {
+            let newAps = 0;
+            let newClick = 1;
+            
+            upgrades.forEach(upg => {
+                const count = state[upg.id].count;
+                newAps += count * upg.aps;
+                newClick += count * upg.clickPower;
+            });
+            
+            applesPerSecond = newAps;
+            applesPerClick = newClick;
+        }
+
+        function updateUI() {
+            scoreDisplay.textContent = formatNumber(apples);
+            apsDisplay.textContent = formatNumber(applesPerSecond);
+            clickPowerDisplay.textContent = `${formatNumber(applesPerClick)} / click`;
+
+            upgrades.forEach(upg => {
+                const itemState = state[upg.id];
+                const btn = document.getElementById(`upgrade-btn-${upg.id}`);
+                const costEl = document.getElementById(`cost-${upg.id}`);
+                const countEl = document.getElementById(`count-${upg.id}`);
+                
+                if (btn && costEl && countEl) {
+                    costEl.textContent = formatNumber(itemState.currentCost);
+                    countEl.textContent = itemState.count;
+                    
+                    if (apples >= itemState.currentCost) {
+                        btn.disabled = false;
+                    } else {
+                        btn.disabled = true;
+                    }
+                }
+            });
+        }
+
+        function buyUpgrade(id) {
+            const upg = upgrades.find(u => u.id === id);
+            const itemState = state[id];
+            
+            if (apples >= itemState.currentCost) {
+                apples -= itemState.currentCost;
+                itemState.count++;
+                itemState.currentCost = Math.ceil(upg.baseCost * Math.pow(upg.costMult, itemState.count));
+                
+                recalculateStats();
+                updateUI();
+                
+                // Visual feedback on buy
+                const btn = document.getElementById(`upgrade-btn-${id}`);
+                btn.classList.add('bg-zinc-800');
+                setTimeout(() => btn.classList.remove('bg-zinc-800'), 150);
+            }
+        }
+
+        function spawnFloatingNumber(e, amount) {
+            const el = document.createElement('div');
+            el.className = 'floating-number text-lg md:text-xl font-medium text-white/90 drop-shadow-md';
+            el.textContent = `+${formatNumber(amount)}`;
+            
+            // Get coordinates relative to the button
+            const rect = appleBtn.getBoundingClientRect();
+            
+            // Fallback for touch/enter key if event coordinates aren't precise
+            const x = (e.clientX || rect.left + rect.width / 2) - rect.left;
+            const y = (e.clientY || rect.top + rect.height / 2) - rect.top;
+            
+            // Add some randomness
+            const randomX = x + (Math.random() - 0.5) * 40;
+            const randomY = y + (Math.random() - 0.5) * 20;
+
+            el.style.left = `${randomX}px`;
+            el.style.top = `${randomY}px`;
+            
+            appleBtn.appendChild(el);
+            
+            setTimeout(() => {
+                if (el.parentNode === appleBtn) {
+                    appleBtn.removeChild(el);
+                }
+            }, 800);
+        }
+
+        // Event Listeners
+        appleBtn.addEventListener('click', (e) => {
+            apples += applesPerClick;
+            spawnFloatingNumber(e, applesPerClick);
+            updateUI();
+            
+            // Small haptic feedback if available
+            if (navigator.vibrate) navigator.vibrate(10);
+        });
+
+        // Prevent zooming on double tap on mobile
+        appleBtn.addEventListener('dblclick', (e) => e.preventDefault());
+
+        // Game Loop (Updates 10 times a second for smoother visually, but adds 1/10th of APS)
+        setInterval(() => {
+            if (applesPerSecond > 0) {
+                apples += applesPerSecond / 10;
+                updateUI();
+            }
+        }, 100);
+
+        // Save/Load system (Simple localStorage)
+        function saveGame() {
+            const saveData = {
+                apples: apples,
+                state: state
+            };
+            localStorage.setItem('epicAppleClickerSave', JSON.stringify(saveData));
+        }
+
+        function loadGame() {
+            const saved = localStorage.getItem('epicAppleClickerSave');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    apples = parsed.apples || 0;
+                    if (parsed.state) {
+                        for (const key in parsed.state) {
+                            if (state[key]) {
+                                state[key].count = parsed.state[key].count;
+                                state[key].currentCost = parsed.state[key].currentCost;
+                            }
+                        }
+                    }
+                    recalculateStats();
+                } catch (e) {
+                    console.error("Save file corrupted");
+                }
+            }
+        }
+
+        // Auto-save every 5 seconds
+        setInterval(saveGame, 5000);
+
+        // Boot
+        loadGame();
+        renderShop();
+        recalculateStats();
+        updateUI();
+
+    </script>
+</body>
+</html>

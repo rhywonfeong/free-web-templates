@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ace Agency Dashboard</title>
+<!-- Fonts: Inter -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+theme: {
+extend: {
+fontFamily: {
+sans: ['Inter', 'sans-serif'],
+},
+colors: {
+bg: {
+main: '#0F0F10',
+sidebar: '#0B0B0C',
+panel: '#111113',
+hover: '#1F1F21',
+active: '#202022',
+input: '#161618'
+},
+border: {
+DEFAULT: '#222224',
+light: '#2E2E30'
+},
+text: {
+primary: '#E4E4E6',
+secondary: '#9CA3AF', // Zinc-400
+muted: '#52525B', // Zinc-600
+accent: '#60A5FA' // Blue-400
+}
+},
+fontSize: {
+xxs: '0.65rem',
+},
+boxShadow: {
+'glow': '0 0 10px rgba(0,0,0,0.5)',
+'popup': '0 4px 20px rgba(0,0,0,0.3)',
+}
+}
+}
+}
+</script>
+<!-- React & ReactDOM -->
+<script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<!-- Babel -->
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<!-- Lucide Icons -->
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+/* Custom scrollbar to match dark theme */
+::-webkit-scrollbar {
+width: 6px;
+height: 6px;
+}
+::-webkit-scrollbar-track {
+background: transparent;
+}
+::-webkit-scrollbar-thumb {
+background: #27272a;
+border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+background: #3f3f46;
+}
+.tilt-stack-1 { transform: rotate(-6deg) translateX(-10px); z-index: 10; }
+.tilt-stack-2 { transform: rotate(0deg) scale(1.05); z-index: 20; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+.tilt-stack-3 { transform: rotate(6deg) translateX(10px); z-index: 10; }
+/* Smooth rendering */
+body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+</style>
+<script>document.addEventListener('click', event => {
+const anchor = event.target.closest?.('a[href]');
+const href = anchor?.getAttribute('href');
+if (event.defaultPrevented || !href?.startsWith('#')) return;
+event.preventDefault();
+if (href === '#') { window.scrollTo({top: 0, behavior: 'smooth'}); return; }
+try {
+const id = decodeURIComponent(href.slice(1));
+const target = document.getElementById(id) || document.getElementsByName(id)[0];
+target?.scrollIntoView({behavior: 'smooth', block: 'start'});
+} catch { /* Invalid fragments remain in the saved document. */ }
+});</script>
+<script>document.addEventListener('click', event => {
+if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+const anchor = event.target.closest?.('a[href]');
+if (!anchor || anchor.hasAttribute('download')) return;
+const target = anchor.getAttribute('target')?.toLowerCase();
+if (target && target !== '_self' && target !== '_top') return;
+try {
+const destination = new URL(anchor.href, document.baseURI);
+const base = new URL(document.baseURI);
+if (!['http:', 'https:'].includes(destination.protocol) || destination.origin === base.origin) return;
+event.preventDefault();
+window.open(destination.href, '_blank', 'noopener,noreferrer');
+} catch { /* Leave invalid links to the browser. */ }
+}, true);</script></head>
+<body class="bg-bg-main text-text-primary h-screen overflow-hidden selection:bg-zinc-800 selection:text-white">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // --- Icon Components (Lucide Wrappers) ---
+        const Icon = ({ name, size = 16, className = "", strokeWidth = 1.5, fill = "none" }) => {
+            React.useEffect(() => {
+                lucide.createIcons();
+            }, [name]);
+            return <i data-lucide={name} width={size} height={size} className={className} stroke-width={strokeWidth} fill={fill}></i>;
+        };
+
+        // --- Layout Components ---
+        
+        // 1. Far Left Navigation
+        const SidebarNav = () => {
+            return (
+                <div className="w-[72px] flex flex-col items-center py-4 gap-4 border-r border-border bg-bg-sidebar flex-shrink-0 z-20">
+                    <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white cursor-pointer hover:bg-white/20 transition-colors">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                    </div>
+                    <div className="relative group">
+                        <div className="absolute -left-4 top-1/2 -translate-y-1/2 w-1 h-8 bg-white rounded-r-md"></div>
+                        <div className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center text-zinc-400 cursor-pointer border border-zinc-700">
+                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                        </div>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-transparent hover:bg-white/5 flex items-center justify-center text-zinc-500 cursor-pointer transition-colors border border-dashed border-zinc-700 hover:border-zinc-600">
+                        <Icon name="plus" size={20} />
+                    </div>
+                    <div className="mt-auto">
+                        <img src="https://i.pravatar.cc/150?u=nav" className="w-9 h-9 rounded-full ring-2 ring-zinc-800 opacity-80 hover:opacity-100 transition-opacity cursor-pointer" alt="User" />
+                    </div>
+                </div>
+            );
+        };
+
+        // 2. Channel List Sidebar
+        const ChannelList = () => {
+            const categories = [
+                { name: 'AI Assistant', icon: 'sparkles', badge: 'NEW', badgeColor: 'bg-purple-500/20 text-purple-400' },
+                { name: 'Drafts', icon: 'file' },
+                { name: 'Saved Items', icon: 'bookmark', count: 12 },
+            ];
+
+            const channels = [
+                { name: 'General-chat', type: 'fire', count: 4, isActive: false },
+                { name: 'Product-update', type: 'hash', count: 3, isActive: false },
+                { name: 'V41', type: 'rocket', collapsed: false, children: [
+                    { name: 'Notes', type: 'corner-down-right' },
+                    { name: 'Updates', type: 'corner-down-right' },
+                    { name: 'Design', type: 'corner-down-right', isActive: true },
+                    { name: 'UI-kit', type: 'corner-down-right' },
+                ]},
+                { name: 'Random', type: 'hash' },
+                { name: 'Projects', type: 'hash', count: 1 },
+                { name: 'Events', type: 'hash' },
+                { name: 'Shoutouts', type: 'play', count: 4 },
+                { name: 'Strategy', type: 'hash' },
+                { name: 'GIF', type: 'hash' },
+                { name: 'Announcements', type: 'hash', count: 6 },
+                { name: '3D-team', type: 'hash', count: 4 },
+            ];
+
+            const ChannelItem = ({ item, depth = 0 }) => (
+                <div className={`
+                    group flex items-center justify-between px-3 py-1.5 mx-2 rounded-md cursor-pointer transition-all
+                    ${item.isActive ? 'bg-bg-active text-white' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'}
+                `}>
+                    <div className="flex items-center gap-2.5 overflow-hidden">
+                        {item.type === 'hash' && <span className="text-zinc-600 text-lg">#</span>}
+                        {item.type === 'fire' && <Icon name="flame" size={14} className="text-orange-500" fill="#f97316" />}
+                        {item.type === 'rocket' && <Icon name="rocket" size={14} className="text-yellow-600" fill="#ca8a04" />}
+                        {item.type === 'play' && <Icon name="play" size={14} className="text-yellow-600" fill="#ca8a04" />}
+                        {item.type === 'corner-down-right' && <Icon name="corner-down-right" size={14} className="text-zinc-600" />}
+                        
+                        <span className={`text-[13px] truncate ${item.isActive ? 'font-medium' : 'font-normal'}`}>{item.name}</span>
+                    </div>
+                    {item.count && (
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${item.isActive ? 'text-white' : 'text-zinc-500'}`}>
+                            {item.count}
+                        </span>
+                    )}
+                </div>
+            );
+
+            return (
+                <div className="w-[240px] bg-bg-sidebar border-r border-border flex flex-col flex-shrink-0">
+                    {/* Header */}
+                    <div className="h-14 flex items-center justify-between px-4 hover:bg-white/5 transition-colors cursor-pointer border-b border-transparent">
+                        <span className="font-semibold text-[15px] tracking-tight">Ace-Agency</span>
+                        <div className="flex items-center gap-3">
+                            <Icon name="chevron-down" size={14} className="text-zinc-500" />
+                            <Icon name="search" size={16} className="text-zinc-400" />
+                        </div>
+                    </div>
+
+                    {/* Scroll Area */}
+                    <div className="flex-1 overflow-y-auto py-4 space-y-6">
+                        {/* Top Items */}
+                        <div className="space-y-0.5">
+                            {categories.map((cat) => (
+                                <div key={cat.name} className="flex items-center justify-between px-3 py-1.5 mx-2 rounded-md hover:bg-bg-hover cursor-pointer group text-text-secondary hover:text-text-primary">
+                                    <div className="flex items-center gap-2.5">
+                                        <Icon name={cat.icon} size={16} className="text-zinc-500 group-hover:text-zinc-400" />
+                                        <span className="text-[13px]">{cat.name}</span>
+                                        {cat.badge && (
+                                            <span className={`text-[9px] px-1.5 py-0.5 rounded ${cat.badgeColor} font-semibold uppercase tracking-wider`}>{cat.badge}</span>
+                                        )}
+                                    </div>
+                                    {cat.count && <span className="text-[11px] text-zinc-600">{cat.count}</span>}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Bookmarked */}
+                        <div>
+                            <div className="px-5 mb-2 flex items-center justify-between group cursor-pointer">
+                                <span className="text-xs font-medium text-text-muted group-hover:text-zinc-400 transition-colors">Bookmarked</span>
+                                <Icon name="chevron-down" size={12} className="text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                            <div className="space-y-0.5">
+                                <div className="flex items-center justify-between px-3 py-1.5 mx-2 rounded-md hover:bg-bg-hover cursor-pointer text-text-secondary hover:text-text-primary">
+                                    <div className="flex items-center gap-2.5">
+                                        <img src="https://i.pravatar.cc/150?u=amir" className="w-4 h-4 rounded-full" />
+                                        <span className="text-[13px]">Amir Baqian</span>
+                                    </div>
+                                    <span className="text-[11px] text-zinc-600">2</span>
+                                </div>
+                                <div className="flex items-center justify-between px-3 py-1.5 mx-2 rounded-md hover:bg-bg-hover cursor-pointer text-text-secondary hover:text-text-primary">
+                                    <div className="flex items-center gap-2.5">
+                                        <Icon name="flame" size={14} className="text-orange-500" fill="#f97316" />
+                                        <span className="text-[13px]">General-chat</span>
+                                    </div>
+                                    <span className="text-[11px] text-zinc-600">4</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Channels */}
+                        <div>
+                            <div className="px-5 mb-2 flex items-center justify-between group cursor-pointer">
+                                <span className="text-xs font-medium text-text-muted group-hover:text-zinc-400 transition-colors">Channels</span>
+                                <Icon name="chevron-down" size={12} className="text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                            <div className="space-y-0.5">
+                                {channels.map((ch, i) => (
+                                    <div key={i}>
+                                        <ChannelItem item={ch} />
+                                        {ch.children && (
+                                            <div className="mt-0.5">
+                                                {ch.children.map((sub, j) => <ChannelItem key={j} item={sub} />)}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 3. Right Information Panel
+        const InfoPanel = () => {
+            const MemberRow = ({ name, role, roleColor, img }) => (
+                <div className="flex items-center justify-between py-2 group cursor-pointer hover:bg-white/5 px-2 -mx-2 rounded-md transition-colors">
+                    <div className="flex items-center gap-3">
+                        <div className="relative">
+                             <img src={img} className="w-8 h-8 rounded-full bg-zinc-800 object-cover" alt={name} />
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-[13px] font-medium text-gray-200">{name}</span>
+                            <span className="text-[11px] text-zinc-500">{role}</span>
+                        </div>
+                    </div>
+                    <span className={`text-[10px] ${roleColor}`}>{role.split(' ')[0]}</span>
+                </div>
+            );
+
+            // Activity Bars Generator
+            const ActivityBars = () => {
+                const bars = [1,2,2,3,4,3,2,4,5,4,3,2,1,2,3,4,4,3,2,1];
+                return (
+                    <div className="flex items-end gap-[3px] h-6 mt-3">
+                        {bars.map((h, i) => (
+                            <div key={i} className={`w-1.5 rounded-sm ${i > 15 ? 'bg-zinc-700' : 'bg-emerald-800'}`} style={{ height: `${h * 20 + 20}%`, opacity: i > 15 ? 0.3 : 1 }}></div>
+                        ))}
+                         {/* Manual override for visual match */}
+                         <div className="absolute flex items-end gap-[3px] h-6 mt-3 pointer-events-none">
+                            {Array.from({length: 18}).map((_, i) => (
+                                <div key={i} className={`w-1.5 rounded-sm ${i < 12 ? 'bg-emerald-600' : 'bg-emerald-900'}`} style={{ height: '60%' }}></div>
+                            ))}
+                         </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="w-[300px] bg-bg-panel border-l border-border flex flex-col flex-shrink-0">
+                    {/* Tabs */}
+                    <div className="h-12 flex items-center px-4 border-b border-border gap-4 text-[13px] font-medium">
+                        <div className="bg-zinc-800 text-white px-3 py-1 rounded-md cursor-pointer">Info</div>
+                        <div className="text-zinc-500 hover:text-zinc-300 cursor-pointer">Pins</div>
+                        <div className="text-zinc-500 hover:text-zinc-300 cursor-pointer">Files</div>
+                        <div className="text-zinc-500 hover:text-zinc-300 cursor-pointer">Links</div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-5 space-y-8">
+                        {/* Main Info */}
+                        <div className="space-y-4">
+                            <h3 className="text-[13px] font-medium text-white">Main Info</h3>
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center text-[12px]">
+                                    <span className="text-zinc-400">Channel Owner</span>
+                                    <div className="flex items-center gap-2">
+                                        <img src="https://i.pravatar.cc/150?u=amir" className="w-4 h-4 rounded-full" />
+                                        <span className="text-zinc-300">Amir Baqian</span>
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center text-[12px]">
+                                    <span className="text-zinc-400">Date of creation</span>
+                                    <span className="text-zinc-300">17 May</span>
+                                </div>
+                                <div className="flex justify-between items-center text-[12px]">
+                                    <span className="text-zinc-400">Status</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-[#2A1818] text-red-400 rounded border border-red-900/30 flex items-center gap-1">
+                                        <div className="w-1 h-1 rounded-full bg-red-500"></div> Close
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center text-[12px]">
+                                    <span className="text-zinc-400">Tags</span>
+                                    <span className="text-zinc-300">31</span>
+                                </div>
+                                <div className="flex justify-between items-center text-[12px]">
+                                    <span className="text-zinc-400">Messages</span>
+                                    <span className="text-zinc-300">1,770</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* About */}
+                        <div className="space-y-4">
+                            <h3 className="text-[13px] font-medium text-white">About</h3>
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center text-[12px] bg-white/5 p-2 rounded-md">
+                                    <span className="font-medium text-white">Topic</span>
+                                    <span className="text-zinc-400">Design staff</span>
+                                </div>
+                                <div className="flex justify-between items-center text-[12px]">
+                                    <span className="text-zinc-400">Description</span>
+                                    <span className="text-zinc-500">None</span>
+                                </div>
+                                <div className="flex justify-between items-center text-[12px]">
+                                    <span className="text-zinc-400">Members</span>
+                                    <span className="text-zinc-300">15</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Channel Activity */}
+                        <div className="space-y-2">
+                            <h3 className="text-[13px] font-medium text-white">Channel Activity</h3>
+                            {/* Custom Bar Chart Visual */}
+                            <div className="flex items-end h-4 gap-[4px]">
+                                {Array.from({length: 14}).map((_,i) => (
+                                    <div key={i} className={`w-2.5 rounded-sm ${i < 10 ? 'bg-emerald-500' : 'bg-emerald-900/50'}`} style={{height: '100%'}}></div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Members */}
+                        <div className="space-y-1">
+                            <h3 className="text-[13px] font-medium text-white mb-3">Members</h3>
+                            <MemberRow name="Jahan" role="Design Lead" roleColor="text-purple-400" img="https://i.pravatar.cc/150?u=jahan" />
+                            <MemberRow name="Amir Baqian" role="CEO" roleColor="text-green-400" img="https://i.pravatar.cc/150?u=amir" />
+                            <MemberRow name="Arman Jacob" role="Designer" roleColor="text-purple-400" img="https://i.pravatar.cc/150?u=arman" />
+                            <MemberRow name="Ahmad Mousavi" role="Project manager" roleColor="text-yellow-500" img="https://i.pravatar.cc/150?u=ahmad" />
+                            <MemberRow name="Sam jones" role="Developer" roleColor="text-green-500" img="https://i.pravatar.cc/150?u=sam" />
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 4. Main Chat Area
+        const MainContent = () => {
+            const Message = ({ avatar, name, time, content, children, reactions }) => (
+                <div className="flex gap-4 group hover:bg-white/[0.02] px-6 py-1 -mx-6 transition-colors">
+                    <img src={avatar} className="w-9 h-9 rounded-full mt-0.5 object-cover" />
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline gap-2 mb-0.5">
+                            <span className="text-[14px] font-medium text-white cursor-pointer hover:underline">{name}</span>
+                            <span className="text-[11px] text-zinc-500">{time}</span>
+                        </div>
+                        <div className="text-[14px] leading-relaxed text-gray-300 whitespace-pre-wrap">
+                            {content}
+                        </div>
+                        {children}
+                        {reactions && (
+                            <div className="flex gap-1.5 mt-2">
+                                {reactions.map((r, i) => (
+                                    <div key={i} className="flex items-center gap-1.5 bg-[#1F1F21] hover:bg-[#2A2A2D] px-2 py-1 rounded-full border border-zinc-800 cursor-pointer transition-colors">
+                                        <span className="text-[12px]">{r.emoji}</span>
+                                        <span className="text-[11px] font-medium text-zinc-400">{r.count}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="flex-1 flex flex-col min-w-0 bg-bg-main relative">
+                    {/* Header */}
+                    <div className="h-14 flex items-center justify-between px-6 border-b border-border flex-shrink-0">
+                        <div className="flex items-center gap-2 text-[13px]">
+                            <Icon name="corner-down-right" size={14} className="text-zinc-500" />
+                            <span className="text-zinc-500">Product-update</span>
+                            <span className="text-zinc-600">/</span>
+                            <span className="text-zinc-500">V41</span>
+                            <span className="text-zinc-600">/</span>
+                            <span className="text-white font-medium">Design</span>
+                            <Icon name="bookmark" size={14} className="text-zinc-500 ml-2 cursor-pointer hover:text-zinc-300" />
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <Icon name="headphones" size={18} className="text-zinc-400 cursor-pointer hover:text-white" />
+                            <Icon name="more-horizontal" size={18} className="text-zinc-400 cursor-pointer hover:text-white" />
+                        </div>
+                    </div>
+
+                    {/* Messages Feed */}
+                    <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+                        
+                        {/* Message 1 */}
+                        <Message 
+                            avatar="https://i.pravatar.cc/150?u=jahan"
+                            name="Jahan"
+                            time="7h ago"
+                            content={
+                                <span>
+                                    I have already prepared all styles and components according to our standards during the design phase, so the UI kit is 90% complete. All that remains is to add some states to the interactive elements and prepare the Lottie files for animations.<br/>
+                                    <span className="text-blue-400 hover:underline cursor-pointer">@Arman</span>, please take a look and let me know if you have any questions.
+                                </span>
+                            }
+                        >
+                            <div className="mt-3 flex items-center justify-between p-3 bg-bg-active border border-border rounded-lg max-w-md group cursor-pointer hover:border-zinc-600 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-[#1E1E1E] rounded flex items-center justify-center">
+                                        <div className="w-5 h-5 relative">
+                                            <div className="absolute top-0 left-0 w-2.5 h-2.5 bg-red-400 rounded-full"></div>
+                                            <div className="absolute top-0 right-0 w-2.5 h-2.5 bg-purple-400 rounded-full"></div>
+                                            <div className="absolute bottom-0 left-0 w-2.5 h-2.5 bg-blue-400 rounded-full"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="text-[13px] font-medium text-white">Ace-landing-page V32</div>
+                                        <div className="text-[11px] text-zinc-500">www.figma.com</div>
+                                    </div>
+                                </div>
+                                <button className="text-[11px] font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-200 px-3 py-1.5 rounded transition-colors opacity-0 group-hover:opacity-100">Quick View</button>
+                            </div>
+                            <div className="flex gap-1.5 mt-2">
+                                <div className="flex items-center gap-1.5 bg-[#1F1F21] px-2 py-1 rounded-full border border-zinc-800">
+                                    <span className="text-[12px]">🔥</span>
+                                    <span className="text-[11px] font-medium text-zinc-400">1</span>
+                                </div>
+                            </div>
+                        </Message>
+
+                        {/* Message 2 */}
+                        <Message 
+                            avatar="https://i.pravatar.cc/150?u=arman"
+                            name="Arman"
+                            time="6h ago"
+                            content="Okay, Thanks Jahan I will start working on it."
+                        />
+
+                        {/* Message 3 - Image Stack */}
+                        <Message 
+                            avatar="https://i.pravatar.cc/150?u=jahan"
+                            name="Jahan"
+                            time="7h ago"
+                            content=""
+                        >
+                            <div className="relative h-48 w-80 mt-2 mb-8 ml-8">
+                                <img src="https://images.unsplash.com/photo-1515378791036-0648a3ef77b2?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80" className="absolute w-32 h-44 object-cover rounded-lg border-2 border-[#1E1E20] tilt-stack-1" />
+                                <img src="https://images.unsplash.com/photo-1552519507-da3b142c6e3d?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80" className="absolute w-32 h-44 object-cover rounded-lg border-2 border-[#1E1E20] left-16 tilt-stack-3" />
+                                <img src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?ixlib=rb-1.2.1&auto=format&fit=crop&w=300&q=80" className="absolute w-36 h-48 object-cover rounded-lg border-2 border-[#1E1E20] left-8 -top-2 tilt-stack-2" />
+                            </div>
+                            <div className="flex gap-1.5 mt-2">
+                                <div className="flex items-center gap-1.5 bg-[#1F1F21] px-2 py-1 rounded-full border border-zinc-800">
+                                    <span className="text-[12px]">👍</span>
+                                    <span className="text-[11px] font-medium text-zinc-400">1</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 bg-[#1F1F21] px-2 py-1 rounded-full border border-zinc-800">
+                                    <span className="text-[12px]">🔥</span>
+                                    <span className="text-[11px] font-medium text-zinc-400">1</span>
+                                </div>
+                            </div>
+                        </Message>
+
+                        {/* Message 4 - Active Typing / Mention */}
+                        <Message 
+                            avatar="https://i.pravatar.cc/150?u=amir"
+                            name="Amir Baqian"
+                            time="9h ago"
+                            content={
+                                <span>
+                                    Hey team, I wanted to discuss the custom UI-kit we're developing for the site redesign. We need to finalize some components and make key design decisions to ensure consistency across the board. Let's make sure we cover colors, typography, buttons, and any other essential UI elements.<br/>
+                                    <span className="text-blue-400">#UX/UI @Jahan</span>
+                                </span>
+                            }
+                        />
+                    </div>
+
+                    {/* Input Area */}
+                    <div className="px-6 pb-6 relative">
+                        {/* Mention Popup */}
+                        <div className="absolute bottom-[140px] left-20 w-60 bg-[#18181b] border border-zinc-700 rounded-xl shadow-popup overflow-hidden z-30">
+                            <div className="flex items-center gap-3 px-3 py-2 bg-blue-600/10 border-l-2 border-blue-500 cursor-pointer">
+                                <img src="https://i.pravatar.cc/150?u=arman" className="w-5 h-5 rounded-full" />
+                                <span className="text-[13px] text-white font-medium">Arman Jacob</span>
+                            </div>
+                            <div className="flex items-center gap-3 px-3 py-2 hover:bg-white/5 cursor-pointer">
+                                <img src="https://i.pravatar.cc/150?u=amir" className="w-5 h-5 rounded-full" />
+                                <span className="text-[13px] text-zinc-300">Amir Baqian</span>
+                            </div>
+                            <div className="flex items-center gap-3 px-3 py-2 hover:bg-white/5 cursor-pointer">
+                                <img src="https://i.pravatar.cc/150?u=ahmad" className="w-5 h-5 rounded-full" />
+                                <span className="text-[13px] text-zinc-300">Ahmad Mosavi</span>
+                            </div>
+                            <div className="px-3 py-2 text-[11px] text-blue-400 border-t border-zinc-800 mt-1">
+                                CC @A
+                            </div>
+                        </div>
+
+                        {/* Input Box */}
+                        <div className="bg-bg-input border border-border rounded-xl p-3 shadow-lg">
+                            <div className="text-[14px] text-zinc-300 min-h-[40px] pl-1 font-light">
+                                <span className="opacity-50">I have already prepared all styles and components according to our standards during the design pha...</span>
+                                <span className="text-blue-400 bg-blue-500/10 px-0.5 rounded ml-0.5">@A</span>
+                                <span className="animate-pulse">|</span>
+                            </div>
+                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/5">
+                                <div className="flex items-center gap-3 text-zinc-400">
+                                    <Icon name="plus" size={18} className="cursor-pointer hover:text-white" />
+                                    <Icon name="smile" size={18} className="cursor-pointer hover:text-white" />
+                                    <span className="text-zinc-600">@</span>
+                                    <Icon name="mic" size={18} className="cursor-pointer hover:text-white" />
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className="text-[12px] text-zinc-500 font-medium cursor-pointer hover:text-zinc-300">Discard</span>
+                                    <button className="bg-zinc-700 hover:bg-zinc-600 text-white text-[12px] font-medium px-4 py-1.5 rounded-md transition-colors flex items-center gap-1">
+                                        Send
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- App Entry ---
+        const App = () => {
+            return (
+                <div className="flex h-screen w-full bg-black">
+                    <SidebarNav />
+                    <ChannelList />
+                    <MainContent />
+                    <InfoPanel />
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

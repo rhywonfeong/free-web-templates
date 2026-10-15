@@ -1,0 +1,2029 @@
+<!DOCTYPE html>
+<html lang="en" class="antialiased"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Campaign Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<script>
+tailwind.config = {
+darkMode: 'class',
+theme: {
+extend: {
+fontFamily: {
+sans: ['Inter', 'sans-serif'],
+},
+colors: {
+page: 'var(--page)',
+sidebar: 'var(--sidebar)',
+card: 'var(--card)',
+surface: 'var(--secondary-surface)',
+border: 'var(--border)',
+text: {
+primary: 'var(--text-primary)',
+secondary: 'var(--text-secondary)'
+},
+primary: {
+DEFAULT: 'var(--primary)',
+hover: 'var(--primary-hover)',
+},
+success: 'var(--success)',
+warning: 'var(--warning)',
+danger: 'var(--danger)',
+info: 'var(--info)',
+chart: {
+1: '#6366F1',
+2: '#3B82F6',
+3: '#06B6D4',
+4: '#F97316',
+5: '#8B5CF6'
+}
+},
+boxShadow: {
+'sm': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+'card': '0 0 0 1px var(--border), 0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+'card-hover': '0 0 0 1px var(--border), 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+}
+}
+}
+}
+</script>
+<style>
+:root {
+--page: #F7F8FC;
+--sidebar: #FFFFFF;
+--card: #FFFFFF;
+--secondary-surface: #F3F4F6;
+--border: #E5E7EB;
+--text-primary: #111827;
+--text-secondary: #6B7280;
+--primary: #6366F1;
+--primary-hover: #4F46E5;
+--success: #16A34A;
+--warning: #D97706;
+--danger: #DC2626;
+--info: #2563EB;
+}
+:root.dark {
+--page: #0B0D12;
+--sidebar: #101218;
+--card: #151820;
+--secondary-surface: #1B1F29;
+--border: #292E3A;
+--text-primary: #F9FAFB;
+--text-secondary: #9CA3AF;
+}
+body {
+background-color: var(--page);
+color: var(--text-primary);
+}
+/* Custom Scrollbar for a cleaner look */
+::-webkit-scrollbar {
+width: 6px;
+height: 6px;
+}
+::-webkit-scrollbar-track {
+background: transparent;
+}
+::-webkit-scrollbar-thumb {
+background: var(--border);
+border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+background: var(--text-secondary);
+}
+.card-transition {
+transition: all 160ms ease-in-out;
+}
+.card-transition:hover {
+transform: translateY(-1px);
+box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow-card-hover);
+}
+/* Chart SVG specific styles */
+.chart-line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.chart-grid { stroke: var(--border); stroke-dasharray: 4 4; stroke-width: 1; }
+</style>
+<script>
+if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+document.documentElement.classList.add('dark');
+} else {
+document.documentElement.classList.remove('dark');
+}
+</script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body class="flex h-screen overflow-hidden text-sm">
+    <!-- Sidebar -->
+    <aside class="hidden md:flex flex-col w-[240px] flex-shrink-0 border-r border-border bg-sidebar h-full z-20">
+      <div class="h-16 flex items-center px-6 border-b border-border/50">
+        <span class="text-base font-medium tracking-tight uppercase tracking-widest text-text-primary">
+          PromptLocal
+        </span>
+      </div>
+
+      <div class="flex-1 overflow-y-auto py-4 px-3 space-y-6">
+        <a href="#" class="flex items-center px-3 py-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface transition-colors">
+          <iconify-icon icon="solar:widget-3-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+          <span>Dashboard</span>
+        </a>
+
+        <div class="">
+          <h3 class="px-3 text-xs font-medium text-text-secondary uppercase tracking-widest mb-2">
+            AI Visibility
+          </h3>
+          <nav class="space-y-0.5">
+            <a href="#" class="flex items-center px-3 py-2 bg-surface text-text-primary rounded-lg transition-colors">
+              <iconify-icon icon="solar:pie-chart-2-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+              <span class="font-medium">Overview</span>
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface transition-colors">
+              <iconify-icon icon="solar:chat-square-code-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+              <span>Prompts</span>
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface transition-colors">
+              <iconify-icon icon="solar:document-text-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+              <span class="">AI Answers</span>
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface transition-colors">
+              <iconify-icon icon="solar:hashtag-square-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+              <span class="">Mentions</span>
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface transition-colors">
+              <iconify-icon icon="solar:users-group-two-rounded-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+              <span>Competitors</span>
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface transition-colors">
+              <iconify-icon icon="solar:link-circle-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+              <span>Sources</span>
+            </a>
+          </nav>
+        </div>
+
+        <div class="">
+          <h3 class="px-3 text-xs font-medium text-text-secondary uppercase tracking-widest mb-2">
+            Search
+          </h3>
+          <nav class="space-y-0.5">
+            <a href="#" class="flex items-center px-3 py-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface transition-colors">
+              <iconify-icon icon="solar:map-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+              <span>Map Grid</span>
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface transition-colors">
+              <iconify-icon icon="solar:graph-up-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+              <span>Organic Rankings</span>
+            </a>
+          </nav>
+        </div>
+
+        <div>
+          <h3 class="px-3 text-xs font-medium text-text-secondary uppercase tracking-widest mb-2">
+            Citations
+          </h3>
+          <nav class="space-y-0.5">
+            <a href="#" class="flex items-center px-3 py-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface transition-colors">
+              <iconify-icon icon="solar:buildings-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+              <span>Overview</span>
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface transition-colors">
+              <iconify-icon icon="solar:lightbulb-minimalistic-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+              <span>Opportunities</span>
+            </a>
+          </nav>
+        </div>
+
+        <div>
+          <h3 class="px-3 text-xs font-medium text-text-secondary uppercase tracking-widest mb-2">
+            Content
+          </h3>
+          <nav class="space-y-0.5">
+            <a href="#" class="flex items-center px-3 py-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface transition-colors">
+              <iconify-icon icon="solar:pen-new-square-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+              <span>Create Content</span>
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface transition-colors">
+              <iconify-icon icon="solar:magic-stick-3-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+              <span>Optimise Content</span>
+            </a>
+          </nav>
+        </div>
+
+        <div>
+          <h3 class="px-3 text-xs font-medium text-text-secondary uppercase tracking-widest mb-2">
+            Reports
+          </h3>
+          <nav class="space-y-0.5">
+            <a href="#" class="flex items-center px-3 py-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface transition-colors">
+              <iconify-icon icon="solar:folder-with-files-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+              <span>Saved Reports</span>
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface transition-colors">
+              <iconify-icon icon="solar:calendar-date-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+              <span>Scheduled Reports</span>
+            </a>
+          </nav>
+        </div>
+      </div>
+
+      <div class="p-3 border-t border-border/50">
+        <a href="#" class="flex items-center px-3 py-2 text-text-secondary hover:text-text-primary rounded-lg hover:bg-surface transition-colors">
+          <iconify-icon icon="solar:settings-linear" class="mr-3 text-lg" stroke-width="1.5"></iconify-icon>
+          <span>Campaign Settings</span>
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col min-w-0 h-full overflow-y-auto">
+      <!-- Header -->
+      <header class="sticky top-0 z-10 bg-page/80 backdrop-blur-md border-b border-border">
+        <div class="max-w-[1440px] mx-auto px-4 lg:px-6">
+          <!-- Top Header Row -->
+          <div class="h-16 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <!-- Mobile menu button -->
+              <button class="md:hidden p-1 -ml-1 text-text-secondary hover:text-text-primary rounded-md">
+                <iconify-icon icon="solar:hamburger-menu-linear" class="text-xl" stroke-width="1.5"></iconify-icon>
+              </button>
+              <div class="">
+                <h1 class="text-lg font-medium tracking-tight text-text-primary leading-tight">
+                  Massage Escape
+                </h1>
+                <div class="flex items-center text-xs text-text-secondary mt-0.5 gap-2">
+                  <span class="">massage-escape.net</span>
+                  <span class="w-1 h-1 rounded-full bg-border"></span>
+                  <span class="">Columbus, Ohio</span>
+                  <span class="w-1 h-1 rounded-full bg-border"></span>
+                  <span class="flex items-center text-success">
+                    <span class="w-1.5 h-1.5 rounded-full bg-success mr-1.5"></span>
+                    Tracking active
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 sm:gap-3">
+              <button onclick="document.documentElement.classList.toggle('dark'); localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';" class="flex shrink-0 text-text-secondary hover:text-text-primary border-border hover:bg-surface transition-colors w-8 h-8 border rounded-lg pt-1.5 pr-1.5 pb-1.5 pl-1.5 shadow-sm items-center justify-center" aria-label="Toggle dark mode">
+                <iconify-icon icon="solar:moon-linear" class="hidden dark:block text-lg"></iconify-icon>
+                <iconify-icon icon="solar:sun-linear" class="block dark:hidden text-lg"></iconify-icon>
+              </button>
+              <div class="hidden sm:flex items-center gap-3">
+                <button class="flex items-center px-3 py-1.5 text-xs font-medium text-text-primary bg-card border border-border rounded-lg shadow-sm hover:bg-surface transition-colors">
+                  <iconify-icon icon="solar:export-linear" class="mr-1.5" stroke-width="1.5"></iconify-icon>
+                  Export
+                </button>
+                <button class="flex items-center px-3 py-1.5 text-xs font-medium text-text-primary bg-card border border-border rounded-lg shadow-sm hover:bg-surface transition-colors">
+                  <iconify-icon icon="solar:calendar-add-linear" class="mr-1.5" stroke-width="1.5"></iconify-icon>
+                  Schedule
+                </button>
+                <button class="flex items-center px-4 py-1.5 text-xs font-medium bg-primary rounded-lg shadow-sm hover:bg-primary-hover transition-colors text-white">
+                  <iconify-icon icon="solar:refresh-linear" class="mr-1.5" stroke-width="1.5"></iconify-icon>
+                  Rescan
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Filters Row -->
+          <div class="flex flex-wrap items-center gap-2 py-3 border-t border-border/50 text-xs">
+            <button class="flex items-center px-2.5 py-1.5 text-text-secondary hover:text-text-primary bg-card border border-border rounded-md shadow-sm transition-colors">
+              <iconify-icon icon="solar:calendar-linear" class="mr-1.5" stroke-width="1.5"></iconify-icon>
+              Last 30 Days
+              <iconify-icon icon="solar:alt-arrow-down-linear" class="ml-1" stroke-width="1.5"></iconify-icon>
+            </button>
+            <button class="flex items-center px-2.5 py-1.5 text-text-secondary hover:text-text-primary bg-card border border-border rounded-md shadow-sm transition-colors">
+              All AI platforms
+              <iconify-icon icon="solar:alt-arrow-down-linear" class="ml-1" stroke-width="1.5"></iconify-icon>
+            </button>
+            <button class="flex items-center px-2.5 py-1.5 text-text-secondary hover:text-text-primary bg-card border border-border rounded-md shadow-sm transition-colors">
+              All prompt types
+              <iconify-icon icon="solar:alt-arrow-down-linear" class="ml-1" stroke-width="1.5"></iconify-icon>
+            </button>
+            <button class="flex items-center px-2.5 py-1.5 text-text-secondary hover:text-text-primary bg-card border border-border rounded-md shadow-sm transition-colors">
+              <iconify-icon icon="solar:map-point-linear" class="mr-1.5" stroke-width="1.5"></iconify-icon>
+              Columbus, Ohio
+              <iconify-icon icon="solar:alt-arrow-down-linear" class="ml-1" stroke-width="1.5"></iconify-icon>
+            </button>
+            <div class="h-4 w-px bg-border mx-1"></div>
+            <label class="flex items-center cursor-pointer text-text-secondary hover:text-text-primary transition-colors">
+              <div class="relative w-7 h-4 bg-border rounded-full peer-checked:bg-primary transition-colors mr-2">
+                <div class="absolute top-[2px] left-[2px] w-3 h-3 rounded-full transition-transform transform translate-x-3 bg-white"></div>
+              </div>
+              Compare competitors
+            </label>
+          </div>
+        </div>
+      </header>
+
+      <!-- Dashboard Canvas -->
+      <div class="max-w-[1440px] mx-auto p-4 lg:p-6 w-full space-y-4 lg:space-y-6">
+        <div class="flex items-center justify-end text-xs text-text-secondary">
+          <iconify-icon icon="solar:clock-circle-linear" class="mr-1" stroke-width="1.5"></iconify-icon>
+          Last scanned: 22 Jul 2026, 14:30
+        </div>
+
+        <!-- 1. Summary KPI Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <!-- AI Visibility -->
+          <div class="bg-card shadow-card rounded-xl p-4 flex flex-col card-transition cursor-pointer relative group">
+            <div class="flex justify-between items-start mb-2">
+              <div class="flex items-center text-text-secondary">
+                <iconify-icon icon="solar:eye-linear" class="mr-1.5" stroke-width="1.5"></iconify-icon>
+                <span class="text-xs font-medium">AI Visibility</span>
+              </div>
+              <iconify-icon icon="solar:info-circle-linear" class="text-text-secondary/50 group-hover:text-text-secondary transition-colors" stroke-width="1.5"></iconify-icon>
+            </div>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span class="text-2xl font-medium tracking-tight text-text-primary">
+                37.6%
+              </span>
+              <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success">
+                <iconify-icon icon="solar:arrow-right-up-linear" class="mr-0.5"></iconify-icon>
+                6.8%
+              </span>
+            </div>
+            <div class="mt-4 h-6 w-full">
+              <svg viewBox="0 0 100 20" class="w-full h-full overflow-visible" preserveAspectRatio="none">
+                <path d="M0,15 Q20,10 40,12 T80,5 T100,2" fill="none" stroke="var(--success)" stroke-width="2" stroke-linecap="round"></path>
+              </svg>
+            </div>
+            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-text-primary text-page text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 hidden sm:block">
+              Overall brand presence in AI outputs
+            </div>
+          </div>
+
+          <!-- Map Grid Visibility -->
+          <div class="bg-card shadow-card rounded-xl p-4 flex flex-col card-transition cursor-pointer relative group">
+            <div class="flex justify-between items-start mb-2">
+              <div class="flex items-center text-text-secondary">
+                <iconify-icon icon="solar:map-linear" class="mr-1.5" stroke-width="1.5"></iconify-icon>
+                <span class="text-xs font-medium">Map Grid Visibility</span>
+              </div>
+              <iconify-icon icon="solar:info-circle-linear" class="text-text-secondary/50 group-hover:text-text-secondary" stroke-width="1.5"></iconify-icon>
+            </div>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span class="text-2xl font-medium tracking-tight text-text-primary">
+                64%
+              </span>
+              <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success">
+                <iconify-icon icon="solar:arrow-right-up-linear" class="mr-0.5"></iconify-icon>
+                4.2%
+              </span>
+            </div>
+            <div class="mt-4 h-6 w-full">
+              <svg viewBox="0 0 100 20" class="w-full h-full overflow-visible" preserveAspectRatio="none">
+                <path d="M0,18 Q20,15 40,16 T80,8 T100,4" fill="none" stroke="var(--success)" stroke-width="2" stroke-linecap="round" class=""></path>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Organic Rankings -->
+          <div class="bg-card shadow-card rounded-xl p-4 flex flex-col card-transition cursor-pointer relative group">
+            <div class="flex justify-between items-start mb-2">
+              <div class="flex items-center text-text-secondary">
+                <iconify-icon icon="solar:sort-by-time-linear" class="mr-1.5" stroke-width="1.5"></iconify-icon>
+                <span class="text-xs font-medium">Organic Rankings</span>
+              </div>
+              <iconify-icon icon="solar:info-circle-linear" class="text-text-secondary/50 group-hover:text-text-secondary" stroke-width="1.5"></iconify-icon>
+            </div>
+            <div class="flex items-baseline gap-1 mt-1">
+              <span class="text-2xl font-medium tracking-tight text-text-primary">
+                42
+              </span>
+              <span class="text-xs text-text-secondary">Top 10 keywords</span>
+              <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success ml-1">
+                <iconify-icon icon="solar:arrow-right-up-linear" class="mr-0.5"></iconify-icon>
+                5
+              </span>
+            </div>
+            <div class="mt-4 h-6 w-full">
+              <svg viewBox="0 0 100 20" class="w-full h-full overflow-visible" preserveAspectRatio="none">
+                <path d="M0,12 Q20,15 40,10 T80,5 T100,3" fill="none" stroke="var(--success)" stroke-width="2" stroke-linecap="round" class=""></path>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Citation Coverage -->
+          <div class="bg-card shadow-card rounded-xl p-4 flex flex-col card-transition cursor-pointer relative group">
+            <div class="flex justify-between items-start mb-2">
+              <div class="flex items-center text-text-secondary">
+                <iconify-icon icon="solar:link-linear" class="mr-1.5" stroke-width="1.5"></iconify-icon>
+                <span class="text-xs font-medium">Citation Coverage</span>
+              </div>
+              <iconify-icon icon="solar:info-circle-linear" class="text-text-secondary/50 group-hover:text-text-secondary" stroke-width="1.5"></iconify-icon>
+            </div>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span class="text-2xl font-medium tracking-tight text-text-primary">
+                28%
+              </span>
+              <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success">
+                <iconify-icon icon="solar:arrow-right-up-linear" class="mr-0.5"></iconify-icon>
+                3.4%
+              </span>
+            </div>
+            <div class="mt-4 h-6 w-full">
+              <svg viewBox="0 0 100 20" class="w-full h-full overflow-visible" preserveAspectRatio="none">
+                <path d="M0,16 Q20,10 40,14 T80,2 T100,5" fill="none" stroke="var(--success)" stroke-width="2" stroke-linecap="round"></path>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Website Health -->
+          <div class="bg-card shadow-card rounded-xl p-4 flex flex-col card-transition cursor-pointer relative group">
+            <div class="flex justify-between items-start mb-2">
+              <div class="flex items-center text-text-secondary">
+                <iconify-icon icon="solar:heart-pulse-linear" class="mr-1.5" stroke-width="1.5"></iconify-icon>
+                <span class="text-xs font-medium">Website Health</span>
+              </div>
+              <iconify-icon icon="solar:info-circle-linear" class="text-text-secondary/50 group-hover:text-text-secondary" stroke-width="1.5"></iconify-icon>
+            </div>
+            <div class="flex items-baseline gap-1 mt-1">
+              <span class="text-2xl font-medium tracking-tight text-text-primary">
+                86
+              </span>
+              <span class="text-xs text-text-secondary">/100</span>
+              <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-danger/10 text-danger ml-1">
+                <iconify-icon icon="solar:arrow-right-down-linear" class="mr-0.5"></iconify-icon>
+                2
+              </span>
+            </div>
+            <div class="mt-4 h-6 w-full">
+              <svg viewBox="0 0 100 20" class="w-full h-full overflow-visible" preserveAspectRatio="none">
+                <path d="M0,2 Q20,5 40,4 T80,15 T100,18" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Visibility Trend & Recent Changes -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 lg:gap-6 gap-x-4 gap-y-4">
+  <!-- Chart (8 cols) -->
+  <div class="flex flex-col lg:col-span-6 rounded-xl pt-5 pr-5 pb-5 pl-5 shadow-card">
+  <div class="flex justify-between items-start mb-6">
+    <div class="">
+      <h2 class="text-base font-normal text-text-primary mb-1">
+        AI Visibility Trend
+      </h2>
+      <p class="text-xs text-text-secondary">
+        Visibility across tracked AI platforms
+      </p>
+    </div>
+    <div class="flex bg-surface p-0.5 rounded-lg border border-border">
+      <button class="px-3 py-1 text-xs font-normal bg-card text-text-primary rounded-md shadow-sm">
+                  Visibility
+                </button>
+      <button class="px-3 py-1 text-xs font-normal text-text-secondary hover:text-text-primary rounded-md transition-colors">
+                  Mentions
+                </button>
+      <button class="px-3 py-1 text-xs font-normal text-text-secondary hover:text-text-primary rounded-md transition-colors">
+                  Citations
+                </button>
+    </div>
+  </div>
+
+  <div class="flex-1 relative min-h-[240px] w-full">
+    <!-- Y-axis labels -->
+    <div class="absolute left-0 top-0 bottom-6 flex flex-col justify-between text-[10px] text-text-secondary w-6 text-right">
+      <span>60</span>
+      <span>45</span>
+      <span class="">30</span>
+      <span>15</span>
+      <span>0</span>
+    </div>
+
+    <!-- Chart Area -->
+    <div class="absolute left-8 right-0 top-2 bottom-6 group">
+      <!-- Tooltip Example -->
+      <div class="absolute left-1/2 top-1/4 -translate-x-1/2 -translate-y-full mb-2 bg-card border border-border p-2 rounded-lg shadow-lg text-xs z-10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-48">
+        <div class="font-normal text-text-primary mb-1 border-b border-border pb-1">
+          22 Jul 2026
+        </div>
+        <div class="flex justify-between items-center text-text-secondary mb-0.5">
+          <span>Visibility:</span>
+          <span class="font-normal text-text-primary">37.6%</span>
+        </div>
+        <div class="flex justify-between items-center text-text-secondary mb-0.5">
+          <span>Mentions:</span>
+          <span class="font-normal text-text-primary">43</span>
+        </div>
+        <div class="flex justify-between items-center text-text-secondary mb-1">
+          <span>Citations:</span>
+          <span class="font-normal text-text-primary">169</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-text-secondary">Change:</span>
+          <span class="font-normal text-success flex items-center">
+                      <i data-lucide="arrow-up" class="w-3 h-3 mr-0.5"></i>
+                      6.8%
+                    </span>
+        </div>
+      </div>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="overflow-visible w-[569px] h-[276px]" stroke-width="2" data-icon-replaced="true" style="width: 569px; height: 276px; color: rgb(249, 250, 251);">
+        <!-- Grid -->
+        <line x1="0" y1="0" x2="100" y2="0" class="chart-grid"></line>
+        <line x1="0" y1="25" x2="100" y2="25" class="chart-grid"></line>
+        <line x1="0" y1="50" x2="100" y2="50" class="chart-grid"></line>
+        <line x1="0" y1="75" x2="100" y2="75" class="chart-grid"></line>
+        <line x1="0" y1="100" x2="100" y2="100" class="chart-grid" stroke-dasharray="0"></line>
+
+        <!-- Data Lines -->
+        <!-- ChatGPT -->
+        <path d="M0,70 L20,61 L40,55 L60,43 L80,30 L100,15" class="chart-line hover:stroke-[3px] transition-all cursor-pointer" stroke="#10A37F" stroke-width="2">
+        </path>
+        <!-- Gemini -->
+        <path d="M0,23 L20,26 L40,28 L60,30 L80,31 L100,33" class="chart-line hover:stroke-[3px] transition-all cursor-pointer" stroke="#1A73E8" stroke-width="2">
+        </path>
+        <!-- Claude -->
+        <path d="M0,51 L20,55 L40,53 L60,56 L80,60 L100,63" class="chart-line hover:stroke-[3px] transition-all cursor-pointer" stroke="#D97757" stroke-width="2">
+        </path>
+        <!-- Perplexity -->
+        <path d="M0,66 L20,58 L40,48 L60,36 L80,25 L100,13" class="chart-line hover:stroke-[3px] transition-all cursor-pointer" stroke="#22B8CD" stroke-width="2">
+        </path>
+        <!-- Copilot -->
+        <path d="M0,80 L20,78 L40,75 L60,70 L80,65 L100,60" class="chart-line hover:stroke-[3px] transition-all cursor-pointer" stroke="#00A4EF" stroke-width="2">
+        </path>
+      </svg>
+    </div>
+
+    <!-- X-axis labels -->
+    <div class="absolute left-8 right-0 bottom-0 flex justify-between text-[10px] text-text-secondary">
+      <span>23 Jun</span>
+      <span>29 Jun</span>
+      <span class="">5 Jul</span>
+      <span>11 Jul</span>
+      <span>17 Jul</span>
+      <span class="">22 Jul</span>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="mt-6 flex flex-wrap justify-center gap-4 text-xs">
+    <button class="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors opacity-100">
+                <span class="w-2.5 h-2.5 rounded-full" style="background-color: #10A37F"></span>
+                ChatGPT
+              </button>
+    <button class="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors opacity-100">
+                <span class="w-2.5 h-2.5 rounded-full" style="background-color: #1A73E8"></span>
+                Gemini
+              </button>
+    <button class="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors opacity-100">
+                <span class="w-2.5 h-2.5 rounded-full" style="background-color: #D97757"></span>
+                Claude
+              </button>
+    <button class="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors opacity-100">
+                <span class="w-2.5 h-2.5 rounded-full" style="background-color: #22B8CD"></span>
+                Perplexity
+              </button>
+    <button class="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors opacity-100">
+                <span class="w-2.5 h-2.5 rounded-full" style="background-color: #00A4EF"></span>
+                Copilot
+              </button>
+  </div>
+</div>
+<div class="flex flex-col lg:col-span-6 rounded-xl pt-5 pr-5 pb-5 pl-5 shadow-card">
+  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-4 gap-x-4 gap-y-4">
+  <!-- ChatGPT -->
+  <div class="card-transition flex flex-col gap-3 rounded-xl pt-4 pr-4 pb-4 pl-4 shadow-card gap-x-3 gap-y-3">
+    <div class="flex justify-between items-center">
+      <div class="flex items-center gap-2">
+        <div class="w-6 h-6 rounded flex items-center justify-center bg-[#10A37F]/10 text-[#10A37F]">
+          <iconify-icon icon="solar:programming-linear" stroke-width="1.5" class=""></iconify-icon>
+        </div>
+        <span class="text-sm font-medium text-text-primary">
+                  ChatGPT
+                </span>
+      </div>
+      <span class="text-xs font-medium text-success flex items-center">
+                <iconify-icon icon="solar:arrow-right-up-linear" class="mr-0.5"></iconify-icon>
+              </span>
+    </div>
+
+    <div class="flex items-end justify-between">
+      <div class="text-2xl font-medium tracking-tight text-text-primary">
+        35.5%
+      </div>
+      <div class="text-xs text-text-secondary mb-1">Vis.</div>
+    </div>
+
+    <div class="w-full bg-surface h-1.5 rounded-full overflow-hidden">
+      <div class="bg-[#10A37F] h-full rounded-full" style="width: 35.5%"></div>
+    </div>
+
+    <div class="flex justify-between text-xs text-text-secondary mt-1">
+      <span class="flex items-center gap-1">
+                <iconify-icon icon="solar:hashtag-square-linear" class=""></iconify-icon>
+                8
+              </span>
+      <span class="flex items-center gap-1">
+                <iconify-icon icon="solar:link-linear" class=""></iconify-icon>
+                71
+              </span>
+    </div>
+
+    <button class="mt-2 w-full py-1.5 text-xs font-medium text-text-secondary border border-border rounded-lg hover:bg-surface hover:text-text-primary transition-colors">
+              View Details
+            </button>
+  </div>
+
+  <!-- Gemini -->
+  <div class="bg-card shadow-card rounded-xl p-4 card-transition flex flex-col gap-3">
+    <div class="flex justify-between items-center">
+      <div class="flex items-center gap-2">
+        <div class="w-6 h-6 rounded flex items-center justify-center bg-[#1A73E8]/10 text-[#1A73E8]">
+          <iconify-icon icon="solar:magic-stick-3-linear" stroke-width="1.5" class=""></iconify-icon>
+        </div>
+        <span class="text-sm font-medium text-text-primary">
+                  Gemini
+                </span>
+      </div>
+      <span class="text-xs font-medium text-danger flex items-center">
+                <iconify-icon icon="solar:arrow-right-down-linear" class="mr-0.5"></iconify-icon>
+              </span>
+    </div>
+    <div class="flex items-end justify-between">
+      <div class="text-2xl font-medium tracking-tight text-text-primary">
+        43.0%
+      </div>
+      <div class="text-xs text-text-secondary mb-1">Vis.</div>
+    </div>
+    <div class="w-full bg-surface h-1.5 rounded-full overflow-hidden">
+      <div class="bg-[#1A73E8] h-full rounded-full" style="width: 43%"></div>
+    </div>
+    <div class="flex justify-between text-xs text-text-secondary mt-1">
+      <span class="flex items-center gap-1">
+                <iconify-icon icon="solar:hashtag-square-linear" class=""></iconify-icon>
+                18
+              </span>
+      <span class="flex items-center gap-1">
+                <iconify-icon icon="solar:link-linear" class=""></iconify-icon>
+                74
+              </span>
+    </div>
+    <button class="mt-2 w-full py-1.5 text-xs font-medium text-text-secondary border border-border rounded-lg hover:bg-surface hover:text-text-primary transition-colors">
+              View Details
+            </button>
+  </div>
+
+  <!-- Claude -->
+  <div class="bg-card shadow-card rounded-xl p-4 card-transition flex flex-col gap-3">
+    <div class="flex justify-between items-center">
+      <div class="flex items-center gap-2">
+        <div class="w-6 h-6 rounded flex items-center justify-center bg-[#D97757]/10 text-[#D97757]">
+          <iconify-icon icon="solar:pen-new-square-linear" stroke-width="1.5" class=""></iconify-icon>
+        </div>
+        <span class="text-sm font-medium text-text-primary">
+                  Claude
+                </span>
+      </div>
+      <span class="text-xs font-medium text-danger flex items-center">
+                <iconify-icon icon="solar:arrow-right-down-linear" class="mr-0.5"></iconify-icon>
+              </span>
+    </div>
+    <div class="flex items-end justify-between">
+      <div class="text-2xl font-medium tracking-tight text-text-primary">
+        29.4%
+      </div>
+      <div class="text-xs text-text-secondary mb-1">Vis.</div>
+    </div>
+    <div class="w-full bg-surface h-1.5 rounded-full overflow-hidden">
+      <div class="bg-[#D97757] h-full rounded-full" style="width: 29.4%"></div>
+    </div>
+    <div class="flex justify-between text-xs text-text-secondary mt-1">
+      <span class="flex items-center gap-1">
+                <iconify-icon icon="solar:hashtag-square-linear" class=""></iconify-icon>
+                7
+              </span>
+      <span class="flex items-center gap-1">
+                <iconify-icon icon="solar:link-linear" class=""></iconify-icon>
+                42
+              </span>
+    </div>
+    <button class="mt-2 w-full py-1.5 text-xs font-medium text-text-secondary border border-border rounded-lg hover:bg-surface hover:text-text-primary transition-colors">
+              View Details
+            </button>
+  </div>
+
+  <!-- Perplexity -->
+  <div class="bg-card shadow-card rounded-xl p-4 card-transition flex flex-col gap-3">
+    <div class="flex justify-between items-center">
+      <div class="flex items-center gap-2">
+        <div class="w-6 h-6 rounded flex items-center justify-center bg-[#22B8CD]/10 text-[#22B8CD]">
+          <iconify-icon icon="solar:minimalistic-magnifer-linear" stroke-width="1.5" class=""></iconify-icon>
+        </div>
+        <span class="text-sm font-medium text-text-primary">
+                  Perplexity
+                </span>
+      </div>
+      <span class="text-xs font-medium text-success flex items-center">
+                <iconify-icon icon="solar:arrow-right-up-linear" class="mr-0.5"></iconify-icon>
+              </span>
+    </div>
+    <div class="flex items-end justify-between">
+      <div class="text-2xl font-medium tracking-tight text-text-primary">
+        25.5%
+      </div>
+      <div class="text-xs text-text-secondary mb-1">Vis.</div>
+    </div>
+    <div class="w-full bg-surface h-1.5 rounded-full overflow-hidden">
+      <div class="bg-[#22B8CD] h-full rounded-full" style="width: 25.5%"></div>
+    </div>
+    <div class="flex justify-between text-xs text-text-secondary mt-1">
+      <span class="flex items-center gap-1">
+                <iconify-icon icon="solar:hashtag-square-linear" class=""></iconify-icon>
+                11
+              </span>
+      <span class="flex items-center gap-1">
+                <iconify-icon icon="solar:link-linear"></iconify-icon>
+                95
+              </span>
+    </div>
+    <button class="mt-2 w-full py-1.5 text-xs font-medium text-text-secondary border border-border rounded-lg hover:bg-surface hover:text-text-primary transition-colors">
+              View Details
+            </button>
+  </div>
+
+  <!-- Copilot -->
+
+</div>
+</div>
+  <!-- Recent Changes (4 cols) -->
+</div>
+
+        <!-- 3. Platform Performance -->
+        
+
+        <!-- 4. Competitor Snapshot & 5. Prompts Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-[18px]">
+  <!-- Left: Prompt Performance -->
+  <div class="bg-card shadow-card rounded-xl flex flex-col h-[520px] overflow-hidden border border-border">
+    <!-- Header -->
+    <div class="px-4 pt-4 pb-0 flex flex-col gap-3 shrink-0">
+      <div>
+        <h2 class="text-base font-medium tracking-tight text-text-primary mb-0.5">Prompt Performance</h2>
+        <p class="text-xs text-text-secondary">How tracked prompts perform across AI platforms</p>
+      </div>
+      <!-- Tabs -->
+      <div class="flex items-center gap-5 border-b border-border text-xs mt-1">
+        <button class="text-primary font-medium border-b-[2px] border-primary pb-2 -mb-[1px]">All Prompts</button>
+        <button class="text-text-secondary hover:text-text-primary font-medium pb-2 -mb-[1px] transition-colors">Top Performing</button>
+        <button class="text-text-secondary hover:text-text-primary font-medium pb-2 -mb-[1px] transition-colors">Weak</button>
+        <button class="text-text-secondary hover:text-text-primary font-medium pb-2 -mb-[1px] transition-colors">New Changes</button>
+      </div>
+    </div>
+    
+    <!-- Table -->
+    <div class="flex-1 overflow-auto min-h-0 relative border-b border-border">
+      <table class="w-full text-left text-xs whitespace-nowrap min-w-[700px]">
+        <thead class="sticky top-0 bg-card z-20 shadow-sm">
+          <tr class="text-text-secondary">
+            <th class="font-medium py-2.5 px-4 w-[60px] text-center border-b border-border">Vis.</th>
+            <th class="font-medium py-2.5 px-4 w-full border-b border-border">Prompt</th>
+            <th class="font-medium py-2.5 px-4 w-[80px] text-right border-b border-border">Mentions</th>
+            <th class="font-medium py-2.5 px-4 w-[100px] border-b border-border">Sentiment</th>
+            <th class="font-medium py-2.5 px-4 w-[100px] text-center border-b border-border">AI Engines</th>
+            <th class="font-medium py-2.5 px-4 w-[80px] text-right border-b border-border">Citations</th>
+            <th class="font-medium py-2.5 px-4 w-[80px] text-right border-b border-border">Change</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border/50">
+          <!-- Row 1 -->
+          <tr class="hover:bg-surface/50 transition-colors cursor-pointer group">
+            <td class="py-2.5 px-4">
+              <div class="relative w-7 h-7 mx-auto flex items-center justify-center">
+                <svg class="w-7 h-7 transform -rotate-90 absolute inset-0">
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" class="text-border opacity-50"></circle>
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="69.1" stroke-dashoffset="11.7" class="text-success"></circle>
+                </svg>
+                <span class="text-[9px] font-medium text-success relative z-10">83</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="max-w-[150px] md:max-w-[180px] xl:max-w-[240px] truncate font-medium text-text-primary" title="Is Massage Escape Columbus a good choice for a couples massage?">
+                Is Massage Escape Columbus a good choice for a couples massage?
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">12</td>
+            <td class="py-2.5 px-4">
+              <div class="flex items-center gap-1.5 text-warning font-medium">
+                <div class="w-1.5 h-1.5 rounded-full bg-warning"></div>
+                <span>50%</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="flex justify-center -space-x-1.5">
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#10A37F] relative z-10" title="ChatGPT"><i data-lucide="bot" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#1A73E8] relative z-20" title="Gemini"><i data-lucide="sparkles" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#22B8CD] relative z-30" title="Perplexity"><i data-lucide="search" class="w-3 h-3"></i></div>
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">7</td>
+            <td class="py-2.5 px-4 text-right">
+              <div class="flex items-center justify-end gap-0.5 text-success font-medium">
+                <i data-lucide="arrow-up" class="w-3 h-3"></i> 6
+              </div>
+            </td>
+          </tr>
+          <!-- Row 2 -->
+          <tr class="hover:bg-surface/50 transition-colors cursor-pointer group">
+            <td class="py-2.5 px-4">
+              <div class="relative w-7 h-7 mx-auto flex items-center justify-center">
+                <svg class="w-7 h-7 transform -rotate-90 absolute inset-0">
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" class="text-border opacity-50"></circle>
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="69.1" stroke-dashoffset="11.7" class="text-success"></circle>
+                </svg>
+                <span class="text-[9px] font-medium text-success relative z-10">83</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="max-w-[150px] md:max-w-[180px] xl:max-w-[240px] truncate font-medium text-text-primary" title="My partner and I are looking for a relaxing couples massage">
+                My partner and I are looking for a relaxing couples massage
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">19</td>
+            <td class="py-2.5 px-4">
+              <div class="flex items-center gap-1.5 text-success font-medium">
+                <div class="w-1.5 h-1.5 rounded-full bg-success"></div>
+                <span class="">75%</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="flex justify-center -space-x-1.5">
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#10A37F] relative z-10" title="ChatGPT"><i data-lucide="bot" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#1A73E8] relative z-20" title="Gemini"><i data-lucide="sparkles" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#22B8CD] relative z-30" title="Perplexity"><i data-lucide="search" class="w-3 h-3"></i></div>
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">11</td>
+            <td class="py-2.5 px-4 text-right">
+              <div class="flex items-center justify-end gap-0.5 text-danger font-medium">
+                <i data-lucide="arrow-down" class="w-3 h-3"></i> 2
+              </div>
+            </td>
+          </tr>
+          <!-- Row 3 -->
+          <tr class="hover:bg-surface/50 transition-colors cursor-pointer group">
+            <td class="py-2.5 px-4">
+              <div class="relative w-7 h-7 mx-auto flex items-center justify-center">
+                <svg class="w-7 h-7 transform -rotate-90 absolute inset-0">
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" class="text-border opacity-50"></circle>
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="69.1" stroke-dashoffset="63.6" class="text-danger"></circle>
+                </svg>
+                <span class="text-[9px] font-medium text-danger relative z-10">8</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="max-w-[150px] md:max-w-[180px] xl:max-w-[240px] truncate font-medium text-text-primary" title="My friend recommended Massage Escape Columbus">
+                My friend recommended Massage Escape Columbus
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">26</td>
+            <td class="py-2.5 px-4">
+              <div class="flex items-center gap-1.5 text-success font-medium">
+                <div class="w-1.5 h-1.5 rounded-full bg-success"></div>
+                <span class="">77%</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="flex justify-center -space-x-1.5">
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#10A37F] relative z-10" title="ChatGPT"><i data-lucide="bot" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#1A73E8] relative z-20" title="Gemini"><i data-lucide="sparkles" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#22B8CD] relative z-30" title="Perplexity"><i data-lucide="search" class="w-3 h-3"></i></div>
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">15</td>
+            <td class="py-2.5 px-4 text-right">
+              <div class="flex items-center justify-end gap-0.5 text-success font-medium">
+                <i data-lucide="arrow-up" class="w-3 h-3"></i> 4
+              </div>
+            </td>
+          </tr>
+          <!-- Row 4 -->
+          <tr class="hover:bg-surface/50 transition-colors cursor-pointer group">
+            <td class="py-2.5 px-4">
+              <div class="relative w-7 h-7 mx-auto flex items-center justify-center">
+                <svg class="w-7 h-7 transform -rotate-90 absolute inset-0">
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" class="text-border opacity-50"></circle>
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="69.1" stroke-dashoffset="64.3" class="text-danger"></circle>
+                </svg>
+                <span class="text-[9px] font-medium text-danger relative z-10">7</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="max-w-[150px] md:max-w-[180px] xl:max-w-[240px] truncate font-medium text-text-primary" title="Is Massage Escape Columbus a good place for hot stone massage?">
+                Is Massage Escape Columbus a good place for hot stone massage?
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">33</td>
+            <td class="py-2.5 px-4">
+              <div class="flex items-center gap-1.5 text-warning font-medium">
+                <div class="w-1.5 h-1.5 rounded-full bg-warning"></div>
+                <span>54%</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="flex justify-center -space-x-1.5">
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#10A37F] relative z-10" title="ChatGPT"><i data-lucide="bot" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#1A73E8] relative z-20" title="Gemini"><i data-lucide="sparkles" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#22B8CD] relative z-30" title="Perplexity"><i data-lucide="search" class="w-3 h-3"></i></div>
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">19</td>
+            <td class="py-2.5 px-4 text-right">
+              <div class="flex items-center justify-end gap-0.5 text-danger font-medium">
+                <i data-lucide="arrow-down" class="w-3 h-3"></i> 3
+              </div>
+            </td>
+          </tr>
+          <!-- Row 5 -->
+          <tr class="hover:bg-surface/50 transition-colors cursor-pointer group">
+            <td class="py-2.5 px-4">
+              <div class="relative w-7 h-7 mx-auto flex items-center justify-center">
+                <svg class="w-7 h-7 transform -rotate-90 absolute inset-0">
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" class="text-border opacity-50"></circle>
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="69.1" stroke-dashoffset="69.1" class="text-text-secondary"></circle>
+                </svg>
+                <span class="text-[9px] font-medium text-text-secondary relative z-10">0</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="max-w-[150px] md:max-w-[180px] xl:max-w-[240px] truncate font-medium text-text-primary" title="My anniversary is next month and I want to surprise my partner">
+                My anniversary is next month and I want to surprise my partner
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">40</td>
+            <td class="py-2.5 px-4">
+              <div class="flex items-center gap-1.5 text-danger font-medium">
+                <div class="w-1.5 h-1.5 rounded-full bg-danger"></div>
+                <span>27%</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="flex justify-center -space-x-1.5">
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#10A37F] relative z-10" title="ChatGPT"><i data-lucide="bot" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#1A73E8] relative z-20" title="Gemini"><i data-lucide="sparkles" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#22B8CD] relative z-30" title="Perplexity"><i data-lucide="search" class="w-3 h-3"></i></div>
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">24</td>
+            <td class="py-2.5 px-4 text-right">
+              <div class="flex items-center justify-end gap-0.5 text-success font-medium">
+                <i data-lucide="arrow-up" class="w-3 h-3"></i> 3
+              </div>
+            </td>
+          </tr>
+          <!-- Row 6 -->
+          <tr class="hover:bg-surface/50 transition-colors cursor-pointer group">
+            <td class="py-2.5 px-4">
+              <div class="relative w-7 h-7 mx-auto flex items-center justify-center">
+                <svg class="w-7 h-7 transform -rotate-90 absolute inset-0">
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" class="text-border opacity-50"></circle>
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="69.1" stroke-dashoffset="69.1" class="text-text-secondary"></circle>
+                </svg>
+                <span class="text-[9px] font-medium text-text-secondary relative z-10">0</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="max-w-[150px] md:max-w-[180px] xl:max-w-[240px] truncate font-medium text-text-primary" title="Best hot stone massage in Columbus, Ohio">
+                Best hot stone massage in Columbus, Ohio
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">47</td>
+            <td class="py-2.5 px-4">
+              <div class="flex items-center gap-1.5 text-danger font-medium">
+                <div class="w-1.5 h-1.5 rounded-full bg-danger"></div>
+                <span>21%</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="flex justify-center -space-x-1.5">
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#10A37F] relative z-10" title="ChatGPT"><i data-lucide="bot" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#1A73E8] relative z-20" title="Gemini"><i data-lucide="sparkles" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#22B8CD] relative z-30" title="Perplexity"><i data-lucide="search" class="w-3 h-3"></i></div>
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">28</td>
+            <td class="py-2.5 px-4 text-right">
+              <div class="flex items-center justify-end gap-0.5 text-danger font-medium">
+                <i data-lucide="arrow-down" class="w-3 h-3"></i> 6
+              </div>
+            </td>
+          </tr>
+          <!-- Row 7 -->
+          <tr class="hover:bg-surface/50 transition-colors cursor-pointer group">
+            <td class="py-2.5 px-4">
+              <div class="relative w-7 h-7 mx-auto flex items-center justify-center">
+                <svg class="w-7 h-7 transform -rotate-90 absolute inset-0">
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" class="text-border opacity-50"></circle>
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="69.1" stroke-dashoffset="67.7" class="text-danger"></circle>
+                </svg>
+                <span class="text-[9px] font-medium text-danger relative z-10">2</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="max-w-[150px] md:max-w-[180px] xl:max-w-[240px] truncate font-medium text-text-primary" title="What are the top-rated spas for hot stone massage?">
+                What are the top-rated spas for hot stone massage?
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">54</td>
+            <td class="py-2.5 px-4">
+              <div class="flex items-center gap-1.5 text-warning font-medium">
+                <div class="w-1.5 h-1.5 rounded-full bg-warning"></div>
+                <span>42%</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="flex justify-center -space-x-1.5">
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#10A37F] relative z-10" title="ChatGPT"><i data-lucide="bot" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#1A73E8] relative z-20" title="Gemini"><i data-lucide="sparkles" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#22B8CD] relative z-30" title="Perplexity"><i data-lucide="search" class="w-3 h-3"></i></div>
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">32</td>
+            <td class="py-2.5 px-4 text-right">
+              <div class="flex items-center justify-end gap-0.5 text-success font-medium">
+                <i data-lucide="arrow-up" class="w-3 h-3"></i> 2
+              </div>
+            </td>
+          </tr>
+          <!-- Row 8 -->
+          <tr class="hover:bg-surface/50 transition-colors cursor-pointer group">
+            <td class="py-2.5 px-4">
+              <div class="relative w-7 h-7 mx-auto flex items-center justify-center">
+                <svg class="w-7 h-7 transform -rotate-90 absolute inset-0">
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" class="text-border opacity-50"></circle>
+                  <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="69.1" stroke-dashoffset="64.3" class="text-danger"></circle>
+                </svg>
+                <span class="text-[9px] font-medium text-danger relative z-10">7</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="max-w-[150px] md:max-w-[180px] xl:max-w-[240px] truncate font-medium text-text-primary" title="I'm looking for a relaxing hot stone massage in Columbus">
+                I'm looking for a relaxing hot stone massage in Columbus
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">61</td>
+            <td class="py-2.5 px-4">
+              <div class="flex items-center gap-1.5 text-success font-medium">
+                <div class="w-1.5 h-1.5 rounded-full bg-success"></div>
+                <span>70%</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="flex justify-center -space-x-1.5">
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#10A37F] relative z-10" title="ChatGPT"><i data-lucide="bot" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#1A73E8] relative z-20" title="Gemini"><i data-lucide="sparkles" class="w-3 h-3"></i></div>
+                <div class="w-5 h-5 rounded-full bg-surface border border-border flex items-center justify-center text-[#22B8CD] relative z-30" title="Perplexity"><i data-lucide="search" class="w-3 h-3"></i></div>
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right text-text-secondary font-medium">36</td>
+            <td class="py-2.5 px-4 text-right">
+              <div class="flex items-center justify-end gap-0.5 text-danger font-medium">
+                <i data-lucide="minus" class="w-3 h-3"></i> 4
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- Footer -->
+    <div class="p-3 border-border flex justify-end shrink-0">
+      <button class="text-xs font-medium text-text-secondary hover:text-primary transition-colors flex items-center gap-1">
+        View All Prompts <i data-lucide="arrow-right" class="w-3 h-3"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Right: AI Visibility Landscape -->
+  <div class="bg-card shadow-card rounded-xl flex flex-col h-[520px] overflow-hidden border border-border relative">
+    <!-- Header -->
+    <div class="p-4 pb-3 flex justify-between items-start shrink-0">
+      <div class="">
+        <h2 class="text-base font-medium tracking-tight text-text-primary mb-0.5">AI Visibility Landscape</h2>
+        <p class="text-xs text-text-secondary">How your business compares with competitors across AI recommendations</p>
+      </div>
+      <div class="text-text-secondary/50 hover:text-text-secondary cursor-help transition-colors" title="Businesses are positioned using prompt coverage and average recommendation position.">
+        <i data-lucide="info" class="w-4 h-4"></i>
+      </div>
+    </div>
+    
+    <!-- Chart Container -->
+    <div class="flex-1 overflow-x-auto overflow-y-hidden min-h-0 relative">
+      <div class="min-w-[520px] h-full relative pl-10 pr-6 pb-12 pt-6 flex flex-col">
+        <!-- Y-axis -->
+        <div class="absolute left-2 top-6 bottom-12 w-6 flex flex-col justify-between text-[10px] text-text-secondary text-right">
+          <span>1</span>
+          <span class="">3</span>
+          <span>5</span>
+          <span>7</span>
+        </div>
+        <div class="absolute left-1 top-1/2 -translate-y-1/2 -rotate-90 text-[10px] text-text-secondary font-medium tracking-wide origin-center whitespace-nowrap">
+          Avg Position
+        </div>
+        
+        <!-- X-axis -->
+        <div class="absolute left-10 right-6 bottom-5 h-5 flex justify-between items-center text-[10px] text-text-secondary">
+          <span>0%</span>
+          <span>25%</span>
+          <span>50%</span>
+          <span>75%</span>
+          <span>100%</span>
+        </div>
+        <div class="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-text-secondary font-medium tracking-wide">
+          Prompt Coverage
+        </div>
+
+        <!-- Grid and Quadrants -->
+        <div class="flex-1 border-l border-b border-border relative overflow-hidden">
+          <!-- Crosshairs -->
+          <div class="absolute left-1/2 top-0 bottom-0 border-l border-dashed border-border/70 z-0"></div>
+          <div class="absolute top-1/2 left-0 right-0 border-t border-dashed border-border/70 z-0"></div>
+          
+          <!-- Quadrant Backgrounds & Labels -->
+          <div class="absolute top-0 left-0 w-1/2 h-1/2 bg-surface/30 z-0 p-2 lg:p-3 flex items-start justify-start">
+            <span class="text-[10px] font-medium text-text-secondary/50">Niche Leaders</span>
+          </div>
+          <div class="absolute top-0 right-0 w-1/2 h-1/2 bg-success/5 z-0 p-2 lg:p-3 flex items-start justify-end">
+            <span class="text-[10px] font-medium text-text-secondary/50">Leaders</span>
+          </div>
+          <div class="absolute bottom-0 left-0 w-1/2 h-1/2 bg-danger/5 z-0 p-2 lg:p-3 flex items-end justify-start">
+            <span class="text-[10px] font-medium text-text-secondary/50">Low Visibility</span>
+          </div>
+          <div class="absolute bottom-0 right-0 w-1/2 h-1/2 bg-warning/5 z-0 p-2 lg:p-3 flex items-end justify-end">
+            <span class="text-[10px] font-medium text-text-secondary/50">Visible but Lower Ranked</span>
+          </div>
+
+          <!-- Scatter Points -->
+          <!-- Massage Escape: Cov 68%, Pos 2.3 -> Y: 21.66% -->
+          <div class="absolute z-30 group" style="left: 68%; top: 21.66%;">
+            <div class="w-[18px] h-[18px] rounded-full bg-primary border-[2px] border-card shadow-sm flex items-center justify-center relative cursor-pointer hover:scale-110 transition-transform"></div>
+            <div class="absolute top-full left-1/2 -translate-x-1/2 mt-1 text-center pointer-events-none">
+              <div class="text-[11px] font-medium text-text-primary whitespace-nowrap leading-tight">Massage Escape</div>
+              <div class="text-[10px] text-primary font-medium whitespace-nowrap leading-tight">Your brand</div>
+            </div>
+            <!-- Tooltip -->
+            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-card border border-border p-2.5 rounded-lg shadow-lg text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-44 z-50">
+              <div class="font-medium text-text-primary border-b border-border pb-1.5 mb-1.5">Massage Escape</div>
+              <div class="flex justify-between items-center text-text-secondary mb-1"><span>Prompt Coverage:</span> <span class="font-medium text-text-primary">68%</span></div>
+              <div class="flex justify-between items-center text-text-secondary mb-1"><span>Average Position:</span> <span class="font-medium text-text-primary">2.3</span></div>
+              <div class="flex justify-between items-center text-text-secondary mb-1"><span>AI Visibility:</span> <span class="font-medium text-text-primary">37.6%</span></div>
+              <div class="flex justify-between items-center text-text-secondary"><span>Landscape:</span> <span class="font-medium text-success">Leaders</span></div>
+            </div>
+          </div>
+
+          <!-- Massage Envy: Cov 72%, Pos 1.8 -> Y: 13.33% -->
+          <div class="absolute z-20 group" style="left: 72%; top: 13.33%;">
+            <div class="w-3.5 h-3.5 rounded-full bg-[#16A34A] border-[2px] border-card shadow-sm cursor-pointer hover:scale-125 transition-transform opacity-90 hover:opacity-100"></div>
+            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 text-center pointer-events-none">
+              <div class="text-[11px] text-text-secondary whitespace-nowrap leading-tight">Massage Envy</div>
+            </div>
+            <!-- Tooltip -->
+            <div class="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-card border border-border p-2.5 rounded-lg shadow-lg text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-44 z-50">
+              <div class="font-medium text-text-primary border-b border-border pb-1.5 mb-1.5">Massage Envy</div>
+              <div class="flex justify-between items-center text-text-secondary mb-1"><span>Prompt Coverage:</span> <span class="font-medium text-text-primary">72%</span></div>
+              <div class="flex justify-between items-center text-text-secondary mb-1"><span>Average Position:</span> <span class="font-medium text-text-primary">1.8</span></div>
+              <div class="flex justify-between items-center text-text-secondary"><span>AI Visibility:</span> <span class="font-medium text-text-primary">71.0%</span></div>
+            </div>
+          </div>
+
+          <!-- Hand & Stone: Cov 65%, Pos 2.1 -> Y: 18.33% -->
+          <div class="absolute z-20 group" style="left: 65%; top: 18.33%;">
+            <div class="w-3.5 h-3.5 rounded-full bg-[#D97706] border-[2px] border-card shadow-sm cursor-pointer hover:scale-125 transition-transform opacity-90 hover:opacity-100"></div>
+            <div class="absolute top-full left-full ml-1.5 text-left pointer-events-none">
+              <div class="text-[11px] text-text-secondary whitespace-nowrap leading-tight">Hand &amp; Stone</div>
+            </div>
+            <!-- Tooltip -->
+            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-card border border-border p-2.5 rounded-lg shadow-lg text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-44 z-50">
+              <div class="font-medium text-text-primary border-b border-border pb-1.5 mb-1.5">Hand &amp; Stone</div>
+              <div class="flex justify-between items-center text-text-secondary mb-1"><span>Prompt Coverage:</span> <span class="font-medium text-text-primary">65%</span></div>
+              <div class="flex justify-between items-center text-text-secondary mb-1"><span>Average Position:</span> <span class="font-medium text-text-primary">2.1</span></div>
+              <div class="flex justify-between items-center text-text-secondary"><span>AI Visibility:</span> <span class="font-medium text-text-primary">63.0%</span></div>
+            </div>
+          </div>
+
+          <!-- MassageLuXe: Cov 58%, Pos 3.2 -> Y: 36.66% -->
+          <div class="absolute z-10 group" style="left: 58%; top: 36.66%;">
+            <div class="w-3 h-3 rounded-full bg-[#3B82F6] border border-card shadow-sm cursor-pointer hover:scale-125 transition-transform opacity-70 hover:opacity-100"></div>
+            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 text-center pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-50">
+              <div class="text-[11px] text-text-primary bg-card/95 border border-border px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap">MassageLuXe</div>
+            </div>
+          </div>
+
+          <!-- Massage Heights: Cov 45%, Pos 4.5 -> Y: 58.33% -->
+          <div class="absolute z-10 group" style="left: 45%; top: 58.33%;">
+            <div class="w-2.5 h-2.5 rounded-full bg-[#8B5CF6] border border-card shadow-sm cursor-pointer hover:scale-125 transition-transform opacity-70 hover:opacity-100"></div>
+            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 text-center pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-50">
+              <div class="text-[11px] text-text-primary bg-card/95 border border-border px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap">Massage Heights</div>
+            </div>
+          </div>
+
+          <!-- The Woodhouse: Cov 38%, Pos 5.8 -> Y: 80% -->
+          <div class="absolute z-10 group" style="left: 38%; top: 80%;">
+            <div class="w-2.5 h-2.5 rounded-full bg-[#A8A29E] border border-card shadow-sm cursor-pointer hover:scale-125 transition-transform opacity-70 hover:opacity-100"></div>
+            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 text-center pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-50">
+              <div class="text-[11px] text-text-primary bg-card/95 border border-border px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap">The Woodhouse</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Footer insight -->
+    <div class="p-4 border-t border-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 bg-surface/30">
+      <div class="text-xs text-text-secondary leading-relaxed max-w-sm">
+        Your brand is positioned in the <span class="font-medium text-text-primary">Leaders</span> quadrant, with <span class="font-medium text-text-primary">68%</span> prompt coverage and an average recommendation position of <span class="font-medium text-text-primary">2.3</span>.
+      </div>
+      <button class="text-xs font-medium text-text-secondary hover:text-primary transition-colors flex items-center gap-1 shrink-0 whitespace-nowrap">
+        View Competitor Analysis <i data-lucide="arrow-right" class="w-3 h-3"></i>
+      </button>
+    </div>
+  </div>
+</div>
+        <!-- 6. AI Visibility Landscape -->
+
+        <!-- 7 & 8 Keyword Performance & Search Competitor Snapshot -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 mb-4 lg:mb-6">
+          <!-- Keyword Performance -->
+          <div class="bg-card shadow-card rounded-xl flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-border flex justify-between items-center bg-surface/30">
+              <h2 class="text-sm font-medium tracking-tight text-text-primary">
+                Keyword Performance
+              </h2>
+              <div class="flex bg-surface p-0.5 rounded-lg border border-border">
+                <button class="px-3 py-1 text-xs font-medium bg-card text-text-primary rounded-md shadow-sm">AEO Audit</button>
+                <button class="px-3 py-1 text-xs font-medium text-text-secondary hover:text-text-primary rounded-md transition-colors">
+                  Map Grid
+                </button>
+              </div>
+            </div>
+            <div class="flex-1 overflow-x-auto">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="">
+                  <tr class="text-text-secondary border-b border-border bg-page/30">
+                    <th class="font-medium py-2 px-4">Keyword</th>
+                    <th class="font-medium py-2 px-4 text-right">Position</th>
+                    <th class="font-medium py-2 px-4 text-right">Change</th>
+                    <th class="font-medium py-2 px-4 w-16 text-center">
+                      Trend
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-border/50">
+                  <tr class="hover:bg-surface transition-colors">
+                    <td class="py-3 px-4 font-medium text-text-primary">
+                      couples massage Columbus
+                    </td>
+                    <td class="py-3 px-4 text-right">4</td>
+                    <td class="py-3 px-4 text-right text-success flex justify-end items-center gap-0.5">
+                      <iconify-icon icon="solar:arrow-up-linear"></iconify-icon>
+                      3
+                    </td>
+                    <td class="py-3 px-4">
+                      <div class="h-4 w-12 ml-auto">
+                        <svg viewBox="0 0 100 20" class="w-full h-full" preserveAspectRatio="none">
+                          <path d="M0,15 L30,12 L60,8 L100,5" fill="none" stroke="var(--success)" stroke-width="2"></path>
+                        </svg>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr class="hover:bg-surface transition-colors">
+                    <td class="py-3 px-4 font-medium text-text-primary">
+                      hot stone massage Columbus
+                    </td>
+                    <td class="py-3 px-4 text-right">11</td>
+                    <td class="py-3 px-4 text-right text-danger flex justify-end items-center gap-0.5">
+                      <iconify-icon icon="solar:arrow-down-linear"></iconify-icon>
+                      2
+                    </td>
+                    <td class="py-3 px-4">
+                      <div class="h-4 w-12 ml-auto">
+                        <svg viewBox="0 0 100 20" class="w-full h-full" preserveAspectRatio="none">
+                          <path d="M0,5 L30,8 L60,12 L100,15" fill="none" stroke="var(--danger)" stroke-width="2"></path>
+                        </svg>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr class="hover:bg-surface transition-colors">
+                    <td class="py-3 px-4 font-medium text-text-primary">
+                      best massage spa Columbus
+                    </td>
+                    <td class="py-3 px-4 text-right">7</td>
+                    <td class="py-3 px-4 text-right text-success flex justify-end items-center gap-0.5">
+                      <iconify-icon icon="solar:arrow-up-linear"></iconify-icon>
+                      1
+                    </td>
+                    <td class="py-3 px-4">
+                      <div class="h-4 w-12 ml-auto">
+                        <svg viewBox="0 0 100 20" class="w-full h-full" preserveAspectRatio="none">
+                          <path d="M0,10 L30,8 L60,12 L100,6" fill="none" stroke="var(--success)" stroke-width="2"></path>
+                        </svg>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Search Competitor Snapshot -->
+          <div class="bg-card shadow-card rounded-xl flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-border flex justify-between items-center bg-surface/30">
+              <h2 class="text-sm font-medium tracking-tight text-text-primary">
+                Search Competitor Snapshot
+              </h2>
+              
+            </div>
+            <div class="flex-1 overflow-x-auto">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="">
+                  <tr class="text-text-secondary border-b border-border bg-page/30">
+                    <th class="font-medium py-2 px-4 w-8">#</th>
+                    <th class="font-medium py-2 px-4">Business</th>
+                    <th class="font-medium py-2 px-4 text-right">Visibility</th>
+                    <th class="font-medium py-2 px-4 text-right">Avg Pos</th>
+                    <th class="font-medium py-2 px-4 text-right">Change</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-border/50">
+                  <tr class="hover:bg-surface transition-colors">
+                    <td class="py-3 px-4 text-text-secondary">1</td>
+                    <td class="py-3 px-4 font-medium text-text-primary">
+                      Massage Envy
+                    </td>
+                    <td class="py-3 px-4 text-right">82%</td>
+                    <td class="py-3 px-4 text-right">2.1</td>
+                    <td class="py-3 px-4 text-right text-text-secondary">-</td>
+                  </tr>
+                  <tr class="hover:bg-surface transition-colors">
+                    <td class="py-3 px-4 text-text-secondary">2</td>
+                    <td class="py-3 px-4 font-medium text-text-primary">
+                      Hand &amp; Stone
+                    </td>
+                    <td class="py-3 px-4 text-right">74%</td>
+                    <td class="py-3 px-4 text-right">3.4</td>
+                    <td class="py-3 px-4 text-right text-success flex justify-end items-center gap-0.5">
+                      <iconify-icon icon="solar:arrow-up-linear"></iconify-icon>
+                      2
+                    </td>
+                  </tr>
+                  <tr class="bg-primary/5 hover:bg-primary/10 transition-colors">
+                    <td class="py-3 px-4 text-primary font-medium">3</td>
+                    <td class="py-3 px-4 font-medium text-primary flex items-center gap-1.5">
+                      Massage Escape
+                      <span class="text-[9px] bg-primary px-1 py-0.5 rounded leading-none text-white">
+                        You
+                      </span>
+                    </td>
+                    <td class="py-3 px-4 text-right text-primary font-medium">
+                      64%
+                    </td>
+                    <td class="py-3 px-4 text-right text-primary font-medium">
+                      4.2
+                    </td>
+                    <td class="py-3 px-4 text-right text-success flex justify-end items-center gap-0.5">
+                      <iconify-icon icon="solar:arrow-up-linear"></iconify-icon>
+                      3
+                    </td>
+                  </tr>
+                  <tr class="hover:bg-surface transition-colors">
+                    <td class="py-3 px-4 text-text-secondary">4</td>
+                    <td class="py-3 px-4 font-medium text-text-primary">
+                      MassageLuXe
+                    </td>
+                    <td class="py-3 px-4 text-right">56%</td>
+                    <td class="py-3 px-4 text-right">5.8</td>
+                    <td class="py-3 px-4 text-right text-danger flex justify-end items-center gap-0.5">
+                      <iconify-icon icon="solar:arrow-down-linear"></iconify-icon>
+                      1
+                    </td>
+                  </tr>
+                  <tr class="hover:bg-surface transition-colors">
+                    <td class="py-3 px-4 text-text-secondary">5</td>
+                    <td class="py-3 px-4 font-medium text-text-primary">
+                      Elements Massage
+                    </td>
+                    <td class="py-3 px-4 text-right">41%</td>
+                    <td class="py-3 px-4 text-right">7.1</td>
+                    <td class="py-3 px-4 text-right text-text-secondary">-</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 9. Top Cited URLs -->
+        <div class="bg-card shadow-card rounded-xl flex flex-col w-full mb-4 lg:mb-6 overflow-hidden">
+          <div class="p-5 border-b border-border flex flex-wrap gap-4 justify-between items-start">
+            <div class="">
+              <h2 class="text-base font-medium tracking-tight text-text-primary mb-1">
+                Top Cited URLs
+              </h2>
+              <p class="text-xs text-text-secondary">
+                The pages most frequently used as sources across tracked AI
+                answers.
+              </p>
+            </div>
+            <div class="flex bg-surface p-0.5 rounded-lg border border-border shrink-0">
+              <button class="px-3 py-1 text-xs font-medium bg-card text-text-primary rounded-md shadow-sm">
+                All URLs
+              </button>
+              <button class="px-3 py-1 text-xs font-medium text-text-secondary hover:text-text-primary rounded-md transition-colors">
+                Supporting You
+              </button>
+              <button class="px-3 py-1 text-xs font-medium text-text-secondary hover:text-text-primary rounded-md transition-colors hidden sm:block">
+                Supporting Competitors
+              </button>
+              <button class="px-3 py-1 text-xs font-medium text-text-secondary hover:text-text-primary rounded-md transition-colors">
+                New &amp; Lost
+              </button>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs whitespace-nowrap">
+              <thead class="">
+                <tr class="text-text-secondary border-b border-border bg-page/30">
+                  <th class="font-medium py-3 px-5">URL / Page</th>
+                  <th class="font-medium py-3 px-5">Domain</th>
+                  <th class="font-medium py-3 px-5 text-right">
+                    Citation Share
+                  </th>
+                  <th class="font-medium py-3 px-5 text-right">Citations</th>
+                  <th class="font-medium py-3 px-5">AI Engines</th>
+                  <th class="font-medium py-3 px-5">Entity Coverage</th>
+                  <th class="font-medium py-3 px-5 text-right">Change</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-border/50">
+                <tr class="hover:bg-surface transition-colors cursor-pointer group">
+                  <td class="py-3 px-5">
+                    <div class="font-medium text-text-primary group-hover:text-primary transition-colors">
+                      Best Massage Spas in Columbus
+                    </div>
+                  </td>
+                  <td class="py-3 px-5 text-text-secondary">
+                    columbusnavigator.com
+                  </td>
+                  <td class="py-3 px-5 text-right">8.40%</td>
+                  <td class="py-3 px-5 text-right font-medium text-text-primary">
+                    34
+                  </td>
+                  <td class="py-3 px-5">
+                    <div class="flex items-center gap-2 text-text-secondary">
+                      <iconify-icon icon="solar:programming-linear" class="text-[#10A37F]" title="ChatGPT"></iconify-icon>
+                      <iconify-icon icon="solar:magic-stick-3-linear" class="text-[#1A73E8]" title="Gemini"></iconify-icon>
+                    </div>
+                  </td>
+                  <td class="py-3 px-5">
+                    <div class="flex gap-1.5">
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/20">
+                        You
+                      </span>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info border border-info/20">
+                        Massage Envy
+                      </span>
+                    </div>
+                  </td>
+                  <td class="py-3 px-5 text-right text-success flex justify-end items-center gap-0.5">
+                    <iconify-icon icon="solar:arrow-up-linear"></iconify-icon>
+                    6
+                  </td>
+                </tr>
+                <tr class="hover:bg-surface transition-colors cursor-pointer group">
+                  <td class="py-3 px-5">
+                    <div class="font-medium text-text-primary group-hover:text-primary transition-colors">
+                      Top Couples Massage Locations
+                    </div>
+                  </td>
+                  <td class="py-3 px-5 text-text-secondary">reddit.com</td>
+                  <td class="py-3 px-5 text-right">7.20%</td>
+                  <td class="py-3 px-5 text-right font-medium text-text-primary">
+                    29
+                  </td>
+                  <td class="py-3 px-5">
+                    <div class="flex items-center gap-2 text-text-secondary">
+                      <iconify-icon icon="solar:programming-linear" class="text-[#10A37F]" title="ChatGPT"></iconify-icon>
+                      <iconify-icon icon="solar:minimalistic-magnifer-linear" class="text-[#22B8CD]" title="Perplexity"></iconify-icon>
+                    </div>
+                  </td>
+                  <td class="py-3 px-5">
+                    <div class="flex gap-1.5">
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info border border-info/20">
+                        Massage Envy
+                      </span>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success border border-success/20">
+                        Hand &amp; Stone
+                      </span>
+                    </div>
+                  </td>
+                  <td class="py-3 px-5 text-right">
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/10 text-success border border-success/20">
+                      New
+                    </span>
+                  </td>
+                </tr>
+                <tr class="hover:bg-surface transition-colors cursor-pointer group">
+                  <td class="py-3 px-5">
+                    <div class="font-medium text-text-primary group-hover:text-primary transition-colors">
+                      Massage Therapy Services Guide
+                    </div>
+                  </td>
+                  <td class="py-3 px-5 text-text-secondary">healthline.com</td>
+                  <td class="py-3 px-5 text-right">5.80%</td>
+                  <td class="py-3 px-5 text-right font-medium text-text-primary">
+                    23
+                  </td>
+                  <td class="py-3 px-5">
+                    <div class="flex items-center gap-2 text-text-secondary">
+                      <iconify-icon icon="solar:magic-stick-3-linear" class="text-[#1A73E8]" title="Gemini"></iconify-icon>
+                      <iconify-icon icon="solar:global-linear" class="text-[#EA4335]" title="Google AI Overviews"></iconify-icon>
+                    </div>
+                  </td>
+                  <td class="py-3 px-5">
+                    <div class="flex gap-1.5">
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/20">
+                        You
+                      </span>
+                    </div>
+                  </td>
+                  <td class="py-3 px-5 text-right text-danger flex justify-end items-center gap-0.5">
+                    <iconify-icon icon="solar:arrow-down-linear"></iconify-icon>
+                    2
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="p-3 border-t border-border bg-surface/30 text-center">
+            <button class="text-xs font-medium text-primary hover:text-primary-hover transition-colors">
+              View All URLs
+            </button>
+          </div>
+        </div>
+
+        <!-- 10 & 11. Domain Citation Coverage Over Time & Stats -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 mb-4 lg:mb-6">
+          <!-- Line Chart (Left, 2 cols) -->
+          <div class="lg:col-span-2 bg-card shadow-card rounded-xl p-5 flex flex-col">
+            <div class="mb-6">
+              <h2 class="text-base font-medium tracking-tight text-text-primary mb-1">
+                Domain Citation Coverage Over Time
+              </h2>
+              <p class="text-xs text-text-secondary">
+                Percentage of tracked prompts where a domain appeared as a cited
+                source.
+              </p>
+            </div>
+            <div class="flex-1 relative min-h-[240px] w-full">
+              <!-- Y-axis labels -->
+              <div class="absolute left-0 top-0 bottom-6 flex flex-col justify-between text-[10px] text-text-secondary w-6 text-right">
+                <span>40%</span>
+                <span>30%</span>
+                <span>20%</span>
+                <span>10%</span>
+                <span>0%</span>
+              </div>
+
+              <!-- Chart Area -->
+              <div class="absolute left-8 right-0 top-2 bottom-6">
+                <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="w-full h-full overflow-visible">
+                  <line x1="0" y1="0" x2="100" y2="0" class="chart-grid"></line>
+                  <line x1="0" y1="25" x2="100" y2="25" class="chart-grid"></line>
+                  <line x1="0" y1="50" x2="100" y2="50" class="chart-grid"></line>
+                  <line x1="0" y1="75" x2="100" y2="75" class="chart-grid"></line>
+                  <line x1="0" y1="100" x2="100" y2="100" class="chart-grid" stroke-dasharray="0"></line>
+
+                  <!-- Data Lines (approximate mapping 0-40 to 100-0) -->
+                  <!-- massage-escape.net (Primary) -->
+                  <path d="M0,70 L20,65 L40,60 L60,57.5 L80,47.5 L100,30" class="chart-line hover:stroke-[3px] transition-all cursor-pointer" stroke="var(--primary)" stroke-width="2.5"></path>
+                  <!-- massageenvy.com (Info) -->
+                  <path d="M0,22.5 L20,20 L40,15 L60,17.5 L80,12.5 L100,7.5" class="chart-line hover:stroke-[3px] transition-all cursor-pointer" stroke="var(--info)" stroke-width="2"></path>
+                  <!-- handandstone.com (Success) -->
+                  <path d="M0,40 L20,37.5 L40,42.5 L60,32.5 L80,27.5 L100,22.5" class="chart-line hover:stroke-[3px] transition-all cursor-pointer" stroke="var(--success)" stroke-width="2"></path>
+                  <!-- massageluxe.com (Warning) -->
+                  <path d="M0,50 L20,47.5 L40,45 L60,50 L80,52.5 L100,55" class="chart-line hover:stroke-[3px] transition-all cursor-pointer" stroke="var(--warning)" stroke-width="2"></path>
+                </svg>
+              </div>
+
+              <!-- X-axis labels -->
+              <div class="absolute left-8 right-0 bottom-0 flex justify-between text-[10px] text-text-secondary">
+                <span>23 Jun</span>
+                <span>29 Jun</span>
+                <span>5 Jul</span>
+                <span>11 Jul</span>
+                <span>17 Jul</span>
+                <span>22 Jul</span>
+              </div>
+            </div>
+            <!-- Legend -->
+            <div class="mt-6 flex flex-wrap justify-center gap-4 text-xs">
+              <button class="flex items-center gap-1.5 text-text-primary font-medium transition-colors">
+                <span class="w-2.5 h-2.5 rounded-full bg-primary"></span>
+                Your domain
+              </button>
+              <button class="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors">
+                <span class="w-2.5 h-2.5 rounded-full bg-info"></span>
+                Massage Envy
+              </button>
+              <button class="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors">
+                <span class="w-2.5 h-2.5 rounded-full bg-success"></span>
+                Hand &amp; Stone
+              </button>
+              <button class="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors">
+                <span class="w-2.5 h-2.5 rounded-full bg-warning"></span>
+                MassageLuXe
+              </button>
+            </div>
+          </div>
+
+          <!-- Domain Citation Stats (Right, 1 col) -->
+          <div class="bg-card shadow-card rounded-xl p-5 flex flex-col">
+            <h2 class="text-base font-medium tracking-tight text-text-primary mb-4">
+              Domain Performance
+            </h2>
+            <div class="flex flex-col gap-3 mb-6">
+              <div class="p-3 bg-surface/50 border border-border rounded-lg">
+                <div class="text-xs text-text-secondary mb-1">
+                  Your Domain Citations
+                </div>
+                <div class="flex items-baseline gap-2">
+                  <span class="text-2xl font-medium tracking-tight text-text-primary">
+                    23
+                  </span>
+                  <span class="text-xs text-success">
+                    +7 since previous period
+                  </span>
+                </div>
+              </div>
+              <div class="p-3 bg-surface/50 border border-border rounded-lg">
+                <div class="text-xs text-text-secondary mb-1">
+                  Domain Citation Share
+                </div>
+                <div class="flex items-baseline gap-2">
+                  <span class="text-2xl font-medium tracking-tight text-text-primary">
+                    6.80%
+                  </span>
+                  <span class="text-xs text-text-secondary">
+                    Ranked #3 among tracked
+                  </span>
+                </div>
+              </div>
+              <div class="p-3 bg-surface/50 border border-border rounded-lg">
+                <div class="text-xs text-text-secondary mb-1">
+                  Citation Movement
+                </div>
+                <div class="flex items-baseline gap-2">
+                  <span class="text-sm font-medium text-text-primary">
+                    <span class="text-success">7 gained</span>
+                    ·
+                    <span class="text-danger">2 lost</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="text-xs font-medium text-text-primary mb-2">
+                Top 3 cited pages from your website
+              </div>
+              <div class="flex flex-col gap-2 text-xs">
+                <div class="flex justify-between items-center text-text-secondary">
+                  <span class="truncate pr-2">Couples Massage in Columbus</span>
+                  <span class="font-medium text-text-primary shrink-0">
+                    9 citations
+                  </span>
+                </div>
+                <div class="flex justify-between items-center text-text-secondary">
+                  <span class="truncate pr-2">Hot Stone Massage Services</span>
+                  <span class="font-medium text-text-primary shrink-0">
+                    7 citations
+                  </span>
+                </div>
+                <div class="flex justify-between items-center text-text-secondary">
+                  <span class="truncate pr-2">Massage Gift Packages</span>
+                  <span class="font-medium text-text-primary shrink-0">
+                    4 citations
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 12 & 13. Top Cited Domains & Prompts Driving Citations -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 pb-8">
+          <!-- Top Cited Domains -->
+          <div class="bg-card shadow-card rounded-xl flex flex-col overflow-hidden">
+            <div class="p-5 border-b border-border">
+              <h2 class="text-base font-medium tracking-tight text-text-primary mb-1">
+                Top Cited Domains
+              </h2>
+              <p class="text-xs text-text-secondary">
+                The websites AI engines trust most in this category.
+              </p>
+            </div>
+            <div class="flex-1 overflow-x-auto">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="">
+                  <tr class="text-text-secondary border-b border-border bg-page/30">
+                    <th class="font-medium py-3 px-4">Domain</th>
+                    <th class="font-medium py-3 px-4 text-right">Share</th>
+                    <th class="font-medium py-3 px-4 text-right">Citations</th>
+                    <th class="font-medium py-3 px-4">Engines</th>
+                    <th class="font-medium py-3 px-4">Supports</th>
+                    <th class="font-medium py-3 px-4 text-right">Change</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-border/50">
+                  <tr class="hover:bg-surface transition-colors">
+                    <td class="py-3 px-4 font-medium text-text-primary">
+                      reddit.com
+                    </td>
+                    <td class="py-3 px-4 text-right">9.40%</td>
+                    <td class="py-3 px-4 text-right font-medium text-text-primary">
+                      42
+                    </td>
+                    <td class="py-3 px-4">
+                      <div class="flex items-center gap-1.5 text-text-secondary">
+                        <iconify-icon icon="solar:programming-linear" class="text-[#10A37F]"></iconify-icon>
+                        <iconify-icon icon="solar:magic-stick-3-linear" class="text-[#1A73E8]"></iconify-icon>
+                      </div>
+                    </td>
+                    <td class="py-3 px-4">
+                      <div class="flex gap-1">
+                        <span class="px-1 py-0.5 rounded text-[9px] font-medium bg-info/10 text-info border border-info/20">
+                          ME
+                        </span>
+                        <span class="px-1 py-0.5 rounded text-[9px] font-medium bg-success/10 text-success border border-success/20">
+                          H&amp;S
+                        </span>
+                      </div>
+                    </td>
+                    <td class="py-3 px-4 text-right text-success flex justify-end items-center gap-0.5">
+                      <iconify-icon icon="solar:arrow-up-linear"></iconify-icon>
+                      8
+                    </td>
+                  </tr>
+                  <tr class="hover:bg-surface transition-colors">
+                    <td class="py-3 px-4 font-medium text-text-primary">
+                      columbusnavigator.com
+                    </td>
+                    <td class="py-3 px-4 text-right">7.80%</td>
+                    <td class="py-3 px-4 text-right font-medium text-text-primary">
+                      35
+                    </td>
+                    <td class="py-3 px-4">
+                      <div class="flex items-center gap-1.5 text-text-secondary">
+                        <iconify-icon icon="solar:magic-stick-3-linear" class="text-[#1A73E8]"></iconify-icon>
+                        <iconify-icon icon="solar:minimalistic-magnifer-linear" class="text-[#22B8CD]"></iconify-icon>
+                      </div>
+                    </td>
+                    <td class="py-3 px-4">
+                      <div class="flex gap-1">
+                        <span class="px-1 py-0.5 rounded text-[9px] font-medium bg-primary/10 text-primary border border-primary/20">
+                          You
+                        </span>
+                        <span class="px-1 py-0.5 rounded text-[9px] font-medium bg-info/10 text-info border border-info/20">
+                          ME
+                        </span>
+                      </div>
+                    </td>
+                    <td class="py-3 px-4 text-right text-success flex justify-end items-center gap-0.5">
+                      <iconify-icon icon="solar:arrow-up-linear"></iconify-icon>
+                      3
+                    </td>
+                  </tr>
+                  <tr class="hover:bg-surface transition-colors">
+                    <td class="py-3 px-4 font-medium text-text-primary">
+                      yellowpages.com
+                    </td>
+                    <td class="py-3 px-4 text-right">6.20%</td>
+                    <td class="py-3 px-4 text-right font-medium text-text-primary">
+                      28
+                    </td>
+                    <td class="py-3 px-4">
+                      <div class="flex items-center gap-1.5 text-text-secondary">
+                        <iconify-icon icon="solar:programming-linear" class="text-[#10A37F]"></iconify-icon>
+                        <iconify-icon icon="solar:global-linear" class="text-[#EA4335]"></iconify-icon>
+                      </div>
+                    </td>
+                    <td class="py-3 px-4">
+                      <div class="flex gap-1">
+                        <span class="px-1 py-0.5 rounded text-[9px] font-medium bg-primary/10 text-primary border border-primary/20">
+                          You
+                        </span>
+                      </div>
+                    </td>
+                    <td class="py-3 px-4 text-right text-danger flex justify-end items-center gap-0.5">
+                      <iconify-icon icon="solar:arrow-down-linear"></iconify-icon>
+                      2
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="p-3 border-t border-border bg-surface/30 text-center">
+              <button class="text-xs font-medium text-primary hover:text-primary-hover transition-colors">
+                View All Domains
+              </button>
+            </div>
+          </div>
+
+          <!-- Prompts Driving Citations -->
+          <div class="bg-card shadow-card rounded-xl flex flex-col overflow-hidden">
+            <div class="p-5 border-b border-border flex flex-wrap gap-4 justify-between items-start">
+              <h2 class="text-base font-medium tracking-tight text-text-primary mb-1">
+                Prompts Driving Citations
+              </h2>
+              <div class="flex bg-surface p-0.5 rounded-lg border border-border shrink-0">
+                <button class="px-3 py-1 text-xs font-medium bg-card text-text-primary rounded-md shadow-sm">
+                  Most Citations
+                </button>
+                <button class="px-3 py-1 text-xs font-medium text-text-secondary hover:text-text-primary rounded-md transition-colors">
+                  Your Wins
+                </button>
+                <button class="px-3 py-1 text-xs font-medium text-text-secondary hover:text-text-primary rounded-md transition-colors hidden sm:block">
+                  Competitor Wins
+                </button>
+                <button class="px-3 py-1 text-xs font-medium text-text-secondary hover:text-text-primary rounded-md transition-colors">
+                  New Changes
+                </button>
+              </div>
+            </div>
+            <div class="flex-1 overflow-x-auto">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="">
+                  <tr class="text-text-secondary border-b border-border bg-page/30">
+                    <th class="font-medium py-3 px-4">Prompt</th>
+                    <th class="font-medium py-3 px-4">Top Cited Source</th>
+                    <th class="font-medium py-3 px-4 text-right">You</th>
+                    <th class="font-medium py-3 px-4 text-right">Comp.</th>
+                    <th class="font-medium py-3 px-4 text-right">Gap</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-border/50">
+                  <tr class="hover:bg-surface transition-colors">
+                    <td class="py-3 px-4">
+                      <div class="font-medium text-text-primary truncate max-w-[150px]" title="Best couples massage in Columbus">
+                        Best couples massage in Col...
+                      </div>
+                    </td>
+                    <td class="py-3 px-4 text-text-secondary truncate max-w-[120px]" title="columbusnavigator.com">
+                      columbusnavigator.com
+                    </td>
+                    <td class="py-3 px-4 text-right font-medium text-primary">
+                      2
+                    </td>
+                    <td class="py-3 px-4 text-right">6</td>
+                    <td class="py-3 px-4 text-right font-medium text-danger">
+                      -4
+                    </td>
+                  </tr>
+                  <tr class="hover:bg-surface transition-colors">
+                    <td class="py-3 px-4">
+                      <div class="font-medium text-text-primary truncate max-w-[150px]" title="Massage spa near me">
+                        Massage spa near me
+                      </div>
+                    </td>
+                    <td class="py-3 px-4 text-text-secondary truncate max-w-[120px]" title="reddit.com">
+                      reddit.com
+                    </td>
+                    <td class="py-3 px-4 text-right font-medium text-text-secondary">
+                      0
+                    </td>
+                    <td class="py-3 px-4 text-right">4</td>
+                    <td class="py-3 px-4 text-right font-medium text-danger">
+                      -4
+                    </td>
+                  </tr>
+                  <tr class="hover:bg-surface transition-colors">
+                    <td class="py-3 px-4">
+                      <div class="font-medium text-text-primary truncate max-w-[150px]" title="Massage services for couples">
+                        Massage services for couples
+                      </div>
+                    </td>
+                    <td class="py-3 px-4 text-text-secondary truncate max-w-[120px]" title="massage-escape.net">
+                      massage-escape.net
+                    </td>
+                    <td class="py-3 px-4 text-right font-medium text-primary">
+                      5
+                    </td>
+                    <td class="py-3 px-4 text-right">2</td>
+                    <td class="py-3 px-4 text-right font-medium text-success">
+                      +3
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="p-3 border-t border-border bg-surface/30 text-center">
+              <button class="text-xs font-medium text-primary hover:text-primary-hover transition-colors">
+                View All Prompts
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. Recent Citations & Actions -->
+        
+      </div>
+    </main>
+  
+</body></html>

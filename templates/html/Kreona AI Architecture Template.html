@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en" class="dark"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kreona Studio System Assembly</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap');
+/* Hide scrollbar completely as requested */
+::-webkit-scrollbar { display: none; }
+* { scrollbar-width: none; -ms-overflow-style: none; }
+/* Typography */
+.font-space { font-family: 'Space Mono', monospace; }
+.font-geist-mono { font-family: 'Geist Mono', monospace; }
+/* Strict fidelity background constraints */
+.grid-bg {
+background-size: 40px 40px;
+background-image: linear-gradient(to right, rgba(128, 128, 128, 0.07) 1px, transparent 1px),
+linear-gradient(to bottom, rgba(128, 128, 128, 0.07) 1px, transparent 1px);
+mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+-webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+}
+.terminal-grid {
+background-image: repeating-linear-gradient(0deg, transparent, transparent 34px, rgba(0, 255, 136, 0.1) 34px, rgba(0, 255, 136, 0.1) 35px),
+repeating-linear-gradient(90deg, transparent, transparent 34px, rgba(0, 255, 136, 0.1) 34px, rgba(0, 255, 136, 0.1) 35px);
+}
+/* Essential Animations */
+@keyframes terminal-blink {
+0%, 50% { opacity: 1; }
+51%, 100% { opacity: 0; }
+}
+.animate-terminal-blink { animation: terminal-blink 1s infinite; }
+@keyframes scan-line {
+0% { transform: translateY(-100%); }
+100% { transform: translateY(100vh); }
+}
+.animate-scan-line { animation: scan-line 3s linear infinite; }
+@keyframes data-stream {
+0% { transform: translateY(10px); opacity: 0; }
+100% { transform: translateY(0); opacity: 1; }
+}
+.animate-data-stream { animation: data-stream 0.3s ease-out forwards; }
+@keyframes spin-slow { 100% { transform: rotate(360deg); } }
+@keyframes spin-slow-reverse { 100% { transform: rotate(-360deg); } }
+.ray {
+background: conic-gradient(from 180deg at 50% 50%, rgba(6, 182, 212, 0.2) 0deg, transparent 60deg, transparent 300deg, rgba(6, 182, 212, 0.2) 360deg);
+animation: spin-slow 20s linear infinite;
+}
+.ray-2 {
+background: conic-gradient(from 0deg at 50% 50%, rgba(168, 85, 247, 0.2) 0deg, transparent 60deg, transparent 300deg, rgba(168, 85, 247, 0.2) 360deg);
+animation: spin-slow-reverse 25s linear infinite;
+}
+</style></head>
+<body class="font-sans min-h-screen relative overflow-x-hidden bg-slate-50 text-slate-900 dark:bg-black dark:text-slate-200 transition-colors duration-300 selection:bg-cyan-500/30 selection:text-white">
+
+    <!-- LAYER 0: Background Grid -->
+    <div class="grid-bg absolute inset-0 z-0 pointer-events-none"></div>
+
+    <!-- Terminal Scan Line Global Overlay -->
+    <div class="pointer-events-none fixed top-0 left-0 right-0 z-50 h-[2px] bg-gradient-to-r from-transparent via-[#00FF88] to-transparent opacity-50 animate-scan-line"></div>
+
+    <!-- LAYER 1: Midground Rays Container -->
+    <div class="rays-container absolute inset-0 z-0 pointer-events-none overflow-hidden opacity-50 dark:opacity-100 mix-blend-screen">
+        <div class="ray absolute top-[-50%] left-[-50%] w-[200%] h-[200%] blur-3xl"></div>
+        <div class="ray-2 absolute top-[-50%] left-[-50%] w-[200%] h-[200%] blur-3xl"></div>
+    </div>
+
+    <!-- LAYER 3: Nav & Controls -->
+    <button id="theme-toggle" class="fixed top-6 right-6 z-50 p-2 rounded-full border border-slate-200 dark:border-white/10 bg-white/50 dark:bg-black/50 backdrop-blur-md text-slate-600 dark:text-slate-300 hover:text-cyan-500 transition-colors shadow-sm">
+        <i data-lucide="moon" class="w-5 h-5 hidden dark:block"></i>
+        <i data-lucide="sun" class="w-5 h-5 block dark:hidden"></i>
+    </button>
+
+    <!-- LAYER 2: Content -->
+    <div class="relative z-10 flex flex-col items-center justify-start min-h-screen pt-24 pb-12 px-4 sm:px-6 w-full max-w-7xl mx-auto">
+        
+        <!-- SECTION 1: HERO -->
+        <div class="flex flex-col items-center text-center space-y-6 mb-16">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-slate-200 dark:border-white/10 bg-white/50 dark:bg-white/5 text-xs font-medium tracking-wide">
+                <span class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+                </span>
+                New V2.0 Assembly
+            </div>
+            
+            <h1 class="text-3xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-slate-900 to-slate-500 dark:from-white dark:to-white/40 max-w-3xl leading-tight">
+                AI Architecture &amp;<br>Command Systems
+            </h1>
+
+            <div class="flex items-center gap-4 mt-4">
+                <button class="px-6 py-2.5 rounded-lg bg-slate-900 text-white dark:bg-white dark:text-black text-xs font-semibold uppercase tracking-wide transition-transform hover:scale-105 active:scale-95 shadow-lg">
+                    Initialize
+                </button>
+                <button class="px-6 py-2.5 rounded-lg border border-slate-300 dark:border-white/20 bg-transparent text-slate-700 dark:text-slate-300 text-xs font-semibold uppercase tracking-wide transition-all hover:border-slate-400 dark:hover:border-white/40 hover:bg-slate-100 dark:hover:bg-white/5">
+                    Documentation
+                </button>
+            </div>
+        </div>
+
+        <!-- CORE INTERACTIVE AREA: 1fr_2fr_1fr Layout -->
+        <div class="w-full grid grid-cols-1 md:grid-cols-[1fr_2fr_1fr] gap-6">
+
+            <!-- LEFT COLUMN (1fr) -->
+            <div class="flex flex-col gap-6">
+                <!-- Kreona Tools -->
+                <div class="grid grid-cols-2 md:grid-cols-1 gap-4">
+                    <div class="group flex flex-col items-center justify-center p-6 bg-white dark:bg-[#0A0A0A]/80 backdrop-blur-sm border border-slate-200 dark:border-white/10 rounded-xl transition-all duration-300 hover:border-cyan-500/50 hover:bg-cyan-50/50 dark:hover:bg-cyan-900/10 cursor-pointer text-slate-600 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 shadow-sm">
+                        <i data-lucide="folder-code" class="w-6 h-6 mb-3 transition-transform duration-300 group-hover:scale-110"></i>
+                        <span class="text-xs font-medium tracking-wide uppercase">Code Gen</span>
+                    </div>
+                    <div class="group flex flex-col items-center justify-center p-6 bg-white dark:bg-[#0A0A0A]/80 backdrop-blur-sm border border-slate-200 dark:border-white/10 rounded-xl transition-all duration-300 hover:border-cyan-500/50 hover:bg-cyan-50/50 dark:hover:bg-cyan-900/10 cursor-pointer text-slate-600 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 shadow-sm">
+                        <i data-lucide="layers" class="w-6 h-6 mb-3 transition-transform duration-300 group-hover:scale-110"></i>
+                        <span class="text-xs font-medium tracking-wide uppercase">Components</span>
+                    </div>
+                </div>
+
+                <!-- Terminal System Status Widget -->
+                <div class="rounded-xl border border-slate-200 dark:border-[#00FF88]/30 dark:bg-black/90 bg-white p-5 shadow-lg font-space hidden md:flex flex-col">
+                    <div class="flex justify-between items-center border-b border-slate-200 dark:border-[#00FF88]/30 pb-3 mb-4">
+                        <h3 class="text-xs text-slate-800 dark:text-[#00FF88] tracking-widest uppercase font-semibold">System Status</h3>
+                        <span id="uptime" class="text-xs text-slate-500 dark:text-[#00FF88]">00:00:00</span>
+                    </div>
+                    <div class="space-y-4 text-xs font-medium">
+                        <div class="flex justify-between items-center"><span class="text-slate-500 dark:text-white/60">NETWORK</span><span class="text-slate-800 dark:text-[#00FF88] flex items-center gap-2"><span class="w-2 h-2 bg-emerald-500 dark:bg-[#00FF88] rounded-full animate-pulse"></span> ONLINE</span></div>
+                        <div class="flex justify-between items-center"><span class="text-slate-500 dark:text-white/60">DATABASE</span><span class="text-slate-800 dark:text-[#00FF88] flex items-center gap-2"><span class="w-2 h-2 bg-emerald-500 dark:bg-[#00FF88] rounded-full animate-pulse"></span> ACTIVE</span></div>
+                        <div class="flex justify-between items-center"><span class="text-slate-500 dark:text-white/60">CACHE</span><span class="text-amber-600 dark:text-[#FFA500] flex items-center gap-2"><span class="w-2 h-2 bg-amber-500 dark:bg-[#FFA500] rounded-full animate-pulse"></span> WARNING</span></div>
+                        <div class="flex justify-between items-center"><span class="text-slate-500 dark:text-white/60">SECURITY</span><span class="text-slate-800 dark:text-[#00FF88] flex items-center gap-2"><span class="w-2 h-2 bg-emerald-500 dark:bg-[#00FF88] rounded-full animate-pulse"></span> SECURE</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CENTER COLUMN (2fr) - Blended Terminal & Chatbox -->
+            <div class="relative group flex flex-col rounded-xl border border-slate-200 dark:border-white/10 dark:bg-[#0A0A0A] bg-white h-[600px] shadow-2xl z-20">
+                <!-- Dynamic Glow Wrapper -->
+                <div class="absolute -inset-1 bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500 opacity-20 blur-3xl transition-opacity duration-300 group-hover:opacity-40 rounded-xl pointer-events-none -z-10"></div>
+
+                <!-- Terminal Header -->
+                <div class="flex justify-between items-center p-3 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#050505] font-geist-mono text-xs rounded-t-xl shrink-0">
+                    <div class="flex items-center gap-2">
+                        <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                        <div class="w-3 h-3 rounded-full bg-amber-500"></div>
+                        <div class="w-3 h-3 rounded-full bg-emerald-500 dark:bg-[#00FF88]"></div>
+                    </div>
+                    <span class="text-slate-500 dark:text-[#00FF88]/70 font-medium">terminal@kreona-core</span>
+                    <div class="flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-[#00FF88] animate-pulse hidden sm:block"></span>
+                        <span class="text-slate-400 dark:text-white/50">root</span>
+                    </div>
+                </div>
+
+                <!-- Terminal Output Content Area -->
+                <div class="flex-1 p-4 font-space text-xs sm:text-sm text-slate-800 dark:text-[#00FF88] bg-white dark:bg-black overflow-hidden relative flex flex-col justify-end">
+                    <!-- Matrix Grid Overlay for Terminal -->
+                    <div class="absolute inset-0 pointer-events-none opacity-5 dark:opacity-10 terminal-grid"></div>
+                    
+                    <div id="terminal-content" class="relative z-10 w-full flex flex-col justify-end space-y-1.5 min-h-0">
+                        <div class="animate-data-stream opacity-0 text-slate-500 dark:text-white/60">Kreona Systems OS v2.0.4 loaded.</div>
+                        <div class="animate-data-stream opacity-0 text-slate-500 dark:text-white/60">Type a command to interface with architecture modules.</div>
+                        <div class="animate-data-stream opacity-0">$ init_sequence --start</div>
+                    </div>
+
+                    <!-- Live Typing Preview -->
+                    <div class="relative z-10 flex items-center mt-2 text-cyan-600 dark:text-[#00FF88]">
+                        <span class="mr-2 font-semibold">$</span>
+                        <span id="active-typing-preview"></span>
+                        <span class="w-[4px] h-[14px] bg-cyan-500 dark:bg-[#00FF88] ml-1 animate-terminal-blink inline-block"></span>
+                    </div>
+                </div>
+
+                <!-- Chatbox Input (Kreona Style Toolbar) -->
+                <div class="p-4 bg-slate-50 dark:bg-[#050505] border-t border-slate-200 dark:border-white/10 shrink-0 rounded-b-xl">
+                    <form id="chat-form" class="flex items-center gap-3 bg-white dark:bg-[#111] border border-slate-200 dark:border-white/10 rounded-lg p-2.5 focus-within:ring-2 focus-within:ring-cyan-500/30 transition-all shadow-inner">
+                        <span class="text-cyan-500 pl-1">
+                            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                        </span>
+                        <input type="text" id="chat-input" class="flex-1 bg-transparent border-none outline-none text-xs sm:text-sm text-slate-900 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-600 font-geist-mono" placeholder="Enter root command..." autocomplete="off">
+                        <div class="hidden sm:inline-flex items-center px-2 py-1 rounded bg-slate-100 dark:bg-white/5 text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold border border-slate-200 dark:border-white/10">
+                            /Search-Command
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN (1fr) -->
+            <div class="flex flex-col gap-6">
+                <!-- Kreona Tools -->
+                <div class="grid grid-cols-2 md:grid-cols-1 gap-4">
+                    <div class="group flex flex-col items-center justify-center p-6 bg-white dark:bg-[#0A0A0A]/80 backdrop-blur-sm border border-slate-200 dark:border-white/10 rounded-xl transition-all duration-300 hover:border-cyan-500/50 hover:bg-cyan-50/50 dark:hover:bg-cyan-900/10 cursor-pointer text-slate-600 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 shadow-sm">
+                        <i data-lucide="pen-tool" class="w-6 h-6 mb-3 transition-transform duration-300 group-hover:scale-110"></i>
+                        <span class="text-xs font-medium tracking-wide uppercase">Design Sys</span>
+                    </div>
+                    <div class="group flex flex-col items-center justify-center p-6 bg-white dark:bg-[#0A0A0A]/80 backdrop-blur-sm border border-slate-200 dark:border-white/10 rounded-xl transition-all duration-300 hover:border-cyan-500/50 hover:bg-cyan-50/50 dark:hover:bg-cyan-900/10 cursor-pointer text-slate-600 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 shadow-sm">
+                        <i data-lucide="message-square" class="w-6 h-6 mb-3 transition-transform duration-300 group-hover:scale-110"></i>
+                        <span class="text-xs font-medium tracking-wide uppercase">AI Support</span>
+                    </div>
+                </div>
+
+                <!-- Terminal System Resources Widget -->
+                <div class="rounded-xl border border-slate-200 dark:border-amber-500/30 dark:bg-black/90 bg-white p-5 shadow-lg font-space hidden md:block">
+                    <h3 class="text-xs text-slate-800 dark:text-[#FFA500] border-b border-slate-200 dark:border-[#FFA500]/30 pb-3 mb-4 tracking-widest uppercase font-semibold">Resources</h3>
+                    <div class="space-y-5 text-xs font-medium">
+                        <div>
+                            <div class="flex justify-between mb-1.5"><span class="text-slate-500 dark:text-white/60">CPU USAGE</span><span class="text-amber-600 dark:text-[#FFA500]">23%</span></div>
+                            <div class="h-1.5 w-full bg-slate-100 dark:bg-white/10 rounded-full overflow-hidden relative">
+                                <div class="absolute inset-y-0 left-0 bg-amber-500 dark:bg-[#FFA500] w-[23%] transition-all duration-500"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-1.5"><span class="text-slate-500 dark:text-white/60">MEMORY (RAM)</span><span class="text-amber-600 dark:text-[#FFA500]">67%</span></div>
+                            <div class="h-1.5 w-full bg-slate-100 dark:bg-white/10 rounded-full overflow-hidden relative">
+                                <div class="absolute inset-y-0 left-0 bg-amber-500 dark:bg-[#FFA500] w-[67%] transition-all duration-500"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-1.5"><span class="text-slate-500 dark:text-white/60">DISK I/O</span><span class="text-emerald-600 dark:text-[#00FF88]">12%</span></div>
+                            <div class="h-1.5 w-full bg-slate-100 dark:bg-white/10 rounded-full overflow-hidden relative">
+                                <div class="absolute inset-y-0 left-0 bg-emerald-500 dark:bg-[#00FF88] w-[12%] transition-all duration-500"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOTTOM AREA: Expanded Dashboard Data (Processes & Network) -->
+        <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 pb-12">
+            <!-- Active Processes -->
+            <div class="rounded-xl border border-slate-200 dark:border-white/10 dark:bg-[#0A0A0A]/80 backdrop-blur-sm bg-white p-5 font-space overflow-x-auto shadow-md">
+                <h3 class="text-xs text-slate-800 dark:text-white tracking-widest uppercase font-semibold mb-4 opacity-80 border-b border-slate-200 dark:border-white/10 pb-3">Active Processes</h3>
+                <table class="w-full text-left text-xs whitespace-nowrap">
+                    <thead>
+                        <tr class="text-slate-400 dark:text-white/40">
+                            <th class="pb-2 font-medium">PID</th>
+                            <th class="pb-2 font-medium">CPU%</th>
+                            <th class="pb-2 font-medium">COMMAND</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-slate-600 dark:text-white/80">
+                        <tr class="border-t border-slate-100 dark:border-white/5">
+                            <td class="py-2">1247</td><td class="py-2 text-emerald-600 dark:text-[#00FF88]">15.2</td><td class="py-2">nginx</td>
+                        </tr>
+                        <tr class="border-t border-slate-100 dark:border-white/5">
+                            <td class="py-2">2891</td><td class="py-2">8.7</td><td class="py-2">postgres</td>
+                        </tr>
+                        <tr class="border-t border-slate-100 dark:border-white/5">
+                            <td class="py-2">3442</td><td class="py-2 text-amber-600 dark:text-[#FFA500]">22.1</td><td class="py-2">redis-server</td>
+                        </tr>
+                        <tr class="border-t border-slate-100 dark:border-white/5">
+                            <td class="py-2">4821</td><td class="py-2">5.3</td><td class="py-2">docker</td>
+                        </tr>
+                        <tr class="border-t border-slate-100 dark:border-white/5">
+                            <td class="py-2">5792</td><td class="py-2 text-emerald-600 dark:text-[#00FF88]">3.1</td><td class="py-2">systemd</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Network Activity -->
+            <div class="rounded-xl border border-slate-200 dark:border-white/10 dark:bg-[#0A0A0A]/80 backdrop-blur-sm bg-white p-5 font-space shadow-md">
+                <div class="flex justify-between items-center border-b border-slate-200 dark:border-white/10 pb-3 mb-4">
+                    <h3 class="text-xs text-slate-800 dark:text-white tracking-widest uppercase font-semibold opacity-80">Network Activity</h3>
+                    <div class="flex gap-4 text-xs">
+                        <span class="text-slate-500 flex items-center gap-1"><i data-lucide="arrow-down" class="w-3 h-3 text-emerald-500 dark:text-[#00FF88]"></i> 1.2 MB/s</span>
+                        <span class="text-slate-500 flex items-center gap-1"><i data-lucide="arrow-up" class="w-3 h-3 text-amber-500 dark:text-[#FFA500]"></i> 0.8 MB/s</span>
+                    </div>
+                </div>
+                <div class="space-y-3 text-xs">
+                    <div class="flex justify-between p-2 rounded bg-slate-50 dark:bg-white/5">
+                        <span class="font-medium text-slate-700 dark:text-white">SSH</span>
+                        <span class="text-emerald-600 dark:text-[#00FF88]">192.168.1.100:22</span>
+                    </div>
+                    <div class="flex justify-between p-2 rounded bg-slate-50 dark:bg-white/5">
+                        <span class="font-medium text-slate-700 dark:text-white">HTTPS</span>
+                        <span class="text-amber-600 dark:text-[#FFA500]">10.0.0.15:443</span>
+                    </div>
+                    <div class="flex justify-between p-2 rounded bg-slate-50 dark:bg-white/5">
+                        <span class="font-medium text-slate-700 dark:text-white">MySQL</span>
+                        <span class="text-emerald-600 dark:text-[#00FF88]">172.16.0.5:3306</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Icons
+        lucide.createIcons({ attrs: { 'stroke-width': '1.5' } });
+
+        // Theme Toggle Logic
+        const themeBtn = document.getElementById('theme-toggle');
+        const html = document.documentElement;
+        
+        themeBtn.addEventListener('click', () => {
+            html.classList.toggle('dark');
+        });
+
+        // System Clock Logic
+        const uptimeEl = document.getElementById('uptime');
+        let totalSeconds = 0;
+        setInterval(() => {
+            totalSeconds++;
+            const h = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+            const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+            const s = String(totalSeconds % 60).padStart(2, '0');
+            if(uptimeEl) uptimeEl.innerText = `${h}:${m}:${s}`;
+        }, 1000);
+
+        // Terminal Dashboard Integration Logic
+        const chatForm = document.getElementById('chat-form');
+        const chatInput = document.getElementById('chat-input');
+        const activePreview = document.getElementById('active-typing-preview');
+        const terminalContent = document.getElementById('terminal-content');
+
+        // Typing Sync
+        chatInput.addEventListener('input', (e) => {
+            activePreview.innerText = e.target.value;
+        });
+
+        // Log Addition Logic respecting the strict 5-line limit
+        function appendLog(text, type = 'default') {
+            const el = document.createElement('div');
+            el.className = 'animate-data-stream opacity-0 break-words';
+            
+            if (type === 'user') {
+                el.classList.add('text-cyan-600', 'dark:text-white', 'font-medium');
+            } else if (type === 'warn') {
+                el.classList.add('text-amber-600', 'dark:text-[#FFA500]');
+            } else if (type === 'system') {
+                el.classList.add('text-slate-500', 'dark:text-white/60');
+            } else {
+                el.classList.add('text-emerald-600', 'dark:text-[#00FF88]');
+            }
+            
+            el.innerText = text;
+            terminalContent.appendChild(el);
+
+            // Hard-coded limit enforcement
+            while(terminalContent.childElementCount > 5) {
+                terminalContent.removeChild(terminalContent.firstChild);
+            }
+        }
+
+        // Form Submission
+        chatForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const val = chatInput.value.trim();
+            if(!val) return;
+
+            appendLog(`$ ${val}`, 'user');
+            chatInput.value = '';
+            activePreview.innerText = '';
+
+            // Simulated response parser
+            setTimeout(() => {
+                const cmd = val.toLowerCase();
+                if(cmd === 'status') {
+                    appendLog(">> SYSTEM: ALL MODULES ONLINE.", 'default');
+                } else if(cmd === 'clear') {
+                    terminalContent.innerHTML = '';
+                } else if(cmd.includes('deploy')) {
+                     appendLog(">> DEPLOYMENT: Triggering V2 pipeline...", 'warn');
+                } else {
+                    appendLog(`>> COMMAND NOT RECOGNIZED: ${val}`, 'system');
+                }
+            }, 400);
+        });
+
+        // Background System Logs Simulator
+        const bgLogs = [
+            "[INFO] Synchronizing external node clusters.",
+            "[WARN] Redis cache latency spike detected.",
+            "[INFO] Security protocols verified.",
+            "[INFO] Background garbage collection running.",
+            "[WARN] High traffic detected on port 443.",
+            "[INFO] Establishing neural net fallback connection."
+        ];
+
+        setInterval(() => {
+            const log = bgLogs[Math.floor(Math.random() * bgLogs.length)];
+            const type = log.includes('[WARN]') ? 'warn' : 'default';
+            appendLog(log, type);
+        }, 4500);
+    </script>
+
+</body></html>

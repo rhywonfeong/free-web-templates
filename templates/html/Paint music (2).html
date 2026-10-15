@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Generative Paint & Sound Canvas</title>
+<meta name="description" content="Describe a painting, generate it, and hear music from its colors and textures as you hover." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script></head>
+  <body class="min-h-screen overflow-y-scroll antialiased text-zinc-200 bg-gradient-to-br from-[#0B0B0F] via-[#0D1016] to-[#10151F] selection:bg-indigo-500/30 selection:text-indigo-200" style="font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;">
+    <div class="relative flex flex-col">
+      <!-- Top Bar -->
+      <header class="sticky top-0 z-50 backdrop-blur-xl bg-black/20 border-b border-white/5">
+        <div class="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="h-8 w-8 rounded-md border border-white/20 bg-transparent flex items-center justify-center">
+              <i data-lucide="paintbrush" class="h-4 w-4 text-zinc-300" style="stroke-width: 1.5"></i>
+            </div>
+            <div class="flex flex-col">
+              <h1 class="text-xl md:text-2xl tracking-tight font-semibold text-zinc-100">Paint a song</h1>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <!-- removed sound toggle -->
+          </div>
+        </div>
+      </header>
+
+      <!-- Main -->
+      <main class="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8 py-10 lg:py-14">
+        <!-- Controls + Painting -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-3 space-y-4">
+            <!-- Painting moved here and made wider -->
+            <div class="group relative">
+              <!-- Outer frame (wood-like) -->
+              <div class="relative rounded-[22px] p-1.5 bg-gradient-to-br from-[#3B2E2A] via-[#2E2320] to-[#1E1715] shadow-[0_10px_30px_-10px_rgba(0,0,0,0.6)] border border-black/40">
+                <!-- Wood grain hint -->
+                <div class="absolute inset-0 rounded-[20px] pointer-events-none" style="background-image: radial-gradient(150px 30px at 20% 20%, rgba(255,255,255,0.03), transparent), radial-gradient(200px 40px at 80% 60%, rgba(255,255,255,0.025), transparent); mix-blend: overlay;"></div>
+                <!-- Inner gold bevel -->
+                <div class="rounded-[18px] p-1.5 bg-gradient-to-br from-[#D1B97A] via-[#A6853A] to-[#6A5525] border border-black/30 shadow-inner">
+                  <!-- Liner -->
+                  <div class="rounded-[14px] p-2 bg-gradient-to-br from-[#1A1A1A] to-[#0F0F12] border border-black/50">
+                    <!-- Canvas container -->
+                    <div id="canvasWrap" class="relative rounded-[10px] overflow-hidden border border-white/10 bg-black aspect-[4/3] cursor-none">
+                      <!-- Loading overlay -->
+                      <div id="loadingOverlay" class="absolute inset-0 hidden items-center justify-center bg-black/40 backdrop-blur-sm z-20">
+                        <div class="flex items-center gap-3 text-sm text-zinc-300 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                          <i data-lucide="paintbrush" class="h-4 w-4 text-zinc-300" style="stroke-width: 1.5"></i>
+                          painting...
+                        </div>
+                      </div>
+                      <!-- Canvas -->
+                      <canvas id="mainCanvas" class="absolute inset-0 w-full h-full"></canvas>
+                      <!-- Offscreen for sampling -->
+                      <canvas id="hiddenCanvas" class="hidden"></canvas>
+                      <!-- Painting overlay for brush animation and reveal -->
+                      <canvas id="paintOverlay" class="absolute inset-0 w-full h-full pointer-events-none z-[6]"></canvas>
+                      <!-- Magnifier lens -->
+                      <div id="lens" class="pointer-events-none absolute z-10 hidden items-center justify-center rounded-full border border-white/20 shadow-[0_10px_30px_rgba(0,0,0,0.6)]" style="width: 160px; height: 160px; box-shadow: inset 0 0 30px rgba(255,255,255,0.05), 0 8px 24px rgba(0,0,0,0.4); background: radial-gradient(transparent 60%, rgba(255,255,255,0.05) 61%), rgba(0,0,0,0.15);">
+                        <canvas id="lensCanvas" width="160" height="160" class="rounded-full"></canvas>
+                        <div class="absolute inset-0 rounded-full" style="background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.18), transparent 35%), radial-gradient(circle at 70% 80%, rgba(255,255,255,0.05), transparent 40%);"></div>
+                      </div>
+                      <!-- Subtle vignette -->
+                      <div class="pointer-events-none absolute inset-0" style="box-shadow: inset 0 0 140px rgba(0,0,0,0.45);"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Status pills -->
+              <div class="absolute -top-3 left-2 flex items-center gap-2">
+                <div id="genPill" class="px-2.5 py-1 rounded-md text-[11px] border border-white/10 bg-black/40 text-zinc-300 backdrop-blur hidden">generating</div>
+                <div id="readyPill" class="px-2.5 py-1 rounded-md text-[11px] border border-white/10 bg-emerald-500/20 text-emerald-300 backdrop-blur hidden" style="display:none">ready</div>
+              </div>
+            </div>
+
+            <!-- Song search and player -->
+            <div class="rounded-xl border border-white/10 bg-white/5 p-4 sm:p-5 animate-in fade-in duration-300 w-full">
+              <div id="searchHeader" class="flex items-center justify-start mb-3">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="search" class="h-4 w-4 text-zinc-300" style="stroke-width: 1.5"></i>
+                  <p class="text-[15px] md:text-base text-zinc-300">Find a song to paint</p>
+                </div>
+              </div>
+
+              <!-- Style selector (moved above search) -->
+              <div class="mb-4">
+                <div class="flex items-center justify-start gap-2 mb-2">
+                  <i data-lucide="palette" class="h-4 w-4 text-zinc-300" style="stroke-width: 1.5"></i>
+                  <label class="block text-sm font-medium text-zinc-300">Choose a style</label>
+                </div>
+                <div class="flex flex-wrap justify-start gap-2" role="radiogroup" aria-label="Painting style">
+                  <button type="button" data-style="impressionism" role="radio" aria-checked="false" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm transition-colors bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10 hover:border-white/20">
+                    Impressionism
+                  </button>
+                  <button type="button" data-style="cubism" role="radio" aria-checked="false" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm transition-colors bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10 hover:border-white/20">
+                    Cubism
+                  </button>
+                  <button type="button" data-style="surrealism" role="radio" aria-checked="false" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm transition-colors bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10 hover:border-white/20">
+                    Surrealism
+                  </button>
+                  <button type="button" data-style="watercolor" role="radio" aria-checked="false" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm transition-colors bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10 hover:border-white/20">
+                    Watercolor
+                  </button>
+                  <button type="button" data-style="oil" role="radio" aria-checked="false" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm transition-colors bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10 hover:border-white/20">
+                    Oil
+                  </button>
+                  <button type="button" data-style="digital" role="radio" aria-checked="false" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm transition-colors bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10 hover:border-white/20">
+                    Digital
+                  </button>
+                  <button type="button" data-style="pop-art" role="radio" aria-checked="false" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm transition-colors bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10 hover:border-white/20">
+                    Pop art
+                  </button>
+                </div>
+              </div>
+
+              <!-- Search -->
+              <div id="searchRow" class="flex flex-col sm:flex-row gap-2">
+                <div class="relative flex-1">
+                  <i data-lucide="music-2" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" style="stroke-width: 1.5"></i>
+                  <input id="songQuery" type="text" class="w-full rounded-lg bg-black/30 border border-white/10 focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 outline-none pl-9 pr-4 py-2 text-zinc-100 placeholder-zinc-500 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-zinc-900/50 disabled:border-white/5 disabled:placeholder-zinc-700 disabled:text-zinc-500" placeholder="Search songs (title, artist)..." />
+                </div>
+                <button id="searchBtn" class="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-100/10 hover:bg-zinc-100/15 text-zinc-200 font-medium tracking-tight px-4 py-2 border border-white/10 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-white/5 disabled:border-white/5">
+                  <i data-lucide="search" class="h-4 w-4" style="stroke-width: 1.5"></i>
+                  Search
+                </button>
+              </div>
+
+              <!-- Results -->
+              <div id="resultsWrap" class="mt-4 hidden w-full px-2 sm:px-3">
+                <div id="resultsTitle" class="text-xs text-zinc-500 mb-2">Results</div>
+                <div id="resultsList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+              </div>
+
+              <!-- Player -->
+              <div id="playerCard" class="mt-4 hidden rounded-lg border border-white/10 bg-black/30 p-3">
+                <div class="flex items-center gap-3">
+                  <img id="playerArt" src="" alt="" class="h-14 w-14 rounded-md object-cover border border-white/10" />
+                  <div class="flex-1 min-w-0">
+                    <div id="playerTitle" class="text-sm font-medium text-zinc-100 truncate tracking-tight"></div>
+                    <div id="playerArtist" class="text-xs text-zinc-400 truncate"></div>
+                    <div class="mt-1 flex items-center gap-2">
+                      <div class="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+                        <div id="songProgress" class="h-1.5 w-0 bg-indigo-500/90 transition-all"></div>
+                      </div>
+                      <div id="songTime" class="text-[10px] text-zinc-500 w-10 text-right">0:00</div>
+                    </div>
+                    <div id="playHint" class="mt-2 text-[12px] text-zinc-500 hidden">Press play to generate painting</div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button id="playPauseBtn" class="inline-flex items-center justify-center h-10 w-10 rounded-full bg-white/10 hover:bg-white/15 border border-white/10 transition">
+                      <i data-lucide="play" class="h-5 w-5 text-zinc-200" style="stroke-width: 1.5"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+      </main>
+
+      <footer class="mt-auto py-8 text-center text-[12px] text-zinc-500"></footer>
+    </div>
+
+    <!-- Preview audio -->
+    <audio id="previewAudio" preload="none" crossorigin="anonymous"></audio>
+
+    <script>
+      // Icons + initial sizing
+      document.addEventListener('DOMContentLoaded', () => {
+        if (window.lucide) lucide.createIcons();
+        try { resizeCanvases(); } catch(e){}
+        updateSearchEnabled();
+      });
+      window.addEventListener('load', () => { if (window.lucide) lucide.createIcons(); });
+
+      // Elements
+      const loadingOverlay = document.getElementById('loadingOverlay');
+      const mainCanvas = document.getElementById('mainCanvas');
+      const hiddenCanvas = document.getElementById('hiddenCanvas');
+      const lens = document.getElementById('lens');
+      const lensCanvas = document.getElementById('lensCanvas');
+      const paintOverlay = document.getElementById('paintOverlay');
+
+      const genPill = document.getElementById('genPill');
+      const readyPill = document.getElementById('readyPill');
+      const errorPill = document.getElementById('errorPill'); // may not exist
+
+      // Song UI
+      const songQuery = document.getElementById('songQuery');
+      const searchBtn = document.getElementById('searchBtn');
+      const resultsWrap = document.getElementById('resultsWrap');
+      const resultsList = document.getElementById('resultsList');
+      const resultsTitle = document.getElementById('resultsTitle');
+      const playerCard = document.getElementById('playerCard');
+      const playerArt = document.getElementById('playerArt');
+      const playerTitle = document.getElementById('playerTitle');
+      const playerArtist = document.getElementById('playerArtist');
+      const playPauseBtn = document.getElementById('playPauseBtn');
+      const songProgress = document.getElementById('songProgress');
+      const songTime = document.getElementById('songTime');
+      const playHint = document.getElementById('playHint');
+      const previewAudio = document.getElementById('previewAudio');
+
+      const ctx = mainCanvas.getContext('2d', { willReadFrequently: true });
+      const hctx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
+      const lctx = lensCanvas.getContext('2d', { willReadFrequently: true });
+      const octx = paintOverlay.getContext('2d', { willReadFrequently: true });
+
+      // Style selection
+      const styleButtons = Array.from(document.querySelectorAll('[data-style]'));
+      let selectedStyle = styleButtons.find(b => b.getAttribute('aria-checked') === 'true')?.dataset.style || null;
+      const stylePhrases = {
+        impressionism: 'impressionist painting, visible brushstrokes, vibrant light',
+        cubism: 'cubist painting, geometric fragmentation, multiple viewpoints',
+        surrealism: 'surrealist painting, dreamlike, uncanny juxtapositions',
+        watercolor: 'watercolor painting, soft washes, paper texture',
+        oil: 'oil painting, rich impasto, textured brushwork',
+        digital: 'digital painting, high fidelity, concept art',
+        'pop-art': 'pop art, bold flat colors, halftone dots, comic book style, ben-day dots'
+      };
+      function setStyle(newStyle) {
+        selectedStyle = newStyle;
+        styleButtons.forEach(btn => {
+          const active = btn.dataset.style === newStyle;
+          btn.setAttribute('aria-checked', active ? 'true' : 'false');
+          btn.className = active
+            ? 'inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm transition-colors bg-indigo-500/15 border-indigo-400/30 text-indigo-200 hover:bg-indigo-500/25 hover:border-indigo-400/40'
+            : 'inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm transition-colors bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10 hover:border-white/20';
+        });
+        updateSearchEnabled();
+
+        // Pause music if playing; require user to press play to generate. Do not auto-generate on style change.
+        if (previewAudio && !previewAudio.paused && !previewAudio.ended) {
+          try { previewAudio.pause(); } catch (e) {}
+        }
+        pendingOnPlay = true;
+        if (playHint) playHint.classList.remove('hidden');
+      }
+      styleButtons.forEach(btn => btn.addEventListener('click', () => setStyle(btn.dataset.style)));
+
+      function updateSearchEnabled() {
+        const enabled = !!selectedStyle;
+        if (songQuery) songQuery.disabled = !enabled;
+        if (searchBtn) searchBtn.disabled = !enabled;
+
+        const searchHeader = document.getElementById('searchHeader');
+        const searchRow = document.getElementById('searchRow');
+        [searchHeader, searchRow].forEach(el => {
+          if (!el) return;
+          el.classList.toggle('opacity-50', !enabled);
+          el.classList.toggle('pointer-events-none', !enabled);
+          el.classList.toggle('grayscale', !enabled);
+        });
+      }
+
+      let imgBitmap = null;
+      let isHovering = false;
+      let hoverPos = { x: 0, y: 0 };
+
+      // Generation state
+      let genState = { id: 0, controller: null };
+      let lastGenKey = '';
+      let lastGenAt = 0;
+      let lastSegmentIndex = -1;
+      let pendingOnPlay = false;
+
+      // Song state
+      let searchResults = [];
+      let currentTrack = null;
+
+      // Audio (ambient placeholders kept; not auto-starting)
+      let audioCtx = null;
+      let masterGain = null;
+      let isMuted = false;
+      let ambient = { gain: null, filter: null, reverb: null, wet: null, dry: null, drones: [], running: false };
+      let seqTimer = null;
+
+      function show(el) { if (!el) return; el.classList.remove('hidden'); }
+      function hide(el) { if (!el) return; el.classList.add('hidden'); }
+
+      // Canvas sizing
+      function resizeCanvases() {
+        if (!mainCanvas) return;
+        const rect = mainCanvas.getBoundingClientRect();
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        mainCanvas.width = Math.floor(rect.width * dpr);
+        mainCanvas.height = Math.floor(rect.height * dpr);
+        hiddenCanvas.width = mainCanvas.width;
+        hiddenCanvas.height = mainCanvas.height;
+        paintOverlay.width = mainCanvas.width;
+        paintOverlay.height = mainCanvas.height;
+        if (imgBitmap) {
+          drawImageToCanvas(imgBitmap);
+          analyzePainting();
+        } else {
+          octx.clearRect(0,0,paintOverlay.width, paintOverlay.height);
+        }
+      }
+      window.addEventListener('resize', resizeCanvases);
+
+      // Draw image to both canvases (letterbox fit)
+      function drawImageToCanvas(bitmap) {
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        ctx.save(); hctx.save();
+        ctx.clearRect(0,0,mainCanvas.width, mainCanvas.height);
+        hctx.clearRect(0,0,hiddenCanvas.width, hiddenCanvas.height);
+
+        const cw = mainCanvas.width, ch = mainCanvas.height;
+        const iw = bitmap.width, ih = bitmap.height;
+        const scale = Math.min(cw/iw, ch/ih);
+        const tw = iw * scale, th = ih * scale;
+        const ox = (cw - tw) / 2, oy = (ch - th) / 2;
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        hctx.imageSmoothingEnabled = true;
+        hctx.imageSmoothingQuality = 'high';
+
+        ctx.drawImage(bitmap, Math.floor(ox), Math.floor(oy), Math.floor(tw), Math.floor(th));
+        hctx.drawImage(bitmap, Math.floor(ox), Math.floor(oy), Math.floor(tw), Math.floor(th));
+
+        ctx.restore(); hctx.restore();
+      }
+
+      // Generate image (now supports options: { signal, seed })
+      async function generateImage(prompt, opts = {}) {
+        const signal = opts.signal;
+        const seed = typeof opts.seed === 'number' ? opts.seed : Math.floor(Math.random()*100000);
+        const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=768&nologo=true&seed=${seed}`;
+        const res = await fetch(url, { cache: 'no-cache', signal });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => '');
+          throw new Error('Generation failed: ' + res.status + ' ' + txt);
+        }
+        const blob = await res.blob();
+        const bitmap = await createImageBitmap(blob);
+        return bitmap;
+      }
+
+      function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+      // Helpers: RGB -> HSL
+      function rgbToHsl(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r,g,b), min = Math.min(r,g,b);
+        let h, s, l = (max + min) / 2;
+        if (max === min) { h = s = 0; }
+        else {
+          const d = max - min;
+          s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+          switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+          }
+          h /= 6;
+        }
+        return { h: h * 360, s, l };
+      }
+
+      // Feature extraction (local)
+      function sampleRegionFeatures(cx, cy) {
+        const radius = 36;
+        const x0 = clamp(Math.floor(cx - radius), 0, hiddenCanvas.width - 1);
+        const y0 = clamp(Math.floor(cy - radius), 0, hiddenCanvas.height - 1);
+        const w = clamp(Math.floor(radius * 2), 1, hiddenCanvas.width - x0);
+        const h = clamp(Math.floor(radius * 2), 1, hiddenCanvas.height - y0);
+
+        const img = hctx.getImageData(x0, y0, w, h);
+        const data = img.data;
+        let sumR=0, sumG=0, sumB=0;
+        let sum=0, sumSq=0;
+
+        const gray = new Float32Array(w*h);
+
+        for (let i=0, p=0; i<data.length; i+=4, p++) {
+          const r = data[i], g = data[i+1], b = data[i+2];
+          sumR += r; sumG += g; sumB += b;
+          const lum = 0.299*r + 0.587*g + 0.114*b;
+          gray[p] = lum;
+          sum += lum; sumSq += lum*lum;
+        }
+        const n = w*h;
+        const avgR = sumR / n, avgG = sumG / n, avgB = sumB / n;
+        const { h: hue, s: sat, l: light } = rgbToHsl(avgR, avgG, avgB);
+        const mean = sum / n;
+        const variance = clamp((sumSq / n) - (mean*mean), 0, 255*255);
+
+        // Sobel
+        const sobel = () => {
+          let accum = 0;
+          for (let y=1; y<h-1; y++) {
+            for (let x=1; x<w-1; x++) {
+              const i = y*w + x;
+              const gx = -gray[i-w-1] -2*gray[i-1] -gray[i+w-1] + gray[i-w+1] + 2*gray[i+1] + gray[i+w+1];
+              const gy = -gray[i-w-1] -2*gray[i-w] -gray[i-w+1] + gray[i+w-1] + 2*gray[i+w] + gray[i+w+1];
+              const mag = Math.sqrt(gx*gx + gy*gy);
+              accum += mag;
+            }
+          }
+          const count = (w-2)*(h-2);
+          return accum / (count || 1);
+        };
+        const edgeMag = sobel();
+        const texture = clamp(edgeMag / 256, 0, 1);
+        const varNorm = clamp(variance / (255*255/3), 0, 1);
+
+        return { hue, sat, light, texture, variance: varNorm, avgR, avgG, avgB, box: { x: x0, y: y0, w, h } };
+      }
+
+      // Global analysis -> soundscape placeholders (kept)
+      const defaultProfile = {
+        name: 'calm',
+        bowlProbability: 0.65,
+        minGap: 5.5,
+        maxGap: 12.0,
+        filterCutoff: 2800,
+        reverbSeconds: 3.6,
+        reverbDecay: 2.6,
+        volumeBoost: 0
+      };
+      let soundscape = { profile: { ...defaultProfile }, features: null };
+      let lastFeatures = { hue: 220, sat: 0.4, light: 0.5, texture: 0.2, variance: 0.2 };
+      const musicStatus = { textContent: '' }; // placeholder
+
+      function analyzePainting() {
+        if (!hiddenCanvas.width || !hiddenCanvas.height) return;
+        const sw = 128;
+        const sh = Math.max(1, Math.round((hiddenCanvas.height / hiddenCanvas.width) * sw));
+        const sc = document.createElement('canvas');
+        sc.width = sw; sc.height = sh;
+        const sctx = sc.getContext('2d');
+        sctx.drawImage(hiddenCanvas, 0, 0, sw, sh);
+        const { data } = sctx.getImageData(0, 0, sw, sh);
+
+        const gray = new Float32Array(sw*sh);
+        let sumLum = 0, sumLumSq = 0;
+        let sumSat = 0;
+        let cosSum = 0, sinSum = 0;
+
+        for (let y=0; y<sh; y++) {
+          for (let x=0; x<sw; x++) {
+            const i = (y*sw + x) * 4;
+            const r = data[i], g = data[i+1], b = data[i+2];
+            const hsl = rgbToHsl(r, g, b);
+            sumSat += hsl.s;
+            const lum = 0.2126*r + 0.7152*g + 0.0722*b;
+            gray[y*sw + x] = lum;
+            sumLum += lum;
+            sumLumSq += lum*lum;
+            const rad = (hsl.h || 0) * Math.PI / 180;
+            cosSum += Math.cos(rad);
+            sinSum += Math.sin(rad);
+          }
+        }
+        const n = sw*sh;
+        const meanLum = sumLum / n;
+        const variance = clamp((sumLumSq / n) - (meanLum*meanLum), 0, 255*255);
+        const contrast = clamp(variance / (255*255/3), 0, 1);
+        const meanSat = clamp(sumSat / n, 0, 1);
+        const meanHue = (Math.atan2(sinSum, cosSum) * 180 / Math.PI + 360) % 360;
+        const meanLight = clamp(meanLum / 255, 0, 1);
+
+        let edgeAccum = 0;
+        for (let y=1; y<sh-1; y++) {
+          for (let x=1; x<sw-1; x++) {
+            const i = y*sw + x;
+            const gx = -gray[i-sw-1] -2*gray[i-1] -gray[i+sw-1] + gray[i-sw+1] + 2*gray[i+1] + gray[i+sw+1];
+            const gy = -gray[i-sw-1] -2*gray[i-sw] -gray[i-sw+1] + gray[i+sw-1] + 2*gray[i+sw] + gray[i+sw+1];
+            edgeAccum += Math.sqrt(gx*gx + gy*gy);
+          }
+        }
+        const edgeCount = (sw-2)*(sh-2);
+        const edgeMean = edgeAccum / (edgeCount || 1);
+        const edgeNorm = clamp(edgeMean / 256, 0, 1);
+
+        // Update profile/features for any ambient usage
+        const profile = { ...defaultProfile };
+        soundscape.profile = profile;
+        soundscape.features = {
+          hue: meanHue,
+          sat: meanSat,
+          light: meanLight,
+          texture: edgeNorm,
+          variance: contrast
+        };
+        lastFeatures = { ...lastFeatures, ...soundscape.features };
+      }
+
+      // Lens render
+      function drawLens(cx, cy) {
+        const lsize = lensCanvas.width;
+        const zoom = 2.2;
+        const srcSize = Math.floor(lsize / zoom);
+        const sx = clamp(Math.floor(cx - srcSize/2), 0, hiddenCanvas.width - srcSize);
+        const sy = clamp(Math.floor(cy - srcSize/2), 0, hiddenCanvas.height - srcSize);
+
+        lctx.save();
+        lctx.clearRect(0,0,lsize,lsize);
+        lctx.imageSmoothingEnabled = true;
+        lctx.imageSmoothingQuality = 'high';
+        lctx.drawImage(hiddenCanvas, sx, sy, srcSize, srcSize, 0, 0, lsize, lsize);
+        lctx.restore();
+      }
+
+      // Audio setup (minimal)
+      function ensureAudio() {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          masterGain = audioCtx.createGain();
+          masterGain.gain.value = 0.9;
+          masterGain.connect(audioCtx.destination);
+        }
+      }
+      function stopSequencer() {
+        if (seqTimer) { clearTimeout(seqTimer); seqTimer = null; }
+        if (ambient.running && ambient.gain && audioCtx) {
+          const t = audioCtx.currentTime;
+          ambient.gain.gain.cancelScheduledValues(t);
+          ambient.gain.gain.setTargetAtTime(0.0001, t, 0.18);
+        }
+        ambient = { gain: null, filter: null, reverb: null, wet: null, dry: null, drones: [], running: false };
+      }
+
+      // Hover events
+      function canvasClientToPixel(ev) {
+        const rect = mainCanvas.getBoundingClientRect();
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        const cx = (ev.clientX - rect.left) * dpr;
+        const cy = (ev.clientY - rect.top) * dpr;
+        return { cx, cy, rect };
+      }
+      function updateHover(ev) {
+        const { cx, cy, rect } = canvasClientToPixel(ev);
+        hoverPos = { x: cx, y: cy };
+        const lensSize = lens.offsetWidth || 160;
+        lens.style.left = (ev.clientX - rect.left - lensSize/2) + 'px';
+        lens.style.top = (ev.clientY - rect.top - lensSize/2) + 'px';
+        drawLens(cx, cy);
+      }
+      mainCanvas.addEventListener('pointerenter', async (e) => {
+        if (!imgBitmap) return;
+        isHovering = true;
+        lens.classList.remove('hidden');
+      });
+      mainCanvas.addEventListener('pointermove', (e) => {
+        if (!imgBitmap) return;
+        updateHover(e);
+      });
+      mainCanvas.addEventListener('pointerleave', () => {
+        isHovering = false;
+        lens.classList.add('hidden');
+      });
+
+      // Reveal animation
+      let waitRAF = null, revealRAF = null;
+      function overlayFill(color = 'rgba(10,10,12,1)') {
+        octx.save();
+        octx.globalCompositeOperation = 'source-over';
+        octx.fillStyle = color;
+        octx.fillRect(0,0,paintOverlay.width, paintOverlay.height);
+        octx.restore();
+      }
+      function cancelWaitingBrush() {
+        if (waitRAF) cancelAnimationFrame(waitRAF);
+        waitRAF = null;
+      }
+      function startBrushReveal(duration = 5000) {
+        if (!paintOverlay.width || !paintOverlay.height) return;
+        cancelWaitingBrush();
+        overlayFill('rgba(10,10,12,1)');
+        const W = paintOverlay.width, H = paintOverlay.height;
+        const strokes = Math.max(60, Math.floor((W*H) / (180*180)));
+        const start = performance.now();
+        let angle = Math.random() * Math.PI * 2;
+
+        function frame(now) {
+          const p = clamp((now - start) / duration, 0, 1);
+          const n = Math.floor(strokes * (p*p));
+          octx.save();
+          octx.globalCompositeOperation = 'destination-out';
+          octx.lineCap = 'round';
+          for (let i=0; i<n; i++) {
+            const rad = 28 + (i % 5) * 6;
+            const len = 140 + (i % 7) * 12;
+            const cx = (i*97 % W);
+            const cy = (i*57 % H);
+            angle += 0.22;
+            const x1 = cx + Math.cos(angle+i*0.03) * len*0.5;
+            const y1 = cy + Math.sin(angle+i*0.03) * len*0.5;
+            const x0 = cx - Math.cos(angle+i*0.03) * len*0.5;
+            const y0 = cy - Math.sin(angle+i*0.03) * len*0.5;
+            octx.lineWidth = rad;
+            octx.strokeStyle = 'rgba(0,0,0,0.92)';
+            octx.beginPath();
+            octx.moveTo(x0, y0);
+            octx.lineTo(x1, y1);
+            octx.stroke();
+          }
+          octx.restore();
+
+          if (p < 1) {
+            revealRAF = requestAnimationFrame(frame);
+          } else {
+            octx.clearRect(0,0,W,H);
+            revealRAF = null;
+          }
+        }
+        revealRAF = requestAnimationFrame(frame);
+      }
+
+      // Utility: seed hashing from string
+      function hashSeed(str='') {
+        let h = 0;
+        for (let i = 0; i < str.length; i++) {
+          h = ((h << 5) - h) + str.charCodeAt(i);
+          h |= 0;
+        }
+        return Math.abs(h);
+      }
+
+      // -------------- Painting flow helpers --------------
+      async function doGenerate(fullPrompt, opts = {}) {
+        const now = performance.now();
+        if (now - lastGenAt < 2500) return false; // return false if debounced
+        lastGenAt = now;
+
+        try { ensureAudio(); await audioCtx?.resume(); } catch(e){}
+        hide(readyPill); hide(errorPill); show(genPill);
+        loadingOverlay.classList.remove('hidden');
+
+        // Abort any in-progress generation and start a new one
+        try { genState.controller?.abort(); } catch(e){}
+        const controller = new AbortController();
+        const genId = ++genState.id;
+        genState.controller = controller;
+
+        try {
+          const bitmap = await generateImage(fullPrompt, { signal: controller.signal, seed: opts.seed });
+          if (genId !== genState.id) return true; // stale result, ignore but was started
+
+          imgBitmap = bitmap;
+          resizeCanvases();
+          startBrushReveal(5000);
+
+          if (genId === genState.id) {
+            hide(genPill); hide(errorPill);
+            show(readyPill);
+            setTimeout(() => { if (genId === genState.id) hide(readyPill); }, 1600);
+          }
+        } catch (err) {
+          if (err?.name === 'AbortError') return true;
+          console.error(err);
+          try {
+            const fallback = await fetch('https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1200&auto=format&fit=crop');
+            const blob = await fallback.blob();
+            const bm = await createImageBitmap(blob);
+            if (genId !== genState.id) return true;
+            imgBitmap = bm;
+            resizeCanvases();
+            startBrushReveal(5200);
+          } catch {}
+          if (genId === genState.id) { hide(genPill); show(errorPill); }
+        } finally {
+          if (genId === genState.id) {
+            loadingOverlay.classList.add('hidden');
+            cancelWaitingBrush();
+          }
+        }
+        return true; // generation attempt started
+      }
+
+      // ---------------- Song search / player ----------------
+      function secToClock(sec) {
+        if (!isFinite(sec)) return '0:00';
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return m + ':' + String(s).padStart(2,'0');
+      }
+      async function searchSongs(q) {
+        const url = `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=song&limit=24&media=music`;
+        const res = await fetch(url);
+        const json = await res.json();
+        return (json.results || []).filter(r => r.previewUrl);
+      }
+      async function searchSimilar(q) {
+        const cleaned = (q || '').trim();
+        const parts = cleaned.split(/\s+/).filter(Boolean);
+        const byIdx = cleaned.toLowerCase().indexOf('by ');
+        let alt = cleaned;
+        if (byIdx !== -1) {
+          alt = cleaned.slice(byIdx + 3);
+        } else if (parts.length > 1) {
+          alt = parts.sort((a,b)=>b.length - a.length)[0];
+        }
+        let results = await searchSongs(alt);
+        if (results.length === 0 && parts.length) {
+          results = await searchSongs(parts[0]);
+        }
+        return results;
+      }
+      function artworkHD(url) {
+        return url ? url.replace(/100x100bb\.jpg/, '600x600bb.jpg') : '';
+      }
+
+      function renderResults(items, titleText = 'Results') {
+        resultsList.innerHTML = '';
+        if (resultsTitle) resultsTitle.textContent = titleText;
+        if (!items.length) {
+          resultsList.innerHTML = '<div class="text-sm text-zinc-500 col-span-full">No results</div>';
+          return;
+        }
+        const show = items.slice(0, 3);
+        show.forEach((it, idx) => {
+          const item = document.createElement('button');
+          item.className = 'group w-full text-left rounded-lg border border-white/10 bg-black/30 hover:bg-black/40 transition p-3 flex items-center gap-3';
+          item.setAttribute('data-idx', idx);
+          const art = artworkHD(it.artworkUrl100);
+          item.innerHTML = `
+            <img src="https://images.unsplash.com/photo-1621619856624-42fd193a0661?w=1080&q=80" alt="" class="h-12 w-12 rounded-md object-cover border border-white/10" />
+            <div class="min-w-0 flex-1">
+              <div class="text-sm text-zinc-100 truncate tracking-tight">${it.trackName || 'Unknown Title'}</div>
+              <div class="text-xs text-zinc-400 truncate">${it.artistName || ''}</div>
+            </div>
+            <div class="flex items-center gap-2 text-xs text-zinc-400">
+              <i data-lucide="play" class="h-4 w-4 text-zinc-400 group-hover:text-zinc-200" style="stroke-width: 1.5"></i>
+            </div>
+          `;
+          item.addEventListener('click', () => {
+            const globalIdx = items.findIndex(r => r.trackId === it.trackId);
+            selectTrack(globalIdx !== -1 ? globalIdx : idx);
+          });
+          resultsList.appendChild(item);
+        });
+        if (window.lucide) lucide.createIcons();
+      }
+
+      // Deduplicate results
+      function normalizeTitle(title='') {
+        let t = (title || '').toLowerCase().trim();
+        t = t.replace(/\s*[\(\[].*?[\)\]]\s*/g, ' ');
+        t = t.replace(/\s*-\s*(remaster(?:ed)?(?: \d{4})?|single|radio edit|album version|clean|explicit|deluxe)\b.*$/gi, '');
+        t = t.replace(/\s+/g, ' ').trim();
+        return t;
+      }
+      function normalizeArtist(artist='') {
+        return (artist || '').toLowerCase().trim().replace(/\s+/g, ' ');
+      }
+      function trackKey(t) {
+        return normalizeArtist(t.artistName) + '|' + normalizeTitle(t.trackName);
+      }
+      function dedupeTracks(arr) {
+        const map = new Map();
+        for (const t of (arr || [])) {
+          if (!t || !t.previewUrl) continue;
+          const k = trackKey(t);
+        if (!map.has(k)) map.set(k, t);
+        }
+        return Array.from(map.values());
+      }
+
+      async function onSearch() {
+        if (!selectedStyle) return; // require style before search
+        const q = (songQuery.value || '').trim();
+        if (!q) return;
+        resultsWrap.classList.remove('hidden');
+        if (resultsTitle) resultsTitle.textContent = 'Results';
+        resultsList.innerHTML = '<div class="text-sm text-zinc-500 col-span-full flex items-center gap-2"><svg class="animate-spin h-4 w-4 text-zinc-500" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-opacity="0.25" stroke-width="4"></circle><path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" stroke-width="4"></path></svg> searching...</div>';
+        try {
+          searchResults = await searchSongs(q);
+          searchResults = dedupeTracks(searchResults);
+          if (!searchResults.length) {
+            let similar = await searchSimilar(q);
+            similar = dedupeTracks(similar);
+            if (similar.length) {
+              renderResults(similar, 'Similar results');
+              searchResults = similar;
+            } else {
+              resultsList.innerHTML = '<div class="text-sm text-zinc-500 col-span-full">No results</div>';
+            }
+          } else {
+            renderResults(searchResults, 'Results');
+          }
+        } catch (e) {
+          resultsList.innerHTML = '<div class="text-sm text-rose-400 col-span-full">Search failed. Try again.</div>';
+        }
+      }
+
+      searchBtn.addEventListener('click', onSearch);
+      songQuery.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') onSearch();
+      });
+
+      function updatePlayerUI(track) {
+        playerCard.classList.remove('hidden');
+        playerArt.src = artworkHD(track.artworkUrl100);
+        playerTitle.textContent = track.trackName || '';
+        playerArtist.textContent = track.artistName || '';
+        songProgress.style.width = '0%';
+        songTime.textContent = '0:00';
+        if (playHint) playHint.classList.remove('hidden'); // Hint shown until play
+        setPlayIcon(false); // show Play when paused
+      }
+
+      function togglePlayPause() {
+        if (previewAudio.paused) {
+          previewAudio.play().catch(()=>{});
+        } else {
+          previewAudio.pause();
+        }
+      }
+      playPauseBtn.addEventListener('click', togglePlayPause);
+
+      previewAudio.addEventListener('timeupdate', () => {
+        if (!previewAudio.duration || !isFinite(previewAudio.duration)) return;
+        const p = clamp(previewAudio.currentTime / previewAudio.duration, 0, 1);
+        songProgress.style.width = `${p*100}%`;
+        songTime.textContent = secToClock(previewAudio.currentTime);
+
+        // Auto-regenerate on new 20s segment while playing (debounced/aborted safely)
+        if (currentTrack && !previewAudio.paused) {
+          const seg = Math.floor(previewAudio.currentTime / 20);
+          if (seg !== lastSegmentIndex) {
+            lastSegmentIndex = seg;
+            generateFromSong(currentTrack, { reason: 'segment', segment: seg });
+          }
+        }
+      });
+
+      // Keep icons in sync with play/pause/ended
+      function setPlayIcon(isPlaying) {
+        // Re-render the icon each time to avoid issues with icon replacement
+        playPauseBtn.innerHTML = `<i data-lucide="${isPlaying ? 'pause' : 'play'}" class="h-5 w-5 text-zinc-200" style="stroke-width: 1.5"></i>`;
+        if (window.lucide) lucide.createIcons();
+      }
+
+      previewAudio.addEventListener('play', async () => {
+        stopSequencer(); // stop ambient while preview playing
+        if (playHint) playHint.classList.add('hidden');
+        setPlayIcon(true);
+        // If blocked earlier (no autoplay), kick generation now
+        if (currentTrack) {
+          if (!imgBitmap || pendingOnPlay || lastGenKey.split('|')[0] !== String(currentTrack.trackId)) {
+            generateFromSong(currentTrack, { reason: 'play' });
+          }
+        }
+        pendingOnPlay = false;
+      });
+
+      previewAudio.addEventListener('pause', () => {
+        setPlayIcon(false);
+        if (playHint) playHint.classList.remove('hidden');
+      });
+
+      previewAudio.addEventListener('ended', () => {
+        setPlayIcon(false);
+        if (playHint) playHint.classList.remove('hidden');
+      });
+
+      async function selectTrack(idx) {
+        const track = searchResults[idx];
+        if (!track || !track.previewUrl) return;
+        currentTrack = track;
+        lastSegmentIndex = -1; // reset segment tracking for new track
+        updatePlayerUI(track);
+        previewAudio.src = track.previewUrl;
+        try {
+          await previewAudio.play();
+        } catch (e) {
+          // Autoplay may be blocked; wait for user to press play
+          pendingOnPlay = true;
+          if (playHint) playHint.classList.remove('hidden');
+          return;
+        }
+        // Only generate immediately if actually playing
+        if (!previewAudio.paused) {
+          generateFromSong(track, { reason: 'select' });
+        }
+      }
+
+      // Lyrics analysis and prompt building
+      const STOPWORDS = new Set(('a,an,and,are,as,at,be,by,for,from,has,he,in,is,it,its,of,on,that,the,to,was,were,will,with,i,you,me,my,your,they,them,our,us,her,his,him,not,no,yes,oh,o,la,da,do,if,so,or,up,down,out,over,under,again,there,here,when,where,why,how,what,who,whom,this,those,these,too,very,into,got,get,gotta,gonna,wanna').split(','));
+
+      function quickSentiment(text) {
+        const pos = ['love','light','dream','good','shine','sun','happy','smile','free','gold','sweet','heaven','forever','dance','glow','hope','beautiful','alive','together','kiss'];
+        const neg = ['cry','tears','dark','alone','cold','pain','broken','lost','death','bleed','empty','fear','fall','nightmare','storm','war','rage','angry','burn','sad'];
+        const t = (text || '').toLowerCase();
+        let s=0; pos.forEach(w=>{ if(t.includes(w)) s+=1; }); neg.forEach(w=>{ if(t.includes(w)) s-=1; });
+        return s;
+      }
+      function extractKeywords(text, max=8) {
+        const words = (text||'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(Boolean);
+        const freq = new Map();
+        for (const w of words) {
+          if (w.length < 3 || STOPWORDS.has(w)) continue;
+          freq.set(w, (freq.get(w)||0)+1);
+        }
+        return Array.from(freq.entries()).sort((a,b)=>b[1]-a[1]).slice(0,max).map(([w])=>w);
+      }
+      async function fetchLyrics(artist, title) {
+        try {
+          const url = `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`;
+          const res = await fetch(url);
+          if (!res.ok) throw new Error('lyrics not found');
+          const json = await res.json();
+          return json.lyrics || '';
+        } catch(e) {
+          return '';
+        }
+      }
+      function genreToStyle(genre='') {
+        const g = (genre || '').toLowerCase();
+        if (g.includes('hip') || g.includes('rap')) return 'pop-art';
+        if (g.includes('elect') || g.includes('dance')) return 'digital';
+        if (g.includes('jazz')) return 'watercolor';
+        if (g.includes('classical')) return 'oil';
+        if (g.includes('rock')) return 'oil';
+        if (g.includes('country') || g.includes('folk')) return 'impressionism';
+        if (g.includes('r&b') || g.includes('soul')) return 'surrealism';
+        return null;
+      }
+
+      async function generateFromSong(track, opts = {}) {
+        // Ensure we only generate when audio is actively playing
+        if (!previewAudio || previewAudio.paused || previewAudio.ended) {
+          pendingOnPlay = true;
+          if (playHint) playHint.classList.remove('hidden');
+          return;
+        }
+        const title = track?.trackName || '';
+        const artist = track?.artistName || '';
+        const genre = track?.primaryGenreName || '';
+        const chosen = selectedStyle || genreToStyle(genre) || 'digital';
+        const stylePhrase = stylePhrases[chosen] ? ', ' + stylePhrases[chosen] : '';
+
+        let lyrics = '';
+        try { lyrics = await fetchLyrics(artist, title); } catch(e) {}
+        const kws = extractKeywords(lyrics || `${title} ${artist}`, 6);
+        const sentiment = quickSentiment(lyrics);
+        const mood = sentiment >= 2 ? 'uplifting' : sentiment <= -2 ? 'moody' : 'ambient';
+        const basePrompt = `expressive painting inspired by "${title}" by ${artist}, ${mood}${kws.length ? ', ' + kws.join(', ') : ''}`;
+
+        // Segment-aware seed (stable per style + track + 20s time bucket)
+        const seg = typeof opts.segment === 'number' ? opts.segment : Math.floor((previewAudio.currentTime || 0) / 20);
+        const seedKey = `${track.trackId}|${chosen}|${seg}`;
+        if (seedKey === lastGenKey && opts.reason !== 'style-change') return; // avoid redundant generation
+        const seed = hashSeed(seedKey);
+
+        const started = await doGenerate(basePrompt + stylePhrase, { seed });
+        if (started) lastGenKey = seedKey; // set only if a generation attempt actually started
+      }
+    </script>
+  </body>
+</html>

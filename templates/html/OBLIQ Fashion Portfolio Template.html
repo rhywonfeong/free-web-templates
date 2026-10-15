@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OBLIQ° — Experimental Garment Studio / SS26</title>
+<meta name="description" content="OBLIQ° is an independent garment studio working between structure and motion. Collection 01 — Spring/Summer 2026.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{font-family:'Inter',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased}
+::selection{background:#FF3B0F;color:#F4F1EC}
+@keyframes marquee{from{transform:translate3d(0,0,0)}to{transform:translate3d(-50%,0,0)}}
+@keyframes marquee-rev{from{transform:translate3d(-50%,0,0)}to{transform:translate3d(0,0,0)}}
+@keyframes spin-slow{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+[data-reveal]{opacity:0;transform:translateY(28px);transition:opacity 1s cubic-bezier(.22,1,.36,1),transform 1s cubic-bezier(.22,1,.36,1)}
+[data-reveal].is-in{opacity:1;transform:none}
+[data-clip]{clip-path:inset(0 0 100% 0);transition:clip-path 1.2s cubic-bezier(.22,1,.36,1)}
+[data-clip].is-in{clip-path:inset(0 0 0% 0)}
+a:focus-visible,button:focus-visible{outline:2px solid #FF3B0F;outline-offset:3px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}[data-reveal]{opacity:1;transform:none}[data-clip]{clip-path:none}}
+</style></head>
+<body class="bg-[#F4F1EC] text-[#0A0A0A] overflow-x-hidden antialiased">
+
+<!-- cursor dot -->
+<div id="dot" class="pointer-events-none fixed -left-10 -top-10 z-[90] hidden h-3 w-3 rounded-full bg-[#FF3B0F] mix-blend-multiply lg:block" style="transition:transform .18s ease-out"></div>
+
+<!-- ================= HEADER ================= -->
+<header class="fixed inset-x-0 top-0 z-[70] border-b border-black/10 bg-[#F4F1EC]/85 backdrop-blur-md">
+  <div class="mx-auto flex max-w-[110rem] items-center justify-between px-5 py-4 sm:px-8 lg:px-12">
+    <a href="#top" class="font-['Inter_Tight'] text-xl font-semibold tracking-tight leading-none">OBLIQ<span class="text-[#FF3B0F]">°</span></a>
+
+    <div class="hidden items-center gap-10 md:flex">
+      <p class="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-black/60">
+        <span class="inline-block h-1.5 w-1.5 rounded-full bg-[#FF3B0F]"></span>Collection 01 — In Studio
+      </p>
+      <span class="h-4 w-px bg-black/15"></span>
+      <p class="text-xs uppercase tracking-[0.18em] text-black/60">Spring / Summer 2026</p>
+      <span class="h-4 w-px bg-black/15"></span>
+      <p class="text-xs uppercase tracking-[0.18em] text-black/40">Lisbon · 38°42′N</p>
+    </div>
+
+    <button id="menuOpen" class="group flex items-center gap-3" aria-label="Open menu">
+      <span class="hidden text-xs uppercase tracking-[0.22em] text-black/70 group-hover:text-[#FF3B0F] sm:inline">Menu</span>
+      <span class="flex h-9 w-9 flex-col items-center justify-center gap-[5px] border border-black/15 group-hover:border-[#FF3B0F]">
+        <span class="block h-px w-4 bg-black transition-all group-hover:w-5 group-hover:bg-[#FF3B0F]"></span>
+        <span class="block h-px w-4 bg-black transition-all group-hover:w-3 group-hover:bg-[#FF3B0F]"></span>
+      </span>
+    </button>
+  </div>
+</header>
+
+<!-- ================= MENU OVERLAY ================= -->
+<div id="menu" class="fixed inset-0 z-[80] hidden bg-[#0A0A0A] text-[#F4F1EC]">
+  <div class="mx-auto flex h-full max-w-[110rem] flex-col px-5 py-4 sm:px-8 lg:px-12">
+    <div class="flex items-center justify-between border-b border-white/15 pb-4">
+      <span class="font-['Inter_Tight'] text-xl font-semibold tracking-tight">OBLIQ<span class="text-[#FF3B0F]">°</span></span>
+      <button id="menuClose" class="flex items-center gap-3 text-xs uppercase tracking-[0.22em] text-white/60 hover:text-[#FF3B0F]" aria-label="Close menu">
+        Close <i data-lucide="x" stroke-width="1.5" class="h-5 w-5"></i>
+      </button>
+    </div>
+    <nav class="flex flex-1 flex-col justify-center gap-1 sm:gap-2">
+      <a href="#collection" class="group flex items-baseline gap-4 font-['Inter_Tight'] text-5xl font-semibold tracking-tighter sm:text-7xl lg:text-8xl hover:text-[#FF3B0F]"><span class="font-['Inter'] text-xs tracking-[0.2em] text-white/35">01</span>SILHOUETTES</a>
+      <a href="#archive" class="group flex items-baseline gap-4 font-['Inter_Tight'] text-5xl font-semibold tracking-tighter sm:text-7xl lg:text-8xl hover:text-[#FF3B0F]"><span class="font-['Inter'] text-xs tracking-[0.2em] text-white/35">02</span>ARCHIVE</a>
+      <a href="#studio" class="group flex items-baseline gap-4 font-['Inter_Tight'] text-5xl font-semibold tracking-tighter sm:text-7xl lg:text-8xl hover:text-[#FF3B0F]"><span class="font-['Inter'] text-xs tracking-[0.2em] text-white/35">03</span>STUDIO</a>
+      <a href="#contact" class="group flex items-baseline gap-4 font-['Inter_Tight'] text-5xl font-semibold tracking-tighter sm:text-7xl lg:text-8xl hover:text-[#FF3B0F]"><span class="font-['Inter'] text-xs tracking-[0.2em] text-white/35">04</span>CONTACT</a>
+    </nav>
+    <div class="grid gap-6 border-t border-white/15 pt-6 text-sm sm:grid-cols-3">
+      <p class="text-white/50">Rua da Boavista 118<br>1200-069 Lisbon, PT</p>
+      <p class="text-white/50">studio@obliq.wear<br>+351 214 009 26</p>
+      <p class="text-white/50">Instagram — Journal<br>Stockists — Press</p>
+    </div>
+  </div>
+</div>
+
+<main id="top">
+
+  <!-- ================= HERO ================= -->
+  <section class="relative overflow-hidden pt-28 sm:pt-32 lg:pt-40">
+    <div class="mx-auto max-w-[110rem] px-5 sm:px-8 lg:px-12">
+
+      <!-- meta row -->
+      <div class="flex flex-col gap-4 border-b border-black/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <p class="max-w-[16rem] text-base leading-snug text-black/60">An independent garment studio working between structure and movement.</p>
+        <div class="flex flex-wrap items-center gap-x-8 gap-y-2 text-xs uppercase tracking-[0.2em] text-black/45">
+          <span>Est. 2026</span><span>Series A / 24 Pieces</span><span class="text-[#FF3B0F]">Drop 01 Live</span>
+        </div>
+      </div>
+
+      <!-- headline + image -->
+      <div class="relative mt-10 sm:mt-14">
+        <h1 class="relative z-10 font-['Inter_Tight'] font-semibold leading-[0.82] tracking-tighter text-[3.4rem] sm:text-8xl lg:text-[9rem] xl:text-[11rem]">
+          <span class="block" data-reveal>WEAR THE</span>
+          <span class="block lg:pl-[14%]" data-reveal style="transition-delay:.1s">UNFINISHED</span>
+          <span class="block" data-reveal style="transition-delay:.2s">IDEA<span class="text-[#FF3B0F]">.</span></span>
+        </h1>
+
+        <!-- desktop floating image -->
+        <div class="absolute right-0 top-[6%] z-20 hidden w-[27%] max-w-[24rem] lg:block" data-parallax="0.14">
+          <div class="overflow-hidden" data-clip>
+            <img src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=900&q=80" alt="Model in structured ivory tailoring" class="aspect-[3/4] w-full object-cover transition-transform duration-[1.4s] ease-out hover:scale-[1.04]">
+          </div>
+          <div class="mt-3 flex items-start justify-between text-xs uppercase tracking-[0.16em] text-black/45">
+            <span>Fig. 01 — Shoulder Study</span><span class="text-[#FF3B0F]">SS26</span>
+          </div>
+        </div>
+
+        <!-- rotating mark -->
+        <div class="absolute -left-4 bottom-[-2.5rem] hidden h-24 w-24 place-items-center rounded-full bg-[#FF3B0F] text-[#F4F1EC] md:grid lg:left-auto lg:right-[32%] lg:bottom-6" style="animation:spin-slow 22s linear infinite">
+          <span class="font-['Inter_Tight'] text-xs uppercase tracking-[0.2em]">OBL / 26</span>
+        </div>
+      </div>
+
+      <!-- mobile hero image -->
+      <div class="mt-8 lg:hidden">
+        <div class="overflow-hidden" data-clip>
+          <img src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=900&q=80" alt="Model in structured ivory tailoring" class="aspect-[4/5] w-full object-cover">
+        </div>
+        <div class="mt-2 flex justify-between text-xs uppercase tracking-[0.16em] text-black/45"><span>Fig. 01 — Shoulder Study</span><span class="text-[#FF3B0F]">SS26</span></div>
+      </div>
+
+      <!-- hero base row -->
+      <div class="mt-12 grid gap-8 border-t border-black/10 pt-6 sm:mt-20 md:grid-cols-12">
+        <div class="flex items-center gap-3 md:col-span-3">
+          <i data-lucide="arrow-down" stroke-width="1.5" class="h-4 w-4 text-[#FF3B0F]"></i>
+          <span class="text-xs uppercase tracking-[0.22em] text-black/50">Scroll to enter</span>
+        </div>
+        <div class="md:col-span-4 md:col-start-6">
+          <p class="text-base leading-relaxed text-black/70">Twenty-four pieces cut in Portugal from deadstock wool, raw cotton and coated linen. Numbered, never repeated.</p>
+        </div>
+        <div class="md:col-span-3 md:col-start-10 md:text-right">
+          <a href="#collection" class="group inline-flex items-center gap-3 border-b border-black pb-1 text-sm uppercase tracking-[0.16em] hover:border-[#FF3B0F] hover:text-[#FF3B0F]">
+            View Collection 01 <i data-lucide="arrow-up-right" stroke-width="1.5" class="h-4 w-4 transition-transform group-hover:translate-x-1 group-hover:-translate-y-1"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= MANIFESTO ================= -->
+  <section class="relative overflow-hidden py-24 sm:py-36 lg:py-52">
+    <div class="mx-auto max-w-[110rem] px-5 sm:px-8 lg:px-12">
+      <div class="relative grid gap-16 md:grid-cols-12">
+        <p class="text-xs uppercase tracking-[0.22em] text-black/40 md:col-span-2" data-reveal>Statement<br>No. 001</p>
+
+        <div class="md:col-span-6 md:col-start-4" data-reveal style="transition-delay:.08s">
+          <p class="font-['Inter_Tight'] text-2xl leading-[1.25] tracking-tight sm:text-3xl">
+            We cut for the body in motion. Every seam is an argument against the average — nothing here is decoration, the structure is the statement.
+          </p>
+          <p class="mt-8 max-w-md text-base leading-relaxed text-black/60">
+            Small runs, open hems, visible construction. A garment should carry the record of how it was made and the freedom to be worn wrong.
+          </p>
+          <div class="mt-12 flex items-center gap-4">
+            <span class="font-['Inter_Tight'] text-lg font-semibold tracking-tight">OBLIQ<span class="text-[#FF3B0F]">°</span></span>
+            <span class="h-px w-16 bg-black/20"></span>
+            <span class="text-xs uppercase tracking-[0.2em] text-black/40">Garment Studio</span>
+          </div>
+        </div>
+
+        <div class="pointer-events-none absolute -right-4 bottom-[-3rem] select-none md:col-span-3 lg:bottom-[-5rem]" data-parallax="0.1">
+          <span class="font-['Inter_Tight'] text-[6rem] font-semibold leading-none tracking-tighter text-[#FF3B0F]/20 sm:text-[10rem] lg:text-[15rem]">26</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FEATURED COLLECTION ================= -->
+  <section id="collection" class="border-t border-black/10 py-20 sm:py-28">
+    <div class="mx-auto max-w-[110rem] px-5 sm:px-8 lg:px-12">
+
+      <div class="flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
+        <h2 class="font-['Inter_Tight'] text-5xl font-semibold leading-[0.85] tracking-tighter sm:text-7xl lg:text-[7.5rem]" data-reveal>
+          NEW<br><span class="lg:pl-[18%]">SILHOUETTES<span class="text-[#FF3B0F]">.</span></span>
+        </h2>
+        <div class="flex items-center gap-6 md:pb-4">
+          <span class="hidden h-px w-24 bg-black/20 md:block"></span>
+          <p class="max-w-[14rem] text-sm uppercase tracking-[0.16em] text-black/50">Four studies in volume, tension and drape</p>
+        </div>
+      </div>
+
+      <!-- asymmetric composition -->
+      <div class="mt-16 grid grid-cols-12 gap-6 sm:gap-8">
+
+        <!-- large -->
+        <figure class="col-span-12 lg:col-span-7" data-reveal>
+          <div class="group overflow-hidden">
+            <img src="https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=1400&q=80" alt="Editorial campaign look, oversized coat in daylight" class="aspect-[4/5] w-full object-cover transition-transform duration-[1.6s] ease-out group-hover:scale-105 sm:aspect-[16/11]">
+          </div>
+          <figcaption class="mt-4 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-t border-black/15 pt-3">
+            <span class="font-['Inter_Tight'] text-lg font-medium tracking-tight">Displaced Coat</span>
+            <span class="text-xs uppercase tracking-[0.18em] text-black/45">Piece 03 / Outerwear / SS26</span>
+            <span class="text-xs uppercase tracking-[0.18em] text-[#FF3B0F]">Shot in Belém</span>
+          </figcaption>
+        </figure>
+
+        <!-- two stacked smaller -->
+        <div class="col-span-12 flex flex-col gap-6 sm:flex-row lg:col-span-4 lg:col-start-9 lg:flex-col lg:gap-10 lg:pt-20">
+          <figure class="flex-1" data-reveal style="transition-delay:.1s">
+            <div class="group overflow-hidden">
+              <img src="https://images.unsplash.com/photo-1502716119720-b23a93e5fe1b?auto=format&fit=crop&w=800&q=80" alt="Close portrait with sculpted collar" class="aspect-[3/4] w-full object-cover transition-transform duration-[1.6s] ease-out group-hover:scale-105">
+            </div>
+            <figcaption class="mt-3 flex items-baseline justify-between border-t border-black/15 pt-2 text-xs uppercase tracking-[0.16em] text-black/45">
+              <span class="text-black">Collar Study</span><span>Piece 07</span>
+            </figcaption>
+          </figure>
+          <figure class="flex-1" data-reveal style="transition-delay:.18s">
+            <div class="group overflow-hidden">
+              <img src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=800&q=80" alt="Model against concrete architecture" class="aspect-square w-full object-cover transition-transform duration-[1.6s] ease-out group-hover:scale-105">
+            </div>
+            <figcaption class="mt-3 flex items-baseline justify-between border-t border-black/15 pt-2 text-xs uppercase tracking-[0.16em] text-black/45">
+              <span class="text-black">Wide Trouser</span><span>Piece 11</span>
+            </figcaption>
+          </figure>
+        </div>
+
+        <!-- floating off-grid image -->
+        <figure class="col-span-12 mt-4 sm:col-span-7 sm:col-start-4 lg:col-span-4 lg:col-start-2 lg:-mt-24" data-reveal>
+          <div class="group overflow-hidden">
+            <img src="https://images.unsplash.com/photo-1492707892479-7bc8d5a4ee93?auto=format&fit=crop&w=900&q=80" alt="Portrait with dramatic side lighting" class="aspect-[5/6] w-full object-cover grayscale transition-all duration-[1.2s] group-hover:grayscale-0">
+          </div>
+          <figcaption class="mt-3 border-t border-black/15 pt-2 text-xs uppercase tracking-[0.16em] text-black/45">
+            Off-Grid Knit — Piece 18 / <span class="text-[#FF3B0F]">Editorial note: worn inside-out on set</span>
+          </figcaption>
+        </figure>
+
+        <div class="col-span-12 flex items-end justify-end lg:col-span-4 lg:col-start-8 lg:-mt-16">
+          <a href="#archive" class="group inline-flex items-center gap-4">
+            <span class="grid h-16 w-16 place-items-center rounded-full bg-[#FF3B0F] text-[#F4F1EC] transition-transform duration-500 group-hover:scale-110">
+              <i data-lucide="arrow-right" stroke-width="1.5" class="h-5 w-5"></i>
+            </span>
+            <span class="font-['Inter_Tight'] text-xl font-medium tracking-tight group-hover:text-[#FF3B0F]">All 24 pieces</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= TICKER + BLACK TYPE ================= -->
+  <section class="bg-[#0A0A0A] text-[#F4F1EC]">
+    <!-- ticker -->
+    <div class="overflow-hidden border-y border-white/15 py-3">
+      <div class="flex w-max" style="animation:marquee 34s linear infinite">
+        <div class="flex shrink-0 items-center">
+          <span class="flex items-center gap-8 px-8 text-xs uppercase tracking-[0.24em] text-white/70">New Form <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Limited Edition <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Digital Culture <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Future Objects <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Collection 01 <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i></span>
+          <span class="flex items-center gap-8 px-8 text-xs uppercase tracking-[0.24em] text-white/70">New Form <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Limited Edition <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Digital Culture <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Future Objects <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Collection 01 <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i></span>
+        </div>
+        <div class="flex shrink-0 items-center" aria-hidden="true">
+          <span class="flex items-center gap-8 px-8 text-xs uppercase tracking-[0.24em] text-white/70">New Form <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Limited Edition <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Digital Culture <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Future Objects <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Collection 01 <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i></span>
+          <span class="flex items-center gap-8 px-8 text-xs uppercase tracking-[0.24em] text-white/70">New Form <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Limited Edition <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Digital Culture <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Future Objects <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i> Collection 01 <i data-lucide="asterisk" stroke-width="1.5" class="h-3.5 w-3.5 text-[#FF3B0F]"></i></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- big statement -->
+    <div class="relative overflow-hidden py-20 sm:py-28 lg:py-40">
+      <div class="mx-auto max-w-[110rem] px-5 sm:px-8 lg:px-12">
+        <div class="grid gap-10 md:grid-cols-12">
+          <p class="text-xs uppercase tracking-[0.22em] text-white/40 md:col-span-3">Chapter 02<br>Direction</p>
+          <div class="md:col-span-9">
+            <h2 class="font-['Inter_Tight'] font-semibold leading-[0.82] tracking-tighter text-[3.2rem] sm:text-8xl lg:text-[10rem]">
+              <span class="block" data-reveal>REFUSE</span>
+              <span class="block text-[#FF3B0F] lg:pl-[10%]" data-reveal style="transition-delay:.1s">THE</span>
+              <span class="block whitespace-nowrap" data-reveal style="transition-delay:.2s">TEMPLATE.</span>
+            </h2>
+          </div>
+        </div>
+
+        <div class="mt-16 grid gap-10 border-t border-white/15 pt-8 md:grid-cols-12">
+          <div class="md:col-span-4 md:col-start-4">
+            <img src="https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=700&q=80" alt="Model in motion, wide sleeve garment" class="aspect-[16/10] w-full object-cover" data-parallax="0.06">
+          </div>
+          <p class="text-base leading-relaxed text-white/60 md:col-span-4 md:col-start-9">
+            Seasons move faster than bodies do. We work against that clock — one release, twenty-four numbers, then the pattern is retired for good.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- reverse ticker -->
+    <div class="overflow-hidden border-t border-white/15 py-3">
+      <div class="flex w-max" style="animation:marquee-rev 40s linear infinite">
+        <div class="flex shrink-0">
+          <span class="px-8 font-['Inter_Tight'] text-sm uppercase tracking-[0.2em] text-white/45">Numbered 01—24 &nbsp;/&nbsp; Cut in Portugal &nbsp;/&nbsp; Deadstock Only &nbsp;/&nbsp; No Restock &nbsp;/&nbsp;</span>
+          <span class="px-8 font-['Inter_Tight'] text-sm uppercase tracking-[0.2em] text-white/45">Numbered 01—24 &nbsp;/&nbsp; Cut in Portugal &nbsp;/&nbsp; Deadstock Only &nbsp;/&nbsp; No Restock &nbsp;/&nbsp;</span>
+        </div>
+        <div class="flex shrink-0" aria-hidden="true">
+          <span class="px-8 font-['Inter_Tight'] text-sm uppercase tracking-[0.2em] text-white/45">Numbered 01—24 &nbsp;/&nbsp; Cut in Portugal &nbsp;/&nbsp; Deadstock Only &nbsp;/&nbsp; No Restock &nbsp;/&nbsp;</span>
+          <span class="px-8 font-['Inter_Tight'] text-sm uppercase tracking-[0.2em] text-white/45">Numbered 01—24 &nbsp;/&nbsp; Cut in Portugal &nbsp;/&nbsp; Deadstock Only &nbsp;/&nbsp; No Restock &nbsp;/&nbsp;</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ARCHIVE ================= -->
+  <section id="archive" class="py-20 sm:py-28 lg:py-36">
+    <div class="mx-auto max-w-[110rem] px-5 sm:px-8 lg:px-12">
+
+      <div class="flex flex-wrap items-end justify-between gap-6 border-b border-black/10 pb-6">
+        <h2 class="font-['Inter_Tight'] text-4xl font-semibold tracking-tighter sm:text-6xl" data-reveal>OBJECTS / 01</h2>
+        <p class="text-xs uppercase tracking-[0.2em] text-black/45">Studio archive — 2026 onward</p>
+      </div>
+
+      <div class="mt-14 grid grid-cols-12 gap-6 sm:gap-8">
+        <!-- tall portrait -->
+        <figure class="col-span-12 sm:col-span-6 lg:col-span-3" data-reveal>
+          <div class="group overflow-hidden bg-black/5">
+            <img src="https://images.unsplash.com/photo-1479064555552-3ef4979f8908?auto=format&fit=crop&w=800&q=80" alt="Archive look, layered neutral tailoring" class="aspect-[3/4.4] w-full object-cover transition-transform duration-[1.6s] group-hover:scale-105">
+          </div>
+          <figcaption class="mt-3 text-xs uppercase tracking-[0.16em] text-black/45">A/001 — Layered Vest</figcaption>
+        </figure>
+
+        <!-- type block between images -->
+        <div class="col-span-12 flex flex-col justify-between sm:col-span-6 lg:col-span-3 lg:pt-24">
+          <p class="font-['Inter_Tight'] text-3xl leading-[1.05] tracking-tight sm:text-4xl" data-reveal>
+            Pieces are photographed once, then they belong to whoever wears them.
+          </p>
+          <div class="mt-8 flex items-center gap-3 text-xs uppercase tracking-[0.2em] text-[#FF3B0F]">
+            <i data-lucide="plus" stroke-width="1.5" class="h-4 w-4"></i> Request archive access
+          </div>
+        </div>
+
+        <!-- square -->
+        <figure class="col-span-6 lg:col-span-3 lg:pt-40" data-reveal style="transition-delay:.1s">
+          <div class="group overflow-hidden">
+            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=700&q=80" alt="Detail shot of styling and accessories" class="aspect-square w-full object-cover transition-transform duration-[1.6s] group-hover:scale-105">
+          </div>
+          <figcaption class="mt-3 text-xs uppercase tracking-[0.16em] text-black/45">A/004 — Hardware</figcaption>
+        </figure>
+
+        <!-- floating small -->
+        <figure class="col-span-6 lg:col-span-2 lg:col-start-11 lg:pt-8" data-reveal style="transition-delay:.16s">
+          <div class="group overflow-hidden">
+            <img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=600&q=80" alt="Studio portrait in high contrast light" class="aspect-[3/4] w-full object-cover grayscale transition-all duration-[1.2s] group-hover:grayscale-0">
+          </div>
+          <figcaption class="mt-3 text-xs uppercase tracking-[0.16em] text-black/45">A/009 — Fitting</figcaption>
+        </figure>
+
+        <!-- wide landscape -->
+        <figure class="col-span-12 mt-6 lg:col-span-8 lg:col-start-3" data-reveal>
+          <div class="group overflow-hidden">
+            <img src="https://images.unsplash.com/photo-1469334031218-e382a71b716b?auto=format&fit=crop&w=1600&q=80" alt="Two models in campaign styling against architecture" class="aspect-[16/9] w-full object-cover transition-transform duration-[1.8s] group-hover:scale-[1.04]">
+          </div>
+          <figcaption class="mt-3 flex flex-wrap items-baseline justify-between gap-4 border-t border-black/15 pt-3 text-xs uppercase tracking-[0.16em] text-black/45">
+            <span class="text-black">A/012 — Campaign, Frame 04</span><span>Duo Study / SS26</span><span class="text-[#FF3B0F]">Available Now</span>
+          </figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FULL-SCREEN EDITORIAL ================= -->
+  <section class="relative h-[80vh] min-h-[30rem] overflow-hidden bg-[#0A0A0A] sm:h-[100vh]">
+    <img src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=2000&q=80" alt="Full-bleed fashion editorial cover image" class="absolute inset-0 h-[115%] w-full object-cover opacity-90" data-parallax="-0.08">
+    <div class="absolute inset-0 bg-gradient-to-t from-[#0A0A0A]/85 via-[#0A0A0A]/25 to-[#0A0A0A]/40"></div>
+
+    <div class="relative mx-auto flex h-full max-w-[110rem] flex-col justify-between px-5 py-10 text-[#F4F1EC] sm:px-8 lg:px-12">
+      <div class="flex items-start justify-between">
+        <p class="text-xs uppercase tracking-[0.22em] text-white/70">Cover — Collection 01<br>Photographed in Alentejo</p>
+        <span class="font-['Inter_Tight'] text-5xl font-semibold tracking-tighter text-[#FF3B0F] sm:text-7xl">01</span>
+      </div>
+
+      <div>
+        <h2 class="font-['Inter_Tight'] font-semibold leading-[0.85] tracking-tighter text-[2.7rem] sm:text-7xl lg:text-[8.5rem]">
+          BUILT TO<br><span class="pl-[6%]">MOVE FIRST<span class="text-[#FF3B0F]">.</span></span>
+        </h2>
+        <div class="mt-8 flex flex-wrap items-end justify-between gap-6 border-t border-white/20 pt-5">
+          <p class="max-w-sm text-base leading-relaxed text-white/65">Coated linen shell, dropped armhole, unlined body. Photographed at 6:14am with no retouching.</p>
+          <a href="#studio" class="group inline-flex items-center gap-3 text-sm uppercase tracking-[0.18em] text-white hover:text-[#FF3B0F]">
+            Read the story <i data-lucide="arrow-up-right" stroke-width="1.5" class="h-4 w-4 transition-transform group-hover:translate-x-1 group-hover:-translate-y-1"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= PHILOSOPHY ================= -->
+  <section id="studio" class="py-24 sm:py-32 lg:py-44">
+    <div class="mx-auto max-w-[110rem] px-5 sm:px-8 lg:px-12">
+      <div class="grid gap-14 md:grid-cols-12">
+        <div class="md:col-span-7">
+          <p class="mb-8 flex items-center gap-3 text-xs uppercase tracking-[0.22em] text-black/40">
+            <i data-lucide="plus" stroke-width="1.5" class="h-4 w-4 text-[#FF3B0F]"></i> The Studio
+          </p>
+          <h2 class="font-['Inter_Tight'] font-semibold leading-[0.88] tracking-tighter text-4xl sm:text-6xl lg:text-7xl" data-reveal>
+            WE DRESS THE<br>DISTANCE BETWEEN<br><span class="text-[#FF3B0F]">HABIT AND FORM.</span>
+          </h2>
+        </div>
+
+        <div class="md:col-span-4 md:col-start-9 md:pt-24">
+          <p class="text-base leading-relaxed text-black/70">
+            OBLIQ° began in a two-room workshop with three rolls of mill-end wool and a rule: no piece leaves until it fails a full day of wear.
+          </p>
+          <p class="mt-6 text-base leading-relaxed text-black/60">
+            We pattern by hand, sample on real bodies and keep production under one hundred units per style. It's slower. It's also the only honest way we know.
+          </p>
+
+          <dl class="mt-12 divide-y divide-black/15 border-y border-black/15">
+            <div class="flex items-baseline justify-between py-4"><dt class="text-xs uppercase tracking-[0.18em] text-black/45">Founded</dt><dd class="font-['Inter_Tight'] text-lg tracking-tight">Lisbon, 2026</dd></div>
+            <div class="flex items-baseline justify-between py-4"><dt class="text-xs uppercase tracking-[0.18em] text-black/45">Pieces per run</dt><dd class="font-['Inter_Tight'] text-lg tracking-tight">24</dd></div>
+            <div class="flex items-baseline justify-between py-4"><dt class="text-xs uppercase tracking-[0.18em] text-black/45">Material</dt><dd class="font-['Inter_Tight'] text-lg tracking-tight">100% deadstock</dd></div>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CLOSING CTA ================= -->
+  <section id="contact" class="relative overflow-hidden bg-gradient-to-b from-[#0A0A0A] via-[#1a0d07] to-[#FF3B0F] text-[#F4F1EC]">
+    <div class="mx-auto max-w-[110rem] px-5 py-24 sm:px-8 sm:py-32 lg:px-12 lg:py-44">
+      <p class="text-xs uppercase tracking-[0.22em] text-white/50">Next chapter — Winter 2026</p>
+
+      <h2 class="mt-10 font-['Inter_Tight'] font-semibold leading-[0.84] tracking-tighter text-[3rem] sm:text-8xl lg:text-[10rem]" data-reveal>
+        STAY<br>UNFINISHED.
+      </h2>
+
+      <div class="mt-16 grid gap-px border border-white/20 sm:grid-cols-3">
+        <a href="#collection" class="group flex items-center justify-between gap-4 border-b border-white/20 px-6 py-8 transition-colors hover:bg-[#0A0A0A] sm:border-b-0 sm:border-r">
+          <span class="font-['Inter_Tight'] text-xl font-medium tracking-tight">Explore Collection</span>
+          <i data-lucide="arrow-up-right" stroke-width="1.5" class="h-5 w-5 transition-transform group-hover:translate-x-1 group-hover:-translate-y-1"></i>
+        </a>
+        <a href="#archive" class="group flex items-center justify-between gap-4 border-b border-white/20 px-6 py-8 transition-colors hover:bg-[#0A0A0A] sm:border-b-0 sm:border-r">
+          <span class="font-['Inter_Tight'] text-xl font-medium tracking-tight">View Archive</span>
+          <i data-lucide="arrow-up-right" stroke-width="1.5" class="h-5 w-5 transition-transform group-hover:translate-x-1 group-hover:-translate-y-1"></i>
+        </a>
+        <a href="mailto:studio@obliq.wear" class="group flex items-center justify-between gap-4 px-6 py-8 transition-colors hover:bg-[#0A0A0A]">
+          <span class="font-['Inter_Tight'] text-xl font-medium tracking-tight">Contact Studio</span>
+          <i data-lucide="arrow-up-right" stroke-width="1.5" class="h-5 w-5 transition-transform group-hover:translate-x-1 group-hover:-translate-y-1"></i>
+        </a>
+      </div>
+
+      <form class="mt-14 flex max-w-xl flex-col gap-4 sm:flex-row sm:items-end" onsubmit="event.preventDefault();this.reset();">
+        <label class="flex-1">
+          <span class="block text-xs uppercase tracking-[0.2em] text-white/60">Drop notifications</span>
+          <input type="email" required placeholder="your@email.com" class="mt-3 w-full border-b border-white/40 bg-transparent pb-2 text-lg text-white placeholder-white/40 outline-none focus:border-white">
+        </label>
+        <button type="submit" class="shrink-0 border border-white/60 px-8 py-3 text-sm uppercase tracking-[0.18em] transition-colors hover:bg-[#0A0A0A] hover:border-[#0A0A0A]">Join list</button>
+      </form>
+    </div>
+  </section>
+
+</main>
+
+<!-- ================= FOOTER ================= -->
+<footer class="bg-[#0A0A0A] text-[#F4F1EC]">
+  <div class="mx-auto max-w-[110rem] px-5 py-14 sm:px-8 lg:px-12">
+    <div class="grid gap-10 border-b border-white/15 pb-12 sm:grid-cols-2 lg:grid-cols-4">
+      <div>
+        <span class="font-['Inter_Tight'] text-2xl font-semibold tracking-tight">OBLIQ<span class="text-[#FF3B0F]">°</span></span>
+        <p class="mt-4 max-w-[15rem] text-sm leading-relaxed text-white/50">Experimental garment studio. Structure over decoration.</p>
+      </div>
+      <nav class="flex flex-col gap-3 text-sm">
+        <p class="text-xs uppercase tracking-[0.2em] text-white/35">Collections</p>
+        <a href="#collection" class="text-white/70 hover:text-[#FF3B0F]">Silhouettes 01</a>
+        <a href="#archive" class="text-white/70 hover:text-[#FF3B0F]">Archive</a>
+        <a href="#" class="text-white/70 hover:text-[#FF3B0F]">Lookbook PDF</a>
+      </nav>
+      <nav class="flex flex-col gap-3 text-sm">
+        <p class="text-xs uppercase tracking-[0.2em] text-white/35">Studio</p>
+        <a href="#studio" class="text-white/70 hover:text-[#FF3B0F]">About</a>
+        <a href="#" class="text-white/70 hover:text-[#FF3B0F]">Stockists</a>
+        <a href="#" class="text-white/70 hover:text-[#FF3B0F]">Press</a>
+      </nav>
+      <nav class="flex flex-col gap-3 text-sm">
+        <p class="text-xs uppercase tracking-[0.2em] text-white/35">Contact</p>
+        <a href="mailto:studio@obliq.wear" class="text-white/70 hover:text-[#FF3B0F]">studio@obliq.wear</a>
+        <div class="mt-2 flex gap-4">
+          <a href="#" aria-label="Instagram" class="text-white/60 hover:text-[#FF3B0F]"><i data-lucide="instagram" stroke-width="1.5" class="h-5 w-5"></i></a>
+          <a href="#" aria-label="Journal" class="text-white/60 hover:text-[#FF3B0F]"><i data-lucide="book-open" stroke-width="1.5" class="h-5 w-5"></i></a>
+          <a href="#" aria-label="Mail" class="text-white/60 hover:text-[#FF3B0F]"><i data-lucide="mail" stroke-width="1.5" class="h-5 w-5"></i></a>
+        </div>
+      </nav>
+    </div>
+
+    <div class="overflow-hidden py-8">
+      <p class="font-['Inter_Tight'] font-semibold leading-none tracking-tighter text-[4rem] sm:text-[9rem] lg:text-[14rem] text-white/90">OBLIQ<span class="text-[#FF3B0F]">°</span></p>
+    </div>
+
+    <div class="flex flex-col gap-3 border-t border-white/15 pt-6 text-xs uppercase tracking-[0.18em] text-white/40 sm:flex-row sm:justify-between">
+      <span>© 2026 OBLIQ° Studio</span>
+      <span>Lisbon · 38°42′N 9°08′W</span>
+      <span>Collection 01 / SS26</span>
+    </div>
+  </div>
+</footer>
+
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<script>
+  lucide.createIcons();
+
+  /* scroll reveal */
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); } });
+  }, { threshold: 0.15, rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('[data-reveal],[data-clip]').forEach(el => io.observe(el));
+
+  /* parallax */
+  const layers = [...document.querySelectorAll('[data-parallax]')];
+  let ticking = false;
+  function parallax(){
+    const vh = window.innerHeight;
+    layers.forEach(el => {
+      const r = el.getBoundingClientRect();
+      if (r.bottom < -200 || r.top > vh + 200) return;
+      const speed = parseFloat(el.dataset.parallax);
+      const offset = (r.top + r.height / 2 - vh / 2) * speed;
+      el.style.transform = `translate3d(0,${offset.toFixed(2)}px,0)`;
+    });
+    ticking = false;
+  }
+  addEventListener('scroll', () => { if(!ticking){ ticking = true; requestAnimationFrame(parallax);} }, {passive:true});
+  addEventListener('resize', parallax); parallax();
+
+  /* cursor dot */
+  const dot = document.getElementById('dot');
+  if (matchMedia('(pointer:fine)').matches){
+    addEventListener('mousemove', e => { dot.style.transform = `translate(${e.clientX - 6}px,${e.clientY - 6}px)`; });
+    document.querySelectorAll('a,button').forEach(el => {
+      el.addEventListener('mouseenter', () => dot.style.width = dot.style.height = '2.25rem');
+      el.addEventListener('mouseleave', () => dot.style.width = dot.style.height = '');
+    });
+  }
+
+  /* menu */
+  const menu = document.getElementById('menu');
+  const open = () => { menu.classList.remove('hidden'); document.body.style.overflow = 'hidden'; };
+  const close = () => { menu.classList.add('hidden'); document.body.style.overflow = ''; };
+  document.getElementById('menuOpen').addEventListener('click', open);
+  document.getElementById('menuClose').addEventListener('click', close);
+  menu.querySelectorAll('a').forEach(a => a.addEventListener('click', close));
+  addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+</script>
+</body>
+</html>

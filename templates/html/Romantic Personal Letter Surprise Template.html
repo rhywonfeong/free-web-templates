@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="en" style="overflow: hidden;">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#08051f" />
+<title>Bridget Surprise</title>
+<style>
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+margin: 0;
+min-height: 100vh;
+overflow-x: hidden;
+color: #fff8ff;
+background: #07041b;
+font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+button { font: inherit; }
+.galaxy {
+position: fixed;
+inset: 0;
+z-index: -5;
+overflow: hidden;
+background:
+radial-gradient(circle at 18% 20%, rgba(111, 65, 202, .5), transparent 30%),
+radial-gradient(circle at 83% 26%, rgba(43, 86, 196, .42), transparent 31%),
+radial-gradient(circle at 48% 80%, rgba(139, 36, 143, .3), transparent 38%),
+linear-gradient(135deg, #05031a 0%, #0a0830 44%, #100724 100%);
+}
+.galaxy::before,
+.galaxy::after {
+content: "";
+position: absolute;
+width: 70vmax;
+height: 70vmax;
+border-radius: 50%;
+filter: blur(34px);
+opacity: .52;
+animation: drift 16s ease-in-out infinite alternate;
+}
+.galaxy::before {
+top: -34vmax;
+left: -28vmax;
+background: radial-gradient(circle, rgba(103, 92, 255, .42), transparent 66%);
+}
+.galaxy::after {
+right: -30vmax;
+bottom: -34vmax;
+background: radial-gradient(circle, rgba(233, 79, 183, .28), transparent 67%);
+animation-duration: 20s;
+animation-direction: alternate-reverse;
+}
+.stars, .hearts-layer, .fireworks {
+position: fixed;
+inset: 0;
+pointer-events: none;
+overflow: hidden;
+}
+.stars { z-index: -3; }
+.hearts-layer { z-index: -2; }
+.fireworks { z-index: 20; }
+.star {
+position: absolute;
+width: .2rem;
+height: .2rem;
+border-radius: 999px;
+background: white;
+box-shadow: 0 0 .75rem .15rem rgba(255,255,255,.75);
+animation: twinkle var(--duration) ease-in-out infinite alternate;
+opacity: var(--opacity);
+}
+.float-heart {
+position: absolute;
+bottom: -10vh;
+color: rgba(255, 144, 208, .75);
+text-shadow: 0 0 1.25rem rgba(255, 71, 170, .9);
+animation: floatUp var(--duration) linear infinite;
+animation-delay: var(--delay);
+font-size: var(--size);
+opacity: .74;
+}
+.noise {
+position: fixed;
+inset: 0;
+z-index: -1;
+opacity: .08;
+pointer-events: none;
+background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.6'/%3E%3C/svg%3E");
+}
+.loader {
+position: fixed;
+inset: 0;
+z-index: 100;
+display: grid;
+place-items: center;
+background: #07041b;
+transition: opacity .8s ease, visibility .8s ease;
+}
+.loader.hidden { opacity: 0; visibility: hidden; }
+.loader-inner { text-align: center; }
+.loader-heart {
+display: inline-block;
+color: #ff8fce;
+font-size: 3.2rem;
+filter: drop-shadow(0 0 1.5rem rgba(255, 102, 196, .9));
+animation: pulseHeart 1.15s ease-in-out infinite;
+}
+.loader p {
+margin: 1.2rem 0 0;
+color: rgba(255,255,255,.66);
+font-size: .75rem;
+letter-spacing: .24em;
+text-transform: uppercase;
+}
+main {
+width: min(100%, 74rem);
+min-height: 100vh;
+margin: auto;
+padding: 1.25rem;
+display: flex;
+align-items: center;
+justify-content: center;
+}
+.music-button {
+position: fixed;
+z-index: 10;
+top: 1.25rem;
+right: 1.25rem;
+width: 2.85rem;
+height: 2.85rem;
+border: 1px solid rgba(255,255,255,.18);
+border-radius: 999px;
+color: #fff;
+background: rgba(20, 12, 62, .48);
+backdrop-filter: blur(1rem);
+box-shadow: 0 .75rem 2rem rgba(0,0,0,.2);
+cursor: pointer;
+transition: transform .25s ease, background .25s ease;
+}
+.music-button:hover { transform: translateY(-.15rem); background: rgba(107, 57, 172, .52); }
+.music-note { font-size: 1rem; }
+.card {
+position: relative;
+width: 100%;
+max-width: 52rem;
+overflow: hidden;
+border: 1px solid rgba(255,255,255,.16);
+border-radius: 1.75rem;
+background: linear-gradient(135deg, rgba(255,255,255,.12), rgba(255,255,255,.04));
+box-shadow: 0 1.5rem 5rem rgba(0,0,0,.35), inset 0 1px rgba(255,255,255,.16);
+backdrop-filter: blur(1.25rem) saturate(130%);
+-webkit-backdrop-filter: blur(1.25rem) saturate(130%);
+}
+.card::before {
+content: "";
+position: absolute;
+width: 18rem;
+height: 18rem;
+top: -11rem;
+right: -7rem;
+border-radius: 50%;
+background: rgba(177, 113, 255, .19);
+filter: blur(1.5rem);
+}
+.card-content {
+position: relative;
+padding: 3.25rem 1.5rem 2rem;
+text-align: center;
+}
+.eyebrow {
+margin: 0 0 .9rem;
+color: rgba(243, 211, 255, .78);
+font-size: .75rem;
+font-weight: 500;
+letter-spacing: .18em;
+text-transform: uppercase;
+}
+h1 {
+margin: 0;
+font-family: Georgia, "Times New Roman", serif;
+font-size: clamp(2.7rem, 11vw, 5.5rem);
+font-weight: 500;
+letter-spacing: -.065em;
+line-height: .98;
+text-shadow: 0 .2rem 1.7rem rgba(255, 115, 206, .23);
+}
+.heart-inline {
+display: inline-block;
+margin-left: .1rem;
+font-size: .82em;
+animation: pulseHeart 1.3s ease-in-out infinite;
+}
+.divider {
+width: 4rem;
+height: 1px;
+margin: 1.65rem auto;
+background: linear-gradient(90deg, transparent, rgba(255,181,229,.9), transparent);
+}
+.letter {
+min-height: 10.8rem;
+margin: 0 auto;
+max-width: 39rem;
+color: rgba(255, 249, 255, .86);
+font-family: Georgia, "Times New Roman", serif;
+font-size: clamp(1rem, 3.8vw, 1.2rem);
+line-height: 1.8;
+}
+.cursor {
+display: inline-block;
+width: .1rem;
+height: 1.2em;
+margin-left: .15rem;
+vertical-align: -.2em;
+background: #fbd2ef;
+animation: blink .8s steps(2) infinite;
+}
+.button-wrap { margin-top: 1.8rem; }
+.heart-button {
+position: relative;
+overflow: hidden;
+border: 1px solid rgba(255,255,255,.34);
+border-radius: 999px;
+padding: .95rem 1.45rem;
+color: white;
+background: linear-gradient(135deg, rgba(228, 80, 172, .92), rgba(116, 78, 236, .92));
+box-shadow: 0 .8rem 2rem rgba(194, 66, 184, .35), inset 0 1px rgba(255,255,255,.35);
+cursor: pointer;
+font-size: .875rem;
+font-weight: 500;
+letter-spacing: .01em;
+transition: transform .25s ease, box-shadow .25s ease;
+animation: buttonGlow 2.2s ease-in-out infinite;
+}
+.heart-button:hover { transform: translateY(-.2rem) scale(1.02); box-shadow: 0 1rem 2.5rem rgba(211, 75, 194, .54); }
+.heart-button:active { transform: scale(.98); }
+.signature {
+margin: 1.65rem 0 0;
+color: rgba(255,255,255,.44);
+font-size: .75rem;
+letter-spacing: .08em;
+}
+.surprise {
+display: grid;
+max-height: 0;
+opacity: 0;
+overflow: hidden;
+transition: max-height .9s cubic-bezier(.2,.8,.2,1), opacity .8s ease, margin .8s ease;
+}
+.surprise.visible {
+max-height: 17rem;
+margin-top: 1.9rem;
+opacity: 1;
+}
+.surprise-inner {
+padding: 1.45rem 1rem;
+border: 1px solid rgba(255, 198, 235, .2);
+border-radius: 1.2rem;
+background: rgba(255, 200, 238, .07);
+box-shadow: inset 0 1px rgba(255,255,255,.08);
+}
+.roses {
+margin-bottom: .55rem;
+font-size: 1.65rem;
+letter-spacing: .36rem;
+animation: sway 2.4s ease-in-out infinite alternate;
+}
+.surprise h2 {
+margin: 0;
+font-family: Georgia, "Times New Roman", serif;
+font-size: clamp(1.45rem, 6vw, 2.15rem);
+font-weight: 500;
+letter-spacing: -.04em;
+line-height: 1.2;
+}
+.surprise p {
+margin: .6rem 0 0;
+color: rgba(255,255,255,.66);
+font-size: .75rem;
+line-height: 1.6;
+}
+.burst {
+position: absolute;
+left: var(--x);
+top: var(--y);
+width: .42rem;
+height: .42rem;
+border-radius: 50%;
+background: var(--color);
+box-shadow: 0 0 .85rem var(--color);
+animation: burst 1.55s ease-out forwards;
+}
+.rose-float {
+position: fixed;
+z-index: 19;
+bottom: -4rem;
+left: var(--left);
+font-size: var(--rose-size);
+animation: roseRise var(--rose-duration) ease-in forwards;
+pointer-events: none;
+}
+@keyframes drift {
+from { transform: translate3d(-2vw, 1vh, 0) scale(.95); }
+to { transform: translate3d(8vw, -4vh, 0) scale(1.08); }
+}
+@keyframes twinkle {
+from { transform: scale(.5); opacity: calc(var(--opacity) * .35); }
+to { transform: scale(1.8); opacity: var(--opacity); }
+}
+@keyframes floatUp {
+from { transform: translateY(0) translateX(0) rotate(0deg); opacity: 0; }
+12% { opacity: .72; }
+to { transform: translateY(-120vh) translateX(var(--drift)) rotate(25deg); opacity: 0; }
+}
+@keyframes pulseHeart {
+0%, 100% { transform: scale(1); }
+15% { transform: scale(1.16); }
+30% { transform: scale(1); }
+45% { transform: scale(1.11); }
+}
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes buttonGlow {
+0%, 100% { box-shadow: 0 .8rem 2rem rgba(194,66,184,.3), inset 0 1px rgba(255,255,255,.35); }
+50% { box-shadow: 0 .8rem 2.5rem rgba(155,98,255,.58), inset 0 1px rgba(255,255,255,.35); }
+}
+@keyframes sway {
+from { transform: rotate(-3deg) translateY(0); }
+to { transform: rotate(3deg) translateY(-.25rem); }
+}
+@keyframes burst {
+0% { transform: translate(0,0) scale(.4); opacity: 1; }
+75% { opacity: 1; }
+100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
+}
+@keyframes roseRise {
+0% { transform: translateY(0) rotate(0); opacity: 0; }
+10% { opacity: 1; }
+100% { transform: translateY(-115vh) translateX(var(--rose-drift)) rotate(var(--rose-rotate)); opacity: 0; }
+}
+@media (min-width: 40rem) {
+main { padding: 2rem; }
+.card-content { padding: 4.25rem 3.5rem 2.7rem; }
+.letter { min-height: 8.5rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+*, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+}
+/* Romantic sunset and cinematic finishing touches */
+.galaxy {
+background:
+radial-gradient(circle at 18% 24%, rgba(255, 151, 111, .48), transparent 30%),
+radial-gradient(circle at 82% 20%, rgba(255, 104, 167, .38), transparent 32%),
+radial-gradient(circle at 52% 82%, rgba(126, 49, 157, .44), transparent 40%),
+linear-gradient(155deg, #17072a 0%, #55204f 42%, #c65b66 72%, #f49a70 100%);
+}
+.galaxy::before {
+background: radial-gradient(circle, rgba(255, 181, 113, .36), transparent 66%);
+}
+.galaxy::after {
+background: radial-gradient(circle, rgba(255, 104, 177, .34), transparent 67%);
+}
+.name-glow {
+color: #fff0fa;
+text-shadow: 0 0 .45rem rgba(255, 206, 238, .9), 0 0 1.5rem rgba(255, 103, 185, .62), 0 0 3rem rgba(255, 179, 105, .36);
+animation: nameGlow 2.8s ease-in-out infinite alternate;
+}
+.letter { white-space: pre-line; }
+.shooting-stars { position: fixed; inset: 0; z-index: -2; overflow: hidden; pointer-events: none; }
+.shooting-star {
+position: absolute;
+width: 6.5rem;
+height: 1px;
+border-radius: 999px;
+opacity: 0;
+transform: rotate(-28deg);
+background: linear-gradient(90deg, transparent, rgba(255,255,255,.96), rgba(255,184,219,.32), transparent);
+box-shadow: 0 0 .65rem rgba(255, 231, 246, .9);
+animation: shootingStar var(--shoot-duration) ease-in forwards;
+}
+@keyframes nameGlow {
+from { filter: brightness(1); }
+to { filter: brightness(1.18); }
+}
+@keyframes shootingStar {
+0% { transform: translate3d(0, 0, 0) rotate(-28deg); opacity: 0; }
+10% { opacity: .95; }
+82% { opacity: .62; }
+100% { transform: translate3d(-38vw, 29vh, 0) rotate(-28deg); opacity: 0; }
+}
+</style>
+<script src="https://cdn.tailwindcss.com"></script></head>
+  <body class="" style="overflow: hidden; height: 100vh;">
+    <!-- Background (image) added by Aura -->
+    <div
+      class="fixed top-0 w-full h-screen bg-cover bg-center -z-10"
+      id="aura-image"
+      style='background-image: url("https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/aaa23316-e0c5-48f5-b404-4d62ad4a705c_3840w.png"); mask-image: none;'
+      data-alpha-mask="80"
+    ></div>
+    <div
+      class="galaxy"
+      style="background: linear-gradient(135deg, rgba(18, 7, 42, 0.42) 0%, rgba(80, 25, 73, 0.35) 45%, rgba(187, 75, 91, 0.28) 74%, rgba(244, 154, 112, 0.2) 100%);"
+    ></div>
+    <div class="stars" id="stars">
+      <span
+        class="star"
+        style="left: 19.6307%; top: 96.0461%; --duration: 2.1935243275943517s; --opacity: 0.85; animation-delay: -0.653428s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 0.587417%; top: 97.1687%; --duration: 4.100916207796129s; --opacity: 0.45; animation-delay: -1.01705s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 66.0537%; top: 59.2607%; --duration: 2.7078759905067447s; --opacity: 0.66; animation-delay: -2.50775s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 1.11687%; top: 20.7214%; --duration: 4.1799526245681555s; --opacity: 0.53; animation-delay: -2.17523s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 65.3952%; top: 61.8672%; --duration: 3.501323858727485s; --opacity: 0.26; animation-delay: -1.97559s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 6.99746%; top: 60.026%; --duration: 3.8404805750749267s; --opacity: 0.23; animation-delay: -0.987749s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 82.8272%; top: 16.0099%; --duration: 3.8383405314110446s; --opacity: 0.53; animation-delay: -3.16494s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 40.8299%; top: 42.9315%; --duration: 2.673068828572127s; --opacity: 0.62; animation-delay: -2.46665s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 10.9291%; top: 6.00367%; --duration: 1.4223076285626783s; --opacity: 0.57; animation-delay: -2.98077s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 96.6528%; top: 16.01%; --duration: 4.213883855529712s; --opacity: 0.95; animation-delay: -0.380725s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 35.298%; top: 74.8307%; --duration: 4.542521845735985s; --opacity: 0.34; animation-delay: -0.82356s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 44.6837%; top: 41.6245%; --duration: 3.0703831405347115s; --opacity: 0.30; animation-delay: -3.62529s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 43.1485%; top: 14.6855%; --duration: 1.8905617808450024s; --opacity: 0.81; animation-delay: -1.75548s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 97.2822%; top: 53.3345%; --duration: 4.6239448496185185s; --opacity: 0.62; animation-delay: -2.9812s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 10.1902%; top: 18.2464%; --duration: 2.7814525488330766s; --opacity: 0.34; animation-delay: -1.68547s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 38.2489%; top: 84.5022%; --duration: 2.7794839956363817s; --opacity: 0.79; animation-delay: -3.09434s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 49.7802%; top: 82.8465%; --duration: 3.533168232755254s; --opacity: 0.67; animation-delay: -2.0296s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 79.1517%; top: 42.1396%; --duration: 1.2031803322195023s; --opacity: 0.41; animation-delay: -1.23047s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 65.7897%; top: 81.6189%; --duration: 3.9919693928922753s; --opacity: 0.47; animation-delay: -3.53651s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 25.1179%; top: 24.1353%; --duration: 2.3881732540062197s; --opacity: 0.77; animation-delay: -3.73842s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 82.8481%; top: 96.1894%; --duration: 3.73711069063135s; --opacity: 0.96; animation-delay: -2.26626s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 8.61107%; top: 86.9784%; --duration: 3.4191338726133784s; --opacity: 0.67; animation-delay: -0.701364s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 60.2454%; top: 6.30783%; --duration: 4.526501172520094s; --opacity: 0.75; animation-delay: -1.12123s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 99.3781%; top: 65.3754%; --duration: 3.528087662855717s; --opacity: 0.68; animation-delay: -3.63624s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 29.8553%; top: 16.1185%; --duration: 3.8530618874903517s; --opacity: 0.30; animation-delay: -2.68321s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 33.2021%; top: 94.7966%; --duration: 2.4477090656846463s; --opacity: 0.94; animation-delay: -3.53544s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 47.2364%; top: 99.0712%; --duration: 1.631496948581204s; --opacity: 0.42; animation-delay: -1.46613s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 91.7727%; top: 24.8024%; --duration: 4.083387222057883s; --opacity: 0.73; animation-delay: -0.661098s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 16.0796%; top: 81.8202%; --duration: 2.274903122595858s; --opacity: 0.71; animation-delay: -1.01468s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 45.8686%; top: 95.1597%; --duration: 1.394080177897725s; --opacity: 0.69; animation-delay: -3.38408s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 77.5973%; top: 12.0535%; --duration: 2.5355428293041946s; --opacity: 0.49; animation-delay: -2.87718s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 40.259%; top: 28.7027%; --duration: 2.4938259485005556s; --opacity: 0.65; animation-delay: -0.0957443s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 77.9503%; top: 14.1185%; --duration: 3.7396482790102263s; --opacity: 0.68; animation-delay: -3.70175s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 92.1794%; top: 16.1638%; --duration: 2.279656505299521s; --opacity: 0.37; animation-delay: -1.50395s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 28.5451%; top: 19.9582%; --duration: 2.7166235936458127s; --opacity: 0.40; animation-delay: -0.421181s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 64.5144%; top: 52.1221%; --duration: 2.867194761386502s; --opacity: 0.25; animation-delay: -2.10456s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 86.4788%; top: 82.8116%; --duration: 2.9279839780800874s; --opacity: 0.55; animation-delay: -2.44966s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 78.7429%; top: 76.7721%; --duration: 3.6595027181364825s; --opacity: 0.76; animation-delay: -3.28543s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 99.255%; top: 39.9598%; --duration: 2.31410641263143s; --opacity: 0.25; animation-delay: -2.40237s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 86.3277%; top: 17.1335%; --duration: 1.536304234791031s; --opacity: 0.84; animation-delay: -1.15682s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 19.3104%; top: 92.8852%; --duration: 3.582361261726316s; --opacity: 0.38; animation-delay: -1.48744s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 30.5468%; top: 87.842%; --duration: 4.554477697126722s; --opacity: 0.76; animation-delay: -3.48952s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 69.9863%; top: 46.3747%; --duration: 2.5648215556619673s; --opacity: 0.73; animation-delay: -2.42989s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 97.3557%; top: 38.6363%; --duration: 1.507031846890579s; --opacity: 0.52; animation-delay: -0.644834s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 80.9155%; top: 99.5084%; --duration: 4.041951144731542s; --opacity: 0.75; animation-delay: -0.00494546s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 29.9237%; top: 19.4007%; --duration: 2.565928669703638s; --opacity: 0.41; animation-delay: -0.0386276s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 54.6372%; top: 46.0376%; --duration: 2.34210370104122s; --opacity: 0.25; animation-delay: -0.853258s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 13.5136%; top: 40.7359%; --duration: 4.594763757779375s; --opacity: 0.80; animation-delay: -2.38459s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 36.1146%; top: 93.6415%; --duration: 2.421273392207361s; --opacity: 0.86; animation-delay: -2.22884s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 43.3443%; top: 43.8592%; --duration: 1.7265887864108882s; --opacity: 0.30; animation-delay: -0.343691s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 30.21%; top: 31.8798%; --duration: 2.9922852610774084s; --opacity: 0.90; animation-delay: -1.60795s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 15.1676%; top: 39.4735%; --duration: 3.045367252211298s; --opacity: 0.81; animation-delay: -1.01299s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 47.3474%; top: 80.1207%; --duration: 1.6222963349282735s; --opacity: 0.26; animation-delay: -0.464266s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 94.38%; top: 93.1484%; --duration: 4.23433504134555s; --opacity: 0.86; animation-delay: -1.01757s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 94.2719%; top: 80.6412%; --duration: 1.2258580152457887s; --opacity: 0.39; animation-delay: -0.406411s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 42.6716%; top: 27.4356%; --duration: 1.9019223401410241s; --opacity: 0.47; animation-delay: -1.76808s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 76.1729%; top: 38.3314%; --duration: 3.5273697662078902s; --opacity: 0.92; animation-delay: -3.28335s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 29.7876%; top: 59.6599%; --duration: 4.189621777012211s; --opacity: 0.44; animation-delay: -2.15506s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 34.5835%; top: 18.9938%; --duration: 1.9828203024743916s; --opacity: 0.56; animation-delay: -1.75231s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 75.8927%; top: 25.1944%; --duration: 4.210171221594567s; --opacity: 0.70; animation-delay: -0.673363s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 68.2028%; top: 55.0441%; --duration: 1.466909177779855s; --opacity: 0.50; animation-delay: -2.12824s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 58.1612%; top: 19.9074%; --duration: 2.7199887270604233s; --opacity: 0.41; animation-delay: -2.79442s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 0.127718%; top: 37.9868%; --duration: 3.3328073657503827s; --opacity: 0.29; animation-delay: -1.20702s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 41.8079%; top: 37.671%; --duration: 4.605681545328025s; --opacity: 0.33; animation-delay: -3.89442s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 48.6534%; top: 69.164%; --duration: 2.9315287604182636s; --opacity: 0.30; animation-delay: -1.0005s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 15.0813%; top: 16.3658%; --duration: 1.662026955653984s; --opacity: 0.58; animation-delay: -1.85526s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 25.5917%; top: 63.7932%; --duration: 3.493217154981701s; --opacity: 0.70; animation-delay: -0.51486s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 80.4991%; top: 12.8952%; --duration: 4.218394388813399s; --opacity: 0.36; animation-delay: -0.948385s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 15.5807%; top: 17.8591%; --duration: 4.393950886254863s; --opacity: 0.83; animation-delay: -2.71709s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 16.8733%; top: 91.4212%; --duration: 2.5601867495043082s; --opacity: 0.62; animation-delay: -0.53583s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 6.21667%; top: 27.6688%; --duration: 2.839622963563394s; --opacity: 0.76; animation-delay: -1.5074s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 19.1852%; top: 63.8289%; --duration: 1.6911640094770863s; --opacity: 0.72; animation-delay: -1.69109s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 34.9238%; top: 98.5804%; --duration: 1.3929815119903362s; --opacity: 0.89; animation-delay: -1.3707s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 1.32921%; top: 71.3585%; --duration: 1.2067797210473774s; --opacity: 0.33; animation-delay: -1.65291s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 99.0397%; top: 8.21946%; --duration: 3.2400430938646494s; --opacity: 0.35; animation-delay: -0.918769s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 80.5965%; top: 64.2733%; --duration: 1.428685263842068s; --opacity: 0.94; animation-delay: -2.34525s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 25.7965%; top: 0.0604339%; --duration: 3.4294369796101023s; --opacity: 0.36; animation-delay: -3.22783s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 35.198%; top: 2.12344%; --duration: 3.143519086611999s; --opacity: 0.71; animation-delay: -0.135959s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 35.1597%; top: 16.8885%; --duration: 3.573192398223723s; --opacity: 0.75; animation-delay: -3.51952s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 19.5364%; top: 27.0088%; --duration: 2.485480110063614s; --opacity: 0.73; animation-delay: -2.84968s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 53.7989%; top: 94.7154%; --duration: 3.807037951756935s; --opacity: 0.48; animation-delay: -0.469258s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 55.8586%; top: 30.1528%; --duration: 3.777577305779727s; --opacity: 0.56; animation-delay: -2.66503s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 3.87459%; top: 69.1534%; --duration: 4.556624340802152s; --opacity: 0.29; animation-delay: -0.937929s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 65.2231%; top: 10.609%; --duration: 3.41711214215378s; --opacity: 0.63; animation-delay: -2.69639s;"
+      ></span>
+      <span
+        class="star"
+        style="left: 20.3172%; top: 14.123%; --duration: 4.501942713869206s; --opacity: 0.67; animation-delay: -2.27573s;"
+      ></span>
+    </div>
+    <div class="hearts-layer" id="heartsLayer">
+      <span
+        class="float-heart"
+        style="left: 93.5552%; --duration: 21.577950754269402s; --delay: -7.998536011565147s; --size: 1.551608166382116rem; --drift: 5.309525824951729vw;"
+      >
+        ♡
+      </span>
+      <span
+        class="float-heart"
+        style="left: 4.9976%; --duration: 17.062128481292838s; --delay: -18.304817295519776s; --size: 2.053243766846613rem; --drift: 3.2188759207616147vw;"
+      >
+        ♥
+      </span>
+      <span
+        class="float-heart"
+        style="left: 30.6451%; --duration: 12.590817502564793s; --delay: -8.050942087647508s; --size: 2.0869431469005955rem; --drift: -2.25954638614082vw;"
+      >
+        ♥
+      </span>
+      <span
+        class="float-heart"
+        style="left: 10.9706%; --duration: 13.253606393660561s; --delay: -13.162570088436265s; --size: 1.6671900586929604rem; --drift: 4.593380201748974vw;"
+      >
+        ♡
+      </span>
+      <span
+        class="float-heart"
+        style="left: 49.5498%; --duration: 12.155729685308234s; --delay: -6.9834153355901645s; --size: 2.175842949123286rem; --drift: -5.934626344793873vw;"
+      >
+        ♥
+      </span>
+      <span
+        class="float-heart"
+        style="left: 62.1657%; --duration: 12.258867738657903s; --delay: -6.768767222825716s; --size: 1.7687532116443268rem; --drift: 1.891533390859351vw;"
+      >
+        ♥
+      </span>
+      <span
+        class="float-heart"
+        style="left: 63.6319%; --duration: 16.855280801866677s; --delay: -14.272374241821025s; --size: 1.9033688847529953rem; --drift: 3.491799608289407vw;"
+      >
+        ♡
+      </span>
+      <span
+        class="float-heart"
+        style="left: 12.1176%; --duration: 16.355668644105513s; --delay: -2.489372438602959s; --size: 1.6762917040737237rem; --drift: 5.225073825348124vw;"
+      >
+        ♥
+      </span>
+      <span
+        class="float-heart"
+        style="left: 82.681%; --duration: 16.384205447583614s; --delay: -8.2636010175535s; --size: 0.9988494688037826rem; --drift: 5.770164543940188vw;"
+      >
+        ♥
+      </span>
+      <span
+        class="float-heart"
+        style="left: 1.0563%; --duration: 15.426078355589263s; --delay: -11.171422667244467s; --size: 1.8506732932694727rem; --drift: -3.9642829875067362vw;"
+      >
+        ♡
+      </span>
+      <span
+        class="float-heart"
+        style="left: 41.0995%; --duration: 20.08667592306336s; --delay: -14.819744223038034s; --size: 1.9066100094036111rem; --drift: -3.006035824819585vw;"
+      >
+        ♥
+      </span>
+      <span
+        class="float-heart"
+        style="left: 29.2302%; --duration: 21.381269336008586s; --delay: -12.149955618162824s; --size: 1.0181571570852097rem; --drift: -2.602190024500071vw;"
+      >
+        ♥
+      </span>
+      <span
+        class="float-heart"
+        style="left: 88.8939%; --duration: 14.388312449676091s; --delay: -19.32391982050852s; --size: 1.1888379970603382rem; --drift: 4.524750668977448vw;"
+      >
+        ♡
+      </span>
+    </div>
+    <div class="noise"></div>
+    <div class="fireworks" id="fireworks"></div>
+
+    <div class="loader" aria-label="Opening Bridget's surprise" id="loader">
+      <div class="loader-inner">
+        <div class="loader-heart">♥</div>
+        <p>A little surprise for Bridget is arriving</p>
+      </div>
+    </div>
+
+    <button
+      class="music-button"
+      id="musicButton"
+      aria-label="Play soft background music"
+      title="Play soft background music"
+      style="visibility: hidden;"
+    >
+      <span class="music-note" id="musicIcon">♫</span>
+    </button>
+
+    <main
+      style="visibility: hidden; opacity: 0; pointer-events: none;"
+      class=""
+    >
+      <section class="card" aria-labelledby="main-title">
+        <div class="card-content">
+          <p class="eyebrow">A small note, made especially for you</p>
+          <h1 id="main-title">
+            Hi
+            <span class="name-glow">Bridget</span>
+            <span class="heart-inline">❤️</span>
+          </h1>
+          <div class="divider"></div>
+
+          <div class="letter" aria-live="polite">
+            <span id="typewriter">L</span>
+            <span class="cursor" id="cursor"></span>
+          </div>
+
+          <div class="button-wrap">
+            <button class="heart-button" id="heartButton" aria-expanded="false">
+              Touch My Heart 💖
+            </button>
+          </div>
+
+          <div class="surprise" id="surprise" aria-live="polite">
+            <div class="surprise-inner">
+              <div class="roses">🌹 🌹 🌹</div>
+              <h2>
+                Have a beautiful day,
+                <br />
+                Bridget 🌹
+              </h2>
+              <p>
+                May this little surprise stay with you as a soft, happy smile.
+              </p>
+            </div>
+          </div>
+
+          <p class="signature">— Mohammed 😊</p>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const message = "ife has a funny way of reconnecting people. Years ago we shared the same primary school, then time took us on different paths. Thank you for giving me your number. I promised that one day I would text you, and today I wanted to send you something unique. I'm not asking for your heart today—I'm simply happy life gave me another chance to say hello. If this page made you smile, then it has already achieved its purpose.";
+
+      const typewriter = document.getElementById("typewriter");
+      const cursor = document.getElementById("cursor");
+      const loader = document.getElementById("loader");
+      const stars = document.getElementById("stars");
+      const heartsLayer = document.getElementById("heartsLayer");
+      const heartButton = document.getElementById("heartButton");
+      const surprise = document.getElementById("surprise");
+      const fireworks = document.getElementById("fireworks");
+      const musicButton = document.getElementById("musicButton");
+      const musicIcon = document.getElementById("musicIcon");
+
+      for (let i = 0; i < 85; i++) {
+        const star = document.createElement("span");
+        star.className = "star";
+        star.style.left = Math.random() * 100 + "%";
+        star.style.top = Math.random() * 100 + "%";
+        star.style.setProperty("--duration", (1.2 + Math.random() * 3.5) + "s");
+        star.style.setProperty("--opacity", (.22 + Math.random() * .75).toFixed(2));
+        star.style.animationDelay = (Math.random() * -4) + "s";
+        stars.appendChild(star);
+      }
+
+      for (let i = 0; i < 13; i++) {
+        const heart = document.createElement("span");
+        heart.className = "float-heart";
+        heart.textContent = i % 3 === 0 ? "♡" : "♥";
+        heart.style.left = Math.random() * 100 + "%";
+        heart.style.setProperty("--duration", (11 + Math.random() * 11) + "s");
+        heart.style.setProperty("--delay", (Math.random() * -20) + "s");
+        heart.style.setProperty("--size", (.8 + Math.random() * 1.5) + "rem");
+        heart.style.setProperty("--drift", ((Math.random() - .5) * 12) + "vw");
+        heartsLayer.appendChild(heart);
+      }
+
+      function typeMessage(index = 0) {
+        if (index < message.length) {
+          typewriter.textContent += message.charAt(index);
+          const pause = message.charAt(index) === "." || message.charAt(index) === "—" ? 110 : 18;
+          setTimeout(() => typeMessage(index + 1), pause);
+        } else {
+          setTimeout(() => cursor.style.display = "none", 1300);
+        }
+      }
+
+      window.addEventListener("load", () => {
+        setTimeout(() => {
+          loader.classList.add("hidden");
+          setTimeout(typeMessage, 450);
+        }, 1600);
+        musicPlaying = true;
+        playRomanticMusic();
+      });
+
+      function createFirework(x, y) {
+        const colors = ["#ff7ec4", "#fff0a8", "#a99cff", "#ffb4e3", "#90d8ff"];
+        for (let i = 0; i < 28; i++) {
+          const particle = document.createElement("span");
+          const angle = (Math.PI * 2 * i) / 28;
+          const distance = 4 + Math.random() * 11;
+          particle.className = "burst";
+          particle.style.setProperty("--x", x + "vw");
+          particle.style.setProperty("--y", y + "vh");
+          particle.style.setProperty("--dx", (Math.cos(angle) * distance) + "rem");
+          particle.style.setProperty("--dy", (Math.sin(angle) * distance) + "rem");
+          particle.style.setProperty("--color", colors[Math.floor(Math.random() * colors.length)]);
+          fireworks.appendChild(particle);
+          setTimeout(() => particle.remove(), 1600);
+        }
+      }
+
+      function launchRoses() {
+        for (let i = 0; i < 17; i++) {
+          const rose = document.createElement("div");
+          rose.className = "rose-float";
+          rose.textContent = i % 4 === 0 ? "💗" : "🌹";
+          rose.style.setProperty("--left", (Math.random() * 96) + "vw");
+          rose.style.setProperty("--rose-size", (1.1 + Math.random() * 1.2) + "rem");
+          rose.style.setProperty("--rose-duration", (4.8 + Math.random() * 3) + "s");
+          rose.style.setProperty("--rose-drift", ((Math.random() - .5) * 18) + "vw");
+          rose.style.setProperty("--rose-rotate", ((Math.random() - .5) * 220) + "deg");
+          rose.style.animationDelay = (Math.random() * .9) + "s";
+          document.body.appendChild(rose);
+          setTimeout(() => rose.remove(), 8500);
+        }
+      }
+
+      heartButton.addEventListener("click", () => {
+        if (!surprise.classList.contains("visible")) {
+          surprise.classList.add("visible");
+          heartButton.setAttribute("aria-expanded", "true");
+          heartButton.textContent = "A little magic for Bridget ✨";
+          launchRoses();
+          createFirework(20, 38);
+          setTimeout(() => createFirework(77, 29), 230);
+          setTimeout(() => createFirework(48, 58), 470);
+        } else {
+          createFirework(50, 42);
+        }
+      });
+
+      let audioContext;
+      let musicPlaying = false;
+      let musicTimer;
+
+      function getAudioContext() {
+        audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+        return audioContext;
+      }
+
+      function playRomanticMusic() {
+        const context = getAudioContext();
+        const notes = [261.63, 329.63, 392, 523.25, 440, 523.25, 659.25, 523.25, 293.66, 369.99, 440, 587.33];
+        let noteIndex = 0;
+        function playNote() {
+          if (!musicPlaying) return;
+          const oscillator = context.createOscillator();
+          const shimmer = context.createOscillator();
+          const gain = context.createGain();
+          const shimmerGain = context.createGain();
+          oscillator.type = "sine";
+          shimmer.type = "triangle";
+          oscillator.frequency.value = notes[noteIndex % notes.length];
+          shimmer.frequency.value = notes[(noteIndex + 2) % notes.length] / 2;
+          gain.gain.setValueAtTime(0.0001, context.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.035, context.currentTime + .18);
+          gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 2.15);
+          shimmerGain.gain.setValueAtTime(0.0001, context.currentTime);
+          shimmerGain.gain.exponentialRampToValueAtTime(0.012, context.currentTime + .35);
+          shimmerGain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 2.3);
+          oscillator.connect(gain).connect(context.destination);
+          shimmer.connect(shimmerGain).connect(context.destination);
+          oscillator.start();
+          shimmer.start();
+          oscillator.stop(context.currentTime + 2.25);
+          shimmer.stop(context.currentTime + 2.35);
+          noteIndex++;
+          musicTimer = setTimeout(playNote, 1120);
+        }
+        playNote();
+      }
+
+      function playSparkSound() {
+        const context = getAudioContext();
+        if (context.state === "suspended") context.resume();
+        for (let i = 0; i < 4; i++) {
+          const oscillator = context.createOscillator();
+          const gain = context.createGain();
+          oscillator.type = "square";
+          oscillator.frequency.setValueAtTime(1500 + i * 420, context.currentTime + i * .055);
+          oscillator.frequency.exponentialRampToValueAtTime(240 + i * 55, context.currentTime + .42 + i * .055);
+          gain.gain.setValueAtTime(.0001, context.currentTime + i * .055);
+          gain.gain.exponentialRampToValueAtTime(.09, context.currentTime + .07 + i * .055);
+          gain.gain.exponentialRampToValueAtTime(.0001, context.currentTime + .48 + i * .055);
+          oscillator.connect(gain).connect(context.destination);
+          oscillator.start(context.currentTime + i * .055);
+          oscillator.stop(context.currentTime + .52 + i * .055);
+        }
+      }
+
+      musicButton.addEventListener("click", async () => {
+        const context = getAudioContext();
+        if (!musicPlaying) {
+          musicPlaying = true;
+          if (context.state === "suspended") await context.resume();
+          playRomanticMusic();
+          musicIcon.textContent = "♫";
+          musicButton.setAttribute("aria-label", "Mute romantic background music");
+          musicButton.title = "Mute romantic background music";
+        } else {
+          musicPlaying = false;
+          clearTimeout(musicTimer);
+          musicIcon.textContent = "♩";
+          musicButton.setAttribute("aria-label", "Play romantic background music");
+          musicButton.title = "Play romantic background music";
+        }
+      });
+
+      document.addEventListener("pointerdown", () => {
+        if (audioContext && audioContext.state === "suspended") audioContext.resume();
+      }, { once: true });
+    </script>
+
+    <div class="shooting-stars" id="shootingStars" aria-hidden="true"></div>
+    <script>
+      window.addEventListener("load", () => {
+        const intro = document.getElementById("romanceIntro");
+        const envelope = document.getElementById("loveEnvelope");
+        const main = document.querySelector("main");
+        const music = document.getElementById("musicButton");
+        let burstCount = 0;
+        const burstInterval = setInterval(() => {
+          createFirework(14 + Math.random() * 72, 18 + Math.random() * 48);
+          burstCount++;
+          if (burstCount >= 6) clearInterval(burstInterval);
+        }, 520);
+        setTimeout(() => intro.classList.add("is-ready"), 3200);
+
+        function createNameSpark() {
+          const name = document.createElement("div");
+          name.textContent = "Bridget";
+          name.setAttribute("aria-hidden", "true");
+          name.style.cssText = "position:fixed;z-index:22;left:50%;top:46%;transform:translate(-50%,-50%) scale(.45);color:#fff4fb;font-family:Georgia,'Times New Roman',serif;font-size:clamp(3rem,13vw,7.5rem);font-weight:500;letter-spacing:-.07em;text-shadow:0 0 .3rem #fff,0 0 1rem #ff86c8,0 0 2.5rem #ff4fa9,0 0 4.5rem #ffd06f;pointer-events:none;opacity:0;";
+          document.body.appendChild(name);
+          name.animate([
+            { opacity: 0, transform: "translate(-50%,-50%) scale(.45)", filter: "brightness(3)" },
+            { opacity: 1, transform: "translate(-50%,-50%) scale(1.08)", filter: "brightness(1.7)" },
+            { opacity: 1, transform: "translate(-50%,-50%) scale(1)", filter: "brightness(1.2)" },
+            { opacity: 0, transform: "translate(-50%,-50%) scale(1.14)", filter: "brightness(2.4)" }
+          ], { duration: 1500, easing: "cubic-bezier(.18,.8,.2,1)" });
+          setTimeout(() => name.remove(), 1550);
+        }
+
+        envelope.addEventListener("click", async () => {
+          if (intro.classList.contains("is-opening")) return;
+          intro.classList.add("is-opening");
+          if (audioContext && audioContext.state === "suspended") await audioContext.resume();
+          if (!musicPlaying) {
+            musicPlaying = true;
+            playRomanticMusic();
+          }
+          for (let i = 0; i < 19; i++) {
+            setTimeout(() => createFirework(8 + Math.random() * 84, 14 + Math.random() * 62), i * 155);
+          }
+          setTimeout(() => {
+            createFirework(50, 44);
+            createNameSpark();
+            playSparkSound();
+          }, 3050);
+          setTimeout(() => {
+            main.style.visibility = "visible";
+            main.style.opacity = "1";
+            main.style.pointerEvents = "auto";
+            main.style.transition = "opacity .8s ease";
+            music.style.visibility = "visible";
+            intro.remove();
+          }, 3500);
+        });
+      });
+    </script>
+
+    <style>
+      .romance-intro{position:fixed;inset:0;z-index:15;display:grid;place-items:center;overflow:hidden;background:rgba(4,2,15,.42);opacity:1;transition:opacity .8s ease,visibility .8s ease}.romance-intro.is-opening{opacity:0;visibility:hidden}.intro-message{position:absolute;top:25%;left:50%;width:min(90vw,34rem);transform:translate(-50%,-.5rem);color:#fff0fa;font-family:Georgia,"Times New Roman",serif;font-size:clamp(1.7rem,6vw,3.15rem);font-weight:500;letter-spacing:-.045em;line-height:1.1;text-align:center;text-shadow:0 0 .75rem rgba(255,255,255,.72),0 0 2rem rgba(255,77,157,.82);opacity:0;transition:opacity .8s ease .15s,transform .8s ease .15s}.intro-message span{color:#ff74b8}.romance-intro.is-ready .intro-message{opacity:1;transform:translate(-50%,0)}.love-envelope{position:absolute;bottom:13%;left:50%;width:min(18rem,78vw);min-height:11.5rem;transform:translateX(-50%) translateY(1rem);border:1px solid rgba(255,255,255,.56);border-radius:1rem;color:#9e245f;background:linear-gradient(145deg,#fffdfd,#ffd7e7);box-shadow:0 1.25rem 3.5rem rgba(0,0,0,.45),inset 0 1px rgba(255,255,255,.9);cursor:pointer;opacity:0;transition:opacity .9s ease .85s,transform .9s ease .85s;animation:envelopeFloat 2.2s ease-in-out infinite alternate}.love-envelope::before{content:"";position:absolute;top:0;left:0;width:100%;height:54%;border-radius:1rem 1rem 0 0;background:linear-gradient(135deg,transparent 49.5%,rgba(232,101,153,.3) 50%,transparent 50.5%),linear-gradient(225deg,transparent 49.5%,rgba(232,101,153,.3) 50%,transparent 50.5%);pointer-events:none}.love-envelope::after{content:"♥";position:absolute;top:1.25rem;left:50%;transform:translateX(-50%);color:#ee5e9c;font-size:2rem;text-shadow:0 .25rem .5rem rgba(192,48,113,.2)}.love-envelope span{position:relative;z-index:1;display:block;margin:4.4rem 1.3rem 1.1rem;font-size:.9rem;font-weight:500;line-height:1.55;text-align:center}.romance-intro.is-ready .love-envelope{opacity:1;transform:translateX(-50%) translateY(0)}.love-envelope:hover{transform:translateX(-50%) translateY(-.3rem) scale(1.025)}@keyframes envelopeFloat{from{margin-bottom:0}to{margin-bottom:.7rem}}
+    </style>
+    <style>
+      .final-smile{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:1.5rem;background:rgba(7,4,27,.76);backdrop-filter:blur(.7rem);opacity:0;visibility:hidden;transition:opacity .7s ease,visibility .7s ease}.final-smile.visible{opacity:1;visibility:visible}.final-smile-card{width:min(23rem,90vw);overflow:hidden;border:1px solid rgba(255,255,255,.32);border-radius:1.5rem;background:rgba(255,244,250,.12);box-shadow:0 1.5rem 4rem rgba(0,0,0,.5);transform:translateY(1rem) scale(.96);transition:transform .7s cubic-bezier(.2,.8,.2,1)}.final-smile.visible .final-smile-card{transform:translateY(0) scale(1)}.final-smile img{display:block;width:100%;height:21rem;object-fit:cover;object-position:center}.final-smile p{margin:0;padding:1.2rem 1rem 1.35rem;color:#fff5fb;font-family:Georgia,"Times New Roman",serif;font-size:clamp(1.4rem,5vw,1.85rem);font-weight:500;letter-spacing:-.035em;line-height:1.15;text-align:center;text-shadow:0 0 1rem rgba(255,122,189,.55)}
+    </style>
+    <div
+      class="final-smile"
+      id="finalSmile"
+      aria-live="polite"
+      aria-hidden="true"
+    >
+      <div class="final-smile-card">
+        <img
+          src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/6ebb4fe2-a4fe-4e69-9e83-56b0ede480fd_1600w.png"
+          alt="Smiling Woman in Sunlit Forest"
+          style="object-position: center top;"
+        />
+        <p>
+          A little something to make you smile,
+          <br />
+          Bridget ♥
+        </p>
+      </div>
+    </div>
+    <script>
+      document.getElementById("heartButton").addEventListener("click", function () {
+        const finale = document.getElementById("finalSmile");
+        if (finale.dataset.scheduled) return;
+        finale.dataset.scheduled = "true";
+        const card = finale.querySelector(".final-smile-card");
+        card.innerHTML = '<img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/6ebb4fe2-a4fe-4e69-9e83-56b0ede480fd_1600w.png" alt="Smiling Woman in Sunlit Forest" style="object-position: center top;"><p>A little something to make you smile,<br>Bridget ♥</p>';
+        finale.classList.add("visible");
+        finale.setAttribute("aria-hidden", "false");
+        setTimeout(function () {
+          const ending = document.createElement("p");
+          ending.innerHTML = "Wishing you a blessed day,<br>Bridget ♥";
+          card.appendChild(ending);
+          ending.animate([{ opacity: 0, transform: "translateY(.75rem)" }, { opacity: 1, transform: "translateY(0)" }], { duration: 650, easing: "cubic-bezier(.2,.8,.2,1)", fill: "both" });
+        }, 5000);
+        setTimeout(function () {
+          finale.classList.remove("visible");
+          finale.setAttribute("aria-hidden", "true");
+          delete finale.dataset.scheduled;
+        }, 9000);
+      });
+    </script>
+    <div class="romance-intro" id="romanceIntro" aria-live="polite">
+      <div class="intro-message" id="introMessage">
+        I have something beautiful for you, Bridget
+        <span>♥</span>
+      </div>
+      <button
+        class="love-envelope"
+        id="loveEnvelope"
+        type="button"
+        aria-label="Open your surprise"
+      >
+        <span>
+          Please open me…
+          <br />
+          I have a little surprise for you.
+        </span>
+      </button>
+    </div>
+    <script>
+      (function () {
+        const synth = window.speechSynthesis;
+        if (!synth) return;
+
+        let selectedVoice = null;
+        function chooseVoice() {
+          const voices = synth.getVoices();
+          selectedVoice = voices.find(function (voice) {
+            return /en(-|_)US/i.test(voice.lang) && /(daniel|david|james|guy|male|alex)/i.test(voice.name);
+          }) || voices.find(function (voice) {
+            return /en/i.test(voice.lang);
+          }) || null;
+        }
+        chooseVoice();
+        synth.addEventListener("voiceschanged", chooseVoice);
+
+        function speak(text) {
+          synth.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.voice = selectedVoice;
+          utterance.rate = 0.91;
+          utterance.pitch = 0.88;
+          utterance.volume = 1;
+          synth.speak(utterance);
+        }
+
+        document.getElementById("loveEnvelope").addEventListener("click", function () {
+          speak("I have something beautiful for you, Bridget.");
+          setTimeout(function () {
+            speak("Life has a funny way of reconnecting people. Years ago we shared the same primary school, then time took us on different paths. Thank you for giving me your number. I promised that one day I would text you, and today I wanted to send you something unique. I'm not asking for your heart today. I'm simply happy life gave me another chance to say hello. If this page made you smile, then it has already achieved its purpose.");
+          }, 3650);
+        });
+
+        document.getElementById("heartButton").addEventListener("click", function () {
+          setTimeout(function () {
+            speak("Have a beautiful day, Bridget. May this little surprise stay with you as a soft, happy smile. Wishing you a blessed day.");
+          }, 450);
+        });
+      })();
+    </script>
+  </body>
+</html>

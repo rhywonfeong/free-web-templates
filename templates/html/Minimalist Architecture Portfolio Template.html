@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Phẳng Studio — Studio kiến trúc tối giản, tạo nên những không gian có chiều sâu và bản sắc." />
+<title>Phẳng Studio — Architecture & Spatial Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+
+<body class="bg-[#f7f7f4] font-['Manrope'] text-[#161616] antialiased selection:bg-[#161616] selection:text-white">
+  <header class="sticky top-0 z-50 border-b border-black/8 bg-[#f7f7f4]/95 backdrop-blur-md">
+    <div class="mx-auto flex h-20 max-w-[90rem] items-center justify-between px-5 sm:px-8 lg:px-12">
+      <a href="#top" class="text-lg font-semibold tracking-[-0.1em] sm:text-xl" aria-label="Phẳng Studio">
+        PHẲNG
+      </a>
+
+      <nav class="hidden items-center gap-8 text-xs font-medium uppercase tracking-[0.16em] md:flex">
+        <a href="#du-an" class="transition-opacity hover:opacity-45">Dự án</a>
+        <a href="#triet-ly" class="transition-opacity hover:opacity-45">Triết lý</a>
+        <a href="#doi-ngu" class="transition-opacity hover:opacity-45">Studio</a>
+      </nav>
+
+      <a href="#lien-he" class="hidden items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] transition-opacity hover:opacity-45 md:flex">
+        Cùng hợp tác
+        <iconify-icon icon="solar:arrow-right-linear" width="16" stroke-width="1.5"></iconify-icon>
+      </a>
+
+      <button id="menu-button" type="button" class="flex h-10 w-10 items-center justify-center border border-black/10 md:hidden" aria-label="Mở menu" aria-expanded="false">
+        <iconify-icon id="menu-icon" icon="solar:hamburger-menu-linear" width="20" stroke-width="1.5"></iconify-icon>
+      </button>
+    </div>
+
+    <div id="mobile-menu" class="hidden border-t border-black/8 px-5 py-5 sm:px-8 md:hidden">
+      <nav class="flex flex-col gap-4 text-xs font-medium uppercase tracking-[0.16em]">
+        <a href="#du-an" class="mobile-link">Dự án</a>
+        <a href="#triet-ly" class="mobile-link">Triết lý</a>
+        <a href="#doi-ngu" class="mobile-link">Studio</a>
+        <a href="#lien-he" class="mobile-link">Cùng hợp tác</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="mx-auto grid min-h-[calc(100svh-5rem)] max-w-[90rem] grid-cols-1 px-5 pb-10 pt-16 sm:px-8 sm:pt-24 lg:grid-cols-12 lg:px-12 lg:pt-28">
+      <div class="flex flex-col justify-between lg:col-span-9">
+        <p class="mb-10 font-['DM_Mono'] text-xs uppercase tracking-[0.12em] text-black/50">
+          Architecture &amp; spatial design / Hà Nội — Việt Nam
+        </p>
+
+        <h1 class="max-w-5xl text-[clamp(3.5rem,8vw,8.5rem)] font-medium leading-[0.93] tracking-[-0.07em]">
+          Không gian<br />
+          <span class="text-black/35">để sống chậm.</span>
+        </h1>
+      </div>
+
+      <div class="mt-14 flex flex-col justify-end lg:col-span-3 lg:mt-0">
+        <p class="max-w-xs text-sm leading-7 text-black/60">
+          Phẳng Studio kiến tạo kiến trúc tinh giản, nơi ánh sáng, tỷ lệ và vật liệu kể những câu chuyện thầm lặng.
+        </p>
+
+        <a href="#du-an" class="mt-8 flex w-fit items-center gap-3 border-b border-black pb-2 text-xs font-medium uppercase tracking-[0.15em] transition-opacity hover:opacity-50">
+          Khám phá dự án
+          <iconify-icon icon="solar:arrow-down-linear" width="17" stroke-width="1.5"></iconify-icon>
+        </a>
+      </div>
+
+      <div class="col-span-full mt-16 overflow-hidden bg-[#deded8] sm:mt-24">
+        <img
+          src="https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1800&q=85"
+          alt="Không gian nội thất tối giản với ánh sáng tự nhiên"
+          class="h-[25rem] w-full object-cover grayscale sm:h-[34rem] lg:h-[40rem]"
+        />
+      </div>
+    </section>
+
+    <section id="du-an" class="border-t border-black/10">
+      <div class="mx-auto max-w-[90rem] px-5 py-20 sm:px-8 sm:py-28 lg:px-12">
+        <div class="mb-12 flex items-end justify-between sm:mb-16">
+          <div>
+            <p class="font-['DM_Mono'] text-xs uppercase tracking-[0.12em] text-black/45">01 — Selected work</p>
+            <h2 class="mt-4 text-4xl font-medium tracking-[-0.06em] sm:text-5xl">Dự án tiêu biểu</h2>
+          </div>
+          <p class="hidden font-['DM_Mono'] text-xs text-black/40 sm:block">06 / 2021—2025</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-x-5 gap-y-12 sm:grid-cols-2 lg:grid-cols-3 lg:gap-x-7 lg:gap-y-16">
+          <a href="#lien-he" class="group block">
+            <div class="overflow-hidden bg-[#deded8]">
+              <img src="https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1000&q=85" alt="Nhà Mộc Residence" class="aspect-[4/5] w-full object-cover grayscale transition duration-700 group-hover:scale-[1.035] group-hover:grayscale-0" />
+            </div>
+            <div class="mt-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 class="text-sm font-semibold tracking-[-0.03em]">Nhà Mộc Residence</h3>
+                <p class="mt-1 text-xs text-black/50">Hà Nội, 2024</p>
+              </div>
+              <iconify-icon icon="solar:arrow-up-right-linear" width="18" stroke-width="1.5" class="mt-1 opacity-0 transition-opacity group-hover:opacity-100"></iconify-icon>
+            </div>
+          </a>
+
+          <a href="#lien-he" class="group block sm:mt-20">
+            <div class="overflow-hidden bg-[#deded8]">
+              <img src="https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1000&q=85" alt="Căn hộ An Nhiên" class="aspect-[4/5] w-full object-cover grayscale transition duration-700 group-hover:scale-[1.035] group-hover:grayscale-0" />
+            </div>
+            <div class="mt-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 class="text-sm font-semibold tracking-[-0.03em]">Căn hộ An Nhiên</h3>
+                <p class="mt-1 text-xs text-black/50">TP. Hồ Chí Minh, 2024</p>
+              </div>
+              <iconify-icon icon="solar:arrow-up-right-linear" width="18" stroke-width="1.5" class="mt-1 opacity-0 transition-opacity group-hover:opacity-100"></iconify-icon>
+            </div>
+          </a>
+
+          <a href="#lien-he" class="group block">
+            <div class="overflow-hidden bg-[#deded8]">
+              <img src="https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=1000&q=85" alt="Café Dốc Mơ" class="aspect-[4/5] w-full object-cover grayscale transition duration-700 group-hover:scale-[1.035] group-hover:grayscale-0" />
+            </div>
+            <div class="mt-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 class="text-sm font-semibold tracking-[-0.03em]">Café Dốc Mơ</h3>
+                <p class="mt-1 text-xs text-black/50">Đà Lạt, 2023</p>
+              </div>
+              <iconify-icon icon="solar:arrow-up-right-linear" width="18" stroke-width="1.5" class="mt-1 opacity-0 transition-opacity group-hover:opacity-100"></iconify-icon>
+            </div>
+          </a>
+
+          <a href="#lien-he" class="group block lg:mt-6">
+            <div class="overflow-hidden bg-[#deded8]">
+              <img src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1000&q=85" alt="Nhà Vườn Long Biên" class="aspect-[4/5] w-full object-cover grayscale transition duration-700 group-hover:scale-[1.035] group-hover:grayscale-0" />
+            </div>
+            <div class="mt-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 class="text-sm font-semibold tracking-[-0.03em]">Nhà Vườn Long Biên</h3>
+                <p class="mt-1 text-xs text-black/50">Hà Nội, 2023</p>
+              </div>
+              <iconify-icon icon="solar:arrow-up-right-linear" width="18" stroke-width="1.5" class="mt-1 opacity-0 transition-opacity group-hover:opacity-100"></iconify-icon>
+            </div>
+          </a>
+
+          <a href="#lien-he" class="group block sm:mt-20 lg:mt-28">
+            <div class="overflow-hidden bg-[#deded8]">
+              <img src="https://images.unsplash.com/photo-1600607688969-a5bfcd646154?auto=format&fit=crop&w=1000&q=85" alt="Bình House" class="aspect-[4/5] w-full object-cover grayscale transition duration-700 group-hover:scale-[1.035] group-hover:grayscale-0" />
+            </div>
+            <div class="mt-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 class="text-sm font-semibold tracking-[-0.03em]">Bình House</h3>
+                <p class="mt-1 text-xs text-black/50">Hội An, 2022</p>
+              </div>
+              <iconify-icon icon="solar:arrow-up-right-linear" width="18" stroke-width="1.5" class="mt-1 opacity-0 transition-opacity group-hover:opacity-100"></iconify-icon>
+            </div>
+          </a>
+
+          <a href="#lien-he" class="group block lg:mt-6">
+            <div class="overflow-hidden bg-[#deded8]">
+              <img src="https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=1000&q=85" alt="Văn phòng Mây" class="aspect-[4/5] w-full object-cover grayscale transition duration-700 group-hover:scale-[1.035] group-hover:grayscale-0" />
+            </div>
+            <div class="mt-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 class="text-sm font-semibold tracking-[-0.03em]">Văn phòng Mây</h3>
+                <p class="mt-1 text-xs text-black/50">Hà Nội, 2021</p>
+              </div>
+              <iconify-icon icon="solar:arrow-up-right-linear" width="18" stroke-width="1.5" class="mt-1 opacity-0 transition-opacity group-hover:opacity-100"></iconify-icon>
+            </div>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section id="triet-ly" class="bg-[#171717] text-[#f4f4ef]">
+      <div class="mx-auto grid max-w-[90rem] grid-cols-1 gap-16 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-12 lg:gap-8 lg:px-12">
+        <div class="lg:col-span-3">
+          <p class="font-['DM_Mono'] text-xs uppercase tracking-[0.12em] text-white/45">02 — Our principle</p>
+        </div>
+
+        <div class="lg:col-span-8 lg:col-start-5">
+          <h2 class="text-[clamp(2.5rem,5vw,5.25rem)] font-medium leading-[0.98] tracking-[-0.065em]">
+            Chúng tôi tin rằng kiến trúc không cần nói lớn để được <span class="text-white/40">cảm nhận sâu.</span>
+          </h2>
+
+          <div class="mt-16 grid gap-10 border-t border-white/15 pt-8 sm:grid-cols-3">
+            <div>
+              <p class="font-['DM_Mono'] text-xs text-white/40">01</p>
+              <h3 class="mt-5 text-base font-semibold tracking-[-0.035em]">Ít nhưng đúng</h3>
+              <p class="mt-3 text-sm leading-6 text-white/55">Mỗi chi tiết đều có lý do hiện diện. Chúng tôi loại bỏ điều dư thừa để giữ lại bản chất.</p>
+            </div>
+            <div>
+              <p class="font-['DM_Mono'] text-xs text-white/40">02</p>
+              <h3 class="mt-5 text-base font-semibold tracking-[-0.035em]">Lắng nghe nơi chốn</h3>
+              <p class="mt-3 text-sm leading-6 text-white/55">Khí hậu, ánh sáng và nhịp sống bản địa là những vật liệu đầu tiên của mọi công trình.</p>
+            </div>
+            <div>
+              <p class="font-['DM_Mono'] text-xs text-white/40">03</p>
+              <h3 class="mt-5 text-base font-semibold tracking-[-0.035em]">Bền theo thời gian</h3>
+              <p class="mt-3 text-sm leading-6 text-white/55">Vật liệu chân thật và tỷ lệ cân bằng giúp không gian đẹp hơn khi được sống trong đó.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="doi-ngu" class="border-b border-black/10">
+      <div class="mx-auto grid max-w-[90rem] grid-cols-1 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-12 lg:gap-8 lg:px-12">
+        <div class="lg:col-span-3">
+          <p class="font-['DM_Mono'] text-xs uppercase tracking-[0.12em] text-black/45">03 — The studio</p>
+        </div>
+
+        <div class="mt-8 lg:col-span-8 lg:col-start-5 lg:mt-0">
+          <h2 class="max-w-3xl text-4xl font-medium leading-[1.03] tracking-[-0.06em] sm:text-5xl">
+            Một nhóm nhỏ, cùng chung sự kỹ lưỡng với không gian.
+          </h2>
+
+          <div class="mt-14 grid grid-cols-1 gap-8 border-t border-black/10 pt-8 sm:grid-cols-3">
+            <div>
+              <div class="aspect-[4/5] overflow-hidden bg-[#deded8]">
+                <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=700&q=85" alt="Minh Anh, Giám đốc sáng tạo" class="h-full w-full object-cover grayscale" />
+              </div>
+              <h3 class="mt-4 text-sm font-semibold tracking-[-0.03em]">Nguyễn Minh Anh</h3>
+              <p class="mt-1 text-xs text-black/50">Đồng sáng lập · Giám đốc sáng tạo</p>
+            </div>
+
+            <div class="sm:mt-12">
+              <div class="aspect-[4/5] overflow-hidden bg-[#deded8]">
+                <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=700&q=85" alt="Quang Huy, Kiến trúc sư trưởng" class="h-full w-full object-cover grayscale" />
+              </div>
+              <h3 class="mt-4 text-sm font-semibold tracking-[-0.03em]">Trần Quang Huy</h3>
+              <p class="mt-1 text-xs text-black/50">Đồng sáng lập · Kiến trúc sư trưởng</p>
+            </div>
+
+            <div>
+              <div class="flex aspect-[4/5] items-end bg-[#d7d7d0] p-6">
+                <p class="max-w-[13rem] text-2xl font-medium leading-[1.05] tracking-[-0.055em]">
+                  Và 8 cộng sự cùng tạo nên những điều bình dị.
+                </p>
+              </div>
+              <a href="#lien-he" class="mt-4 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] transition-opacity hover:opacity-45">
+                Gặp đội ngũ
+                <iconify-icon icon="solar:arrow-right-linear" width="16" stroke-width="1.5"></iconify-icon>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="lien-he">
+      <div class="mx-auto max-w-[90rem] px-5 py-20 sm:px-8 sm:py-28 lg:px-12">
+        <div class="grid grid-cols-1 gap-14 lg:grid-cols-12 lg:gap-8">
+          <div class="lg:col-span-5">
+            <p class="font-['DM_Mono'] text-xs uppercase tracking-[0.12em] text-black/45">04 — Start a conversation</p>
+            <h2 class="mt-5 text-[clamp(3rem,5vw,5.75rem)] font-medium leading-[0.94] tracking-[-0.07em]">
+              Hãy bắt đầu<br />một điều đẹp.
+            </h2>
+            <p class="mt-8 max-w-sm text-sm leading-7 text-black/60">
+              Chia sẻ với chúng tôi câu chuyện, địa điểm hoặc ý tưởng bạn đang ấp ủ. Phẳng Studio sẽ phản hồi trong 2 ngày làm việc.
+            </p>
+
+            <div class="mt-12 space-y-4 text-sm">
+              <a href="mailto:hello@phang.studio" class="flex w-fit items-center gap-3 border-b border-black pb-1 transition-opacity hover:opacity-45">
+                <iconify-icon icon="solar:letter-linear" width="18" stroke-width="1.5"></iconify-icon>
+                hello@phang.studio
+              </a>
+              <a href="tel:+842438888888" class="flex w-fit items-center gap-3 border-b border-black pb-1 transition-opacity hover:opacity-45">
+                <iconify-icon icon="solar:phone-linear" width="18" stroke-width="1.5"></iconify-icon>
+                +84 24 3888 8888
+              </a>
+            </div>
+          </div>
+
+          <form id="contact-form" class="lg:col-span-6 lg:col-start-7" action="#" method="post">
+            <div class="border-t border-black/15">
+              <label for="name" class="block pt-5 text-xs font-medium uppercase tracking-[0.14em] text-black/45">Tên của bạn</label>
+              <input id="name" name="name" type="text" required placeholder="Nguyễn Minh Anh" class="mt-3 w-full border-0 border-b border-black/15 bg-transparent pb-4 text-base tracking-[-0.03em] outline-none placeholder:text-black/25 focus:border-black" />
+            </div>
+
+            <div class="mt-7 border-t border-black/15">
+              <label for="email" class="block pt-5 text-xs font-medium uppercase tracking-[0.14em] text-black/45">Email</label>
+              <input id="email" name="email" type="email" required placeholder="ban@email.com" class="mt-3 w-full border-0 border-b border-black/15 bg-transparent pb-4 text-base tracking-[-0.03em] outline-none placeholder:text-black/25 focus:border-black" />
+            </div>
+
+            <div class="mt-7 border-t border-black/15">
+              <label for="project" class="block pt-5 text-xs font-medium uppercase tracking-[0.14em] text-black/45">Bạn cần chúng tôi hỗ trợ điều gì?</label>
+              <select id="project" name="project" class="mt-3 w-full appearance-none border-0 border-b border-black/15 bg-transparent pb-4 text-base tracking-[-0.03em] outline-none focus:border-black">
+                <option value="architecture">Thiết kế kiến trúc</option>
+                <option value="interior">Thiết kế nội thất</option>
+                <option value="consulting">Tư vấn không gian</option>
+                <option value="other">Khác</option>
+              </select>
+            </div>
+
+            <div class="mt-7 border-t border-black/15">
+              <label for="message" class="block pt-5 text-xs font-medium uppercase tracking-[0.14em] text-black/45">Đôi lời về dự án</label>
+              <textarea id="message" name="message" rows="4" placeholder="Loại công trình, địa điểm, quy mô dự kiến..." class="mt-3 w-full resize-none border-0 border-b border-black/15 bg-transparent pb-4 text-base leading-7 tracking-[-0.03em] outline-none placeholder:text-black/25 focus:border-black"></textarea>
+            </div>
+
+            <button type="submit" class="mt-8 inline-flex items-center gap-4 bg-[#171717] px-6 py-4 text-xs font-medium uppercase tracking-[0.15em] text-white transition-colors hover:bg-black">
+              Gửi lời nhắn
+              <iconify-icon icon="solar:arrow-right-linear" width="17" stroke-width="1.5"></iconify-icon>
+            </button>
+
+            <p id="form-message" class="mt-5 hidden text-xs text-black/55" role="status"></p>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="bg-[#171717] text-[#f4f4ef]">
+    <div class="mx-auto max-w-[90rem] px-5 py-10 sm:px-8 lg:px-12">
+      <div class="flex flex-col justify-between gap-10 sm:flex-row sm:items-end">
+        <div>
+          <a href="#top" class="text-3xl font-semibold tracking-[-0.1em]">PHẲNG</a>
+          <p class="mt-3 font-['DM_Mono'] text-xs uppercase tracking-[0.1em] text-white/40">Architecture &amp; Spatial Design</p>
+        </div>
+
+        <div class="flex gap-6 text-xs uppercase tracking-[0.14em] text-white/60">
+          <a href="#" class="transition-colors hover:text-white">Instagram</a>
+          <a href="#" class="transition-colors hover:text-white">Behance</a>
+          <a href="#" class="transition-colors hover:text-white">LinkedIn</a>
+        </div>
+      </div>
+
+      <div class="mt-12 flex flex-col justify-between gap-3 border-t border-white/15 pt-5 font-['DM_Mono'] text-xs text-white/35 sm:flex-row">
+        <p>© 2025 Phẳng Studio. All rights reserved.</p>
+        <p>Hà Nội, Việt Nam</p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const menuButton = document.getElementById('menu-button');
+    const mobileMenu = document.getElementById('mobile-menu');
+    const menuIcon = document.getElementById('menu-icon');
+
+    menuButton.addEventListener('click', () => {
+      const isHidden = mobileMenu.classList.contains('hidden');
+      mobileMenu.classList.toggle('hidden');
+      menuButton.setAttribute('aria-expanded', String(isHidden));
+      menuIcon.setAttribute('icon', isHidden ? 'solar:close-circle-linear' : 'solar:hamburger-menu-linear');
+    });
+
+    document.querySelectorAll('.mobile-link').forEach((link) => {
+      link.addEventListener('click', () => {
+        mobileMenu.classList.add('hidden');
+        menuButton.setAttribute('aria-expanded', 'false');
+        menuIcon.setAttribute('icon', 'solar:hamburger-menu-linear');
+      });
+    });
+
+    document.getElementById('contact-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const message = document.getElementById('form-message');
+      message.textContent = 'Cảm ơn bạn. Phẳng Studio sẽ sớm liên hệ lại.';
+      message.classList.remove('hidden');
+      event.currentTarget.reset();
+    });
+  </script>
+</body>
+</html>

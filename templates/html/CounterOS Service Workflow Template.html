@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CounterOS - Service Workflow</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link
+href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap"
+rel="stylesheet"
+/>
+<style>
+:root {
+--surface-chassis: #F1F0E9;
+--surface-workbench: #FAFAF6;
+--surface-module: #FAFAF6;
+--surface-raised: #FFFFFF;
+--border-subtle: #C8CBC4;
+--text-primary: #171B19;
+--text-secondary: #58605B;
+--state-ready: #38A866;
+--state-check: #F0A51A;
+--state-fault: #D84C4C;
+--state-connected: #3D83C5;
+}
+html.dark {
+--surface-chassis: #111513;
+--surface-workbench: #111513;
+--surface-module: #1B211E;
+--surface-raised: #2B332F;
+--border-subtle: #2B332F;
+--text-primary: #F1F0E9;
+--text-secondary: #C8CBC4;
+}
+body { font-family: 'IBM Plex Sans', sans-serif; background-color: var(--surface-chassis); }
+.font-mono { font-family: 'IBM Plex Mono', monospace; }
+.font-condensed { font-family: 'Barlow Semi Condensed', sans-serif; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 0px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+-webkit-appearance: none;
+margin: 0;
+}
+</style>
+<script>
+tailwind.config = {
+darkMode: 'class',
+theme: {
+extend: {
+colors: {
+chassis: 'var(--surface-chassis)',
+workbench: 'var(--surface-workbench)',
+module: 'var(--surface-module)',
+raised: 'var(--surface-raised)',
+border: 'var(--border-subtle)',
+primary: 'var(--text-primary)',
+secondary: 'var(--text-secondary)',
+ready: 'var(--state-ready)',
+check: 'var(--state-check)',
+fault: 'var(--state-fault)',
+connected: 'var(--state-connected)'
+}
+}
+}
+};
+</script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body
+    class="text-primary h-screen flex overflow-hidden antialiased selection:bg-connected selection:text-white bg-chassis"
+  >
+    <aside
+      class="w-16 flex flex-col items-center py-4 bg-chassis border-r border-border flex-shrink-0 z-20"
+    >
+      <div
+        class="mb-8 font-condensed font-bold tracking-widest text-primary select-none text-xl"
+      >
+        C/OS
+      </div>
+
+      <nav class="flex flex-col gap-4 flex-1">
+        <button
+          class="p-2 rounded bg-module text-primary relative group"
+          title="Active Case"
+        >
+          <iconify-icon
+            icon="solar:folder-with-files-linear"
+            width="20"
+            height="20"
+            stroke-width="1.5"
+          ></iconify-icon>
+          <span
+            class="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-connected"
+          ></span>
+        </button>
+        <button
+          class="p-2 rounded text-secondary hover:bg-module hover:text-primary transition-colors"
+          title="Queue"
+        >
+          <iconify-icon
+            icon="solar:list-linear"
+            width="20"
+            height="20"
+            stroke-width="1.5"
+          ></iconify-icon>
+        </button>
+        <button
+          class="p-2 rounded text-secondary hover:bg-module hover:text-primary transition-colors"
+          title="Vehicle Database"
+        >
+          <iconify-icon
+            icon="solar:database-linear"
+            width="20"
+            height="20"
+            stroke-width="1.5"
+          ></iconify-icon>
+        </button>
+        <button
+          class="p-2 rounded text-secondary hover:bg-module hover:text-primary transition-colors"
+          title="Demo Scenarios"
+        >
+          <iconify-icon
+            icon="solar:magic-stick-3-linear"
+            width="20"
+            height="20"
+            stroke-width="1.5"
+          ></iconify-icon>
+        </button>
+      </nav>
+
+      <div class="mt-auto flex flex-col gap-4">
+        <button
+          class="p-2 rounded text-secondary hover:bg-module hover:text-primary transition-colors"
+          title="Offline Status"
+        >
+          <iconify-icon
+            icon="solar:wifi-router-minimalistic-linear"
+            width="20"
+            height="20"
+            stroke-width="1.5"
+          ></iconify-icon>
+        </button>
+        <button
+          onclick="document.documentElement.classList.toggle('dark')"
+          class="p-2 rounded text-secondary hover:bg-module hover:text-primary transition-colors flex items-center justify-center"
+          title="Toggle Dark Mode"
+        >
+          <iconify-icon
+            icon="solar:moon-linear"
+            class="dark:hidden"
+            width="20"
+            height="20"
+            stroke-width="1.5"
+          ></iconify-icon>
+          <iconify-icon
+            icon="solar:sun-linear"
+            class="hidden dark:block"
+            width="20"
+            height="20"
+            stroke-width="1.5"
+          ></iconify-icon>
+        </button>
+        <div
+          class="w-8 h-8 rounded bg-module border border-border flex items-center justify-center text-xs font-bold font-condensed text-secondary"
+        >
+          SA
+        </div>
+      </div>
+    </aside>
+
+    <div class="flex-1 flex flex-col min-w-0 bg-workbench">
+      <header
+        class="py-3 px-6 border-b border-border bg-chassis flex flex-col md:flex-row md:items-center justify-between flex-shrink-0 gap-4 md:gap-0"
+      >
+        <div class="flex flex-col gap-1">
+          <div class="flex items-center gap-3">
+            <span
+              class="text-xs font-bold font-condensed text-secondary uppercase tracking-widest"
+            >
+              Case 0241
+            </span>
+            <div class="w-px h-3 bg-border"></div>
+            <span
+              class="text-sm font-bold font-condensed text-primary uppercase tracking-wider"
+            >
+              2016 Chevrolet Silverado 1500
+            </span>
+          </div>
+          <div
+            class="flex items-center gap-3 text-xs font-condensed text-secondary uppercase tracking-widest font-semibold"
+          >
+            <span>5.3L V8 · 4WD · 6L80E</span>
+            <div class="w-px h-3 bg-border"></div>
+            <span class="text-ready flex items-center gap-1">
+              <iconify-icon
+                icon="solar:check-circle-linear"
+                width="14"
+              ></iconify-icon>
+              VIN Verified
+            </span>
+          </div>
+        </div>
+        <div class="flex items-center gap-4">
+          <span
+            class="text-xs font-bold font-condensed text-primary uppercase tracking-wider bg-module px-2 py-1 rounded border border-border"
+          >
+            Open Mode
+          </span>
+          <div class="flex items-center gap-1.5">
+            <span
+              class="w-1.5 h-1.5 rounded-full bg-ready animate-pulse"
+            ></span>
+            <span
+              class="text-xs font-bold font-condensed text-ready uppercase tracking-wider"
+            >
+              Online
+            </span>
+          </div>
+        </div>
+      </header>
+
+      <nav
+        class="h-11 flex items-center border-b border-border bg-module px-6 gap-6 flex-shrink-0"
+      >
+        <button
+          class="text-sm font-bold font-condensed uppercase tracking-wider text-primary flex items-center gap-2 h-full"
+        >
+          <iconify-icon
+            icon="solar:check-circle-linear"
+            width="18"
+            class="text-ready"
+          ></iconify-icon>
+          Vehicle
+        </button>
+        <button
+          class="text-sm font-bold font-condensed uppercase tracking-wider text-primary flex items-center gap-2 border-b-2 border-primary h-full"
+        >
+          Job
+        </button>
+        <button
+          class="text-sm font-bold font-condensed uppercase tracking-wider text-check flex items-center gap-2 h-full"
+        >
+          Checks
+          <span
+            class="w-5 h-5 rounded bg-check/10 border border-check/30 flex items-center justify-center text-xs font-mono text-check"
+          >
+            1
+          </span>
+        </button>
+        <button
+          class="text-sm font-bold font-condensed uppercase tracking-wider text-secondary flex items-center gap-2 h-full hover:text-primary transition-colors"
+        >
+          Parts
+        </button>
+        <button
+          class="text-sm font-bold font-condensed uppercase tracking-wider text-secondary flex items-center gap-2 h-full opacity-50"
+        >
+          <iconify-icon
+            icon="solar:lock-keyhole-minimalistic-linear"
+            width="18"
+          ></iconify-icon>
+          Handoff
+        </button>
+      </nav>
+
+      <div class="flex-1 flex flex-col overflow-hidden">
+        <div
+          class="flex-1 grid grid-cols-[240px_minmax(420px,1fr)_340px] xl:grid-cols-[280px_minmax(460px,1fr)_390px] overflow-hidden"
+        >
+          <aside
+            class="flex flex-col border-r border-border bg-workbench overflow-y-auto"
+          >
+            <div class="p-5 flex-1 space-y-8">
+              <div>
+                <h2
+                  class="text-xs font-bold font-condensed text-secondary uppercase tracking-widest mb-3"
+                >
+                  Intake
+                </h2>
+                <div
+                  class="p-4 bg-module border border-border rounded shadow-sm"
+                >
+                  <p class="text-sm text-primary leading-relaxed">
+                    “Shakes when braking downhill.
+                    <br />
+                    Tows a camper.”
+                  </p>
+                </div>
+              </div>
+              <div>
+                <h2
+                  class="text-xs font-bold font-condensed text-secondary uppercase tracking-widest mb-3"
+                >
+                  Actions
+                </h2>
+                <div class="space-y-2">
+                  <button
+                    class="w-full text-left px-3 py-2 text-sm font-bold font-condensed uppercase tracking-wider text-primary bg-module border border-border rounded hover:bg-raised transition-colors shadow-sm"
+                  >
+                    [ Scan VIN ]
+                  </button>
+                  <button
+                    class="w-full text-left px-3 py-2 text-sm font-bold font-condensed uppercase tracking-wider text-primary bg-module border border-border rounded hover:bg-raised transition-colors shadow-sm"
+                  >
+                    [ Scan part ]
+                  </button>
+                  <button
+                    class="w-full text-left px-3 py-2 text-sm font-bold font-condensed uppercase tracking-wider text-primary bg-module border border-border rounded hover:bg-raised transition-colors shadow-sm"
+                  >
+                    [ Take photo ]
+                  </button>
+                </div>
+              </div>
+              <div>
+                <h2
+                  class="text-xs font-bold font-condensed text-secondary uppercase tracking-widest mb-3"
+                >
+                  Case History
+                </h2>
+                <div class="space-y-3">
+                  <div class="flex gap-3 text-sm">
+                    <span class="font-mono text-xs text-secondary mt-0.5 w-10">
+                      10:42
+                    </span>
+                    <span class="text-secondary">Vehicle decoded</span>
+                  </div>
+                  <div class="flex gap-3 text-sm">
+                    <span class="font-mono text-xs text-secondary mt-0.5 w-10">
+                      10:43
+                    </span>
+                    <span class="text-secondary">Job identified</span>
+                  </div>
+                  <div class="flex gap-3 text-sm">
+                    <span class="font-mono text-xs text-check mt-0.5 w-10">
+                      10:44
+                    </span>
+                    <span class="text-primary font-medium">
+                      Rotor check required
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <main class="flex flex-col bg-chassis overflow-y-auto p-6 lg:p-8">
+            <div class="max-w-3xl mx-auto w-full">
+              <h1
+                class="text-2xl font-bold font-condensed uppercase tracking-tight text-primary mb-6"
+              >
+                Front Brake Service
+              </h1>
+
+              <div
+                class="mb-8 p-6 bg-workbench border border-border rounded shadow-sm relative overflow-hidden"
+              >
+                <div
+                  class="absolute -top-4 -right-4 p-4 opacity-10 pointer-events-none text-primary"
+                >
+                  <iconify-icon
+                    icon="solar:wheel-bold-duotone"
+                    width="160"
+                  ></iconify-icon>
+                </div>
+                <h2
+                  class="text-xs font-bold font-condensed text-secondary uppercase tracking-widest mb-4"
+                >
+                  Job Map
+                </h2>
+
+                <div class="grid grid-cols-2 gap-4 relative z-10">
+                  <div
+                    class="flex items-center gap-3 p-3 bg-module border border-border rounded shadow-sm"
+                  >
+                    <iconify-icon
+                      icon="solar:check-circle-linear"
+                      width="20"
+                      class="text-ready"
+                    ></iconify-icon>
+                    <span
+                      class="text-sm font-bold font-condensed uppercase tracking-wider text-primary"
+                    >
+                      Brake pads
+                    </span>
+                  </div>
+                  <div
+                    class="flex items-center gap-3 p-3 bg-module border border-check/50 rounded ring-1 ring-check/30 shadow-sm"
+                  >
+                    <iconify-icon
+                      icon="solar:danger-circle-linear"
+                      width="20"
+                      class="text-check"
+                    ></iconify-icon>
+                    <span
+                      class="text-sm font-bold font-condensed uppercase tracking-wider text-primary"
+                    >
+                      Front rotors ×2
+                    </span>
+                  </div>
+                  <div
+                    class="flex items-center gap-3 p-3 bg-module border border-border rounded shadow-sm"
+                  >
+                    <iconify-icon
+                      icon="solar:check-circle-linear"
+                      width="20"
+                      class="text-ready"
+                    ></iconify-icon>
+                    <span
+                      class="text-sm font-bold font-condensed uppercase tracking-wider text-primary"
+                    >
+                      Hardware kit
+                    </span>
+                  </div>
+                  <div
+                    class="flex items-center gap-3 p-3 bg-module border border-border border-dashed rounded opacity-70"
+                  >
+                    <span
+                      class="w-5 h-5 rounded-full border border-border flex items-center justify-center"
+                    >
+                      <span class="w-1.5 h-1.5 rounded-full bg-border"></span>
+                    </span>
+                    <span
+                      class="text-sm font-bold font-condensed uppercase tracking-wider text-secondary"
+                    >
+                      Brake cleaner
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                class="bg-workbench border border-border border-l-4 border-l-check rounded shadow-sm overflow-hidden"
+              >
+                <div
+                  class="p-5 border-b border-border flex justify-between items-start bg-module/50"
+                >
+                  <div>
+                    <span
+                      class="text-[10px] font-bold font-condensed uppercase text-secondary tracking-widest mb-1 block"
+                    >
+                      Active Check
+                    </span>
+                    <h3
+                      class="text-lg font-bold font-condensed uppercase tracking-tight text-primary"
+                    >
+                      Rotor Diameter Required
+                    </h3>
+                  </div>
+                  <span
+                    class="px-2 py-1 bg-check/10 text-check text-xs font-bold font-condensed uppercase rounded border border-check/30 tracking-wider"
+                  >
+                    Needs Check
+                  </span>
+                </div>
+                <div class="p-5">
+                  <p class="text-sm text-primary mb-6 leading-relaxed">
+                    Two front rotor diameters were installed on this vehicle
+                    from the factory.
+                  </p>
+                  <div class="flex gap-4 mb-6">
+                    <button
+                      class="flex-1 py-4 bg-module border border-border rounded hover:border-primary transition-colors group shadow-sm flex flex-col items-center justify-center"
+                    >
+                      <span
+                        class="block text-xl font-mono text-primary group-hover:font-semibold"
+                      >
+                        13.23 IN
+                      </span>
+                      <span class="block text-xs font-mono text-secondary mt-1">
+                        336 mm
+                      </span>
+                    </button>
+                    <button
+                      class="flex-1 py-4 bg-module border border-border rounded hover:border-primary transition-colors group shadow-sm flex flex-col items-center justify-center"
+                    >
+                      <span
+                        class="block text-xl font-mono text-primary group-hover:font-semibold"
+                      >
+                        13.78 IN
+                      </span>
+                      <span class="block text-xs font-mono text-secondary mt-1">
+                        350 mm
+                      </span>
+                    </button>
+                  </div>
+                  <button
+                    class="text-xs font-bold font-condensed uppercase tracking-wider text-primary hover:underline flex items-center gap-1"
+                  >
+                    [ SHOW ME HOW TO CHECK ]
+                  </button>
+                </div>
+              </div>
+            </div>
+          </main>
+
+          <aside
+            class="flex flex-col border-l border-border bg-workbench overflow-y-auto"
+          >
+            <div class="p-5 flex-1">
+              <h2
+                class="text-xs font-bold font-condensed text-secondary uppercase tracking-widest mb-4"
+              >
+                Parts Stack
+              </h2>
+              <div class="flex gap-4 border-b border-border mb-6">
+                <button
+                  class="text-xs font-bold font-condensed uppercase tracking-wider text-primary border-b-2 border-primary pb-2"
+                >
+                  Standard 4
+                </button>
+                <button
+                  class="text-xs font-bold font-condensed uppercase tracking-wider text-secondary pb-2 hover:text-primary transition-colors"
+                >
+                  Alternates 3
+                </button>
+              </div>
+              <div class="space-y-3">
+                <div
+                  class="p-3 bg-module border border-border border-l-4 border-l-ready rounded shadow-sm"
+                >
+                  <div class="flex justify-between items-start mb-1">
+                    <span
+                      class="text-xs font-bold font-condensed uppercase text-primary flex items-center gap-1.5"
+                    >
+                      <iconify-icon
+                        icon="solar:check-circle-linear"
+                        class="text-ready"
+                      ></iconify-icon>
+                      Brake Pads
+                    </span>
+                    <span
+                      class="text-[10px] font-mono bg-ready/10 text-ready px-1.5 py-0.5 rounded border border-ready/30"
+                    >
+                      READY
+                    </span>
+                  </div>
+                  <div class="text-sm text-primary">Akebono ACT1118</div>
+                  <div class="text-xs font-mono text-secondary mt-1">
+                    Store · 8 available
+                  </div>
+                </div>
+
+                <div
+                  class="p-3 bg-module border border-border border-l-4 border-l-check rounded shadow-sm opacity-90"
+                >
+                  <div class="flex justify-between items-start mb-1">
+                    <span
+                      class="text-xs font-bold font-condensed uppercase text-primary flex items-center gap-1.5"
+                    >
+                      <iconify-icon
+                        icon="solar:danger-circle-linear"
+                        class="text-check"
+                      ></iconify-icon>
+                      Front Rotors ×2
+                    </span>
+                    <span
+                      class="text-[10px] font-mono bg-check/10 text-check px-1.5 py-0.5 rounded border border-check/30"
+                    >
+                      HOLD
+                    </span>
+                  </div>
+                  <div class="text-sm text-secondary line-through">
+                    Configuration unresolved
+                  </div>
+                  <div class="text-xs text-check mt-1 font-medium">
+                    Rotor diameter required
+                  </div>
+                </div>
+
+                <div
+                  class="p-3 bg-module border border-border border-l-4 border-l-ready rounded shadow-sm"
+                >
+                  <div class="flex justify-between items-start mb-1">
+                    <span
+                      class="text-xs font-bold font-condensed uppercase text-primary flex items-center gap-1.5"
+                    >
+                      <iconify-icon
+                        icon="solar:check-circle-linear"
+                        class="text-ready"
+                      ></iconify-icon>
+                      Hardware Kit
+                    </span>
+                    <span
+                      class="text-[10px] font-mono bg-ready/10 text-ready px-1.5 py-0.5 rounded border border-ready/30"
+                    >
+                      READY
+                    </span>
+                  </div>
+                  <div class="text-sm text-primary">Dorman HW17324</div>
+                  <div class="text-xs font-mono text-secondary mt-1">
+                    Store · 6 available
+                  </div>
+                </div>
+
+                <div
+                  class="p-3 bg-transparent border border-dashed border-border rounded"
+                >
+                  <div class="flex justify-between items-start mb-1">
+                    <span
+                      class="text-xs font-bold font-condensed uppercase text-secondary flex items-center gap-1.5"
+                    >
+                      <span
+                        class="w-3.5 h-3.5 rounded-full border border-border flex items-center justify-center"
+                      >
+                        <span class="w-1 h-1 rounded-full bg-border"></span>
+                      </span>
+                      Brake Cleaner
+                    </span>
+                    <span
+                      class="text-[10px] font-mono text-secondary px-1.5 py-0.5"
+                    >
+                      OPTIONAL
+                    </span>
+                  </div>
+                  <div class="text-sm text-secondary">
+                    Recommended attachment
+                  </div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <div
+          class="flex flex-col border-t border-border bg-chassis shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10"
+        >
+          <div
+            class="h-10 px-6 flex items-center border-b border-border bg-module text-xs"
+          >
+            <div
+              class="flex items-center gap-2 border-r border-border pr-4 h-full"
+            >
+              <span
+                class="text-[10px] font-bold font-condensed uppercase tracking-widest text-secondary"
+              >
+                Source Ledger
+              </span>
+              <span
+                class="px-1.5 py-0.5 bg-border/30 rounded text-[10px] font-mono text-primary border border-border"
+              >
+                5
+              </span>
+            </div>
+
+            <div
+              class="flex items-center gap-2 border-r border-border px-4 h-full flex-1"
+            >
+              <span
+                class="text-[10px] font-bold font-condensed uppercase tracking-widest text-secondary"
+              >
+                Active Check
+              </span>
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-check"></span>
+                <span
+                  class="font-bold font-condensed uppercase tracking-wider text-check"
+                >
+                  1 unresolved
+                </span>
+              </div>
+            </div>
+
+            <div
+              class="flex items-center gap-4 border-r border-border px-4 h-full"
+            >
+              <span
+                class="text-[10px] font-bold font-condensed uppercase tracking-widest text-secondary"
+              >
+                Capabilities
+              </span>
+              <div class="flex items-center gap-3">
+                <iconify-icon
+                  icon="solar:scanner-linear"
+                  class="text-primary opacity-50 text-base"
+                  title="Scanner Connected"
+                ></iconify-icon>
+                <iconify-icon
+                  icon="solar:database-linear"
+                  class="text-ready text-base"
+                  title="Database Connected"
+                ></iconify-icon>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-4 pl-4 h-full">
+              <div class="font-mono text-primary mr-2 font-medium">
+                EST. $327.96
+              </div>
+              <button
+                class="text-[10px] font-bold font-condensed uppercase tracking-widest text-secondary hover:text-primary transition-colors flex items-center gap-1"
+              >
+                <iconify-icon
+                  icon="solar:shield-warning-linear"
+                  class="text-sm"
+                ></iconify-icon>
+                Trust Inspector
+              </button>
+            </div>
+          </div>
+
+          <div class="h-14 px-6 flex items-center justify-between bg-chassis">
+            <div class="flex-1 flex items-center gap-3">
+              <span
+                class="text-secondary font-mono text-lg leading-none mt-0.5"
+              >
+                /
+              </span>
+              <input
+                type="text"
+                placeholder="TYPE, SPEAK, SCAN, OR PASTE..."
+                class="w-full bg-transparent border-none text-sm font-mono text-primary placeholder:text-secondary focus:outline-none focus:ring-0"
+              />
+            </div>
+            <div class="w-px h-6 bg-border mx-6"></div>
+            <div class="flex items-center gap-2">
+              <button
+                class="px-3 py-1.5 bg-module border border-border text-primary rounded text-xs font-bold font-condensed uppercase tracking-wider hover:bg-raised transition-colors shadow-sm"
+              >
+                Diag Codes
+              </button>
+              <button
+                class="px-3 py-1.5 bg-module border border-border text-primary rounded text-xs font-bold font-condensed uppercase tracking-wider hover:bg-raised transition-colors shadow-sm"
+              >
+                Service Manual
+              </button>
+              <button
+                class="px-3 py-1.5 bg-module border border-border text-primary rounded text-xs font-bold font-condensed uppercase tracking-wider hover:bg-raised transition-colors shadow-sm relative pr-6"
+              >
+                Bulletins
+                <span
+                  class="absolute top-1.5 right-2 w-2 h-2 rounded-full bg-ready"
+                ></span>
+              </button>
+              <button
+                class="px-3 py-1.5 bg-module border border-border text-primary rounded text-xs font-bold font-condensed uppercase tracking-wider hover:bg-raised transition-colors shadow-sm"
+              >
+                Recalls
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

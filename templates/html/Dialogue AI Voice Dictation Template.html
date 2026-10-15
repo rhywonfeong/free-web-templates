@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dialogue - AI Voice Dictation</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+/* Typography Import */
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap');
+.font-serif-display { font-family: 'Instrument Serif', serif; }
+.font-mono-code { font-family: 'JetBrains Mono', monospace; }
+body {
+font-family: 'JetBrains Mono', monospace;
+background-color: #0a0a0c;
+color: #d4d4d8;
+overflow-x: hidden;
+}
+/* Custom Textures */
+.bg-noise {
+background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.07'/%3E%3C/svg%3E");
+}
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #09090b; }
+::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #22d3ee; }
+/* Spotlight Effect */
+.spotlight-group { position: relative; }
+.spotlight-card {
+position: relative;
+background: rgba(255, 255, 255, 0.02);
+overflow: hidden;
+}
+.spotlight-card::before {
+content: "";
+position: absolute;
+top: 0; left: 0; right: 0; bottom: 0;
+background: radial-gradient(800px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(34, 211, 238, 0.06), transparent 40%);
+opacity: 0;
+transition: opacity 0.5s;
+pointer-events: none;
+z-index: 1;
+}
+.spotlight-card:hover::before { opacity: 1; }
+.spotlight-border {
+position: absolute;
+inset: 0;
+pointer-events: none;
+border-radius: inherit;
+padding: 1px;
+background: radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(34, 211, 238, 0.4), transparent 40%);
+-webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+-webkit-mask-composite: xor;
+mask-composite: exclude;
+opacity: 0;
+transition: opacity 0.5s;
+}
+.spotlight-card:hover .spotlight-border { opacity: 1; }
+/* Border Beam Animation */
+@keyframes border-beam {
+0% { offset-distance: 0%; }
+100% { offset-distance: 100%; }
+}
+.border-beam-btn { position: relative; overflow: hidden; }
+.border-beam-btn::after {
+content: '';
+position: absolute;
+inset: -2px;
+background: conic-gradient(from 90deg at 50% 50%, transparent 0%, transparent 85%, #22d3ee 95%, transparent 100%);
+animation: spin 3s linear infinite;
+z-index: -1;
+border-radius: 22px;
+}
+.border-beam-btn::before {
+content: '';
+position: absolute;
+inset: 1px;
+background: #000;
+border-radius: 19px;
+z-index: -1;
+}
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+/* Scroll Reveal */
+.reveal {
+opacity: 0;
+transform: translateY(30px) scale(0.98);
+filter: blur(10px);
+transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal.active {
+opacity: 1;
+transform: translateY(0) scale(1);
+filter: blur(0);
+}
+/* Ambient Elements */
+.bg-glow {
+position: fixed;
+top: 50%; left: 50%;
+width: 120vw; height: 120vh;
+background: radial-gradient(circle at center, rgba(34, 211, 238, 0.03), transparent 60%);
+transform: translate(-50%, -50%);
+z-index: -2;
+pointer-events: none;
+}
+.waveform-grid {
+position: fixed;
+width: 200%; height: 200%;
+top: -50%; left: -50%;
+background-image:
+linear-gradient(rgba(34, 211, 238, 0.03) 1px, transparent 1px),
+linear-gradient(90deg, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
+background-size: 40px 40px;
+transform: perspective(500px) rotateX(60deg);
+animation: grid-move 30s linear infinite;
+z-index: -1;
+pointer-events: none;
+mask-image: linear-gradient(to bottom, transparent, black 30%, black 80%, transparent);
+}
+@keyframes grid-move {
+0% { transform: perspective(500px) rotateX(60deg) translateY(0); }
+100% { transform: perspective(500px) rotateX(60deg) translateY(40px); }
+}
+/* Hero Blob Animation */
+@keyframes blob {
+0% { transform: translate(0px, 0px) scale(1); }
+33% { transform: translate(40px, -60px) scale(1.1); }
+66% { transform: translate(-30px, 30px) scale(0.9); }
+100% { transform: translate(0px, 0px) scale(1); }
+}
+.animate-blob {
+animation: blob 12s infinite alternate ease-in-out;
+}
+.animation-delay-2000 {
+animation-delay: 2s;
+}
+.animation-delay-4000 {
+animation-delay: 4s;
+}
+/* Speaker Grille Pattern (From original design) */
+.speaker-grid {
+background-image: radial-gradient(#27272a 20%, transparent 25%);
+background-size: 14px 14px;
+background-position: center;
+}
+/* Screen Waveform */
+.waveform-pattern {
+background: repeating-linear-gradient(90deg, #22d3ee 0, #22d3ee 2px, transparent 2px, transparent 4px);
+mask-image: linear-gradient(to bottom, transparent, black 20%, black 80%, transparent);
+-webkit-mask-image: linear-gradient(to bottom, transparent, black 20%, black 80%, transparent);
+}
+/* Carousel Fades */
+.carousel-item {
+display: none;
+animation: fadeEffect 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.carousel-item.active { display: block; }
+@keyframes fadeEffect {
+from { opacity: 0; transform: scale(0.95) translateX(20px); }
+to { opacity: 1; transform: scale(1) translateX(0); }
+}
+</style>
+<link id="all-fonts-link-font-geist" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-geist">.font-geist { font-family: 'Geist', sans-serif !important; }</style><link id="all-fonts-link-font-roboto" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-roboto">.font-roboto { font-family: 'Roboto', sans-serif !important; }</style><link id="all-fonts-link-font-montserrat" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-montserrat">.font-montserrat { font-family: 'Montserrat', sans-serif !important; }</style><link id="all-fonts-link-font-poppins" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-poppins">.font-poppins { font-family: 'Poppins', sans-serif !important; }</style><link id="all-fonts-link-font-playfair" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;900&display=swap"><style id="all-fonts-style-font-playfair">.font-playfair { font-family: 'Playfair Display', serif !important; }</style><link id="all-fonts-link-font-instrument-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:wght@400;500;600;700&display=swap"><style id="all-fonts-style-font-instrument-serif">.font-instrument-serif { font-family: 'Instrument Serif', serif !important; }</style><link id="all-fonts-link-font-merriweather" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700;900&display=swap"><style id="all-fonts-style-font-merriweather">.font-merriweather { font-family: 'Merriweather', serif !important; }</style><link id="all-fonts-link-font-bricolage" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-bricolage">.font-bricolage { font-family: 'Bricolage Grotesque', sans-serif !important; }</style><link id="all-fonts-link-font-jakarta" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-jakarta">.font-jakarta { font-family: 'Plus Jakarta Sans', sans-serif !important; }</style><link id="all-fonts-link-font-manrope" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-manrope">.font-manrope { font-family: 'Manrope', sans-serif !important; }</style><link id="all-fonts-link-font-space-grotesk" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-space-grotesk">.font-space-grotesk { font-family: 'Space Grotesk', sans-serif !important; }</style><link id="all-fonts-link-font-work-sans" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-work-sans">.font-work-sans { font-family: 'Work Sans', sans-serif !important; }</style><link id="all-fonts-link-font-pt-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Serif:wght@400;700&display=swap"><style id="all-fonts-style-font-pt-serif">.font-pt-serif { font-family: 'PT Serif', serif !important; }</style><link id="all-fonts-link-font-geist-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-geist-mono">.font-geist-mono { font-family: 'Geist Mono', monospace !important; }</style><link id="all-fonts-link-font-space-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap"><style id="all-fonts-style-font-space-mono">.font-space-mono { font-family: 'Space Mono', monospace !important; }</style><link id="all-fonts-link-font-quicksand" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-quicksand">.font-quicksand { font-family: 'Quicksand', sans-serif !important; }</style><link id="all-fonts-link-font-nunito" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-nunito">.font-nunito { font-family: 'Nunito', sans-serif !important; }</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="antialiased selection:bg-cyan-500/30 selection:text-cyan-50 relative">
+
+    <!-- Ambient Backgrounds -->
+    <div class="fixed inset-0 bg-noise pointer-events-none z-50 mix-blend-overlay"></div>
+    <div class="bg-glow"></div>
+    <div class="waveform-grid"></div>
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-[#0a0a0c]/80 backdrop-blur-xl">
+        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <!-- Retro Logo Icon -->
+                <div class="w-8 h-8 rounded bg-zinc-800 flex items-center justify-center border border-white/10 shadow-inner">
+                    <div class="w-1 h-3 bg-cyan-500 rounded-full mx-[1px]"></div>
+                    <div class="w-1 h-4 bg-zinc-500 rounded-full mx-[1px]"></div>
+                    <div class="w-1 h-2 bg-zinc-600 rounded-full mx-[1px]"></div>
+                </div>
+                <span class="font-serif-display text-2xl tracking-tight text-white italic pt-1">Dialogue</span>
+            </div>
+            
+            <div class="hidden md:flex items-center gap-8 text-xs font-mono-code text-zinc-400 uppercase tracking-widest">
+                <a href="#features" class="hover:text-cyan-400 transition-colors">Features</a>
+                <a href="#workflow" class="hover:text-cyan-400 transition-colors">Workflow</a>
+                <a href="#pricing" class="hover:text-cyan-400 transition-colors">Studio</a>
+            </div>
+
+            <a href="#download" class="relative group">
+                <div class="absolute -inset-0.5 bg-gradient-to-r from-cyan-600 to-cyan-400 rounded-[20px] blur opacity-20 group-hover:opacity-60 transition duration-300"></div>
+                <button class="cta-button group relative inline-flex items-center justify-center overflow-hidden rounded-[20px] px-4 py-2 text-xs font-mono-code font-medium text-white transition-all duration-300 hover:scale-[1.02] active:scale-95" style="background: radial-gradient(65.28% 65.28% at 50% 100%, rgba(34, 211, 238, 0.8) 0%, rgba(34, 211, 238, 0) 100%), linear-gradient(0deg, #09090b, #09090b); border: 1px solid rgba(255,255,255,0.1);">
+    <style>
+        @keyframes floating-points {
+            0% { transform: translateY(0); }
+            85% { opacity: 0; }
+            100% { transform: translateY(-30px); opacity: 0; }
+        }
+        .cta-button .point {
+            position: absolute;
+            bottom: -2px;
+            width: 1px;
+            height: 1px;
+            background-color: #22d3ee;
+            border-radius: 9999px;
+            animation: floating-points infinite ease-in-out;
+            pointer-events: none;
+            opacity: 0;
+            box-shadow: 0 0 4px #22d3ee;
+        }
+        .cta-button:hover .icon-arrow { transform: translateX(2px); }
+        .cta-button:hover .icon-arrow path { animation: dash 0.8s linear forwards; }
+        @keyframes dash {
+            0% { stroke-dasharray: 0, 20; stroke-dashoffset: 0; }
+            50% { stroke-dasharray: 10, 10; stroke-dashoffset: -5; }
+            100% { stroke-dasharray: 20, 0; stroke-dashoffset: -10; }
+        }
+    </style>
+    
+    <div class="absolute inset-0 pointer-events-none">
+        <i class="point" style="left: 10%; opacity: 1; animation-duration: 2.35s; animation-delay: 0.2s;"></i>
+        <i class="point" style="left: 30%; opacity: 0.7; animation-duration: 2.5s; animation-delay: 0.5s;"></i>
+        <i class="point" style="left: 25%; opacity: 0.8; animation-duration: 2.2s; animation-delay: 0.1s;"></i>
+        <i class="point" style="left: 44%; opacity: 0.6; animation-duration: 2.05s;"></i>
+        <i class="point" style="left: 50%; opacity: 1; animation-duration: 1.9s;"></i>
+        <i class="point" style="left: 75%; opacity: 0.5; animation-duration: 1.5s; animation-delay: 1.5s;"></i>
+        <i class="point" style="left: 88%; opacity: 0.9; animation-duration: 2.2s; animation-delay: 0.2s;"></i>
+        <i class="point" style="left: 58%; opacity: 0.8; animation-duration: 2.25s; animation-delay: 0.2s;"></i>
+        <i class="point" style="left: 98%; opacity: 0.6; animation-duration: 2.6s; animation-delay: 0.1s;"></i>
+        <i class="point" style="left: 65%; opacity: 1; animation-duration: 2.5s; animation-delay: 0.2s;"></i>
+    </div>
+
+    <span class="relative z-10 flex items-center gap-2">
+        Get Early Access
+        <svg class="icon-arrow w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+            <path d="M5 12h14"></path>
+            <path d="m12 5 7 7-7 7"></path>
+        </svg>
+    </span>
+    
+    <!-- Inner Glow Overlay -->
+    <div class="absolute inset-0 rounded-[20px] bg-gradient-to-b from-white/5 to-transparent pointer-events-none"></div>
+</button>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="lg:pt-48 lg:pb-32 overflow-hidden pt-32 pr-6 pb-24 pl-6 relative">
+        
+        <!-- Animated Blob Background -->
+        <div class="absolute inset-0 z-0 pointer-events-none overflow-hidden flex justify-center items-center">
+            <div class="relative w-full max-w-5xl h-full opacity-60">
+                <div class="absolute top-10 -left-10 md:top-1/4 md:left-1/4 w-72 h-72 md:w-96 md:h-96 bg-cyan-600/20 rounded-full mix-blend-screen filter blur-[100px] md:blur-[120px] animate-blob"></div>
+                <div class="absolute top-20 right-0 md:top-1/3 md:right-1/4 w-72 h-72 md:w-96 md:h-96 bg-blue-600/15 rounded-full mix-blend-screen filter blur-[100px] md:blur-[120px] animate-blob animation-delay-2000"></div>
+                <div class="absolute bottom-10 left-20 md:bottom-1/4 md:left-1/3 w-72 h-72 md:w-96 md:h-96 bg-indigo-600/15 rounded-full mix-blend-screen filter blur-[100px] md:blur-[120px] animate-blob animation-delay-4000"></div>
+            </div>
+        </div>
+
+        <div class="max-w-5xl mx-auto text-center z-10 relative">
+            
+            <!-- Badge -->
+            <div class="reveal inline-flex items-center gap-2 px-3 py-1 rounded-full border border-cyan-500/20 bg-cyan-950/30 text-cyan-400 text-[10px] font-mono-code tracking-widest uppercase mb-8 active backdrop-blur-sm">
+                <span class="relative flex h-1.5 w-1.5">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-500"></span>
+                </span>
+                v2.4 (Beta) Now Live
+            </div>
+            
+            <!-- Headline -->
+            <h1 class="reveal md:text-8xl lg:text-9xl leading-[0.9] active text-6xl text-zinc-100 tracking-tight font-serif-display mb-8 drop-shadow-2xl">
+                Seamless thought <br> 
+                <span class="text-transparent bg-clip-text bg-gradient-to-r from-zinc-400 via-zinc-100 to-zinc-400 italic pr-2">capture.</span>
+            </h1>
+            
+            <!-- Subtext -->
+            <p class="reveal font-mono-code text-xs md:text-sm leading-7 text-zinc-400 max-w-2xl mx-auto mb-12 active">
+                Write code <span class="text-cyan-400 border-b border-cyan-900 pb-0.5">4x faster</span> using context-aware voice commands.
+                Designed for the creative mind that speaks faster than it types.
+            </p>
+            
+            <!-- Buttons -->
+            <div class="reveal flex flex-col md:flex-row items-center justify-center gap-4 active">
+                <a href="#download" class="border-beam-btn w-full md:w-auto px-8 py-3.5 rounded-[20px] text-white hover:scale-[1.02] transition-transform">
+                    <span class="relative z-10 flex items-center justify-center gap-2 font-mono-code text-xs font-bold tracking-wide uppercase">
+                        Download for macOS <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="arrow-down" aria-hidden="true" class="lucide lucide-arrow-down w-4 h-4"><path d="M12 5v14"></path><path d="m19 12-7 7-7-7"></path></svg>
+                    </span>
+                </a>
+                <button class="uppercase hover:bg-white/10 transition flex md:w-auto text-xs text-zinc-300 tracking-wide font-mono-code bg-white/5 w-full border-white/5 border rounded-[20px] pt-3.5 pr-8 pb-3.5 pl-8 relative backdrop-blur-sm gap-x-2 gap-y-2 items-center justify-center" style="mask-image: linear-gradient(150deg, transparent, black 0%, black 100%, transparent); -webkit-mask-image: linear-gradient(150deg, transparent, black 0%, black 100%, transparent);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="play-circle" aria-hidden="true" class="lucide lucide-play-circle w-4 h-4 text-cyan-500"><path d="M9 9.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997A1 1 0 0 1 9 14.996z"></path><circle cx="12" cy="12" r="10"></circle></svg> See it in action
+                </button>
+            </div>
+        </div>
+
+        <!-- Hero Visual (The Retro Device) -->
+        <div class="reveal mt-20 max-w-5xl mx-auto relative rounded-[2.5rem] overflow-hidden border border-white/5 bg-zinc-900/50 backdrop-blur-sm shadow-2xl shadow-cyan-900/10 group active">
+            
+            <div class="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent pointer-events-none"></div>
+
+            <!-- Container for the Device -->
+            <div class="aspect-[2/1] md:aspect-[21/9] flex md:p-12 w-full pt-8 pr-8 pb-8 pl-8 relative items-center justify-center">
+                
+                <!-- Retro Device Implementation -->
+                <div class="relative z-30 bg-zinc-200 w-full max-w-[500px] aspect-[2/1] rounded-[2rem] p-4 md:p-6 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.8),inset_0_-4px_10px_rgba(0,0,0,0.1),inset_0_2px_4px_rgba(255,255,255,1)] flex gap-4 md:gap-8 ring-1 ring-white/10 overflow-hidden transform group-hover:scale-[1.02] transition duration-700 ease-out">
+                    <!-- Texture -->
+                    <div class="absolute inset-0 bg-noise opacity-[0.15] mix-blend-multiply pointer-events-none"></div>
+
+                    <!-- Speaker -->
+                    <div class="flex-1 h-full relative flex items-center justify-center pl-1">
+                        <div class="w-full h-[85%] speaker-grid opacity-80 rounded-xl"></div>
+                    </div>
+
+                    <!-- Screen -->
+                    <div class="w-[45%] h-full bg-[#09090b] rounded-xl relative overflow-hidden flex flex-col justify-between p-3 border-[2px] border-[#d4d4d8] shadow-[inset_0_0_15px_rgba(0,0,0,0.8)]">
+                        <!-- Reflection -->
+                        <div class="absolute -top-[100%] -right-[100%] w-[200%] h-[200%] bg-gradient-to-bl from-white/10 via-transparent to-transparent pointer-events-none z-20 transform rotate-12"></div>
+                        
+                        <!-- Status Bar -->
+                        <div class="flex justify-between items-center opacity-60 relative z-20">
+                             <div class="flex gap-1">
+                                 <div class="w-0.5 h-0.5 rounded-full bg-cyan-500"></div>
+                                 <div class="w-0.5 h-0.5 rounded-full bg-cyan-500"></div>
+                             </div>
+                             <div class="text-[6px] font-mono-code text-cyan-500 animate-pulse">REC</div>
+                        </div>
+
+                        <!-- Waveform -->
+                        <div class="absolute inset-x-0 bottom-0 h-3/4 z-10 flex items-end opacity-90">
+                            <div class="w-full h-full waveform-pattern opacity-80 mix-blend-screen"></div>
+                            <div class="absolute inset-0 bg-gradient-to-t from-cyan-500/20 via-cyan-900/10 to-transparent"></div>
+                        </div>
+                        
+                        <!-- UI Element -->
+                        <div class="relative z-20 mt-auto self-start">
+                             <div class="flex items-center gap-1.5 bg-white/5 backdrop-blur-md border border-white/10 rounded px-2 py-1">
+                                 <div class="w-2 h-2 text-cyan-300">
+                                     <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"></circle></svg>
+                                 </div>
+                                 <span class="text-[6px] font-mono-code font-medium text-white tracking-widest uppercase">Processing</span>
+                             </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            
+            <div class="absolute bottom-6 left-8 z-20 flex gap-2 items-center">
+                <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                <p class="text-[10px] font-mono-code text-zinc-500 uppercase tracking-widest">System Active</p>
+            </div>
+        </div>
+    </header>
+
+    <!-- The Workflow Carousel -->
+    <section id="workflow" class="py-24 px-6 relative">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
+                <div class="max-w-2xl">
+                    <h2 class="reveal font-serif-display text-4xl md:text-5xl text-zinc-100 mb-4">The Friction of Thought</h2>
+                    <p class="reveal font-mono-code text-sm text-zinc-400 leading-relaxed">
+                        Traditional typing is a bottleneck. Dialogue removes the mechanical latency between your brain and your IDE.
+                    </p>
+                </div>
+                <div class="reveal flex gap-2">
+                    <button id="prevBtn" class="p-3 rounded-[20px] border border-zinc-800 hover:bg-zinc-800 text-zinc-400 transition"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="chevron-left" aria-hidden="true" class="lucide lucide-chevron-left w-5 h-5"><path d="m15 18-6-6 6-6"></path></svg></button>
+                    <button id="nextBtn" class="p-3 rounded-[20px] border border-zinc-800 hover:bg-zinc-800 text-zinc-400 transition"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="chevron-right" aria-hidden="true" class="lucide lucide-chevron-right w-5 h-5"><path d="m9 18 6-6-6-6"></path></svg></button>
+                </div>
+            </div>
+
+            <!-- Carousel -->
+            <div id="cardCarousel" class="spotlight-group relative min-h-[400px]">
+                
+                <!-- Slide 1 -->
+                <div class="carousel-item w-full">
+                    <div class="grid md:grid-cols-3 gap-6">
+                        <div class="spotlight-card p-8 rounded-xl border border-white/5 h-full flex flex-col justify-between group bg-zinc-900/40">
+                            <div class="spotlight-border"></div>
+                            <div>
+                                <div class="w-10 h-10 rounded border border-cyan-500/20 bg-cyan-500/10 flex items-center justify-center mb-6 text-cyan-400">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="zap" aria-hidden="true" class="lucide lucide-zap w-5 h-5"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"></path></svg>
+                                </div>
+                                <h3 class="font-serif-display text-2xl text-zinc-200 mb-3">Velocity</h3>
+                                <p class="font-mono-code text-xs text-zinc-500 leading-6">Avg speaking speed: 150wpm. Avg typing speed: 40wpm. Do the math.</p>
+                            </div>
+                        </div>
+                        <div class="spotlight-card p-8 rounded-xl border border-white/5 h-full flex flex-col justify-between group bg-zinc-900/40">
+                            <div class="spotlight-border"></div>
+                            <div>
+                                <div class="w-10 h-10 rounded border border-purple-500/20 bg-purple-500/10 flex items-center justify-center mb-6 text-purple-400">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="brain-circuit" aria-hidden="true" class="lucide lucide-brain-circuit w-5 h-5"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"></path><path d="M9 13a4.5 4.5 0 0 0 3-4"></path><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"></path><path d="M3.477 10.896a4 4 0 0 1 .585-.396"></path><path d="M6 18a4 4 0 0 1-1.967-.516"></path><path d="M12 13h4"></path><path d="M12 18h6a2 2 0 0 1 2 2v1"></path><path d="M12 8h8"></path><path d="M16 8V5a2 2 0 0 1 2-2"></path><circle cx="16" cy="13" r=".5"></circle><circle cx="18" cy="3" r=".5"></circle><circle cx="20" cy="21" r=".5"></circle><circle cx="20" cy="8" r=".5"></circle></svg>
+                                </div>
+                                <h3 class="font-serif-display text-2xl text-zinc-200 mb-3">Context Aware</h3>
+                                <p class="font-mono-code text-xs text-zinc-500 leading-6">Dialogue reads your open files. It knows your variable names before you say them.</p>
+                            </div>
+                        </div>
+                        <div class="spotlight-card p-8 rounded-xl border border-white/5 h-full flex flex-col justify-between group bg-zinc-900/40">
+                            <div class="spotlight-border"></div>
+                            <div>
+                                <div class="w-10 h-10 rounded border border-pink-500/20 bg-pink-500/10 flex items-center justify-center mb-6 text-pink-400">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="code" aria-hidden="true" class="lucide lucide-code w-5 h-5"><path d="m16 18 6-6-6-6"></path><path d="m8 6-6 6 6 6"></path></svg>
+                                </div>
+                                <h3 class="font-serif-display text-2xl text-zinc-200 mb-3">Syntax Perfect</h3>
+                                <p class="font-mono-code text-xs text-zinc-500 leading-6">Say "function user auth", get a fully typed async function skeleton.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Slide 2 -->
+                <div class="carousel-item w-full">
+                    <div class="grid md:grid-cols-2 gap-6 h-full">
+                        <div class="spotlight-card p-10 rounded-xl border border-white/5 h-full bg-zinc-900/40">
+                            <div class="spotlight-border"></div>
+                            <h3 class="text-red-400 font-mono-code text-[10px] tracking-widest uppercase mb-2">The Old Way</h3>
+                            <h4 class="font-serif-display text-3xl text-zinc-200 mb-4">RSI &amp; Burnout</h4>
+                            <p class="font-mono-code text-xs text-zinc-500 leading-6">Physical strain limits your output. Your hands give up before your mind does.</p>
+                        </div>
+                        <div class="spotlight-card p-10 rounded-xl border border-cyan-500/20 h-full bg-cyan-950/10">
+                            <div class="spotlight-border"></div>
+                            <h3 class="text-cyan-400 font-mono-code text-[10px] tracking-widest uppercase mb-2">The Dialogue Way</h3>
+                            <h4 class="font-serif-display text-3xl text-zinc-200 mb-4">Infinite Flow</h4>
+                            <p class="font-mono-code text-xs text-zinc-400 leading-6">Dictate documentation, comments, and boilerplate while walking around the room.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Grid -->
+    <section id="features" class="py-24 px-6 border-t border-white/5 bg-[#0c0c0e]">
+        <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="reveal font-serif-display text-4xl md:text-5xl text-zinc-100 mb-4">The Complete Stack</h2>
+                <p class="reveal font-mono-code text-xs text-zinc-500">Local-first. Low latency. High accuracy.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
+                <!-- F1 -->
+                <div class="reveal flex gap-5 group">
+                    <div class="flex-shrink-0 w-10 h-10 rounded bg-zinc-900 flex items-center justify-center border border-zinc-800 group-hover:border-cyan-500/50 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="mic" aria-hidden="true" class="lucide lucide-mic text-zinc-400 w-4 h-4 group-hover:text-cyan-400 transition-colors"><path d="M12 19v3"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><rect x="9" y="2" width="6" height="13" rx="3"></rect></svg>
+                    </div>
+                    <div>
+                        <h4 class="font-mono-code text-sm font-bold text-zinc-200 mb-2">Whisper Model</h4>
+                        <p class="font-mono-code text-xs text-zinc-500 leading-relaxed">Built on OpenAI's Whisper, finetuned for technical jargon and camelCase.</p>
+                    </div>
+                </div>
+                <!-- F2 -->
+                <div class="reveal flex gap-5 group">
+                    <div class="flex-shrink-0 w-10 h-10 rounded bg-zinc-900 flex items-center justify-center border border-zinc-800 group-hover:border-purple-500/50 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="globe" aria-hidden="true" class="lucide lucide-globe text-zinc-400 w-4 h-4 group-hover:text-purple-400 transition-colors"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg>
+                    </div>
+                    <div>
+                        <h4 class="font-mono-code text-sm font-bold text-zinc-200 mb-2">50+ Languages</h4>
+                        <p class="font-mono-code text-xs text-zinc-500 leading-relaxed">Real-time translation and native dictation support for global teams.</p>
+                    </div>
+                </div>
+                <!-- F3 -->
+                <div class="reveal flex gap-5 group">
+                    <div class="flex-shrink-0 w-10 h-10 rounded bg-zinc-900 flex items-center justify-center border border-zinc-800 group-hover:border-green-500/50 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="shield" aria-hidden="true" class="lucide lucide-shield text-zinc-400 w-4 h-4 group-hover:text-green-400 transition-colors"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg>
+                    </div>
+                    <div>
+                        <h4 class="font-mono-code text-sm font-bold text-zinc-200 mb-2">Local Processing</h4>
+                        <p class="font-mono-code text-xs text-zinc-500 leading-relaxed">Your voice data never leaves your machine. Air-gapped ready.</p>
+                    </div>
+                </div>
+                <!-- F4 -->
+                <div class="reveal flex gap-5 group">
+                    <div class="flex-shrink-0 w-10 h-10 rounded bg-zinc-900 flex items-center justify-center border border-zinc-800 group-hover:border-orange-500/50 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="command" aria-hidden="true" class="lucide lucide-command text-zinc-400 w-4 h-4 group-hover:text-orange-400 transition-colors"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"></path></svg>
+                    </div>
+                    <div>
+                        <h4 class="font-mono-code text-sm font-bold text-zinc-200 mb-2">Voice Macros</h4>
+                        <p class="font-mono-code text-xs text-zinc-500 leading-relaxed">Map phrases like "deploy prod" to complex terminal commands.</p>
+                    </div>
+                </div>
+                <!-- F5 -->
+                <div class="reveal flex gap-5 group">
+                    <div class="flex-shrink-0 w-10 h-10 rounded bg-zinc-900 flex items-center justify-center border border-zinc-800 group-hover:border-blue-500/50 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="box" aria-hidden="true" class="lucide lucide-box text-zinc-400 w-4 h-4 group-hover:text-blue-400 transition-colors"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg>
+                    </div>
+                    <div>
+                        <h4 class="font-mono-code text-sm font-bold text-zinc-200 mb-2">IDE Plugins</h4>
+                        <p class="font-mono-code text-xs text-zinc-500 leading-relaxed">Deep integration with VS Code, JetBrains, and Xcode.</p>
+                    </div>
+                </div>
+                <!-- F6 -->
+                <div class="reveal flex gap-5 group">
+                    <div class="flex-shrink-0 w-10 h-10 rounded bg-zinc-900 flex items-center justify-center border border-zinc-800 group-hover:border-pink-500/50 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="wand" aria-hidden="true" class="lucide lucide-wand text-zinc-400 w-4 h-4 group-hover:text-pink-400 transition-colors"><path d="M15 4V2"></path><path d="M15 16v-2"></path><path d="M8 9h2"></path><path d="M20 9h2"></path><path d="M17.8 11.8 19 13"></path><path d="M15 9h.01"></path><path d="M17.8 6.2 19 5"></path><path d="m3 21 9-9"></path><path d="M12.2 6.2 11 5"></path></svg>
+                    </div>
+                    <div>
+                        <h4 class="font-mono-code text-sm font-bold text-zinc-200 mb-2">Auto-Format</h4>
+                        <p class="font-mono-code text-xs text-zinc-500 leading-relaxed">Automatic punctuation, casing, and indentation correction.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats & Scrolling Code -->
+    <section class="py-24 px-6 border-b border-white/5 relative overflow-hidden bg-zinc-950">
+        <div class="absolute inset-0 bg-gradient-to-b from-transparent to-cyan-900/5 pointer-events-none"></div>
+        <div class="max-w-7xl mx-auto text-center relative z-10">
+            <h2 class="reveal font-mono-code text-[10px] tracking-[0.3em] uppercase text-cyan-500 mb-3">Metrics</h2>
+            <h3 class="reveal font-serif-display text-3xl md:text-5xl text-zinc-100 mb-12">By the numbers</h3>
+            
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-16">
+                <div class="reveal p-6 border-l border-zinc-800 text-left">
+                    <div class="font-serif-display text-4xl text-zinc-100 mb-1">2.4M</div>
+                    <div class="font-mono-code text-[10px] uppercase tracking-widest text-zinc-500">Lines Dictated</div>
+                </div>
+                <div class="reveal p-6 border-l border-zinc-800 text-left">
+                    <div class="font-serif-display text-4xl text-zinc-100 mb-1">99.2%</div>
+                    <div class="font-mono-code text-[10px] uppercase tracking-widest text-zinc-500">Accuracy</div>
+                </div>
+                <div class="reveal p-6 border-l border-zinc-800 text-left">
+                    <div class="font-serif-display text-4xl text-zinc-100 mb-1">0.1s</div>
+                    <div class="font-mono-code text-[10px] uppercase tracking-widest text-zinc-500">Latency</div>
+                </div>
+                <div class="reveal p-6 border-l border-zinc-800 text-left">
+                    <div class="font-serif-display text-4xl text-zinc-100 mb-1">12k+</div>
+                    <div class="font-mono-code text-[10px] uppercase tracking-widest text-zinc-500">Daily Users</div>
+                </div>
+            </div>
+
+            <!-- Scrolling Visual -->
+            <div class="reveal relative h-24 md:h-32 overflow-hidden rounded-lg w-full border-y border-white/5 bg-black/50">
+                <div class="absolute inset-0 flex items-center animate-[scroll_20s_linear_infinite] w-[200%] gap-12 opacity-50">
+                    <span class="font-mono-code text-xs text-zinc-600">const handleVoice = async (audio) =&gt; { return await process(audio) }</span>
+                    <span class="font-mono-code text-xs text-cyan-900/60">git commit -m "refactor: updated voice engine params"</span>
+                    <span class="font-mono-code text-xs text-zinc-600">import { Transcriber } from '@dialogue/core'</span>
+                    <span class="font-mono-code text-xs text-purple-900/60">def optimize_neural_net(layers, activation): pass</span>
+                    <span class="font-mono-code text-xs text-zinc-600">rustc main.rs --release --target wasm32-unknown-unknown</span>
+                    <!-- Duplicate for loop -->
+                    <span class="font-mono-code text-xs text-zinc-600">const handleVoice = async (audio) =&gt; { return await process(audio) }</span>
+                    <span class="font-mono-code text-xs text-cyan-900/60">git commit -m "refactor: updated voice engine params"</span>
+                    <span class="font-mono-code text-xs text-zinc-600">import { Transcriber } from '@dialogue/core'</span>
+                </div>
+                <div class="absolute inset-0 bg-gradient-to-r from-zinc-950 via-transparent to-zinc-950 pointer-events-none"></div>
+            </div>
+            <style>
+                @keyframes scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+            </style>
+        </div>
+    </section>
+
+    <!-- Product Showcase -->
+    <section class="py-24 px-6 bg-[#08080a]">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex flex-col md:flex-row justify-between items-end mb-16">
+                <div>
+                    <h2 class="reveal font-serif-display text-4xl md:text-6xl text-zinc-100 mb-4">Extensions</h2>
+                    <p class="reveal font-mono-code text-xs text-zinc-400">Where you write, Dialogue listens.</p>
+                </div>
+                <button class="reveal mt-6 md:mt-0 px-6 py-3 rounded-[20px] text-xs font-mono-code border border-white/10 hover:bg-white/5 text-zinc-300 transition flex items-center gap-2">
+                    View Integration Docs <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="arrow-right" aria-hidden="true" class="lucide lucide-arrow-right w-4 h-4"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                </button>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-8">
+                <!-- P1 -->
+                <div class="reveal group relative overflow-hidden rounded-2xl bg-zinc-900 border border-white/5 aspect-[4/3]">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/90 to-transparent z-10"></div>
+                    <div class="absolute inset-0 bg-zinc-900 group-hover:scale-105 transition duration-700 flex items-center justify-center">
+                        <!-- Abstract Editor Vis -->
+                        <div class="w-3/4 h-3/4 bg-[#1e1e1e] rounded border border-zinc-700 p-4 shadow-2xl flex flex-col gap-2 opacity-80">
+                            <div class="flex gap-1.5 mb-2">
+                                <div class="w-2 h-2 rounded-full bg-red-500/50"></div>
+                                <div class="w-2 h-2 rounded-full bg-yellow-500/50"></div>
+                                <div class="w-2 h-2 rounded-full bg-green-500/50"></div>
+                            </div>
+                            <div class="h-1.5 w-1/3 bg-zinc-700 rounded-full"></div>
+                            <div class="h-1.5 w-1/2 bg-zinc-700 rounded-full"></div>
+                            <div class="h-1.5 w-3/4 bg-zinc-700 rounded-full"></div>
+                            <div class="h-1.5 w-2/3 bg-cyan-900/50 rounded-full animate-pulse mt-2"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="absolute bottom-0 left-0 p-8 z-20">
+                        <h3 class="font-serif-display text-3xl text-zinc-100 mb-2">VS Code</h3>
+                        <p class="font-mono-code text-xs text-zinc-400 mb-4">First-class citizen. Command palette control and inline suggestions.</p>
+                        <div class="flex gap-2">
+                            <span class="px-2 py-1 rounded border border-white/10 text-[10px] font-mono-code text-zinc-300 uppercase">Popular</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- P2 -->
+                <div class="reveal group relative overflow-hidden rounded-2xl bg-zinc-900 border border-white/5 aspect-[4/3]">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/90 to-transparent z-10"></div>
+                    <div class="absolute inset-0 bg-zinc-900 group-hover:scale-105 transition duration-700 flex items-center justify-center">
+                         <!-- Abstract Note Vis -->
+                         <div class="w-3/4 h-3/4 bg-[#18181b] rounded border border-zinc-700 p-4 shadow-2xl flex flex-col gap-3 opacity-80">
+                            <div class="flex justify-between mb-2">
+                                <div class="h-6 w-6 rounded bg-zinc-800"></div>
+                            </div>
+                            <div class="h-2 w-full bg-zinc-800 rounded"></div>
+                            <div class="h-2 w-full bg-zinc-800 rounded"></div>
+                            <div class="h-2 w-5/6 bg-zinc-800 rounded"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="absolute bottom-0 left-0 p-8 z-20">
+                        <h3 class="font-serif-display text-3xl text-zinc-100 mb-2">Obsidian</h3>
+                        <p class="font-mono-code text-xs text-zinc-400 mb-4">Dictate your second brain. Automatic linking and tagging support.</p>
+                        <div class="flex gap-2">
+                            <span class="px-2 py-1 rounded border border-white/10 text-[10px] font-mono-code text-zinc-300 uppercase">Beta</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Investment / CTA Section -->
+    <section id="download" class="py-24 px-6 relative overflow-hidden">
+        <!-- Parallax Background Element -->
+        <div class="absolute top-0 right-0 w-[600px] h-[600px] bg-cyan-500/5 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+
+        <div class="max-w-4xl mx-auto">
+            <div class="text-center mb-12">
+                <h2 class="reveal font-serif-display text-5xl md:text-6xl text-zinc-100 mb-6">Install Dialogue</h2>
+                <div class="reveal inline-flex items-center gap-4 text-xs font-mono-code text-zinc-400">
+                    <span class="flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3 text-cyan-500"><path d="M20 6 9 17l-5-5"></path></svg> Free Trial</span>
+                    <span class="flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3 text-cyan-500"><path d="M20 6 9 17l-5-5"></path></svg> Cancel anytime</span>
+                </div>
+            </div>
+
+            <div class="reveal text-center">
+                 <div class="p-8 md:p-12 border border-zinc-800 bg-zinc-900/50 backdrop-blur rounded-2xl relative overflow-hidden">
+                    <div class="absolute inset-0 pointer-events-none rounded-2xl">
+    <div class="absolute inset-0 bg-noise opacity-[0.05] rounded-2xl"></div>
+    <div class="absolute inset-0 rounded-2xl" style="padding: 1px; -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask-composite: exclude;">
+        <div class="absolute -inset-[150%] animate-[spin_4s_linear_infinite]" style="background: conic-gradient(from 90deg at 50% 50%, transparent 0%, transparent 75%, #22d3ee 100%);"></div>
+    </div>
+</div>
+                    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-500 to-transparent opacity-50"></div>
+                    
+                    <h3 class="font-serif-display text-3xl text-zinc-200 mb-4">Start speaking your mind</h3>
+                    <p class="font-mono-code text-xs text-zinc-500 mb-8 max-w-lg mx-auto leading-relaxed">
+                        Join thousands of developers who have ditched the keyboard for first drafts.
+                    </p>
+                    
+                    <div class="flex flex-col sm:flex-row justify-center gap-4 relative z-10">
+                        <button class="border-beam-btn px-8 py-4 rounded-[20px] text-zinc-900 font-bold font-mono-code text-xs uppercase bg-white hover:scale-105 transition shadow-lg shadow-cyan-900/20">
+                            Download Now
+                        </button>
+                        <button class="px-8 py-4 rounded-[20px] text-zinc-300 font-mono-code text-xs uppercase border border-white/10 hover:bg-white/5 transition">
+                            View Pricing
+                        </button>
+                    </div>
+                    
+                    <div class="mt-8 flex justify-center gap-6 text-[10px] font-mono-code text-zinc-600 uppercase tracking-widest">
+                        <span>macOS 12+</span>
+                        <span>Windows 11</span>
+                        <span>Linux</span>
+                    </div>
+                 </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-16 px-6 border-t border-white/5 bg-[#050505] text-center md:text-left">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
+            <div>
+                <div class="flex items-center gap-2 justify-center md:justify-start mb-4">
+                    <div class="w-4 h-4 bg-gradient-to-tr from-cyan-600 to-zinc-600 rounded-full"></div>
+                    <span class="font-serif-display text-lg text-zinc-200 tracking-tight italic">Dialogue</span>
+                </div>
+                <p class="font-mono-code text-[10px] text-zinc-600 uppercase tracking-widest">© 2024 Dialogue Labs Inc.</p>
+            </div>
+            <div class="flex gap-8 text-[10px] font-mono-code uppercase tracking-widest text-zinc-500">
+                <a href="#" class="hover:text-zinc-300 transition">Privacy</a>
+                <a href="#" class="hover:text-zinc-300 transition">Terms</a>
+                <a href="#" class="hover:text-zinc-300 transition">Twitter</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts for Interactions -->
+    <script>
+        // Initialize Icons
+        lucide.createIcons();
+
+        // 1. Intersection Observer for Scroll Animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: "0px 0px -50px 0px"
+        };
+        
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('active');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+        // 2. Spotlight Effect
+        const spotlightGroups = document.querySelectorAll('.spotlight-group');
+        spotlightGroups.forEach(group => {
+            group.addEventListener('mousemove', (e) => {
+                // Update CSS variables for all cards in the group
+                group.querySelectorAll('.spotlight-card, .spotlight-border').forEach(card => {
+                    const cardRect = card.getBoundingClientRect();
+                    card.style.setProperty('--mouse-x', `${e.clientX - cardRect.left}px`);
+                    card.style.setProperty('--mouse-y', `${e.clientY - cardRect.top}px`);
+                });
+            });
+        });
+
+        // 3. Carousel Logic
+        const items = document.querySelectorAll('.carousel-item');
+        let currentIndex = 0;
+        
+        function showItem(index) {
+            items.forEach(item => item.classList.remove('active'));
+            if (index >= items.length) currentIndex = 0;
+            if (index < 0) currentIndex = items.length - 1;
+            items[currentIndex].classList.add('active');
+        }
+
+        document.getElementById('nextBtn')?.addEventListener('click', () => {
+            currentIndex++;
+            showItem(currentIndex);
+        });
+
+        document.getElementById('prevBtn')?.addEventListener('click', () => {
+            currentIndex--;
+            showItem(currentIndex);
+        });
+
+        // Auto rotate
+        setInterval(() => {
+            currentIndex++;
+            showItem(currentIndex);
+        }, 6000);
+    </script>
+
+</body></html>

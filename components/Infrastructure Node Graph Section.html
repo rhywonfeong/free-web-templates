@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zenith Component — Architecture Node Graph</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js" async></script>
+  <style>
+    /* ============================================
+   TOKENS
+   ============================================ */
+    @property --angle {
+      syntax: '<angle>';
+      initial-value: 0deg;
+      inherits: false;
+    }
+
+    :root {
+      --bg: #050510;
+      --bg-alt: #080814;
+      --bg-card: rgba(255, 255, 255, 0.04);
+      --surface: rgba(255, 255, 255, 0.04);
+      --surface-2: rgba(255, 255, 255, 0.06);
+      --border: rgba(255, 255, 255, 0.06);
+      --border-2: rgba(255, 255, 255, 0.10);
+      --text: #e8edf3;
+      --text-2: #94a3b8;
+      --text-3: #4b5e78;
+      --blue: #2563eb;
+      --blue-light: #3b82f6;
+      --cyan: #0ea5e9;
+      --cyan-light: #38bdf8;
+      --sky: #7dd3fc;
+      --grad-text: linear-gradient(135deg, #38bdf8 0%, #3b82f6 50%, #60a5fa 100%);
+      --grad-border: linear-gradient(135deg, rgba(37, 99, 235, 0.4), rgba(14, 165, 233, 0.15), transparent 70%);
+      --grad-cta: linear-gradient(135deg, #0ea5e9, #2563eb);
+      --noise: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      --r: 12px;
+      --r-lg: 16px;
+      --r-xl: 24px;
+    }
+
+    /* ============================================
+   RESET & BASE
+   ============================================ */
+    *,
+    *::before,
+    *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.55;
+      overflow-x: hidden;
+    }
+
+    /* Custom selection */
+    ::selection {
+      background: rgba(59, 130, 246, 0.3);
+      color: #fff;
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.14);
+    }
+
+    /* Focus-visible for keyboard accessibility */
+    :focus-visible {
+      outline: 2px solid var(--cyan);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+
+    .skip-link {
+      position: absolute;
+      top: -100%;
+      left: 16px;
+      z-index: 10000;
+      padding: 8px 16px;
+      background: var(--cyan);
+      color: #fff;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+
+    .skip-link:focus {
+      top: 12px;
+    }
+
+    /* Subtle grain texture overlay */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: var(--noise);
+      opacity: 0.03;
+      pointer-events: none;
+      z-index: 9999;
+      mix-blend-mode: overlay;
+    }
+
+    img {
+      max-width: 100%;
+      display: block;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button {
+      font: inherit;
+      border: none;
+      cursor: pointer;
+      background: none;
+      color: inherit;
+    }
+
+    ul {
+      list-style: none;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 200;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      text-wrap: balance;
+    }
+
+    /* ============================================
+   LAYOUT
+   ============================================ */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .container-sm {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ============================================
+   TYPOGRAPHY
+   ============================================ */
+    .text-gradient {
+      background: var(--grad-text);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .text-mono {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8em;
+      letter-spacing: 0.05em;
+    }
+
+    .section-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--blue-light);
+      margin-bottom: 10px;
+      font-weight: 500;
+    }
+
+    .section-title {
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      font-weight: 200;
+      letter-spacing: -0.035em;
+      margin-bottom: 10px;
+      line-height: 1.08;
+    }
+
+    .section-desc {
+      color: var(--text-2);
+      font-size: 0.88rem;
+      max-width: 480px;
+      line-height: 1.55;
+      font-weight: 300;
+      text-wrap: balance;
+    }
+
+    .section-header {
+      margin-bottom: 36px;
+    }
+
+    .section-header--center {
+      text-align: center;
+    }
+
+    .section-header--center .section-desc {
+      margin: 0 auto;
+    }
+
+    /* ============================================
+   BUTTONS
+   ============================================ */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 400;
+      transition: all 0.3s ease;
+      position: relative;
+      white-space: nowrap;
+      letter-spacing: 0.01em;
+    }
+
+    .btn-primary {
+      background: var(--grad-cta);
+      color: #fff;
+      box-shadow: 0 0 24px rgba(59, 130, 246, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 0 40px rgba(59, 130, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+      box-shadow: 0 0 16px rgba(59, 130, 246, 0.2);
+    }
+
+    .btn-ghost {
+      background: var(--surface);
+      border: 1px solid var(--border-2);
+      color: var(--text);
+      backdrop-filter: blur(12px);
+    }
+
+    .btn-ghost:hover {
+      background: var(--surface-2);
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    .btn-ghost:active {
+      transform: scale(0.98);
+    }
+
+    .btn iconify-icon {
+      font-size: 1.1em;
+    }
+
+    /* --- Nav Get Started: pill with pulse glow --- */
+    .nav__actions .btn-primary {
+      border-radius: 50px;
+      padding: 8px 20px;
+      background: linear-gradient(135deg, var(--cyan), var(--blue));
+      box-shadow: 0 0 16px rgba(14, 165, 233, 0.3);
+      animation: nav-btn-glow 3s ease-in-out infinite;
+    }
+
+    @keyframes nav-btn-glow {
+
+      0%,
+      100% {
+        box-shadow: 0 0 16px rgba(14, 165, 233, 0.3);
+      }
+
+      50% {
+        box-shadow: 0 0 28px rgba(14, 165, 233, 0.5), 0 0 8px rgba(56, 189, 248, 0.2);
+      }
+    }
+
+    .nav__actions .btn-primary:hover {
+      box-shadow: 0 0 36px rgba(14, 165, 233, 0.5);
+      transform: translateY(-1px);
+    }
+
+    .nav__actions .btn-ghost {
+      border-radius: 50px;
+    }
+
+    /* ============================================
+   GLASS CARD
+   ============================================ */
+    .glass {
+      background: rgba(12, 12, 30, 0.8);
+      border: 1px solid var(--border-2);
+      border-radius: var(--r-lg);
+      transition: border-color 0.3s ease;
+    }
+
+    .glass:hover {
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    /* ============================================
+   GRADIENT BORDER CARD
+   ============================================ */
+    .grad-border {
+      position: relative;
+      background: var(--bg-card);
+      border-radius: var(--r-lg);
+      border: 1px solid transparent;
+    }
+
+    .grad-border::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: var(--r-lg);
+      padding: 1px;
+      background: var(--grad-border);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+
+    .grad-border:hover::before {
+      opacity: 1;
+    }
+
+    /* ============================================
+   ANIMATED CONIC BORDER
+   ============================================ */
+    .conic-border {
+      position: relative;
+      border-radius: var(--r-lg);
+      overflow: hidden;
+    }
+
+    .conic-border::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      background: conic-gradient(from var(--angle), transparent 30%, var(--cyan) 48%, var(--blue) 52%, transparent 70%);
+      animation: conic-spin 4s linear infinite;
+      z-index: -1;
+    }
+
+    .conic-border::after {
+      content: '';
+      position: absolute;
+      inset: 1px;
+      border-radius: calc(var(--r-lg) - 1px);
+      background: var(--bg-alt);
+      z-index: -1;
+    }
+
+    @keyframes conic-spin {
+      to {
+        --angle: 360deg;
+      }
+    }
+
+    /* ============================================
+   REVEAL ANIMATIONS
+   ============================================ */
+    .reveal {
+      opacity: 0;
+      transform: translateY(32px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+
+    .reveal.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .reveal-scale {
+      opacity: 0;
+      transform: scale(0.95);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+
+    .reveal-scale.is-visible {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .stagger-up .reveal-child {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+
+    .stagger-up.is-visible .reveal-child {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .stagger-up.is-visible .reveal-child:nth-child(1) {
+      transition-delay: 0ms;
+    }
+
+    .stagger-up.is-visible .reveal-child:nth-child(2) {
+      transition-delay: 80ms;
+    }
+
+    .stagger-up.is-visible .reveal-child:nth-child(3) {
+      transition-delay: 160ms;
+    }
+
+    .stagger-up.is-visible .reveal-child:nth-child(4) {
+      transition-delay: 240ms;
+    }
+
+    .stagger-up.is-visible .reveal-child:nth-child(5) {
+      transition-delay: 320ms;
+    }
+
+    .stagger-up.is-visible .reveal-child:nth-child(6) {
+      transition-delay: 400ms;
+    }
+
+    .stagger-up.is-visible .reveal-child:nth-child(7) {
+      transition-delay: 480ms;
+    }
+
+    .stagger-up.is-visible .reveal-child:nth-child(8) {
+      transition-delay: 560ms;
+    }
+
+
+    /* ============================================
+   ARCHITECTURE — NODE GRAPH
+   ============================================ */
+    .arch {
+      padding: 80px 0;
+      position: relative;
+      overflow: hidden;
+      background: var(--bg-alt);
+    }
+
+    .arch::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background:
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0px, rgba(255, 255, 255, 0.012) 1px, transparent 1px, transparent 80px),
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.012) 0px, rgba(255, 255, 255, 0.012) 1px, transparent 1px, transparent 80px);
+      pointer-events: none;
+    }
+
+    .arch::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 900px;
+      height: 900px;
+      background: radial-gradient(ellipse, rgba(14, 165, 233, 0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .arch__canvas {
+      position: relative;
+      max-width: 720px;
+      height: 480px;
+      margin: 0 auto;
+      perspective: 1200px;
+    }
+
+    .arch__backdrop {
+      position: absolute;
+      inset: 20px -20px -20px 20px;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.15));
+      border-radius: var(--r-xl);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(40px);
+      box-shadow: -16px -16px 48px rgba(255, 255, 255, 0.01), 32px 32px 64px rgba(0, 0, 0, 0.3);
+      transform: rotateY(-8deg) rotateX(3deg) translateZ(-60px);
+      pointer-events: none;
+    }
+
+    .arch__scene {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transform-style: preserve-3d;
+    }
+
+    .arch__splines {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    .arch__spline-glow {
+      fill: none;
+      stroke: rgba(56, 189, 248, 0.06);
+      stroke-width: 6;
+      filter: blur(3px);
+    }
+
+    .arch__spline-path {
+      fill: none;
+      stroke: rgba(56, 189, 248, 0.2);
+      stroke-width: 1.5;
+      stroke-dasharray: 8 12;
+      animation: arch-flow 3s linear infinite;
+    }
+
+    @keyframes arch-flow {
+      to {
+        stroke-dashoffset: -120;
+      }
+    }
+
+    .arch__node {
+      position: absolute;
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(16px) saturate(140%);
+      border: 1px solid rgba(56, 189, 248, 0.12);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--r-lg);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      padding: 14px 16px;
+      z-index: 2;
+      transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.3s;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 140px;
+    }
+
+    .arch__node:hover {
+      transform: translateY(-6px);
+      border-color: rgba(56, 189, 248, 0.3);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 30px rgba(14, 165, 233, 0.08);
+    }
+
+    .arch__node-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: rgba(14, 165, 233, 0.1);
+      border: 1px solid rgba(14, 165, 233, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      color: var(--cyan-light);
+    }
+
+    .arch__node-label {
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .arch__node-meta {
+      font-size: 0.62rem;
+      color: var(--text-3);
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 0.05em;
+    }
+
+    .arch__node--1 {
+      top: 5%;
+      left: 5%;
+      animation: arch-float 7s ease-in-out infinite;
+    }
+
+    .arch__node--2 {
+      top: 60%;
+      left: 2%;
+      animation: arch-float 9s ease-in-out infinite 1.5s;
+    }
+
+    .arch__node--3 {
+      top: 8%;
+      right: 8%;
+      animation: arch-float 8s ease-in-out infinite 0.8s;
+    }
+
+    .arch__node--4 {
+      top: 65%;
+      right: 5%;
+      animation: arch-float 6s ease-in-out infinite 2s;
+    }
+
+    @keyframes arch-float {
+
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+
+      50% {
+        transform: translateY(-10px);
+      }
+    }
+
+    .arch__core {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(56, 189, 248, 0.15);
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+
+    .arch__core-inner {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--cyan), var(--blue));
+      box-shadow: 0 0 40px rgba(14, 165, 233, 0.3), 0 8px 24px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 1.4rem;
+      position: relative;
+    }
+
+    .arch__core-inner::before {
+      content: '';
+      position: absolute;
+      inset: -16px;
+      border-radius: 50%;
+      border: 1px solid rgba(56, 189, 248, 0.15);
+      animation: arch-pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    .arch__core-inner::after {
+      content: '';
+      position: absolute;
+      inset: -28px;
+      border-radius: 50%;
+      border: 1px solid rgba(56, 189, 248, 0.08);
+      animation: arch-pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite 1.5s;
+    }
+
+    @keyframes arch-pulse {
+      0% {
+        transform: scale(1);
+        opacity: 0.6;
+      }
+
+      100% {
+        transform: scale(1.6);
+        opacity: 0;
+      }
+    }
+
+    @media (max-width: 1024px) {
+      .footer__grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .capabilities__layout {
+        grid-template-columns: 1fr;
+      }
+
+      .capabilities__tabs {
+        flex-direction: row;
+        overflow-x: auto;
+        gap: 8px;
+        padding-bottom: 8px;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .cap-tab {
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .comparison__grid {
+        grid-template-columns: 1fr;
+        max-width: 480px;
+        margin: 0 auto;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .nav__links {
+        display: none;
+      }
+
+      .nav__actions {
+        display: none;
+      }
+
+      .nav__toggle {
+        display: flex;
+      }
+
+      .nav.is-open .nav__links {
+        display: flex;
+        flex-direction: column;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: rgba(5, 5, 16, 0.95);
+        backdrop-filter: blur(20px);
+        padding: 24px;
+        gap: 20px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .footer__grid {
+        grid-template-columns: 1fr;
+        gap: 32px;
+      }
+
+      .footer__bottom {
+        flex-direction: column;
+        gap: 16px;
+        text-align: center;
+      }
+
+      .page-hero__title {
+        font-size: clamp(1.6rem, 5vw, 2.2rem);
+      }
+
+      .arch__canvas {
+        height: 320px;
+      }
+
+      .arch__node {
+        min-width: 110px;
+        padding: 10px 12px;
+      }
+
+      .arch__core {
+        width: 80px;
+        height: 80px;
+      }
+
+      .arch__core-inner {
+        width: 48px;
+        height: 48px;
+        font-size: 1.1rem;
+      }
+
+      .cap-tiles {
+        grid-template-columns: 1fr;
+      }
+
+      .comparison__stats {
+        gap: 20px;
+        flex-direction: column;
+        align-items: center;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .container {
+        padding: 0 16px;
+      }
+
+      .cap-panel__visual {
+        padding: 14px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+
+      .reveal,
+      .reveal-scale,
+      .stagger-up .reveal-child {
+        opacity: 1 !important;
+        transform: none !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- ==================== ARCHITECTURE — NODE GRAPH ==================== -->
+  <section class="arch">
+    <div class="container">
+      <div class="section-header section-header--center reveal">
+        <div class="section-label">Architecture</div>
+        <h2 class="section-title">Intelligent orchestration<br><span class="text-gradient">at every layer</span></h2>
+        <p class="section-desc">Data flows through a unified graph of interconnected services, all converging on
+          Zenith's core inference engine.</p>
+      </div>
+
+      <div class="arch__canvas reveal-scale">
+        <div class="arch__backdrop"></div>
+        <div class="arch__scene">
+          <svg class="arch__splines" viewBox="0 0 720 480" preserveAspectRatio="xMidYMid slice">
+            <path class="arch__spline-glow" d="M130 80 C 280 80, 220 240, 360 240" />
+            <path class="arch__spline-path" d="M130 80 C 280 80, 220 240, 360 240" />
+            <path class="arch__spline-glow" d="M110 340 C 240 340, 200 240, 360 240" />
+            <path class="arch__spline-path" d="M110 340 C 240 340, 200 240, 360 240" />
+            <path class="arch__spline-glow" d="M560 90 C 450 90, 500 240, 360 240" />
+            <path class="arch__spline-path" d="M560 90 C 450 90, 500 240, 360 240" />
+            <path class="arch__spline-glow" d="M580 380 C 450 380, 500 240, 360 240" />
+            <path class="arch__spline-path" d="M580 380 C 450 380, 500 240, 360 240" />
+          </svg>
+
+          <div class="arch__node arch__node--1">
+            <div class="arch__node-icon"><iconify-icon icon="lucide:database"></iconify-icon></div>
+            <div class="arch__node-label">Data Lake</div>
+            <div class="arch__node-meta">S3 / GCS / HDFS</div>
+          </div>
+
+          <div class="arch__node arch__node--2">
+            <div class="arch__node-icon"><iconify-icon icon="lucide:cpu"></iconify-icon></div>
+            <div class="arch__node-label">GPU Cluster</div>
+            <div class="arch__node-meta">A100 x 512</div>
+          </div>
+
+          <div class="arch__node arch__node--3">
+            <div class="arch__node-icon"><iconify-icon icon="lucide:globe"></iconify-icon></div>
+            <div class="arch__node-label">Edge CDN</div>
+            <div class="arch__node-meta">300+ PoPs</div>
+          </div>
+
+          <div class="arch__node arch__node--4">
+            <div class="arch__node-icon"><iconify-icon icon="lucide:shield-check"></iconify-icon></div>
+            <div class="arch__node-label">Security</div>
+            <div class="arch__node-meta">SOC 2 / HIPAA</div>
+          </div>
+
+          <div class="arch__core">
+            <div class="arch__core-inner">
+              <iconify-icon icon="lucide:zap"></iconify-icon>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <script>
+    const revealEls=document.querySelectorAll('.reveal,.reveal-scale,.stagger-up');
+const observer=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){x.target.classList.add('is-visible');observer.unobserve(x.target)}})},{threshold:0.15,rootMargin:'0px 0px -40px 0px'});
+revealEls.forEach(el=>observer.observe(el));
+(function(){const s=document.querySelector('.arch');if(!s)return;const n=s.querySelectorAll('.arch__node'),c=s.querySelector('.arch__core-inner');
+window.addEventListener('scroll',()=>{const r=s.getBoundingClientRect(),vh=window.innerHeight;if(r.top<vh&&r.bottom>0){const p=(vh-r.top)/(vh+r.height);
+n.forEach((nd,i)=>{nd.style.transform='translateY('+((p-0.5)*(15+i*8))+'px)'});if(c)c.style.transform='rotate('+(p*60)+'deg)'}},{passive:true})})();
+  </script>
+</body>
+
+</html>

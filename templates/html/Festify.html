@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Festify - The Party Planning App</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/3/3.1.0/iconify.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+--brand-dark: #080C16;
+}
+body {
+font-family: 'Inter', sans-serif;
+color: var(--brand-dark);
+background-color: #ffffff;
+-webkit-font-smoothing: antialiased;
+}
+/*
+* FIGMA HERO ANIMATION
+* Ellipse 1 Gradient: Blue -> Indigo -> Purple -> Peach -> Orange
+* Animation: Rotates the entire gradient container to change color direction
+*/
+@keyframes color-spin {
+0% { transform: rotate(0deg) scale(1.5); }
+100% { transform: rotate(360deg) scale(1.5); }
+}
+.hero-container {
+position: relative;
+overflow: hidden;
+padding-top: 8rem; /* Space for nav */
+padding-bottom: 6rem;
+}
+.hero-blob {
+position: absolute;
+top: -50%;
+left: -20%;
+width: 140%;
+height: 150%;
+border-radius: 50%;
+background: linear-gradient(
+135deg,
+#4271F4 0%,
+#7781F1 25%,
+#AC7CE7 45%,
+#E39986 70%,
+#F7613B 100%
+);
+filter: blur(120px); /* Heavy blur per design */
+opacity: 0.8;
+z-index: -1;
+animation: color-spin 20s linear infinite;
+transform-origin: center center;
+pointer-events: none;
+}
+.hero-white-overlay {
+position: absolute;
+inset: 0;
+background: rgba(255,255,255,0.4);
+backdrop-filter: blur(60px);
+z-index: -1;
+}
+/* Utilities */
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.glass-panel {
+background: rgba(255, 255, 255, 0.7);
+backdrop-filter: blur(12px);
+border: 1px solid rgba(255, 255, 255, 0.5);
+}
+.glass-pill {
+background: rgba(255, 255, 255, 0.6);
+backdrop-filter: blur(8px);
+border: 1px solid rgba(255, 255, 255, 0.8);
+box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+}
+.text-gradient-gray {
+background: linear-gradient(to bottom, #9CA3AF, #4B5563);
+-webkit-background-clip: text;
+-webkit-text-fill-color: transparent;
+}
+</style>
+<link id="all-fonts-link-font-geist" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-geist">.font-geist { font-family: 'Geist', sans-serif !important; }</style><link id="all-fonts-link-font-roboto" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-roboto">.font-roboto { font-family: 'Roboto', sans-serif !important; }</style><link id="all-fonts-link-font-montserrat" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-montserrat">.font-montserrat { font-family: 'Montserrat', sans-serif !important; }</style><link id="all-fonts-link-font-poppins" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-poppins">.font-poppins { font-family: 'Poppins', sans-serif !important; }</style><link id="all-fonts-link-font-playfair" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;900&display=swap"><style id="all-fonts-style-font-playfair">.font-playfair { font-family: 'Playfair Display', serif !important; }</style><link id="all-fonts-link-font-instrument-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:wght@400;500;600;700&display=swap"><style id="all-fonts-style-font-instrument-serif">.font-instrument-serif { font-family: 'Instrument Serif', serif !important; }</style><link id="all-fonts-link-font-merriweather" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700;900&display=swap"><style id="all-fonts-style-font-merriweather">.font-merriweather { font-family: 'Merriweather', serif !important; }</style><link id="all-fonts-link-font-bricolage" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-bricolage">.font-bricolage { font-family: 'Bricolage Grotesque', sans-serif !important; }</style><link id="all-fonts-link-font-jakarta" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-jakarta">.font-jakarta { font-family: 'Plus Jakarta Sans', sans-serif !important; }</style><link id="all-fonts-link-font-manrope" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-manrope">.font-manrope { font-family: 'Manrope', sans-serif !important; }</style><link id="all-fonts-link-font-space-grotesk" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-space-grotesk">.font-space-grotesk { font-family: 'Space Grotesk', sans-serif !important; }</style><link id="all-fonts-link-font-work-sans" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-work-sans">.font-work-sans { font-family: 'Work Sans', sans-serif !important; }</style><link id="all-fonts-link-font-pt-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Serif:wght@400;700&display=swap"><style id="all-fonts-style-font-pt-serif">.font-pt-serif { font-family: 'PT Serif', serif !important; }</style><link id="all-fonts-link-font-geist-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-geist-mono">.font-geist-mono { font-family: 'Geist Mono', monospace !important; }</style><link id="all-fonts-link-font-space-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap"><style id="all-fonts-style-font-space-mono">.font-space-mono { font-family: 'Space Mono', monospace !important; }</style><link id="all-fonts-link-font-quicksand" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-quicksand">.font-quicksand { font-family: 'Quicksand', sans-serif !important; }</style><link id="all-fonts-link-font-nunito" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-nunito">.font-nunito { font-family: 'Nunito', sans-serif !important; }</style><link id="all-fonts-link-font-newsreader" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400..800&display=swap"><style id="all-fonts-style-font-newsreader">.font-newsreader { font-family: 'Newsreader', serif !important; }</style><link id="all-fonts-link-font-google-sans-flex" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600;700&display=swap"><style id="all-fonts-style-font-google-sans-flex">.font-google-sans-flex { font-family: 'Google Sans Flex', sans-serif !important; }</style><link id="all-fonts-link-font-oswald" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-oswald">.font-oswald { font-family: 'Oswald', sans-serif !important; }</style><link id="all-fonts-link-font-dm-sans" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-dm-sans">.font-dm-sans { font-family: 'DM Sans', sans-serif !important; }</style></head>
+<body class="overflow-x-hidden selection:bg-blue-100 selection:text-[#080C16]">
+
+    <!-- Navigation -->
+    <nav class="fixed z-50 w-full top-0 transition-all duration-300 pt-4 pb-4">
+    <script>
+        (function() {
+            const nav = document.currentScript.parentElement;
+            const updateNav = () => {
+                if (window.scrollY > 10) {
+                    nav.classList.add('glass-panel', 'border-b', 'border-gray-100/20', 'py-2');
+                    nav.classList.remove('pt-4', 'pb-4');
+                } else {
+                    nav.classList.remove('glass-panel', 'border-b', 'border-gray-100/20', 'py-2');
+                    nav.classList.add('pt-4', 'pb-4');
+                }
+            };
+            window.addEventListener('scroll', updateNav);
+            // Initial check
+            updateNav();
+        })();
+    </script>
+    <div class="flex h-16 max-w-6xl mr-auto ml-auto pr-6 pl-6 items-center justify-between">
+        <div class="flex gap-2 items-center">
+            <!-- Logo -->
+            <svg width="100%" height="40" viewBox="0 0 439 233" fill="none" xmlns="http://www.w3.org/2000/svg" class="">
+<path d="M362.093 232.135C359.686 232.135 357.731 231.323 356.227 229.698C354.723 228.134 353.97 225.998 353.97 223.291C353.97 220.764 354.271 218.237 354.873 215.71C355.535 213.243 356.678 210.506 358.302 207.497C359.867 204.489 361.942 201.12 364.529 197.39C367.177 193.72 370.486 189.388 374.457 184.394L392.506 147.844C383.481 158.554 375.299 166.736 367.959 172.391C360.619 178.047 353.76 180.875 347.382 180.875C345.337 180.875 343.592 180.393 342.148 179.431C340.704 178.528 339.982 176.994 339.982 174.828C339.982 171.82 340.704 168.421 342.148 164.63C343.351 161.682 344.615 158.945 345.939 156.418C347.322 153.831 348.736 151.123 350.18 148.296C351.684 145.287 353.429 141.587 355.414 137.195C357.4 132.803 359.596 127.539 362.002 121.402C363.206 119.056 364.77 117.371 366.695 116.348C368.621 115.265 370.486 114.724 372.291 114.724C374.156 114.724 375.72 115.175 376.983 116.077C378.307 116.92 378.969 118.063 378.969 119.507C378.969 120.289 378.848 120.921 378.608 121.402L362.093 155.786C361.25 157.591 360.829 158.975 360.829 159.937C360.829 160.84 361.19 161.291 361.912 161.291C362.574 161.291 363.416 160.96 364.439 160.298C365.462 159.637 366.425 158.884 367.327 158.042L404.599 121.402C407.607 118.995 409.924 117.521 411.548 116.98C413.172 116.438 414.767 116.168 416.331 116.168C417.595 116.168 418.497 116.649 419.038 117.612C419.58 118.514 419.851 119.477 419.851 120.499C419.851 121.282 419.7 122.064 419.399 122.846L399.184 164.991C402.072 162.825 405.381 160.719 409.111 158.674C412.842 156.568 416.481 154.673 420.031 152.988C423.581 151.304 426.589 149.98 429.056 149.017C431.523 147.995 432.906 147.483 433.207 147.483C434.711 147.483 436.035 148.055 437.178 149.198C438.321 150.341 438.893 151.785 438.893 153.53C438.893 155.094 438.291 156.749 437.088 158.493C435.945 160.238 433.899 161.923 430.951 163.547C427.161 165.653 423.551 167.608 420.121 169.413C416.752 171.218 413.924 172.752 411.638 174.016L405.231 177.626C402.343 179.31 399.665 181.085 397.199 182.95C394.792 184.815 392.355 186.891 389.889 189.177C387.242 196.096 384.745 202.203 382.398 207.497C380.112 212.792 378.698 215.951 378.157 216.973C373.283 227.081 367.929 232.135 362.093 232.135Z" fill="#080C16" class=""></path>
+<path d="M286.693 205.963C285.249 205.963 283.956 205.602 282.813 204.88C281.669 204.158 281.098 203.015 281.098 201.451C281.098 200.067 281.79 197.931 283.174 195.043L315.031 127.539H310.248C306.939 127.539 304.682 127.027 303.479 126.005C302.276 124.982 301.674 123.778 301.674 122.395C301.674 120.951 302.426 119.567 303.93 118.243C305.434 116.859 307.63 116.168 310.518 116.168H321.168C326.883 104.616 332.569 95.7417 338.224 89.5448C343.94 83.2876 349.505 78.9558 354.92 76.5492C360.335 74.1426 365.419 72.9393 370.172 72.9393C373.541 72.9393 376.519 74.293 379.106 77.0005C381.693 79.6477 382.987 83.6486 382.987 89.0033C382.987 91.5302 382.626 94.388 381.904 97.5767C381.543 99.2012 380.58 100.374 379.016 101.096C377.512 101.758 376.278 102.089 375.316 102.089C374.112 102.089 372.999 101.818 371.977 101.277C370.954 100.675 370.442 99.7728 370.442 98.5695C370.442 97.9678 370.503 97.2458 370.623 96.4035C370.683 95.9824 370.713 95.3206 370.713 94.4181C370.713 89.7253 368.998 87.3788 365.569 87.3788C363.162 87.3788 360.214 88.7626 356.725 91.5302C353.235 94.2376 349.806 97.7873 346.437 102.179C343.067 106.571 340.36 111.234 338.314 116.168H359.342C363.253 116.168 366.471 116.378 368.998 116.799C371.525 117.22 372.789 118.725 372.789 121.312C372.789 122.816 372.217 124.139 371.074 125.283C369.931 126.426 367.855 127.118 364.847 127.358C359.192 127.599 353.686 127.749 348.332 127.809C342.977 127.809 337.562 127.809 332.087 127.809C330.764 130.457 329.079 133.886 327.034 138.098C324.988 142.249 322.852 146.671 320.626 151.364C318.4 156.057 316.294 160.509 314.309 164.72C310.819 172.061 307.751 178.468 305.104 183.943C302.516 189.478 300.531 193.66 299.147 196.487C297.824 199.255 295.959 201.511 293.552 203.256C291.206 205.061 288.919 205.963 286.693 205.963Z" fill="#080C16" class=""></path>
+<path d="M289.538 106.962C285.808 106.962 283.19 106.391 281.686 105.248C280.182 104.044 279.34 102.48 279.159 100.555C279.159 97.7271 280.182 94.9596 282.228 92.2522C284.334 89.4846 287.432 88.1008 291.523 88.1008C295.013 88.1008 297.449 88.7927 298.833 90.1765C300.217 91.5001 300.909 93.1847 300.909 95.2303C300.909 97.5166 300.006 100.043 298.201 102.811C296.457 105.579 293.569 106.962 289.538 106.962ZM267.427 180.875C262.554 180.875 258.703 179.641 255.876 177.174C253.108 174.648 251.724 170.737 251.724 165.442C251.724 161.772 252.386 158.132 253.71 154.523C255.094 150.852 256.598 147.423 258.222 144.234C259.907 140.986 261.23 138.158 262.193 135.751C262.494 134.969 263.005 133.766 263.727 132.141C264.509 130.517 265.322 128.862 266.164 127.178L269.232 120.86C270.255 119.176 271.428 117.973 272.752 117.251C274.075 116.529 275.429 116.168 276.813 116.168C279.099 116.168 281.055 116.92 282.679 118.424C284.364 119.868 285.206 121.733 285.206 124.019C285.146 124.561 285.056 125.102 284.935 125.644C284.875 126.185 284.695 126.726 284.394 127.268C283.07 129.675 281.927 131.931 280.964 134.036C280.002 136.082 279.009 138.158 277.986 140.264C277.144 142.008 276.091 144.144 274.828 146.671C273.564 149.198 272.451 151.755 271.488 154.342C270.526 156.869 270.044 159.125 270.044 161.111C270.044 162.735 270.436 163.818 271.218 164.359C272.06 164.841 273.233 165.081 274.737 165.081C277.144 165.081 279.791 164.329 282.679 162.825C285.627 161.321 288.425 159.456 291.072 157.23C293.84 155.004 296.397 152.748 298.743 150.461C301.089 148.115 302.834 146.22 303.977 144.776C305.12 143.633 306.324 143.061 307.587 143.061C308.67 143.061 309.542 143.542 310.204 144.505C310.926 145.468 311.287 146.701 311.287 148.205C311.287 149.589 310.926 151.063 310.204 152.627C309.542 154.192 308.429 155.666 306.865 157.049C302.894 161.08 298.743 164.931 294.411 168.601C290.079 172.211 285.627 175.159 281.055 177.445C276.542 179.732 272 180.875 267.427 180.875Z" fill="#080C16"></path>
+<path d="M215.131 180.875C210.378 180.875 207.069 179.701 205.204 177.355C203.339 175.009 202.406 172.121 202.406 168.691C202.406 165.683 202.918 162.555 203.94 159.306C204.963 156.057 206.106 153.139 207.37 150.552L217.929 128.892H214.048C210.679 128.892 208.362 128.351 207.099 127.268C205.836 126.185 205.204 124.952 205.204 123.568C205.204 122.184 205.986 120.62 207.55 118.875C209.115 117.07 211.25 116.168 213.958 116.168H223.704L242.747 78.3541C243.95 76.0679 245.424 74.4435 247.169 73.4808C248.974 72.458 250.839 71.9466 252.764 71.9466C254.569 71.9466 256.223 72.4279 257.728 73.3906C259.232 74.3532 259.984 75.9476 259.984 78.1737C259.984 79.3168 259.713 80.49 259.171 81.6933C258.69 82.8364 258.028 84.1901 257.186 85.7544C256.223 87.5593 254.93 89.996 253.305 93.0644C251.681 96.0726 249.665 99.7126 247.259 103.984L240.761 116.168H270.182C273.069 116.168 275.416 116.559 277.221 117.341C279.086 118.063 280.018 119.717 280.018 122.304C280.018 123.628 279.537 124.922 278.575 126.185C277.612 127.448 275.536 128.201 272.348 128.441H234.805L228.488 141.076L222.892 152.537C222.17 153.981 221.448 155.666 220.726 157.591C220.064 159.456 219.734 161.111 219.734 162.555C219.734 164.359 220.576 165.262 222.26 165.262C224.186 165.262 226.773 164.45 230.022 162.825C233.271 161.201 236.7 159.215 240.31 156.869C243.98 154.523 247.5 152.086 250.869 149.559C254.238 146.972 257.336 144.475 260.164 142.068C261.187 141.407 262.089 141.076 262.872 141.076C264.195 141.076 265.188 141.798 265.85 143.242C266.512 144.686 266.572 146.43 266.03 148.476C265.549 150.522 264.135 152.477 261.789 154.342C257.878 157.892 253.907 161.261 249.876 164.45C245.905 167.578 241.964 170.376 238.054 172.843C234.083 175.249 230.172 177.175 226.322 178.618C222.471 180.123 218.741 180.875 215.131 180.875Z" fill="#080C16"></path>
+<path d="M166.354 180.875C160.037 180.875 154.291 179.461 149.117 176.633C143.943 173.745 140.634 169.203 139.19 163.006C139.07 162.404 139.01 162.013 139.01 161.833C139.01 160.208 139.581 158.824 140.724 157.681C141.867 156.478 143.131 155.876 144.515 155.876C145.176 155.876 145.898 155.997 146.681 156.237C147.523 156.478 148.155 157.019 148.576 157.862C150.14 160.689 152.817 162.976 156.608 164.72C160.458 166.405 164.219 167.247 167.889 167.247C171.799 167.247 175.199 166.495 178.086 164.991C181.035 163.487 182.509 161.02 182.509 157.591C182.509 153.379 181.305 149.649 178.899 146.4C176.552 143.151 173.574 140.233 169.964 137.646C166.415 134.999 162.835 132.562 159.225 130.336C158.924 130.156 158.473 129.644 157.871 128.802C157.27 127.9 156.969 126.997 156.969 126.095C156.969 125.373 157.149 124.801 157.51 124.38C159.435 121.793 161.902 119.266 164.91 116.799C167.919 114.333 171.228 113.099 174.838 113.099C177.485 113.099 179.651 113.761 181.335 115.085C183.08 116.348 183.952 117.612 183.952 118.875C183.952 120.56 183.17 122.154 181.606 123.658C180.042 125.102 178.417 126.486 176.733 127.809C183.892 131.54 189.578 136.293 193.789 142.068C198.001 147.784 200.107 153.379 200.107 158.854C200.107 163.487 198.422 167.458 195.053 170.767C191.744 174.016 187.502 176.513 182.328 178.257C177.214 180.002 171.89 180.875 166.354 180.875Z" fill="#080C16" class=""></path>
+<path d="M101.333 180.875C96.5201 180.875 92.3988 179.701 88.9694 177.355C85.6002 174.948 83.0131 171.82 81.2082 167.969C79.4634 164.059 78.591 159.877 78.591 155.425C78.591 151.514 79.7041 147.152 81.9302 142.339C84.2164 137.466 87.4653 132.803 91.6768 128.351C95.8884 123.899 100.912 120.229 106.748 117.341C112.644 114.393 119.052 112.919 125.971 112.919C130.964 112.919 134.695 114.122 137.161 116.529C139.628 118.935 140.861 122.274 140.861 126.546C140.861 129.073 140.2 131.72 138.876 134.488C137.552 137.255 135.266 140.053 132.017 142.881C128.768 145.769 124.406 148.717 118.931 151.725C113.517 154.673 106.718 157.651 98.5356 160.659C99.1974 164.39 102.206 166.255 107.56 166.255C111.712 166.255 116.194 165.412 121.007 163.728C125.82 161.983 130.453 159.998 134.905 157.771C139.357 155.605 143.178 153.56 146.366 151.635C149.555 149.709 151.45 148.626 152.052 148.386C152.594 148.025 153.075 147.814 153.496 147.754C153.977 147.694 154.398 147.664 154.759 147.664C156.203 147.664 157.196 148.235 157.738 149.378C158.339 150.461 158.64 151.364 158.64 152.086C158.64 152.627 158.58 153.289 158.46 154.071C158.339 154.793 157.888 155.636 157.106 156.598C156.324 157.38 154.037 159.095 150.247 161.742C146.457 164.39 142.396 166.947 138.064 169.413C132.769 172.361 126.873 175.009 120.375 177.355C113.878 179.701 107.53 180.875 101.333 180.875ZM97.1819 150.281C101.093 148.235 105.063 145.859 109.095 143.151C113.186 140.384 116.284 138.368 118.39 137.105C121.218 135.3 123.083 133.706 123.985 132.322C125.008 130.818 125.519 129.554 125.519 128.531C125.519 127.629 125.219 126.907 124.617 126.366C124.075 125.824 123.444 125.493 122.722 125.373L121.91 125.283H121.097C117.788 125.283 114.72 126.245 111.892 128.17C109.125 130.036 106.778 132.382 104.853 135.21C102.807 138.158 101.153 140.925 99.8893 143.512C98.686 146.099 97.7836 148.356 97.1819 150.281Z" fill="#080C16" class=""></path>
+<path d="M94.5539 5.29861C101.141 0.584854 110.141 -2.12591 119.129 2.09857L119.631 2.34281C130.029 7.59166 131.161 19.7724 128.254 29.3441C125.232 39.2952 117.464 49.5641 105.361 56.635L104.175 57.3089C98.2173 60.61 92.5294 62.5176 87.1972 63.3754C86.3469 69.7638 85.563 76.3957 84.7446 83.201C98.0513 80.8841 110.735 79.9862 120.799 79.9862C124.804 79.9864 128.05 83.2337 128.05 87.2389C128.05 91.244 124.804 94.4902 120.799 94.4904C110.401 94.4904 96.8352 95.5376 82.8551 98.3045C80.8032 113.781 78.2219 129.433 73.9831 142.819C69.4187 157.233 62.4704 170.568 50.6534 177.565L50.0869 177.894C37.5158 185.028 21.356 184.83 10.5522 176.073C-1.04121 166.676 -3.72034 150.007 5.72389 129.959L6.30736 128.757C18.0503 105.282 44.6682 92.8037 69.7451 86.401C70.6979 78.6106 71.6092 70.7218 72.5923 63.1832C62.06 61.1449 54.9461 55.4406 52.0906 52.7508L51.4686 52.147L51.2108 51.8767C48.6388 49.0299 48.7251 44.6346 51.4686 41.891C54.2125 39.1475 58.6076 39.0619 61.4544 41.6343L61.7246 41.891L62.0966 42.2506C63.7793 43.8263 68.1927 47.3587 74.6752 48.7954C76.1238 39.9662 77.8858 31.6883 80.2803 24.682L80.5268 23.9832C83.1565 16.7675 88.2202 9.83072 94.5539 5.29861ZM67.7074 101.998C46.1526 108.336 27.4375 118.963 19.2828 135.24L18.8452 136.14C11.1111 152.558 15.0966 161.086 19.6853 164.805C25.0638 169.165 34.6043 170.003 42.928 165.279L43.602 164.88C50.5178 160.603 55.9502 151.72 60.1551 138.441C63.532 127.777 65.8256 115.233 67.7074 101.998ZM112.959 15.2244C110.25 13.9512 106.889 14.3087 102.995 17.0947C99.175 19.828 95.8487 24.3158 94.1638 28.9258L94.0054 29.3724C92.2316 34.5626 90.7909 40.8339 89.5333 47.944C91.9054 47.1937 94.4457 46.1183 97.1467 44.6218L98.0513 44.1062C107.278 38.7152 112.51 31.2756 114.376 25.1298C116.338 18.6687 114.368 16.0829 113.184 15.3476L112.959 15.2244Z" fill="#080C16" class=""></path>
+</svg>
+
+        </div>
+
+        <div class="hidden md:flex items-center gap-8">
+            <a href="#features" class="hover:text-[#080C16] transition-colors text-sm font-medium text-gray-600" onclick="event.preventDefault(); document.querySelector('#features').scrollIntoView({ behavior: 'smooth' });">Features</a>
+            <a href="#how-it-works" class="text-sm font-medium text-gray-600 hover:text-[#080C16] transition-colors">How
+                it works</a>
+            <a href="#guest-xp" class="text-sm font-medium text-gray-600 hover:text-[#080C16] transition-colors">Guests</a>
+        </div>
+
+        <button class="bg-[#080C16] text-white text-xs font-semibold px-4 py-2.5 rounded-full hover:bg-gray-800 transition-all hover:scale-[1.02]" onclick="document.querySelector('footer').scrollIntoView({ behavior: 'smooth' })">
+                Download App
+            </button>
+    </div>
+</nav>
+
+    <!-- HERO SECTION (Updated per Figma) -->
+    <header class="hero-container flex flex-col text-center pr-6 pb-32 pl-6 items-center">
+    <!-- Animated Background -->
+    <div class="hero-blob -translate-y-16 scale-75" style="animation: auto ease 0s 1 normal none running none; background: linear-gradient(264.2deg, rgb(66, 113, 244) 0%, rgb(119, 129, 241) 25%, rgb(172, 124, 231) 45%, rgb(227, 153, 134) 70%, rgb(247, 97, 59) 100%);">
+    <script>
+        (function() {
+            const blob = document.currentScript.parentElement;
+            let angle = 135;
+            function animateGradient() {
+                angle = (angle + 0.4) % 360;
+                blob.style.background = `linear-gradient(${angle}deg, #4271F4 0%, #7781F1 25%, #AC7CE7 45%, #E39986 70%, #F7613B 100%)`;
+                requestAnimationFrame(animateGradient);
+            }
+            requestAnimationFrame(animateGradient);
+        })();
+    </script>
+</div>
+    <div class="hero-white-overlay"></div>
+
+    <div class="flex flex-col z-10 w-full max-w-4xl mr-auto ml-auto relative gap-x-4 gap-y-0 items-center">
+
+        <!-- Social Proof Pill -->
+        <div class="glass-pill flex animate-fade-in-up bg-slate-50/40 rounded-full mb-12 pt-1 pr-5 pb-1 pl-1 gap-x-4 gap-y-4 items-center">
+  <div class="flex -space-x-2">
+    <!-- Avatar JD (Blue) -->
+    <div class="w-8 h-8 rounded-full bg-[#4271F4] text-white text-[10px] font-medium flex items-center justify-center border-2 border-white ring-1 ring-black/5">
+      JD</div>
+    <!-- Avatar AS (Peach) -->
+    <div class="w-8 h-8 rounded-full bg-[#E39986] text-white text-[10px] font-medium flex items-center justify-center border-2 border-white ring-1 ring-black/5">
+      AS</div>
+    <!-- Avatar MK (Purple) -->
+    <div class="w-8 h-8 rounded-full bg-[#AC7CE7] text-white text-[10px] font-medium flex items-center justify-center border-2 border-white ring-1 ring-black/5">
+      MK</div>
+  </div>
+  <span class="text-sm text-gray-600 font-normal">Join party planners</span>
+</div>
+
+        <!-- Main Heading -->
+        <h1 class="text-6xl md:text-8xl font-semibold tracking-[-0.04em] leading-[0.9] text-[#080C16] flex flex-col gap-1 mb-8">
+            <span class="xl:text-[#000000] text-[#000000] opacity-80">Plan.</span>
+            <span class="bg-clip-text text-transparent font-geist" style="background-image: linear-gradient(263.8deg, rgb(60, 110, 250) 0%, rgb(177, 114, 248) 50%, rgb(255, 143, 51) 100%); background-size: 200% 200%;">Celebrate.<script>(function(){const el=document.currentScript.parentElement;let angle=135;function animateGradient(){angle=(angle+0.4)%360;el.style.backgroundImage=`linear-gradient(${angle}deg, #3C6EFA 0%, #B172F8 50%, #FF8F33 100%)`;requestAnimationFrame(animateGradient);}requestAnimationFrame(animateGradient);})();</script></span>
+            <span class="xl:text-[#000000] text-[#000000] opacity-80">Remember.</span>
+        </h1>
+
+        <!-- Subtext -->
+        <p class="md:text-xl leading-relaxed text-balance text-lg font-medium text-gray-500 max-w-2xl mr-auto mb-10 ml-auto">
+            Create unforgettable moments with the AI-Powered all-in-one platform for hosts and guests. Coordinate,
+            invite, and capture the fun.
+        </p><button class="group flex hover:bg-gray-900 transition-all hover:scale-[1.02] shadow-gray-900/10 text-white bg-[#080C16] rounded-full pt-4 pr-8 pb-4 pl-8 shadow-xl gap-x-4 gap-y-4 items-center" onclick="document.querySelector('footer').scrollIntoView({ behavior: 'smooth' })" role="button">
+                <span class="text-base font-medium tracking-tight">Download the App</span>
+                <div class="bg-white/20 rounded-full p-1 group-hover:bg-white/30 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="16" height="16" viewBox="0 0 24 24" data-icon="lucide:arrow-down" data-width="16" class="iconify iconify--lucide"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14m7-7l-7 7l-7-7"></path></svg>
+                </div>
+            </button><div class="flex justify-center mb-10">
+    <div class="overflow-hidden sm:p-5 text-left bg-white/70 w-full max-w-3xl border-white/80 border rounded-[2rem] mt-14 pt-2 pr-5 pb-5 pl-5 relative shadow-[0_24px_70px_-28px_rgba(15,23,42,0.3)] backdrop-blur-2xl" style="background-image: linear-gradient(135deg, rgba(255,255,255,0.94) 0%, rgba(255,255,255,0.72) 55%, rgba(248,250,252,0.82) 100%); transform-origin: center center; will-change: transform;" data-floating="true" data-animated="true">
+  <div class="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent"></div>
+  <div class="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-[#B172F8]/10 blur-3xl"></div>
+  <div class="pointer-events-none absolute -bottom-20 left-1/3 h-40 w-40 rounded-full bg-[#3C6EFA]/10 blur-3xl"></div>
+
+  <div class="relative flex flex-col gap-x-6 gap-y-6 sm:flex-row sm:items-center" style="padding-top: 0; padding-bottom: 0;">
+    <div class="group/image relative mx-auto aspect-square w-full max-w-[240px] shrink-0 overflow-hidden rounded-[1.5rem] bg-slate-100 shadow-inner sm:mx-0 sm:w-48 lg:w-52">
+      <img id="featured-card-image" class="h-full w-full object-cover transition-transform duration-500 group-hover/image:scale-105" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/504eb7e3-8a16-40ce-a3c5-9005fea70a83_800w.png" alt="Friends celebrating together at a colorful event" onload="const card=this.closest('[data-floating]');if(card&amp;&amp;!window.matchMedia('(prefers-reduced-motion: reduce)').matches&amp;&amp;!card.dataset.floatRunning){card.dataset.floatRunning='true';card.animate([{transform:'translate3d(0,0,0) rotate(0deg)'},{transform:'translate3d(0,-10px,0) rotate(0.35deg)',offset:0.25},{transform:'translate3d(0,-16px,0) rotate(0deg)',offset:0.5},{transform:'translate3d(0,-10px,0) rotate(-0.35deg)',offset:0.75},{transform:'translate3d(0,0,0) rotate(0deg)'}],{duration:6500,iterations:Infinity,easing:'ease-in-out',fill:'both'});}">
+      <div class="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-white/10"></div>
+      <input id="featured-card-upload" class="sr-only" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onchange="const file=this.files&amp;&amp;this.files[0];if(file){const reader=new FileReader();reader.onload=(event)=&gt;{document.getElementById('featured-card-image').src=event.target.result;};reader.readAsDataURL(file);}">
+    </div>
+
+    <div class="flex min-w-0 flex-1 flex-col items-start pt-3 pr-3 pb-2 pl-1 sm:pt-0 sm:pr-3 sm:pb-0">
+      <span class="mb-3 inline-flex items-center gap-2 rounded-full border border-[#4271F4]/10 bg-orange-100 px-3 py-1 text-xs font-normal text-amber-900">
+        <span class="h-1.5 w-1.5 rounded-full bg-orange-600"></span>
+        Featured celebration
+      </span>
+
+      <h2 class="text-2xl font-semibold tracking-tight text-stone-900 sm:text-4xl">
+        Let's Celebrate Mehregan
+      </h2>
+
+      <p class="mt-4 text-sm leading-relaxed text-gray-600 sm:text-base">
+        Gather your favorite people, celebrate the season of Mehr, and create a night worth remembering.
+      </p>
+
+      <button class="group/card inline-flex self-end gap-2 underline decoration-orange-500 decoration-2 underline-offset-4 transition-colors hover:text-orange-600 text-base font-semibold text-blue-700 bg-transparent rounded-sm mt-6 px-0 py-1 gap-x-2 gap-y-2 items-center" type="button" onclick="document.querySelector('footer')?.scrollIntoView({behavior:'smooth'})">
+        <span>Explore more</span>
+        <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" class="transition-transform group-hover/card:translate-x-0.5">
+          <path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+</div>
+
+        <!-- Primary CTA (Single Button) -->
+        
+    </div>
+</header>
+
+    <!-- SECTION 2: APP PREVIEW -->
+    <section class="-mt-8 overflow-hidden z-20 mb-8 relative">
+    <!-- SVG Background with Animation -->
+    <div class="-translate-x-1/2 select-none flex overflow-visible z-10 pointer-events-auto w-full h-full max-w-[140%] absolute bottom-64 left-1/2 items-center justify-center">
+
+</div>
+
+    <div class="max-w-6xl mr-auto ml-auto pr-6 pb-32 pl-6">
+        <div class="flex md:gap-12 items-end justify-center">
+
+            <!-- Secondary Phone (Left/Back) -->
+            <div class="hidden md:block shadow-slate-300 transform overflow-hidden bg-white opacity-90 w-[260px] h-[520px] border-white border-8 ring-gray-900/5 ring-1 rounded-[2.5rem] relative shadow-2xl translate-y-12 -rotate-6 gap-x-3 gap-y-3">
+  <!-- Fake UI: Guest List -->
+  <div class="flex flex-col gap-3 bg-center opacity-100 h-full bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/e93e7318-c97a-4763-9960-89945e4e847e_800w.png)] bg-cover pt-4 pr-4 pb-4 pl-4 gap-x-3 gap-y-3">
+
+  </div>
+</div>
+
+            <!-- Primary Phone (Center) -->
+            <div class="shadow-slate-200 overflow-hidden z-10 bg-white w-[300px] h-[600px] border-white border-8 ring-gray-900/5 ring-1 rounded-[3rem] relative shadow-2xl">
+    <!-- Notch -->
+
+
+    <!-- App Screen Image -->
+    <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2d5be845-0a6f-4227-afe1-ac60f4eb6b81_800w.png" alt="App Interface" class="select-none w-full h-full object-cover">
+
+    <!-- Home Indicator -->
+
+</div>
+
+            <!-- Secondary Phone (Right/Back) -->
+            <div class="hidden md:block shadow-gray-300 transform overflow-hidden bg-center opacity-100 w-[260px] h-[520px] bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/7a7353be-2899-4dba-8706-cc01ba40a712_800w.png)] bg-cover border-white border-8 ring-gray-900/5 ring-1 rounded-[2.5rem] relative shadow-2xl translate-y-12 rotate-6">
+
+</div>
+        </div>
+
+        <p class="text-center text-xs font-medium text-gray-400 mt-8 tracking-wide uppercase">Beautiful on iOS &amp;
+            Android</p>
+    </div>
+
+    <!-- Script to Handle Drawing Animation -->
+    <script class="z-10 pointer-events-auto"></script>
+</section><section class="overflow-hidden select-none bg-white border-gray-100 border-t border-b pt-24 pb-24 relative">
+    <!-- Custom Animation Styles -->
+    <style class="">
+        @keyframes infinite-scroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+        .animate-infinite-scroll {
+            animation: infinite-scroll 40s linear infinite;
+        }
+        .pause-on-hover:hover {
+            animation-play-state: paused;
+        }
+    </style>
+
+    <!-- Content Container with Gradient Fade Masks -->
+    <div class="w-full max-w-[100vw] relative [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]">
+        
+        <!-- Scrolling Track -->
+        <div class="flex w-max items-center animate-infinite-scroll pause-on-hover hover:cursor-default">
+            
+            <!-- Item Set 1 -->
+            <div class="flex gap-12 pr-6 pl-6 gap-x-12 gap-y-12 items-center">
+  <span class="md:text-4xl hover:text-[#080C16] transition-colors duration-300 text-3xl font-semibold text-gray-300 tracking-tight">Birthday Bashes</span>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4">
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+  </svg>
+
+  <span class="md:text-4xl hover:text-[#4271F4] transition-colors duration-300 text-3xl font-semibold text-gray-300 tracking-tight">Dinner Parties</span>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4">
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" class="">
+    </path>
+  </svg>
+
+  <span class="md:text-4xl hover:text-[#4271F4] transition-colors duration-300 text-3xl font-semibold text-gray-300 tracking-tight">Wedding Party</span>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4">
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" class="">
+    </path>
+  </svg>
+
+  <span class="md:text-4xl hover:text-[#4271F4] transition-colors duration-300 text-3xl font-semibold text-gray-300 tracking-tight">Baby Shower</span>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4">
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" class="">
+    </path>
+  </svg>
+
+  <span class="md:text-4xl hover:text-[#4271F4] transition-colors duration-300 text-3xl font-semibold text-gray-300 tracking-tight">Halloween Party</span>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4">
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" class="">
+    </path>
+  </svg>
+
+  <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#AC7CE7] transition-colors duration-300">Karaoke</span>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4">
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+  </svg>
+
+  <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#AC7CE7] transition-colors duration-300">Anniversary</span>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4">
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+  </svg>
+
+  <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#AC7CE7] transition-colors duration-300">Weekend Getaways</span>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4">
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+  </svg>
+
+  <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#F7613B] transition-colors duration-300">Game Nights</span>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4">
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+  </svg>
+
+  <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#080C16] transition-colors duration-300">House Warmings</span>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4">
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+  </svg>
+
+  <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#4271F4] transition-colors duration-300">Road Trips</span>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4">
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+  </svg>
+
+  <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#AC7CE7] transition-colors duration-300">Bachelor Parties</span>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4">
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+  </svg>
+
+  <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#F7613B] transition-colors duration-300">Reunions</span>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4">
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+  </svg>
+</div>
+
+            <!-- Item Set 2 (Duplicate for Seamless Loop) -->
+            <div class="flex items-center gap-12 px-6">
+                <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#080C16] transition-colors duration-300">Birthday Bashes</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+                
+                <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#4271F4] transition-colors duration-300">Dinner Parties</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+                
+                <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#AC7CE7] transition-colors duration-300">Weekend Getaways</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+                
+                <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#F7613B] transition-colors duration-300">Game Nights</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+                
+                <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#080C16] transition-colors duration-300">House Warmings</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+                
+                <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#4271F4] transition-colors duration-300">Road Trips</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+                
+                <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#AC7CE7] transition-colors duration-300">Bachelor Parties</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+                
+                <span class="text-3xl md:text-4xl font-semibold tracking-tight text-gray-300 hover:text-[#F7613B] transition-colors duration-300">Reunions</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="text-gray-200 w-4 h-4"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+            </div>
+        </div>
+    </div>
+</section>
+
+    <!-- SECTION 3: CORE VALUE PROPOSITION -->
+    <section class="bg-white pt-40 pb-24" id="how-it-works">
+    <div class="max-w-5xl mr-auto ml-auto pr-6 pl-6">
+        <h2 class="md:text-4xl text-3xl font-medium text-[#080C16] tracking-tight text-center mb-16">Party planning made simple</h2><p class="text-lg text-gray-500 font-normal text-center max-w-2xl mx-auto -mt-12 mb-16 leading-relaxed">
+    Go from idea to celebration in three simple steps.
+</p>
+        
+        <div class="grid md:grid-cols-3 gap-12 group/container isolate relative gap-x-12 gap-y-12" id="steps-grid-container">
+            <!-- Connecting Line -->
+            <div class="hidden md:block -z-20 bg-gradient-to-br from-[#bfdbfe] via-[#e9d5ff] to-[#fed7aa] h-[1px] absolute top-12 right-[15%] left-[15%]"></div>
+
+            <!-- Moving Gradient Blob -->
+            <div id="step-pointer" class="hidden md:block absolute top-0 left-0 w-32 h-32 rounded-full blur-2xl transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)] -z-10 pointer-events-none opacity-0 will-change-transform" style="background: linear-gradient(to right top, rgba(219, 234, 254, 0.6), rgba(224, 231, 255, 0.6), rgba(243, 232, 255, 0.6)); transform: translate(80.2641px, -18.3999px); opacity: 1;"></div>
+
+            <!-- Step 1: Light Blue -->
+            <div class="step-item flex flex-col items-center text-center relative z-10 cursor-default" data-color-border="#BFDBFE" data-color-text="#2563EB" data-color-shadow="rgba(37, 99, 235, 0.1)" data-color-blob="linear-gradient(to top right, rgba(219, 234, 254, 0.6), rgba(224, 231, 255, 0.6), rgba(243, 232, 255, 0.6))">
+                <div class="step-circle flex transition-all duration-300 bg-white w-24 h-24 border-2 rounded-full mb-6 items-center justify-center" style="border-color: rgb(191, 219, 254); box-shadow: rgba(37, 99, 235, 0.1) 0px 4px 12px; transform: scale(1.05);">
+                    <span class="text-2xl font-semibold transition-colors duration-300" style="color: rgb(37, 99, 235);">1</span>
+                </div>
+                <h3 class="text-lg font-bold text-[#080C16] tracking-tight mb-2">Create Event</h3>
+                <p class="text-sm text-gray-500 px-4 leading-relaxed">Set the time, place, and vibe. Add a wishlist or poll for the best date.</p>
+            </div>
+
+            <!-- Step 2: Light Purple -->
+            <div class="step-item flex flex-col items-center text-center relative z-10 cursor-default" data-color-border="#E9D5FF" data-color-text="#9333EA" data-color-shadow="rgba(147, 51, 234, 0.1)" data-color-blob="linear-gradient(to top right, rgba(243, 232, 255, 0.6), rgba(233, 213, 255, 0.6), rgba(240, 171, 252, 0.4))">
+                <div class="step-circle flex transition-all duration-300 bg-white w-24 h-24 border-2 rounded-full mb-6 items-center justify-center" style="border-color: rgb(243, 244, 246); box-shadow: rgba(0, 0, 0, 0.04) 0px 2px 8px; transform: scale(1);">
+                    <span class="text-2xl font-semibold transition-colors duration-300" style="color: rgb(209, 213, 219);">2</span>
+                </div>
+                <h3 class="text-lg font-bold text-[#080C16] tracking-tight mb-2">Invite Friends</h3>
+                <p class="text-sm text-gray-500 px-4 leading-relaxed">Send via text, WhatsApp, or email. They don't need the app to RSVP.</p>
+            </div>
+
+            <!-- Step 3: Light Orange -->
+            <div class="step-item flex flex-col items-center text-center relative z-10 cursor-default" data-color-border="#FED7AA" data-color-text="#EA580C" data-color-shadow="rgba(234, 88, 12, 0.1)" data-color-blob="linear-gradient(to top right, rgba(255, 237, 213, 0.6), rgba(254, 215, 170, 0.6), rgba(253, 186, 116, 0.4))">
+                <div class="step-circle flex transition-all duration-300 bg-white w-24 h-24 border-2 rounded-full mb-6 items-center justify-center" style="border-color: rgb(243, 244, 246); box-shadow: rgba(0, 0, 0, 0.04) 0px 2px 8px; transform: scale(1);">
+                    <span class="text-2xl font-semibold transition-colors duration-300" style="color: rgb(209, 213, 219);">3</span>
+                </div>
+                <h3 class="text-lg font-bold text-[#080C16] tracking-tight mb-2">Party &amp; Recap</h3>
+                <p class="text-sm text-gray-500 px-4 leading-relaxed">Track who's coming, split costs, and relive the night with the photo dump.</p>
+            </div>
+        </div>
+        
+        <script class="">
+            (function() {
+                const container = document.getElementById('steps-grid-container');
+                const pointer = document.getElementById('step-pointer');
+                const items = container.querySelectorAll('.step-item');
+                
+                if(!container || !pointer || !items.length) return;
+
+                function movePointer(targetItem) {
+                    const circle = targetItem.querySelector('.step-circle');
+                    const number = targetItem.querySelector('span');
+                    
+                    // Get colors from data attributes
+                    const borderColor = targetItem.dataset.colorBorder || '#BFDBFE';
+                    const textColor = targetItem.dataset.colorText || '#2563EB';
+                    const shadowColor = targetItem.dataset.colorShadow || 'rgba(37, 99, 235, 0.1)';
+                    const blobGradient = targetItem.dataset.colorBlob;
+
+                    // Reset styling for all items
+                    items.forEach(i => {
+                        const c = i.querySelector('.step-circle');
+                        const n = i.querySelector('span');
+                        if(c) {
+                            c.style.borderColor = '#F3F4F6';
+                            c.style.transform = 'scale(1)';
+                            c.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
+                        }
+                        if(n) n.style.color = '#D1D5DB';
+                    });
+
+                    // Apply active styling to target
+                    if(circle && number) {
+                        circle.style.borderColor = borderColor;
+                        circle.style.transform = 'scale(1.05)';
+                        circle.style.boxShadow = `0 4px 12px ${shadowColor}`;
+                        number.style.color = textColor;
+                        
+                        const containerRect = container.getBoundingClientRect();
+                        const circleRect = circle.getBoundingClientRect();
+                        
+                        // Pointer is 128px, circle is 96px. Offset = 16px.
+                        const relX = circleRect.left - containerRect.left - 16;
+                        const relY = circleRect.top - containerRect.top - 16;
+                        
+                        pointer.style.transform = `translate(${relX}px, ${relY}px)`;
+                        
+                        if(blobGradient) {
+                            pointer.style.background = blobGradient;
+                        }
+                        
+                        pointer.style.opacity = '1';
+                    }
+                }
+
+                // Init with first item (Blue)
+                setTimeout(() => {
+                     movePointer(items[0]);
+                }, 100);
+
+                // Hover listeners
+                items.forEach(item => {
+                    item.addEventListener('mouseenter', () => movePointer(item));
+                });
+                
+                // Resize listener
+                window.addEventListener('resize', () => {
+                    // Find currently active item based on scale
+                    const activeIndex = Array.from(items).findIndex(i => {
+                        const transform = i.querySelector('.step-circle').style.transform;
+                        return transform && transform.]);
+                });
+            })();
+        </script>
+    </div>
+    <script class="">
+        (function() {
+            const container = document.getElementById('steps-grid-container');
+            const pointer = document.getElementById('step-pointer');
+            const items = container.querySelectorAll('.step-item');
+            
+            if(!container || !pointer || !items.length) return;
+
+            function movePointer(targetItem) {
+                const circle = targetItem.querySelector('.step-circle');
+                const number = targetItem.querySelector('span');
+                
+                // Reset styling for all items
+                items.forEach(i => {
+                    const c = i.querySelector('.step-circle');
+                    const n = i.querySelector('span');
+                    if(c) {
+                        c.style.borderColor = '#F3F4F6';
+                        c.style.transform = 'scale(1)';
+                        c.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
+                    }
+                    if(n) n.style.color = '#D1D5DB';
+                });
+
+                // Apply active styling to target
+                if(circle && number) {
+                    circle.style.borderColor = '#BFDBFE'; // blue-200
+                    circle.style.transform = 'scale(1.05)';
+                    circle.style.boxShadow = '0 4px 12px rgba(37, 99, 235, 0.1)';
+                    number.style.color = '#2563EB'; // blue-600
+                    
+                    const containerRect = container.getBoundingClientRect();
+                    const circleRect = circle.getBoundingClientRect();
+                    
+                    // Pointer is 128px, circle is 96px. Offset = 16px.
+                    const relX = circleRect.left - containerRect.left - 16;
+                    const relY = circleRect.top - containerRect.top - 16;
+                    
+                    pointer.style.transform = `translate(${relX}px, ${relY}px)`;
+                    pointer.style.opacity = '1';
+                }
+            }
+
+            // Init
+            setTimeout(() => {
+                 movePointer(items[0]);
+            }, 100);
+
+            // Hover listeners
+            items.forEach(item => {
+                item.addEventListener('mouseenter', () => movePointer(item));
+            });
+            
+            // Resize listener
+            window.addEventListener('resize', () => {
+                const activeIndex = Array.from(items).findIndex(i => i.querySelector('.step-circle').style.borderColor === 'rgb(191, 219, 254)');
+                movePointer(items[activeIndex !== -1 ? activeIndex : 0]);
+            });
+        })();
+    </script>
+</section><section class="pt-24 pb-24" id="features">
+        <div class="max-w-6xl mr-auto ml-auto pr-6 pl-6">
+  <div class="flex flex-col text-center mb-16 items-center">
+    <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-100/50 text-blue-600 text-[11px] font-bold uppercase tracking-wider mb-6 shadow-sm shadow-blue-100/20">
+      <span class="relative flex h-2 w-2">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+      <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+      </span>
+      Powerful Features
+    </div>
+    <h2 class="md:text-5xl text-3xl font-semibold text-[#080C16] tracking-tight mb-6">Everything you need to host
+      perfectly.</h2>
+    <p class="leading-relaxed text-balance text-lg text-gray-500 max-w-max mx-auto">We've combined all the messy parts
+      of party planning into one beautiful, easy-to-use app.</p>
+  </div>
+
+  <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 relative">
+    <!-- Blurred Gradient Circle -->
+    <div class="-translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-[#B7C9FB] via-[#D6BEF3] to-[#FCD4B5] opacity-25 w-[120%] h-[120%] rounded-full absolute top-1/2 left-1/2 blur-3xl">
+    </div>
+
+    <!-- Value 1 -->
+    <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative z-10">
+      <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="20" height="20" viewBox="0 0 24 24" data-icon="lucide:layout-grid" data-width="20" class="iconify iconify--lucide">
+          <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="">
+            <rect width="7" height="7" x="3" y="3" rx="1" class=""></rect>
+            <rect width="7" height="7" x="14" y="3" rx="1"></rect>
+            <rect width="7" height="7" x="14" y="14" rx="1"></rect>
+            <rect width="7" height="7" x="3" y="14" rx="1" class=""></rect>
+          </g>
+        </svg>
+      </div>
+      <h3 class="text-lg font-semibold mb-2 tracking-tight">All-in-One</h3>
+      <p class="text-sm text-gray-500 leading-relaxed">Manage guests, playlists, supplies, and timelines in one unified
+        dashboard.</p>
+    </div>
+
+    <!-- Value 2 -->
+    <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative z-10">
+      <div class="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="20" height="20" viewBox="0 0 24 24" data-icon="lucide:sparkles" data-width="20" class="iconify iconify--lucide">
+          <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+            <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594zM20 2v4m2-2h-4">
+            </path>
+            <circle cx="4" cy="20" r="2"></circle>
+          </g>
+        </svg>
+      </div>
+      <h3 class="text-lg font-semibold mb-2 tracking-tight">AI Invites</h3>
+      <p class="text-sm text-gray-500 leading-relaxed">Generate witty, themed invitation text and beautiful designs in
+        seconds.</p>
+    </div>
+
+    <!-- Value 3 -->
+    <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative z-10">
+      <div class="w-10 h-10 rounded-lg bg-green-50 text-green-600 flex items-center justify-center mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="20" height="20" viewBox="0 0 24 24" data-icon="lucide:lock" data-width="20" class="iconify iconify--lucide">
+          <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="">
+            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" class=""></path>
+          </g>
+        </svg>
+      </div>
+      <h3 class="text-lg font-semibold mb-2 tracking-tight">Private &amp; Secure</h3>
+      <p class="text-sm text-gray-500 leading-relaxed">Your event is invite-only. Share details securely with a unique
+        link.</p>
+    </div>
+
+    <!-- Value 4 -->
+    <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative z-10">
+      <div class="w-10 h-10 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="20" height="20" viewBox="0 0 24 24" data-icon="lucide:camera" data-width="20" class="iconify iconify--lucide">
+          <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+            <path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z">
+            </path>
+            <circle cx="12" cy="13" r="3"></circle>
+          </g>
+        </svg>
+      </div>
+      <h3 class="text-lg font-semibold mb-2 tracking-tight">Shared Memories</h3>
+      <p class="text-sm text-gray-500 leading-relaxed">A disposable camera for everyone. Guests upload photos to one
+        shared gallery.</p>
+    </div>
+  </div>
+</div>
+    </section><section class="overflow-hidden pt-24 pb-24 relative">
+    <div class="max-w-6xl mr-auto ml-auto pr-6 pl-6">
+        <div class="grid lg:grid-cols-2 gap-16 items-center">
+            <!-- LEFT: High-Fidelity App Mockup -->
+            <div class="group lg:mx-0 mr-auto ml-auto relative">
+                <!-- Background Glow -->
+                <div class="-inset-8 group-hover:opacity-100 transition-opacity duration-1000 -translate-x-16 -translate-y-1 bg-gradient-to-br from-[#5392f9]/20 via-[#e27aff]/20 to-[#ff9742]/30 opacity-50 rounded-full absolute blur-3xl scale-90"></div>
+                
+                <!-- Phone Bezel -->
+                <div class="relative w-[320px] h-[640px] bg-[#080C16] rounded-[3rem] p-3 shadow-[0_50px_100px_-20px_rgba(50,50,93,0.25),0_30px_60px_-30px_rgba(0,0,0,0.3)] ring-1 ring-gray-900/10 transform transition-transform duration-500 hover:rotate-[-1deg] hover:scale-[1.01]">
+                    
+                    <!-- Dynamic Island/Notch -->
+                    <div class="absolute top-0 left-1/2 -translate-x-1/2 h-7 w-32 bg-[#080C16] rounded-b-xl z-30"></div>
+                    
+                    <!-- Button Controls -->
+                    <div class="absolute top-24 -left-[2px] w-[2px] h-8 bg-gray-800 rounded-l-md"></div>
+                    <div class="absolute top-36 -left-[2px] w-[2px] h-12 bg-gray-800 rounded-l-md"></div>
+                    <div class="absolute top-28 -right-[2px] w-[2px] h-16 bg-gray-800 rounded-r-md"></div>
+
+                    <!-- Screen Content -->
+                    <div class="w-full h-full bg-gray-50 rounded-[2.25rem] overflow-hidden relative flex flex-col font-inter">
+                        
+                        <!-- Status Bar -->
+                        <div class="h-12 w-full bg-white flex items-center justify-between px-7 pt-3 z-20">
+                            <span class="text-[11px] font-semibold text-gray-900">9:41</span>
+                            <div class="flex gap-1.5 items-end">
+                                <div class="w-[3px] h-1 bg-gray-900 rounded-sm"></div>
+                                <div class="w-[3px] h-1.5 bg-gray-900 rounded-sm"></div>
+                                <div class="w-[3px] h-2.5 bg-gray-900 rounded-sm"></div>
+                                <div class="w-5 h-3 border-[1.5px] border-gray-900 rounded-[3.5px] relative ml-0.5">
+                                    <div class="absolute inset-0.5 bg-gray-900 rounded-[1px]"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- App Header -->
+                        <div class="px-6 pb-4 bg-white border-b border-gray-100">
+                            <div class="flex justify-between items-center mb-6 pt-2">
+                                <div class="">
+                                    <h2 class="text-xl font-bold text-[#080C16] tracking-tight">Dashboard</h2>
+                                    <p class="text-[11px] text-gray-500 font-medium mt-0.5">Welcome back, Alex</p>
+                                </div>
+                                <div class="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 p-[1.5px]">
+                                    <div class="w-full h-full rounded-full border-2 border-white overflow-hidden">
+                                        <img src="https://images.unsplash.com/photo-1724525647065-f948fc102e68?w=100&q=80" class="w-full h-full object-cover" alt="Profile">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Search Bar -->
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+                                </div>
+                                <input type="text" disabled="" placeholder="Search events..." class="w-full bg-gray-50 text-xs py-2.5 pl-9 pr-4 rounded-xl border-none ring-1 ring-gray-100 text-gray-500">
+                            </div>
+                        </div>
+
+                        <!-- Scrollable Content -->
+                        <div class="flex-1 overflow-hidden p-5 space-y-5 bg-gray-50/50">
+                            
+                            <!-- Main Active Event Card -->
+                            <div class="bg-white rounded-2xl p-4 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] border border-gray-100 relative group/card cursor-pointer">
+                                <div class="absolute top-4 right-4 bg-red-50 text-red-600 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider">Live</div>
+                                
+                                <div class="flex gap-4 items-center mb-4">
+                                    <div class="w-14 h-14 rounded-xl bg-gray-100 overflow-hidden shadow-inner">
+                                        <img src="https://images.unsplash.com/photo-1629946832022-c327f74956e0?w=200&q=80" class="w-full h-full object-cover" alt="Party">
+                                    </div>
+                                    <div class="">
+                                        <h3 class="font-bold text-gray-900 text-sm leading-tight">Summer Rooftop Bash</h3>
+                                        <p class="text-[11px] text-gray-500 mt-1 flex items-center gap-1">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                            Tonight, 8:00 PM
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- Progress Bar -->
+                                <div class="space-y-1.5 mb-4">
+                                    <div class="flex justify-between text-[10px] font-medium text-gray-500">
+                                        <span>RSVPs</span>
+                                        <span class="text-gray-900">42/50</span>
+                                    </div>
+                                    <div class="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                                        <div class="h-full bg-gradient-to-r from-blue-500 to-indigo-500 w-[84%] rounded-full"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Avatars -->
+                                <div class="flex items-center justify-between">
+                                    <div class="flex -space-x-2">
+                                        <div class="w-6 h-6 rounded-full border border-white bg-gray-200"></div>
+                                        <div class="w-6 h-6 rounded-full border border-white bg-gray-300"></div>
+                                        <div class="w-6 h-6 rounded-full border border-white bg-gray-400"></div>
+                                        <div class="w-6 h-6 rounded-full border border-white bg-gray-100 flex items-center justify-center text-[8px] font-medium text-gray-500">+39</div>
+                                    </div>
+                                    <button class="bg-[#080C16] text-white text-[10px] font-semibold px-3 py-1.5 rounded-lg shadow-sm">Manage</button>
+                                </div>
+                            </div>
+
+                            <!-- Notification Item -->
+                            <div class="space-y-3">
+                                <div class="flex justify-between items-center px-1">
+                                    <span class="text-xs font-semibold text-gray-900">Notifications</span>
+                                    <span class="text-[10px] text-blue-600 font-medium">Mark all read</span>
+                                </div>
+                                
+                                <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex gap-3 items-center">
+                                    <div class="w-8 h-8 rounded-full bg-green-50 text-green-600 flex items-center justify-center flex-shrink-0">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-[11px] text-gray-600 leading-tight"><span class="font-semibold text-gray-900">Sarah</span> uploaded 12 photos to the gallery.</p>
+                                        <p class="text-[9px] text-gray-400 mt-0.5">2m ago</p>
+                                    </div>
+                                </div>
+
+                                <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex gap-3 items-center">
+                                    <div class="w-8 h-8 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-[11px] text-gray-600 leading-tight"><span class="font-semibold text-gray-900">Mike &amp; Tom</span> RSVP'd Yes.</p>
+                                        <p class="text-[9px] text-gray-400 mt-0.5">15m ago</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Bottom Nav -->
+                        <div class="bg-white border-t border-gray-100 px-6 py-4 flex justify-between items-center relative z-20">
+                            <div class="flex flex-col items-center gap-1 text-[#080C16]">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class=""><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                            </div>
+                            <div class="flex flex-col items-center gap-1 text-gray-300">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class=""><rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect><line x1="16" x2="16" y1="2" y2="6"></line><line x1="8" x2="8" y1="2" y2="6"></line><line x1="3" x2="21" y1="10" y2="10"></line></svg>
+                            </div>
+                            <div class="flex flex-col items-center gap-1 text-gray-300">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class=""><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4" class=""></circle></svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT: Feature Review -->
+            <div class="">
+                <div class="inline-flex uppercase text-xs font-semibold text-[#AC7CE7] tracking-wide bg-[#FAF5FF] rounded-full mb-6 pt-2 pr-3 pb-2 pl-3 gap-x-2 gap-y-2 items-center">
+  Real-time Coordination</div>
+
+                <h2 class="md:text-4xl text-3xl font-semibold text-[#080C16] tracking-tight mb-6">Stay in sync with your squad.</h2>
+                
+
+                <div class="space-y-8">
+                    <!-- Feature 1 -->
+                    <div class="flex gap-5 group">
+                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-[56px] h-[56px]" stroke-width="2" data-icon-replaced="true" style="width: 56px; height: 56px; color: rgb(8, 12, 22)">
+<rect width="40" height="40" rx="11.4286" fill="#FAF5FF" class=""></rect>
+<path d="M18.5 16.5L23 15L24 17.5L18.5 18.5V16.5Z" fill="#E3D1F8"></path>
+<path d="M10.58 16.67C11.2 14.91 12.3 13.38 13.72 12.23" stroke="#AC7CE7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M10 20C10 21.17 10.21 22.29 10.58 23.33" stroke="#AC7CE7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M17.09 29.57C18.01 29.85 18.99 30 20 30C25.52 30 30 25.52 30 20C30 19.4 29.94 18.81 29.84 18.24" stroke="#AC7CE7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class=""></path>
+<path d="M13.72 27.75C13.25 27.37 12.8 26.95 12.4 26.49" stroke="#AC7CE7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M28.24 14.34C26.44 11.72 23.42 10 20 10C18.99 10 18.01 10.15 17.09 10.43" stroke="#AC7CE7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M16.59 25.1102C17.4681 25.1102 18.18 24.3983 18.18 23.5202C18.18 22.6421 17.4681 21.9302 16.59 21.9302C15.7119 21.9302 15 22.6421 15 23.5202C15 24.3983 15.7119 25.1102 16.59 25.1102Z" fill="#AC7CE7" fill-opacity="0.3" stroke="#AC7CE7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M24 22.4602V16.2502C24 14.9302 23.17 14.7401 22.33 14.9701L19.15 15.8402C18.57 16.0002 18.17 16.4501 18.17 17.1201V18.2301V18.9701V23.5202" stroke="#AC7CE7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M22.4101 24.0501C23.2882 24.0501 24.0001 23.3383 24.0001 22.4601C24.0001 21.582 23.2882 20.8701 22.4101 20.8701C21.5319 20.8701 20.8201 21.582 20.8201 22.4601C20.8201 23.3383 21.5319 24.0501 22.4101 24.0501Z" fill="#AC7CE7" fill-opacity="0.3" stroke="#AC7CE7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M18.1799 18.7602L23.9999 17.1702" stroke="#AC7CE7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+                        <div class="">
+                            <h3 class="text-lg font-semibold text-[#080C16] tracking-tight mb-2">Collaborative Playlists</h3>
+                            <p class="leading-relaxed text-sm text-gray-500">No need to switch between apps. Discuss details right where the plan lives.</p>
+                        </div>
+                    </div><div class="flex gap-5 group">
+                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-[64px] h-[64px]" stroke-width="2" data-icon-replaced="true" style="width: 64px; height: 64px; color: rgb(8, 12, 22)">
+    <rect width="40" height="40" rx="12" fill="#DBFFF2" class=""></rect>
+    <path d="M16.6771 10L12.9062 13.63" stroke="#03A985" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"></path>
+    <path d="M23.3229 10L27.0937 13.63" stroke="#03A985" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"></path>
+    <path d="M9.58337 15.8501C9.58337 14.0001 10.6146 13.8501 11.8959 13.8501H28.1042C29.3855 13.8501 30.4167 14.0001 30.4167 15.8501C30.4167 18.0001 29.3855 17.8501 28.1042 17.8501H11.8959C10.6146 17.8501 9.58337 18.0001 9.58337 15.8501Z" stroke="#03A985" stroke-width="1.5" class=""></path>
+    <path d="M17.6666 22V25.55" stroke="#03A985" stroke-width="1.5" stroke-linecap="round"></path>
+    <path d="M22.4584 22V25.55" stroke="#03A985" stroke-width="1.5" stroke-linecap="round"></path>
+    <g opacity="0.4" class="">
+        <path d="M11.1459 18L12.6146 26.64C12.948 28.58 13.75 30 16.7292 30H23.0105C26.25 30 26.7292 28.64 27.1042 26.76L28.8542 18" fill="#03A985" class=""></path>
+        <path d="M11.1459 18L12.6146 26.64C12.948 28.58 13.75 30 16.7292 30H23.0105C26.25 30 26.7292 28.64 27.1042 26.76L28.8542 18" stroke="#03A985" stroke-width="1.5" stroke-linecap="round" class=""></path>
+    </g>
+</svg>
+                        <div class="">
+                            <h3 class="text-lg font-semibold text-[#080C16] tracking-tight mb-2">What to Bring List</h3>
+                            <p class="leading-relaxed text-sm text-gray-500">See RSVPs update instantly. Approve +1s, organize carpools, and assign dietary restrictions with a tap.</p>
+                        </div>
+                    </div>
+
+                    <!-- Feature 2 -->
+                    <div class="flex gap-5 group">
+                        <svg width="40" height="44" viewBox="0 0 40 44" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-[56px] h-[62px]" stroke-width="2" data-icon-replaced="true" style="width: 56px; height: 62px; color: rgb(8, 12, 22);">
+    <rect y="4" width="40" height="40" rx="11.43" fill="#FFF5DB" class=""></rect>
+    <path d="M14.1666 31.5V26.5M20 31.5V16.5M25.8333 31.5V21.5" stroke="#E1B100" stroke-width="1.66667" stroke-linecap="round" stroke-linejoin="round" class=""></path>
+</svg>
+                        <div class="">
+                            <h3 class="text-lg font-semibold text-[#080C16] mb-2 tracking-tight">Smart Notifications</h3>
+                            <p class="text-sm text-gray-500 leading-relaxed">Automatic reminders for guests to RSVP or bring supplies. The app handles the nagging for you.</p>
+                        </div>
+                    </div>
+
+                    <!-- Feature 3 -->
+                    <div class="flex gap-5 group">
+    <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-[64px] h-[64px]" stroke-width="2" data-icon-replaced="true" style="width: 64px; height: 64px; color: rgb(8, 12, 22)">
+<rect width="40" height="40" rx="11.43" fill="#FEE2E2" class=""></rect>
+<path d="M18.5567 27.5001C18.8544 28.0157 19.4046 28.3333 20 28.3333C20.5954 28.3333 21.1456 28.0157 21.4434 27.5001M12.7184 22.7717C12.4959 23.0155 12.4383 23.3676 12.5714 23.6696C12.7046 23.9715 13.0033 24.1665 13.3334 24.1667H26.6667C26.9967 24.1669 27.2956 23.9723 27.4291 23.6705C27.5626 23.3687 27.5054 23.0166 27.2834 22.7726C26.175 21.6301 25 20.4159 25 16.6667C25 13.9072 22.7596 11.6667 20 11.6667C17.2404 11.6667 15 13.9072 15 16.6667C15 20.4159 13.8242 21.6301 12.7184 22.7717" stroke="#EF4444" stroke-width="1.66667" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+    <div class="">
+        <h3 class="text-lg font-semibold text-[#080C16] mb-2 tracking-tight">Expense Splitting</h3>
+        <p class="text-sm text-gray-500 leading-relaxed">Track who paid for what. Settle debts with integrated payments
+            so nobody gets stuck with the whole bill.</p>
+    </div>
+</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+    <!-- SECTION 4: HOW IT WORKS -->
+    
+
+    <!-- SECTION 5: GUEST EXPERIENCE -->
+    <section class="overflow-hidden text-white bg-[#F8F8F8] pt-24 pb-24 relative" id="guest-xp">
+        <!-- Decoration -->
+        
+        
+
+        <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-12 items-center relative z-10">
+            <div class="">
+                <span class="text-[#AC7CE7] font-semibold tracking-wide uppercase text-xs mb-4 block">For Guests</span>
+                <h2 class="md:text-5xl text-3xl font-semibold text-[#000000] tracking-tight mb-6">RSVP in seconds.<br>No account needed.</h2>
+                <p class="leading-relaxed text-lg text-[#9CA3AF] mb-8">
+                    We know downloading an app just to say "I'm coming" is annoying. Festify lets guests view details and RSVP directly from the web.
+                </p>
+                
+                <ul class="space-y-4">
+                    <li class="flex items-start gap-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="20" height="20" viewBox="0 0 24 24" data-icon="lucide:check-circle-2" data-width="20" class="iconify text-[#7781F1] mt-1 iconify--lucide"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="m9 12l2 2l4-4"></path></g></svg>
+                        <span class="text-[#63676D]">Instant web RSVP via link</span>
+                    </li>
+                    <li class="flex items-start gap-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="20" height="20" viewBox="0 0 24 24" data-icon="lucide:check-circle-2" data-width="20" class="iconify text-[#7781F1] mt-1 iconify--lucide"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="m9 12l2 2l4-4"></path></g></svg>
+                        <span class="text-[#63676D]">Add to Apple/Google Calendar in one tap</span>
+                    </li>
+                    <li class="flex items-start gap-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="20" height="20" viewBox="0 0 24 24" data-icon="lucide:check-circle-2" data-width="20" class="iconify text-[#7781F1] mt-1 iconify--lucide"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="m9 12l2 2l4-4"></path></g></svg>
+                        <span class="text-[#63676D]">Upload photos to the event stream</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Visual representation of an Invite Card -->
+            <div class="relative">
+                <div class="bg-white text-[#080C16] p-8 rounded-[2rem] max-w-sm mx-auto shadow-2xl transform rotate-3 hover:rotate-0 transition-transform duration-500">
+                    <div class="flex justify-between items-start mb-6">
+                        <div class="">
+                            <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">You're invited</p>
+                            <h3 class="text-2xl font-bold mt-1">Summer BBQ</h3>
+                        </div>
+                        <div class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="20" height="20" viewBox="0 0 24 24" data-icon="lucide:mail-open" data-width="20" class="iconify iconify--lucide"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-6a2 2 0 0 1 2.4 0z"></path><path d="m22 10l-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10"></path></g></svg>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-4 mb-8">
+                        <div class="flex items-center gap-3 text-sm">
+                            <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="16" height="16" viewBox="0 0 24 24" data-icon="lucide:clock" data-width="16" class="iconify text-gray-400 iconify--lucide"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class=""><path d="M12 6v6l4 2"></path><circle cx="12" cy="12" r="10" class=""></circle></g></svg>
+                            <span class="font-medium">July 15 @ 4:00 PM</span>
+                        </div>
+                        <div class="flex items-center gap-3 text-sm">
+                            <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="16" height="16" viewBox="0 0 24 24" data-icon="lucide:map-pin" data-width="16" class="iconify text-gray-400 iconify--lucide"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class=""><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" class=""></path><circle cx="12" cy="10" r="3"></circle></g></svg>
+                            <span class="font-medium">Backyard, 12 Oak St.</span>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button class="flex-1 py-3 bg-[#080C16] text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors">Accept</button>
+                        <button class="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors">Decline</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 6: FINAL CTA -->
+    <footer class="overflow-hidden text-white bg-[#080C16] pt-40 pb-16 relative">
+    <!-- Decorative Glow -->
+    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-3xl h-64 bg-gradient-to-b from-[#4271F4]/20 to-transparent blur-[100px] pointer-events-none">
+    </div>
+
+    <div class="max-w-6xl z-10 mr-auto ml-auto pr-6 pl-6 relative">
+        <!-- CTA Content -->
+        <div class="flex flex-col text-center mb-40 items-center">
+    <h2 class="text-4xl md:text-5xl font-semibold tracking-tight mb-6">
+        Ready to host your
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#4271F4] via-[#AC7CE7] to-[#F7613B]">best party yet?</span>
+    </h2>
+    <p class="text-lg text-gray-400 mb-10">
+        Download Festify today and start planning your next unforgettable event in minutes.
+    </p>
+
+    <div class="flex flex-col sm:flex-row gap-4 gap-x-4 gap-y-4">
+    <a href="#" class="inline-flex items-center gap-3 hover:bg-gray-100 transition-all hover:scale-105 group bg-white rounded-xl pt-3 pr-4 pb-3 pl-4">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 256 256" class="text-black w-[28px] h-[28px]" fill="currentColor" data-logos="apple-app-store" data-icon-set="logos" data-icon-replaced="true" stroke-width="2" style="color: rgb(0, 0, 0); width: 28px; height: 28px"><defs><linearGradient id="SVG1vlmueNw" x1="50%" x2="50%" y1="0%" y2="100%"><stop offset="0%" stop-color="#17C9FB"></stop><stop offset="100%" stop-color="#1A74E8"></stop></linearGradient></defs><path fill="url(#SVG1vlmueNw)" d="M56.064 0h143.872C230.9 0 256 25.1 256 56.064v143.872C256 230.9 230.9 256 199.936 256H56.064C25.1 256 0 230.9 0 199.936V56.064C0 25.1 25.1 0 56.064 0" class=""></path><path fill="#FFF" d="m82.042 185.81l.024.008l-8.753 15.16c-3.195 5.534-10.271 7.43-15.805 4.235s-7.43-10.271-4.235-15.805l6.448-11.168l.619-1.072c1.105-1.588 3.832-4.33 9.287-3.814c0 0 12.837 1.393 13.766 8.065c0 0 .126 2.195-1.351 4.391m124.143-38.72h-27.294c-1.859-.125-2.67-.789-2.99-1.175l-.02-.035l-29.217-50.606l-.038.025l-1.752-2.512c-2.872-4.392-7.432 6.84-7.432 6.84c-5.445 12.516.773 26.745 2.94 31.046l40.582 70.29c3.194 5.533 10.27 7.43 15.805 4.234c5.533-3.195 7.43-10.271 4.234-15.805l-10.147-17.576c-.197-.426-.539-1.582 1.542-1.587h13.787c6.39 0 11.57-5.18 11.57-11.57s-5.18-11.57-11.57-11.57m-53.014 15.728s1.457 7.411-4.18 7.411H48.092c-6.39 0-11.57-5.18-11.57-11.57s5.18-11.57 11.57-11.57h25.94c4.188-.242 5.18-2.66 5.18-2.66l.024.012l33.86-58.648l-.01-.002c.617-1.133.103-2.204.014-2.373l-11.183-19.369c-3.195-5.533-1.299-12.61 4.235-15.804s12.61-1.3 15.805 4.234l5.186 8.983l5.177-8.967c3.195-5.533 10.271-7.43 15.805-4.234s7.43 10.27 4.235 15.804l-47.118 81.61c-.206.497-.269 1.277 1.264 1.414h28.164l.006.275s16.278.253 18.495 15.454" class=""></path></svg>
+        <div class="flex flex-col items-start">
+            <span class="text-[10px] uppercase tracking-wide text-gray-500 font-medium">Download on the</span>
+            <span class="leading-none text-sm font-semibold text-black">App Store</span>
+        </div>
+    </a>
+    <a href="https://play.google.com/store/apps/details?id=com.beetzero.festify&pcampaignid=web_share" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-3 hover:bg-gray-100 transition-all hover:scale-105 group bg-white w-44 rounded-xl pt-3 pr-4 pb-3 pl-4 relative">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 256 283" class="text-black w-[24px] h-[24px] ml-0.5" fill="currentColor" data-logos="google-play-icon" data-icon-set="logos" data-icon-replaced="true" stroke-width="2" style="color: rgb(0, 0, 0); width: 24px; height: 24px"><path fill="#EA4335" d="M119.553 134.916L1.06 259.061a32.14 32.14 0 0 0 47.062 19.071l133.327-75.934z" class=""></path><path fill="#FBBC04" d="M239.37 113.814L181.715 80.79l-64.898 56.95l65.162 64.28l57.216-32.67a31.345 31.345 0 0 0 0-55.537z" class=""></path><path fill="#4285F4" d="M1.06 23.487A30.6 30.6 0 0 0 0 31.61v219.327a32.3 32.3 0 0 0 1.06 8.124l122.555-120.966z" class=""></path><path fill="#34A853" d="m120.436 141.274l61.278-60.483L48.564 4.503A32.85 32.85 0 0 0 32.051 0C17.644-.028 4.978 9.534 1.06 23.399z"></path></svg>
+        <div class="flex flex-col items-start">
+            <span class="text-[10px] uppercase font-medium text-gray-500 tracking-wide">Get it on</span>
+            <span class="leading-none text-sm font-semibold text-black">Google Play</span>
+        </div>
+    </a>
+</div>
+</div>
+
+        <!-- Bottom Footer Links -->
+        <div class="flex flex-col md:flex-row gap-6 border-gray-800 border-t pt-8 gap-x-6 gap-y-6 items-center justify-between">
+            <div class="flex -translate-y-1 gap-x-6 gap-y-6 items-center">
+                <span class="text-xl font-bold text-white tracking-tight font-geist">
+  <svg width="100%" height="40" viewBox="0 0 439 233" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-[75px] h-[40px]" stroke-width="2" data-icon-replaced="true" style="color: rgb(255, 255, 255); width: 75px; height: 40px;">
+<path d="M362.093 232.135C359.686 232.135 357.731 231.323 356.227 229.698C354.723 228.134 353.97 225.998 353.97 223.291C353.97 220.764 354.271 218.237 354.873 215.71C355.535 213.243 356.678 210.506 358.302 207.497C359.867 204.489 361.942 201.12 364.529 197.39C367.177 193.72 370.486 189.388 374.457 184.394L392.506 147.844C383.481 158.554 375.299 166.736 367.959 172.391C360.619 178.047 353.76 180.875 347.382 180.875C345.337 180.875 343.592 180.393 342.148 179.431C340.704 178.528 339.982 176.994 339.982 174.828C339.982 171.82 340.704 168.421 342.148 164.63C343.351 161.682 344.615 158.945 345.939 156.418C347.322 153.831 348.736 151.123 350.18 148.296C351.684 145.287 353.429 141.587 355.414 137.195C357.4 132.803 359.596 127.539 362.002 121.402C363.206 119.056 364.77 117.371 366.695 116.348C368.621 115.265 370.486 114.724 372.291 114.724C374.156 114.724 375.72 115.175 376.983 116.077C378.307 116.92 378.969 118.063 378.969 119.507C378.969 120.289 378.848 120.921 378.608 121.402L362.093 155.786C361.25 157.591 360.829 158.975 360.829 159.937C360.829 160.84 361.19 161.291 361.912 161.291C362.574 161.291 363.416 160.96 364.439 160.298C365.462 159.637 366.425 158.884 367.327 158.042L404.599 121.402C407.607 118.995 409.924 117.521 411.548 116.98C413.172 116.438 414.767 116.168 416.331 116.168C417.595 116.168 418.497 116.649 419.038 117.612C419.58 118.514 419.851 119.477 419.851 120.499C419.851 121.282 419.7 122.064 419.399 122.846L399.184 164.991C402.072 162.825 405.381 160.719 409.111 158.674C412.842 156.568 416.481 154.673 420.031 152.988C423.581 151.304 426.589 149.98 429.056 149.017C431.523 147.995 432.906 147.483 433.207 147.483C434.711 147.483 436.035 148.055 437.178 149.198C438.321 150.341 438.893 151.785 438.893 153.53C438.893 155.094 438.291 156.749 437.088 158.493C435.945 160.238 433.899 161.923 430.951 163.547C427.161 165.653 423.551 167.608 420.121 169.413C416.752 171.218 413.924 172.752 411.638 174.016L405.231 177.626C402.343 179.31 399.665 181.085 397.199 182.95C394.792 184.815 392.355 186.891 389.889 189.177C387.242 196.096 384.745 202.203 382.398 207.497C380.112 212.792 378.698 215.951 378.157 216.973C373.283 227.081 367.929 232.135 362.093 232.135Z" fill="white" class=""></path>
+<path d="M286.693 205.963C285.249 205.963 283.956 205.602 282.813 204.88C281.669 204.158 281.098 203.015 281.098 201.451C281.098 200.067 281.79 197.931 283.174 195.043L315.031 127.539H310.248C306.939 127.539 304.682 127.027 303.479 126.005C302.276 124.982 301.674 123.778 301.674 122.395C301.674 120.951 302.426 119.567 303.93 118.243C305.434 116.859 307.63 116.168 310.518 116.168H321.168C326.883 104.616 332.569 95.7417 338.224 89.5448C343.94 83.2876 349.505 78.9558 354.92 76.5492C360.335 74.1426 365.419 72.9393 370.172 72.9393C373.541 72.9393 376.519 74.293 379.106 77.0005C381.693 79.6477 382.987 83.6486 382.987 89.0033C382.987 91.5302 382.626 94.388 381.904 97.5767C381.543 99.2012 380.58 100.374 379.016 101.096C377.512 101.758 376.278 102.089 375.316 102.089C374.112 102.089 372.999 101.818 371.977 101.277C370.954 100.675 370.442 99.7728 370.442 98.5695C370.442 97.9678 370.503 97.2458 370.623 96.4035C370.683 95.9824 370.713 95.3206 370.713 94.4181C370.713 89.7253 368.998 87.3788 365.569 87.3788C363.162 87.3788 360.214 88.7626 356.725 91.5302C353.235 94.2376 349.806 97.7873 346.437 102.179C343.067 106.571 340.36 111.234 338.314 116.168H359.342C363.253 116.168 366.471 116.378 368.998 116.799C371.525 117.22 372.789 118.725 372.789 121.312C372.789 122.816 372.217 124.139 371.074 125.283C369.931 126.426 367.855 127.118 364.847 127.358C359.192 127.599 353.686 127.749 348.332 127.809C342.977 127.809 337.562 127.809 332.087 127.809C330.764 130.457 329.079 133.886 327.034 138.098C324.988 142.249 322.852 146.671 320.626 151.364C318.4 156.057 316.294 160.509 314.309 164.72C310.819 172.061 307.751 178.468 305.104 183.943C302.516 189.478 300.531 193.66 299.147 196.487C297.824 199.255 295.959 201.511 293.552 203.256C291.206 205.061 288.919 205.963 286.693 205.963Z" fill="white" class=""></path>
+<path d="M289.538 106.962C285.808 106.962 283.19 106.391 281.686 105.248C280.182 104.044 279.34 102.48 279.159 100.555C279.159 97.7271 280.182 94.9596 282.228 92.2522C284.334 89.4846 287.432 88.1008 291.523 88.1008C295.013 88.1008 297.449 88.7927 298.833 90.1765C300.217 91.5001 300.909 93.1847 300.909 95.2303C300.909 97.5166 300.006 100.043 298.201 102.811C296.457 105.579 293.569 106.962 289.538 106.962ZM267.427 180.875C262.554 180.875 258.703 179.641 255.876 177.174C253.108 174.648 251.724 170.737 251.724 165.442C251.724 161.772 252.386 158.132 253.71 154.523C255.094 150.852 256.598 147.423 258.222 144.234C259.907 140.986 261.23 138.158 262.193 135.751C262.494 134.969 263.005 133.766 263.727 132.141C264.509 130.517 265.322 128.862 266.164 127.178L269.232 120.86C270.255 119.176 271.428 117.973 272.752 117.251C274.075 116.529 275.429 116.168 276.813 116.168C279.099 116.168 281.055 116.92 282.679 118.424C284.364 119.868 285.206 121.733 285.206 124.019C285.146 124.561 285.056 125.102 284.935 125.644C284.875 126.185 284.695 126.726 284.394 127.268C283.07 129.675 281.927 131.931 280.964 134.036C280.002 136.082 279.009 138.158 277.986 140.264C277.144 142.008 276.091 144.144 274.828 146.671C273.564 149.198 272.451 151.755 271.488 154.342C270.526 156.869 270.044 159.125 270.044 161.111C270.044 162.735 270.436 163.818 271.218 164.359C272.06 164.841 273.233 165.081 274.737 165.081C277.144 165.081 279.791 164.329 282.679 162.825C285.627 161.321 288.425 159.456 291.072 157.23C293.84 155.004 296.397 152.748 298.743 150.461C301.089 148.115 302.834 146.22 303.977 144.776C305.12 143.633 306.324 143.061 307.587 143.061C308.67 143.061 309.542 143.542 310.204 144.505C310.926 145.468 311.287 146.701 311.287 148.205C311.287 149.589 310.926 151.063 310.204 152.627C309.542 154.192 308.429 155.666 306.865 157.049C302.894 161.08 298.743 164.931 294.411 168.601C290.079 172.211 285.627 175.159 281.055 177.445C276.542 179.732 272 180.875 267.427 180.875Z" fill="white" class=""></path>
+<path d="M215.131 180.875C210.378 180.875 207.069 179.701 205.204 177.355C203.339 175.009 202.406 172.121 202.406 168.691C202.406 165.683 202.918 162.555 203.94 159.306C204.963 156.057 206.106 153.139 207.37 150.552L217.929 128.892H214.048C210.679 128.892 208.362 128.351 207.099 127.268C205.836 126.185 205.204 124.952 205.204 123.568C205.204 122.184 205.986 120.62 207.55 118.875C209.115 117.07 211.25 116.168 213.958 116.168H223.704L242.747 78.3541C243.95 76.0679 245.424 74.4435 247.169 73.4808C248.974 72.458 250.839 71.9466 252.764 71.9466C254.569 71.9466 256.223 72.4279 257.728 73.3906C259.232 74.3532 259.984 75.9476 259.984 78.1737C259.984 79.3168 259.713 80.49 259.171 81.6933C258.69 82.8364 258.028 84.1901 257.186 85.7544C256.223 87.5593 254.93 89.996 253.305 93.0644C251.681 96.0726 249.665 99.7126 247.259 103.984L240.761 116.168H270.182C273.069 116.168 275.416 116.559 277.221 117.341C279.086 118.063 280.018 119.717 280.018 122.304C280.018 123.628 279.537 124.922 278.575 126.185C277.612 127.448 275.536 128.201 272.348 128.441H234.805L228.488 141.076L222.892 152.537C222.17 153.981 221.448 155.666 220.726 157.591C220.064 159.456 219.734 161.111 219.734 162.555C219.734 164.359 220.576 165.262 222.26 165.262C224.186 165.262 226.773 164.45 230.022 162.825C233.271 161.201 236.7 159.215 240.31 156.869C243.98 154.523 247.5 152.086 250.869 149.559C254.238 146.972 257.336 144.475 260.164 142.068C261.187 141.407 262.089 141.076 262.872 141.076C264.195 141.076 265.188 141.798 265.85 143.242C266.512 144.686 266.572 146.43 266.03 148.476C265.549 150.522 264.135 152.477 261.789 154.342C257.878 157.892 253.907 161.261 249.876 164.45C245.905 167.578 241.964 170.376 238.054 172.843C234.083 175.249 230.172 177.175 226.322 178.618C222.471 180.123 218.741 180.875 215.131 180.875Z" fill="white" class=""></path>
+<path d="M166.354 180.875C160.037 180.875 154.291 179.461 149.117 176.633C143.943 173.745 140.634 169.203 139.19 163.006C139.07 162.404 139.01 162.013 139.01 161.833C139.01 160.208 139.581 158.824 140.724 157.681C141.867 156.478 143.131 155.876 144.515 155.876C145.176 155.876 145.898 155.997 146.681 156.237C147.523 156.478 148.155 157.019 148.576 157.862C150.14 160.689 152.817 162.976 156.608 164.72C160.458 166.405 164.219 167.247 167.889 167.247C171.799 167.247 175.199 166.495 178.086 164.991C181.035 163.487 182.509 161.02 182.509 157.591C182.509 153.379 181.305 149.649 178.899 146.4C176.552 143.151 173.574 140.233 169.964 137.646C166.415 134.999 162.835 132.562 159.225 130.336C158.924 130.156 158.473 129.644 157.871 128.802C157.27 127.9 156.969 126.997 156.969 126.095C156.969 125.373 157.149 124.801 157.51 124.38C159.435 121.793 161.902 119.266 164.91 116.799C167.919 114.333 171.228 113.099 174.838 113.099C177.485 113.099 179.651 113.761 181.335 115.085C183.08 116.348 183.952 117.612 183.952 118.875C183.952 120.56 183.17 122.154 181.606 123.658C180.042 125.102 178.417 126.486 176.733 127.809C183.892 131.54 189.578 136.293 193.789 142.068C198.001 147.784 200.107 153.379 200.107 158.854C200.107 163.487 198.422 167.458 195.053 170.767C191.744 174.016 187.502 176.513 182.328 178.257C177.214 180.002 171.89 180.875 166.354 180.875Z" fill="white" class=""></path>
+<path d="M101.333 180.875C96.5201 180.875 92.3988 179.701 88.9694 177.355C85.6002 174.948 83.0131 171.82 81.2082 167.969C79.4634 164.059 78.591 159.877 78.591 155.425C78.591 151.514 79.7041 147.152 81.9302 142.339C84.2164 137.466 87.4653 132.803 91.6768 128.351C95.8884 123.899 100.912 120.229 106.748 117.341C112.644 114.393 119.052 112.919 125.971 112.919C130.964 112.919 134.695 114.122 137.161 116.529C139.628 118.935 140.861 122.274 140.861 126.546C140.861 129.073 140.2 131.72 138.876 134.488C137.552 137.255 135.266 140.053 132.017 142.881C128.768 145.769 124.406 148.717 118.931 151.725C113.517 154.673 106.718 157.651 98.5356 160.659C99.1974 164.39 102.206 166.255 107.56 166.255C111.712 166.255 116.194 165.412 121.007 163.728C125.82 161.983 130.453 159.998 134.905 157.771C139.357 155.605 143.178 153.56 146.366 151.635C149.555 149.709 151.45 148.626 152.052 148.386C152.594 148.025 153.075 147.814 153.496 147.754C153.977 147.694 154.398 147.664 154.759 147.664C156.203 147.664 157.196 148.235 157.738 149.378C158.339 150.461 158.64 151.364 158.64 152.086C158.64 152.627 158.58 153.289 158.46 154.071C158.339 154.793 157.888 155.636 157.106 156.598C156.324 157.38 154.037 159.095 150.247 161.742C146.457 164.39 142.396 166.947 138.064 169.413C132.769 172.361 126.873 175.009 120.375 177.355C113.878 179.701 107.53 180.875 101.333 180.875ZM97.1819 150.281C101.093 148.235 105.063 145.859 109.095 143.151C113.186 140.384 116.284 138.368 118.39 137.105C121.218 135.3 123.083 133.706 123.985 132.322C125.008 130.818 125.519 129.554 125.519 128.531C125.519 127.629 125.219 126.907 124.617 126.366C124.075 125.824 123.444 125.493 122.722 125.373L121.91 125.283H121.097C117.788 125.283 114.72 126.245 111.892 128.17C109.125 130.036 106.778 132.382 104.853 135.21C102.807 138.158 101.153 140.925 99.8893 143.512C98.686 146.099 97.7836 148.356 97.1819 150.281Z" fill="white" class=""></path>
+<path d="M94.5539 5.29861C101.141 0.584854 110.141 -2.12591 119.129 2.09857L119.631 2.34281C130.029 7.59166 131.161 19.7724 128.254 29.3441C125.232 39.2952 117.464 49.5641 105.361 56.635L104.175 57.3089C98.2173 60.61 92.5294 62.5176 87.1972 63.3754C86.3469 69.7638 85.563 76.3957 84.7446 83.201C98.0513 80.8841 110.735 79.9862 120.799 79.9862C124.804 79.9864 128.05 83.2337 128.05 87.2389C128.05 91.244 124.804 94.4902 120.799 94.4904C110.401 94.4904 96.8352 95.5376 82.8551 98.3045C80.8032 113.781 78.2219 129.433 73.9831 142.819C69.4187 157.233 62.4704 170.568 50.6534 177.565L50.0869 177.894C37.5158 185.028 21.356 184.83 10.5522 176.073C-1.04121 166.676 -3.72034 150.007 5.72389 129.959L6.30736 128.757C18.0503 105.282 44.6682 92.8037 69.7451 86.401C70.6979 78.6106 71.6092 70.7218 72.5923 63.1832C62.06 61.1449 54.9461 55.4406 52.0906 52.7508L51.4686 52.147L51.2108 51.8767C48.6388 49.0299 48.7251 44.6346 51.4686 41.891C54.2125 39.1475 58.6076 39.0619 61.4544 41.6343L61.7246 41.891L62.0966 42.2506C63.7793 43.8263 68.1927 47.3587 74.6752 48.7954C76.1238 39.9662 77.8858 31.6883 80.2803 24.682L80.5268 23.9832C83.1565 16.7675 88.2202 9.83072 94.5539 5.29861ZM67.7074 101.998C46.1526 108.336 27.4375 118.963 19.2828 135.24L18.8452 136.14C11.1111 152.558 15.0966 161.086 19.6853 164.805C25.0638 169.165 34.6043 170.003 42.928 165.279L43.602 164.88C50.5178 160.603 55.9502 151.72 60.1551 138.441C63.532 127.777 65.8256 115.233 67.7074 101.998ZM112.959 15.2244C110.25 13.9512 106.889 14.3087 102.995 17.0947C99.175 19.828 95.8487 24.3158 94.1638 28.9258L94.0054 29.3724C92.2316 34.5626 90.7909 40.8339 89.5333 47.944C91.9054 47.1937 94.4457 46.1183 97.1467 44.6218L98.0513 44.1062C107.278 38.7152 112.51 31.2756 114.376 25.1298C116.338 18.6687 114.368 16.0829 113.184 15.3476L112.959 15.2244Z" fill="white"></path>
+</svg>
+
+</span>
+            </div>
+
+            <div class="flex gap-8 text-sm font-medium text-gray-400">
+                <a href="#" class="hover:text-white transition-colors">Features</a>
+                <a href="#" class="hover:text-white transition-colors">Privacy</a>
+                <a href="#" class="hover:text-white transition-colors">Terms</a>
+                <a href="#" class="hover:text-white transition-colors">Twitter</a>
+                <a href="#" class="hover:text-white transition-colors">Instagram</a>
+            </div>
+
+            <div class="text-sm text-gray-500">
+                © 2024 Festify Inc.
+            </div>
+        </div>
+    </div>
+</footer>
+
+    <!-- FOOTER -->
+    </body></html>

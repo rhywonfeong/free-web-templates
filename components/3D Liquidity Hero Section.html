@@ -1,0 +1,382 @@
+<body
+  class="min-h-screen grid place-items-center sm:p-6 md:p-8 antialiased selection:bg-indigo-500/30 text-slate-900 font-sans bg-[#f4f6fb] pt-4 pr-4 pb-4 pl-4">
+
+  <section
+    class="aspect-[3/4] md:aspect-[4/5] overflow-hidden bg-black w-full max-w-4xl max-h-[86vh] border-white/10 border rounded-3xl relative"
+    style="box-shadow: 0 30px 80px rgba(15,23,42,.20)">
+
+    <!-- WebGL background -->
+    <div class="motion-reduce:hidden absolute top-0 right-0 bottom-0 left-0">
+      <canvas class="block w-full h-full" data-engine="three.js r160" width="1788" height="1752" id="gl">Interactive 3D
+        Network Visualization</canvas>
+    </div>
+
+    <!-- Soft overlay vignette -->
+    <div class="pointer-events-none absolute top-0 right-0 bottom-0 left-0"
+      style="background: radial-gradient(900px 700px at 50% 40%, rgba(120, 70, 255, 0.1), transparent 60%), radial-gradient(900px 700px at 60% 65%, rgba(255, 0, 160, 0.08), transparent 60%), linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.4) 45%, rgba(0, 0, 0, 0.65));">
+    </div>
+
+    <!-- Logo -->
+    <div
+      class="md:top-10 md:left-12 uppercase text-sm font-medium text-white/90 tracking-tighter z-20 absolute top-8 left-8">
+      Nexu</div>
+
+    <!-- Content -->
+    <div class="z-10 md:p-12 md:mt-16 pointer-events-none mt-12 pt-8 pr-8 pb-8 pl-8 relative">
+      <h1
+        class="sm:text-5xl md:text-6xl leading-[1.1] text-4xl font-extralight text-white/95 tracking-tight drop-shadow-sm">
+        Powering the next<br class="hidden sm:block">
+  generation of global<br class="hidden sm:block">
+  digital liquidity
+      </h1>
+
+      <!-- Top-right button -->
+
+    </div>
+
+    <!-- Floating status chip -->
+
+  </section>
+
+  <!-- Three.js Logic -->
+  <script type="module" class="">
+    import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+
+    const canvas = document.getElementById("gl");
+    const gl = canvas?.getContext("webgl2");
+
+    if (!gl) console.warn("WebGL2 not available");
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    renderer.setClearColor(0x000000, 0);
+
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
+    camera.position.set(0, 1.2, 7.6);
+    camera.lookAt(0, -0.4, 0);
+
+    function resize(){
+      const r = canvas.getBoundingClientRect();
+      const w = Math.max(2, Math.floor(r.width));
+      const h = Math.max(2, Math.floor(r.height));
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    new ResizeObserver(resize).observe(canvas);
+    resize();
+
+    const rimLight = new THREE.DirectionalLight(0xffffff, 0.7);
+    rimLight.position.set(-2, 2, 4);
+    scene.add(rimLight);
+
+    const fillLight = new THREE.AmbientLight(0xffffff, 0.18);
+    scene.add(fillLight);
+
+    const planetGeom = new THREE.SphereGeometry(3.9, 96, 96);
+
+    const planetMat = new THREE.ShaderMaterial({
+      transparent: true,
+      uniforms: {
+        uColor: { value: new THREE.Color(0x2a2c33) },
+        uRim: { value: new THREE.Color(0x6b5cff) },
+        uRim2: { value: new THREE.Color(0xff3aa8) },
+      },
+      vertexShader: `
+        varying vec3 vN;
+        varying vec3 vV;
+        void main(){
+          vN = normalize(normalMatrix * normal);
+          vec4 mv = modelViewMatrix * vec4(position,1.0);
+          vV = normalize(-mv.xyz);
+          gl_Position = projectionMatrix * mv;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vN;
+        varying vec3 vV;
+        uniform vec3 uColor;
+        uniform vec3 uRim;
+        uniform vec3 uRim2;
+        void main(){
+          float fres = pow(1.0 - max(dot(vN, vV), 0.0), 2.2);
+          float fres2 = pow(1.0 - max(dot(vN, vV), 0.0), 5.0);
+          vec3 col = uColor;
+          col += uRim * fres * 0.55;
+          col += uRim2 * fres2 * 0.25;
+          gl_FragColor = vec4(col, 0.96);
+        }
+      `
+    });
+
+    const planet = new THREE.Mesh(planetGeom, planetMat);
+    planet.position.set(0.6, -3.1, 0);
+    scene.add(planet);
+
+    // --- Particle System Generation ---
+    const PCOUNT = 9000;
+    const pPos = new Float32Array(PCOUNT * 3);
+    const pCol = new Float32Array(PCOUNT * 3);
+
+    const tmp = new THREE.Vector3();
+    for (let i=0;i<PCOUNT;i++){
+      const u = Math.random();
+      const v = Math.random();
+      const theta = 2*Math.PI*u;
+      const phi = (Math.PI * 0.25) + v * (Math.PI * 0.40); 
+      const r = 3.92;
+
+      // Keep particles relative to local origin for safe rotation
+      tmp.set(
+        r * Math.sin(phi) * Math.cos(theta),
+        r * Math.cos(phi),
+        r * Math.sin(phi) * Math.sin(theta)
+      );
+
+      pPos[i*3+0] = tmp.x;
+      pPos[i*3+1] = tmp.y;
+      pPos[i*3+2] = tmp.z;
+
+      const t = Math.random();
+      const c1 = new THREE.Color("#6b5cff");
+      const c2 = new THREE.Color("#ff3aa8");
+      const c3 = new THREE.Color("#ff3b3b");
+      const cc = t < 0.6 ? c1.clone().lerp(c2, t/0.6) : c2.clone().lerp(c3, (t-0.6)/0.4);
+
+      pCol[i*3+0] = cc.r;
+      pCol[i*3+1] = cc.g;
+      pCol[i*3+2] = cc.b;
+    }
+
+    const pointsGeom = new THREE.BufferGeometry();
+    pointsGeom.setAttribute("position", new THREE.BufferAttribute(pPos, 3));
+    pointsGeom.setAttribute("color", new THREE.BufferAttribute(pCol, 3));
+
+    // Custom Shader for Particle Animation & Interaction
+    const pointsMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uMouse: { value: new THREE.Vector3(-999, -999, -999) },
+        uSize: { value: 16.0 * renderer.getPixelRatio() },
+        uOpacity: { value: 0.95 }
+      },
+      vertexShader: `
+        uniform float uTime;
+        uniform vec3 uMouse;
+        uniform float uSize;
+        attribute vec3 color;
+        varying vec3 vColor;
+        void main(){
+          vColor = color;
+          vec3 pos = position;
+          
+          // Continuous floating animation
+          pos.x += sin(uTime * 0.8 + pos.y * 2.0) * 0.04;
+          pos.y += cos(uTime * 0.7 + pos.z * 2.0) * 0.04;
+          pos.z += sin(uTime * 0.9 + pos.x * 2.0) * 0.04;
+
+          vec4 worldPos = modelMatrix * vec4(pos, 1.0);
+          
+          // Mouse interaction (Force field repulsion)
+          float dist = distance(worldPos.xyz, uMouse);
+          float radius = 3.0;
+          if(dist < radius){
+            vec3 dir = normalize(worldPos.xyz - uMouse);
+            float force = pow((radius - dist) / radius, 1.8);
+            worldPos.xyz += dir * force * 0.6;
+          }
+
+          vec4 mvPosition = viewMatrix * worldPos;
+          gl_PointSize = uSize * (1.0 / -mvPosition.z);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform float uOpacity;
+        varying vec3 vColor;
+        void main(){
+          // Circular particle shape
+          vec2 coord = gl_PointCoord - vec2(0.5);
+          if(length(coord) > 0.5) discard;
+          
+          gl_FragColor = vec4(vColor, uOpacity);
+        }
+      `,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    const dust = new THREE.Points(pointsGeom, pointsMat);
+    dust.position.copy(planet.position); // Align center with planet
+    scene.add(dust);
+
+    const arcs = [];
+    const travelers = [];
+
+    function makeGlowSprite(){
+      const geom = new THREE.SphereGeometry(0.05, 16, 16);
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.95,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      return new THREE.Mesh(geom, mat);
+    }
+
+    function arcCurve(a, b, height){
+      const mid = a.clone().add(b).multiplyScalar(0.5);
+      mid.y += height;
+      return new THREE.QuadraticBezierCurve3(a, mid, b);
+    }
+
+    const endpoints = [
+      [new THREE.Vector3(-3.6, -1.2, 0.4), new THREE.Vector3(3.2, -1.0, 0.9), 1.8],
+      [new THREE.Vector3(-4.0, -1.4, 0.2), new THREE.Vector3(2.2, -0.6, -0.3), 2.4],
+      [new THREE.Vector3(-2.8, -0.8, 1.2), new THREE.Vector3(4.0, -1.4, 0.1), 1.4],
+      [new THREE.Vector3(-3.8, -1.0, -0.8), new THREE.Vector3(3.6, -0.8, -0.6), 2.0],
+    ];
+
+    endpoints.forEach((e, idx) => {
+      const a = e[0].add(planet.position.clone().multiplyScalar(0));
+      const b = e[1].add(planet.position.clone().multiplyScalar(0));
+      const curve = arcCurve(a, b, e[2]);
+
+      const pts = curve.getPoints(180);
+      const g = new THREE.BufferGeometry().setFromPoints(pts);
+
+      const mat = new THREE.LineBasicMaterial({
+        color: idx % 2 === 0 ? 0xff3aa8 : 0x7c5cff,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+
+      const line = new THREE.Line(g, mat);
+      line.renderOrder = 5;
+      scene.add(line);
+
+      arcs.push({ curve, line });
+
+      const t = makeGlowSprite();
+      t.material.color.set(idx % 2 === 0 ? 0xfff2ff : 0xdbe7ff);
+      t.scale.setScalar(idx === 1 ? 1.4 : 1.0);
+      t.userData.speed = 0.08 + Math.random()*0.06;
+      t.userData.u = Math.random();
+      scene.add(t);
+      travelers.push(t);
+    });
+
+    const node1 = makeGlowSprite(); node1.position.set(1.3, -0.9, 0.6); node1.scale.setScalar(1.2);
+    node1.material.opacity = 0.9; scene.add(node1);
+
+    const node2 = makeGlowSprite(); node2.position.set(1.1, -0.7, 0.5); node2.scale.setScalar(0.9);
+    node2.material.opacity = 0.7; scene.add(node2);
+
+    // --- Background Stars ---
+    const STAR = 900;
+    const sPos = new Float32Array(STAR*3);
+    for (let i=0;i<STAR;i++){
+      sPos[i*3+0] = (Math.random()-0.5) * 28;
+      sPos[i*3+1] = (Math.random()-0.2) * 18;
+      sPos[i*3+2] = -10 - Math.random()*30;
+    }
+    const sGeom = new THREE.BufferGeometry();
+    sGeom.setAttribute("position", new THREE.BufferAttribute(sPos, 3));
+    const sMat = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 0.02,
+      transparent:true,
+      opacity: 0.25,
+      blending: THREE.AdditiveBlending,
+      depthWrite:false
+    });
+    const stars = new THREE.Points(sGeom, sMat);
+    scene.add(stars);
+
+    // --- Interaction Setup ---
+    const mouse = new THREE.Vector2(-999, -999);
+    const raycaster = new THREE.Raycaster();
+    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    const dummyTarget = new THREE.Vector3();
+
+    window.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    });
+
+    window.addEventListener('mouseleave', () => {
+      mouse.set(-999, -999);
+    });
+
+    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let t0 = performance.now();
+
+    function animate(now){
+      if (!prefersReduced){
+        const t = (now - t0) / 1000;
+
+        // Mouse Raycast for interaction
+        raycaster.setFromCamera(mouse, camera);
+        const hit = raycaster.ray.intersectPlane(plane, dummyTarget);
+        if (hit && mouse.x !== -999) {
+          pointsMat.uniforms.uMouse.value.lerp(dummyTarget, 0.08);
+        } else {
+          pointsMat.uniforms.uMouse.value.lerp(new THREE.Vector3(-999, -999, -999), 0.05);
+        }
+        
+        pointsMat.uniforms.uTime.value = t;
+        pointsMat.uniforms.uOpacity.value = 0.88 + 0.10 * Math.sin(t*0.9);
+
+        // Slowly rotate dust shell
+        dust.rotation.y = t * 0.04;
+        dust.rotation.z = t * 0.015;
+
+        // Animate background stars drifting
+        const sPositions = stars.geometry.attributes.position.array;
+        for (let i = 0; i < STAR; i++) {
+          sPositions[i*3+2] += 0.015; 
+          if (sPositions[i*3+2] > 6) {
+            sPositions[i*3+2] = -30;
+          }
+        }
+        stars.geometry.attributes.position.needsUpdate = true;
+
+        camera.position.x = 0.12 * Math.sin(t*0.18);
+        camera.position.y = 1.2 + 0.06 * Math.cos(t*0.20);
+        camera.lookAt(0.2, -0.6, 0);
+
+        arcs.forEach((a, i) => a.line.material.opacity = 0.68 + 0.22 * Math.sin(t*0.8 + i));
+
+        for (let i=0;i<travelers.length;i++){
+          const tr = travelers[i];
+          tr.userData.u = (tr.userData.u + tr.userData.speed * 0.016) % 1;
+          const p = arcs[i].curve.getPoint(tr.userData.u);
+          tr.position.copy(p);
+
+          const s = 0.9 + 0.35 * Math.sin(t*3.2 + i);
+          tr.scale.setScalar(s * (i===1 ? 1.4 : 1.0));
+          tr.material.opacity = 0.65 + 0.35 * Math.sin(t*2.6 + i);
+        }
+
+        node1.material.opacity = 0.7 + 0.25*Math.sin(t*2.2);
+        node2.material.opacity = 0.5 + 0.20*Math.sin(t*2.8);
+      }
+
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
+    requestAnimationFrame(animate);
+  </script>
+
+  <div class="edit-mode-label" data-edit-label="true" style="left: 0px; top: 0px;">
+    <span class="edit-mode-label-text">body</span><button class="edit-mode-move-btn">↑</button><button class="edit-mode-move-btn" disabled="">↓</button>
+  </div>
+  <button class="edit-mode-bottom-btn add-new" data-edit-label="true" title="Add content after element" style="left: 0px; top: 1021px;"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus"><path d="M12 5v14" class=""></path><path d="M5 12h14" class=""></path></svg></button><button class="edit-mode-bottom-btn replace" data-edit-label="true" title="Replace element with component" style="left: 30px; top: 1021px;"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-repeat"><polyline points="17 1 21 5 17 9" class=""></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14" class=""></path><polyline points="7 23 3 19 7 15" class=""></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3" class=""></path></svg></button><button class="edit-mode-bottom-btn menu" data-edit-label="true" title="Open context menu" style="left: 60px; top: 1021px;"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-more-horizontal"><circle cx="12" cy="12" r="1" class=""></circle><circle cx="19" cy="12" r="1" class=""></circle><circle cx="5" cy="12" r="1" class=""></circle></svg></button>
+</body>

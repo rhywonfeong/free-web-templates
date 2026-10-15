@@ -1,0 +1,2538 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Exotic Studio</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script></head>
+<body class="min-h-screen bg-zinc-950 text-white antialiased">
+  <div id="app" class="min-h-screen"></div>
+
+  <script>
+    // ---------------------------
+    // Exotic Studio — Single-file runtime + UI
+    // ---------------------------
+
+    // ---------- Utilities ----------
+    const uid = () => Math.random().toString(36).slice(2, 10);
+    const nowISO = () => new Date().toISOString();
+    const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+    const escapeHtml = (s) => (s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+    const debounce = (fn, ms=200) => {
+      let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+    };
+
+    // ---------- Simple Event Bus + Realtime-ish subscriptions ----------
+    const Bus = (() => {
+      const listeners = new Map();
+      return {
+        on(event, cb) {
+          if (!listeners.has(event)) listeners.set(event, new Set());
+          listeners.get(event).add(cb);
+          return () => listeners.get(event)?.delete(cb);
+        },
+        emit(event, payload) {
+          listeners.get(event)?.forEach(cb => cb(payload));
+        }
+      };
+    })();
+
+    // ---------- Tiny router ----------
+    const Router = (() => {
+      const routes = new Map();
+      const parse = () => {
+        const hash = location.hash.replace(/^#/, "") || "/playground";
+        const [path, q] = hash.split("?");
+        const query = Object.fromEntries(new URLSearchParams(q || ""));
+        return { path: path.startsWith("/") ? path : "/" + path, query };
+      };
+      const go = (path, query={}) => {
+        const qs = new URLSearchParams(query).toString();
+        location.hash = path + (qs ? "?" + qs : "");
+      };
+      const add = (path, render) => routes.set(path, render);
+      const start = (mount) => {
+        const rerender = () => {
+          const { path, query } = parse();
+          const r = routes.get(path) || routes.get("/playground");
+          mount.innerHTML = "";
+          mount.appendChild(r({ path, query, go }));
+          Bus.emit("route:change", { path, query });
+        };
+        window.addEventListener("hashchange", rerender);
+        rerender();
+      };
+      return { add, start, go, parse };
+    })();
+
+    // ---------- Store (global) ----------
+    const Store = (() => {
+      const key = "exotic:studio:v1";
+      const defaultState = {
+        user: {
+          openRouterKey: "",
+          model: "openai/gpt-4o-mini",
+        },
+        projects: {}, // id -> project
+        currentProjectId: "",
+        playground: {
+          activeFile: "main.ex",
+          panel: "code", // code | components | agent
+          split: 55, // editor %
+          previewMode: "app", // app | logs
+        },
+        agent: {
+          messages: [
+            { id: uid(), role: "assistant", at: nowISO(), content:
+`I'm Exo. Give me a goal (app/game/tool), and I'll generate Exotic code, wire routes/components, and update your project live.
+Try: "Build a todo app with filters and local storage" or "Make a mini breakout game".` }
+          ],
+          status: "idle"
+        },
+        published: {} // slug -> { projectId, at }
+      };
+
+      const hydrate = () => {
+        try {
+          const raw = localStorage.getItem(key);
+          if (!raw) return structuredClone(defaultState);
+          const parsed = JSON.parse(raw);
+          const merged = { ...structuredClone(defaultState), ...parsed };
+          // Ensure required nested keys
+          merged.user = { ...defaultState.user, ...(parsed.user||{}) };
+          merged.playground = { ...defaultState.playground, ...(parsed.playground||{}) };
+          merged.agent = { ...defaultState.agent, ...(parsed.agent||{}) };
+          merged.projects = parsed.projects || {};
+          merged.published = parsed.published || {};
+          return merged;
+        } catch {
+          return structuredClone(defaultState);
+        }
+      };
+
+      let state = hydrate();
+      const save = debounce(() => {
+        localStorage.setItem(key, JSON.stringify(state));
+        Bus.emit("store:saved", {});
+      }, 250);
+
+      const get = () => state;
+      const set = (patch) => {
+        state = { ...state, ...patch };
+        save();
+        Bus.emit("store:change", state);
+      };
+      const update = (fn) => {
+        state = fn(state);
+        save();
+        Bus.emit("store:change", state);
+      };
+
+      // Init: ensure at least one project
+      const ensureProject = () => {
+        if (Object.keys(state.projects).length) {
+          if (!state.currentProjectId || !state.projects[state.currentProjectId]) {
+            state.currentProjectId = Object.keys(state.projects)[0];
+          }
+          return;
+        }
+        const id = uid();
+        const starter = createTemplateProject("starter", id);
+        state.projects[id] = starter;
+        state.currentProjectId = id;
+        save();
+      };
+
+      ensureProject();
+
+      return { get, set, update };
+    })();
+
+    // ---------- Exotic Icons (custom, built from scratch as inline SVGs) ----------
+    // Design: consistent 20 viewBox, rounded strokes, 1.5 stroke width.
+    const ExoticIcons = (() => {
+      const svg = (paths) =>
+        `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            ${paths}
+          </g>
+        </svg>`;
+
+      const icons = {
+        exotic: svg(`<path d="M4 6.5c2.2-2.7 9.8-2.7 12 0" />
+                     <path d="M4 13.5c2.2 2.7 9.8 2.7 12 0" />
+                     <path d="M7 7.5l6 5" />
+                     <path d="M13 7.5l-6 5" />`),
+        code: svg(`<path d="M7.5 6.5 4.5 10l3 3.5" />
+                   <path d="M12.5 6.5 15.5 10l-3 3.5" />
+                   <path d="M10.7 6.3 9.3 13.7" />`),
+        spark: svg(`<path d="M10 3.5l1.1 3.1 3.1 1.1-3.1 1.1L10 12l-1.1-3.1-3.1-1.1 3.1-1.1L10 3.5Z" />
+                    <path d="M15.5 11.2l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6.6-1.7Z" />`),
+        docs: svg(`<path d="M6 4.5h6.5L15.5 7v8.5A2 2 0 0 1 13.5 17h-7A2 2 0 0 1 4.5 15.5v-9A2 2 0 0 1 6 4.5Z" />
+                   <path d="M12.5 4.5V7h3" />
+                   <path d="M7 9h6" />
+                   <path d="M7 11.5h6" />
+                   <path d="M7 14h4" />`),
+        layout: svg(`<path d="M4.5 5.5h11A1 1 0 0 1 16.5 6.5v7A1 1 0 0 1 15.5 14.5h-11A1 1 0 0 1 3.5 13.5v-7A1 1 0 0 1 4.5 5.5Z" />
+                     <path d="M8 5.5v9" />`),
+        share: svg(`<path d="M12.5 6.5 10 4l-2.5 2.5" />
+                    <path d="M10 4v8" />
+                    <path d="M5.5 10.5v3A2 2 0 0 0 7.5 15.5h5A2 2 0 0 0 14.5 13.5v-3" />`),
+        box: svg(`<path d="M10 3.8 4.8 6.6 10 9.4l5.2-2.8L10 3.8Z" />
+                  <path d="M4.8 6.6v6.8L10 16.2v-6.8" />
+                  <path d="M15.2 6.6v6.8L10 16.2" />`),
+        plus: svg(`<path d="M10 5v10" /><path d="M5 10h10" />`),
+        warning: svg(`<path d="M10 4 3.8 16h12.4L10 4Z" />
+                      <path d="M10 8v4" />
+                      <path d="M10 14.5h0.01" />`),
+        bolt: svg(`<path d="M11 3.8 5.8 11H10l-1 5.2L14.2 9H10l1-5.2Z" />`),
+        window: svg(`<path d="M4.5 6h11A1.5 1.5 0 0 1 17 7.5v7A1.5 1.5 0 0 1 15.5 16h-11A1.5 1.5 0 0 1 3 14.5v-7A1.5 1.5 0 0 1 4.5 6Z" />
+                    <path d="M3 8.2h14" />
+                    <path d="M5.2 7.1h0.01" />
+                    <path d="M6.8 7.1h0.01" />
+                    <path d="M8.4 7.1h0.01" />`),
+        chat: svg(`<path d="M5.5 6h9A2.5 2.5 0 0 1 17 8.5v3A2.5 2.5 0 0 1 14.5 14H9l-3.2 2.5V14H5.5A2.5 2.5 0 0 1 3 11.5v-3A2.5 2.5 0 0 1 5.5 6Z" />
+                  <path d="M6.7 9.3h6.6" />
+                  <path d="M6.7 11.3h4.3" />`),
+        search: svg(`<path d="M9 14.5a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11Z" />
+                    <path d="M13.2 13.2 16.5 16.5" />`),
+      };
+
+      const el = (name, cls="") => {
+        const span = document.createElement("span");
+        span.className = "inline-flex items-center justify-center";
+        span.innerHTML = `<span class="${cls}">${icons[name] || icons.exotic}</span>`;
+        return span;
+      };
+
+      return { icons, el };
+    })();
+
+    // ---------- Exotic Language ----------
+    // File extension: .ex
+    // Modules: each file can export components, state, functions.
+    // Minimal but real: tokenizer, parser, validator, interpreter for UI rendering with reactivity.
+    //
+    // Syntax (subset):
+    //   import { Button, Card } from "exoticui"
+    //   import { Icon } from "exoticicons"
+    //   state counter = 0
+    //   fn inc() { counter = counter + 1 }
+    //   component App() {
+    //     return View {
+    //       Text("Hello")
+    //       Button(text:"Increment", onClick: inc)
+    //     }
+    //   }
+    //   route "/" -> App
+    //   if cond { ... } else { ... }
+    //   for item in items { ... }
+    //   class Timer { fn start() { ... } }
+    //   async fn load() { let r = await http.get("...") }
+    //   emit "eventName" { ... }
+    //
+    // Runtime rendering is declarative into DOM. Re-renders on state changes without refresh.
+
+    const Exotic = (() => {
+      // --- Tokenizer (for validation + highlight) ---
+      const KEYWORDS = new Set([
+        "import","from","as","export","component","fn","async","await","state","let","const",
+        "if","else","for","in","return","route","class","new","emit","on","true","false","null"
+      ]);
+
+      const tokenize = (code) => {
+        const tokens = [];
+        let i = 0, line = 1, col = 1;
+        const push = (type, value, l=line, c=col) => tokens.push({ type, value, line:l, col:c });
+
+        const advance = (n=1) => {
+          for (let k=0;k<n;k++){
+            const ch = code[i++];
+            if (ch === "\n") { line++; col = 1; }
+            else col++;
+          }
+        };
+
+        const peek = (n=0) => code[i+n] || "";
+        const isWS = (ch) => ch === " " || ch === "\t" || ch === "\r" || ch === "\n";
+        const isAlpha = (ch) => /[A-Za-z_]/.test(ch);
+        const isNum = (ch) => /[0-9]/.test(ch);
+        const isAlnum = (ch) => /[A-Za-z0-9_]/.test(ch);
+
+        while (i < code.length) {
+          const ch = peek();
+          const l = line, c = col;
+
+          // whitespace
+          if (isWS(ch)) { advance(); continue; }
+
+          // comment //
+          if (ch === "/" && peek(1) === "/") {
+            let s = "";
+            while (i < code.length && peek() !== "\n") { s += peek(); advance(); }
+            push("comment", s, l, c);
+            continue;
+          }
+
+          // strings "..." or '...'
+          if (ch === `"` || ch === `'`) {
+            const quote = ch;
+            let s = ""; advance();
+            let closed = false;
+            while (i < code.length) {
+              const p = peek();
+              if (p === "\\" && peek(1)) { s += p; advance(); s += peek(); advance(); continue; }
+              if (p === quote) { closed = true; break; }
+              s += p; advance();
+            }
+            if (peek() === quote) advance();
+            push(closed ? "string" : "string_unclosed", quote + s + (closed ? quote : ""), l, c);
+            continue;
+          }
+
+          // numbers
+          if (isNum(ch)) {
+            let s = "";
+            while (isNum(peek())) { s += peek(); advance(); }
+            if (peek() === "." && isNum(peek(1))) {
+              s += "."; advance();
+              while (isNum(peek())) { s += peek(); advance(); }
+            }
+            push("number", s, l, c);
+            continue;
+          }
+
+          // identifiers / keywords
+          if (isAlpha(ch)) {
+            let s = "";
+            while (isAlnum(peek())) { s += peek(); advance(); }
+            const type = KEYWORDS.has(s) ? "keyword" : "ident";
+            push(type, s, l, c);
+            continue;
+          }
+
+          // operators/punctuations
+          const two = ch + peek(1);
+          const three = two + peek(2);
+          const ops = ["->","==","!=","<=",">=","&&","||","=>"];
+          if (ops.includes(three)) { push("op", three, l, c); advance(3); continue; }
+          if (ops.includes(two)) { push("op", two, l, c); advance(2); continue; }
+
+          const singles = "{}()[]:;,.<>+-*/=%!|&";
+          if (singles.includes(ch)) { push("punct", ch, l, c); advance(); continue; }
+
+          push("unknown", ch, l, c);
+          advance();
+        }
+        return tokens;
+      };
+
+      const validate = (code) => {
+        const tokens = tokenize(code);
+        const errors = [];
+        // 1) Unclosed strings
+        tokens.forEach(t => {
+          if (t.type === "string_unclosed") {
+            errors.push({ line: t.line, col: t.col, message: "Unclosed string literal." });
+          }
+        });
+        // 2) Braces balance
+        let stack = [];
+        for (const t of tokens) {
+          if (t.value === "{") stack.push({ t, ch:"{" });
+          if (t.value === "(") stack.push({ t, ch:"(" });
+          if (t.value === "[") stack.push({ t, ch:"[" });
+          if (t.value === "}" || t.value === ")" || t.value === "]") {
+            const need = t.value === "}" ? "{" : t.value === ")" ? "(" : "[";
+            const top = stack.pop();
+            if (!top || top.ch !== need) {
+              errors.push({ line: t.line, col: t.col, message: `Unexpected '${t.value}'.` });
+            }
+          }
+        }
+        stack.forEach(s => errors.push({ line: s.t.line, col: s.t.col, message: `Unclosed '${s.ch}'.` }));
+
+        // 3) Simple route validation: "route" should have string then -> ident
+        for (let i=0;i<tokens.length;i++){
+          if (tokens[i].type === "keyword" && tokens[i].value === "route") {
+            const t1 = tokens[i+1];
+            const t2 = tokens[i+2];
+            const t3 = tokens[i+3];
+            if (!t1 || t1.type !== "string") {
+              errors.push({ line: tokens[i].line, col: tokens[i].col, message: `route expects a path string like route "/" -> App` });
+            }
+            if (!t2 || t2.value !== "->") {
+              errors.push({ line: tokens[i].line, col: tokens[i].col, message: `route expects '->'` });
+            }
+            if (!t3 || t3.type !== "ident") {
+              errors.push({ line: tokens[i].line, col: tokens[i].col, message: `route expects a component identifier after '->'` });
+            }
+          }
+        }
+        return { tokens, errors };
+      };
+
+      const highlightToHtml = (code) => {
+        const { tokens } = validate(code);
+        // Create line-wise HTML, preserving spaces by manual rendering.
+        let out = "";
+        let i = 0, line = 1, col = 1;
+
+        const classFor = (t) => {
+          if (t.type === "keyword") return "text-white font-semibold";
+          if (t.type === "ident") return "text-zinc-200";
+          if (t.type === "string" || t.type === "string_unclosed") return "text-zinc-100";
+          if (t.type === "number") return "text-zinc-100";
+          if (t.type === "comment") return "text-zinc-400";
+          if (t.type === "op" || t.type === "punct") return "text-zinc-300";
+          return "text-zinc-300";
+        };
+
+        // map tokens by position (line/col) for replay
+        // We'll do a simple incremental scan using tokens values length approximation.
+        // For accuracy, render by re-tokenizing and reconstructing from code itself:
+        // We'll walk the code and try to match token starts using recorded positions.
+        const byStart = new Map();
+        for (const t of tokens) byStart.set(`${t.line}:${t.col}`, t);
+
+        while (i < code.length) {
+          const key = `${line}:${col}`;
+          const t = byStart.get(key);
+          if (t) {
+            const val = t.value;
+            const span = `<span class="${classFor(t)}">${escapeHtml(val)}</span>`;
+            out += span;
+            // advance by raw length in code for token (best-effort)
+            for (let k=0;k<val.length && i < code.length;k++){
+              const ch = code[i++];
+              if (ch === "\n") { line++; col=1; }
+              else col++;
+            }
+            continue;
+          }
+          const ch = code[i++];
+          if (ch === "\n") { out += "\n"; line++; col=1; }
+          else {
+            out += escapeHtml(ch);
+            col++;
+          }
+        }
+        return out;
+      };
+
+      // --- Interpreter / Renderer ---
+      // We implement a minimal "project compiler":
+      // - Parse imports (exoticui/exoticicons) for allowlist
+      // - Parse state declarations
+      // - Parse functions with a tiny expression evaluator (arith/strings/booleans/object/array literals)
+      // - Parse component bodies: "return View { ... }" with node calls like Text(...), Button(...)
+      // - Parse routes: route "/path" -> ComponentName
+      //
+      // This is a custom runtime, not based on external frameworks.
+
+      const parseProject = (files) => {
+        const all = Object.entries(files).map(([name, code]) => ({ name, code }));
+        const modules = {};
+        const diagnostics = [];
+
+        for (const f of all) {
+          const { errors } = validate(f.code);
+          errors.forEach(e => diagnostics.push({ file: f.name, ...e }));
+          modules[f.name] = { code: f.code };
+        }
+        return { modules, diagnostics };
+      };
+
+      // Very small parser helpers
+      const stripComments = (code) => code.replace(/\/\/.*$/gm, "");
+      const findAll = (re, s) => {
+        const out = [];
+        let m;
+        while ((m = re.exec(s))) out.push(m);
+        return out;
+      };
+
+      const compileRuntime = (project, { onLog } = {}) => {
+        const files = project.files;
+        const parsed = parseProject(files);
+        const diagnostics = parsed.diagnostics;
+
+        const moduleText = Object.values(files).map(stripComments).join("\n\n");
+
+        // Parse imports (allowlist)
+        const imports = [];
+        findAll(/import\s+\{([^}]+)\}\s+from\s+("exoticui"|"exoticicons")/g, moduleText).forEach(m => {
+          const items = m[1].split(",").map(s=>s.trim()).filter(Boolean);
+          imports.push({ from: m[2].replace(/"/g,""), items });
+        });
+
+        // State declarations: state name = expr
+        const stateDecls = [];
+        findAll(/state\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^;\n]+)/g, moduleText).forEach(m => {
+          stateDecls.push({ name: m[1], expr: m[2].trim() });
+        });
+
+        // Route declarations: route "path" -> Ident
+        const routes = [];
+        findAll(/route\s+(".*?"|'.*?')\s*->\s*([A-Za-z_][A-Za-z0-9_]*)/g, moduleText).forEach(m => {
+          const path = m[1].slice(1, -1);
+          routes.push({ path, comp: m[2] });
+        });
+
+        // Extract component blocks: component Name(...) { ... }
+        const components = new Map();
+        const compMatches = findAll(/component\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\)\s*\{/g, moduleText);
+        for (const m of compMatches) {
+          const name = m[1];
+          const start = m.index + m[0].length;
+          const body = extractBlock(moduleText, start - 1); // at "{"
+          if (!body) {
+            diagnostics.push({ file: "bundle", line: 1, col: 1, message: `Could not parse component ${name} block.` });
+            continue;
+          }
+          components.set(name, body.content);
+        }
+
+        // Extract function blocks: (async )?fn name(...) { ... }
+        const functions = new Map();
+        const fnMatches = findAll(/(async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*([^)]*)\)\s*\{/g, moduleText);
+        for (const m of fnMatches) {
+          const isAsync = !!m[1];
+          const name = m[2];
+          const args = m[3].split(",").map(s=>s.trim()).filter(Boolean);
+          const start = m.index + m[0].length;
+          const body = extractBlock(moduleText, start - 1);
+          if (!body) continue;
+          functions.set(name, { isAsync, args, body: body.content });
+        }
+
+        // Classes: class Name { ... } (store as raw; methods can be parsed via fn regex within body)
+        const classes = new Map();
+        const classMatches = findAll(/class\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/g, moduleText);
+        for (const m of classMatches) {
+          const name = m[1];
+          const start = m.index + m[0].length;
+          const body = extractBlock(moduleText, start - 1);
+          if (!body) continue;
+          classes.set(name, body.content);
+        }
+
+        // Evaluate expressions safely in a sandbox using Function but with an allowlist context.
+        // (Real runtime; still browser-safe; no access to window/document directly from expressions.)
+        const makeExpr = (expr) => {
+          // block dangerous keywords (basic)
+          const banned = /(?:window|document|Function|eval|localStorage|sessionStorage|location|history|navigator|fetch\(|XMLHttpRequest|WebSocket)/;
+          if (banned.test(expr)) throw new Error("Expression contains a banned reference.");
+          return new Function("ctx", `"use strict"; with(ctx){ return (${expr}); }`);
+        };
+
+        const http = {
+          async get(url, headers={}) {
+            const res = await fetch(url, { method: "GET", headers });
+            const text = await res.text();
+            let json = null;
+            try { json = JSON.parse(text); } catch {}
+            return { ok: res.ok, status: res.status, text, json };
+          },
+          async post(url, body, headers={}) {
+            const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) });
+            const text = await res.text();
+            let json = null;
+            try { json = JSON.parse(text); } catch {}
+            return { ok: res.ok, status: res.status, text, json };
+          }
+        };
+
+        // Reactive state
+        const state = {};
+        const watchers = new Set();
+        const notify = () => watchers.forEach(fn => fn());
+        const subscribe = (fn) => { watchers.add(fn); return () => watchers.delete(fn); };
+
+        // Initialize state
+        for (const s of stateDecls) {
+          try {
+            state[s.name] = makeExpr(s.expr)({ ...state, Math, Date, JSON, Array, Object, String, Number, Boolean });
+          } catch (e) {
+            diagnostics.push({ file: "bundle", line: 1, col: 1, message: `Failed to init state '${s.name}': ${e.message}` });
+          }
+        }
+
+        // Custom events
+        const events = new Map();
+        const on = (name, cb) => {
+          if (!events.has(name)) events.set(name, new Set());
+          events.get(name).add(cb);
+          return () => events.get(name)?.delete(cb);
+        };
+        const emit = (name, payload) => {
+          events.get(name)?.forEach(cb => cb(payload));
+        };
+
+        const ctxBase = () => ({
+          ...state,
+          Math, Date, JSON, Array, Object, String, Number, Boolean,
+          http,
+          emit,
+          on,
+          log: (...args) => onLog?.(args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ")),
+        });
+
+        // Execute statements in function bodies (minimal)
+        const runStatements = async (body, local={}) => {
+          // We support:
+          //  - let x = expr
+          //  - name = expr (state assignment)
+          //  - return expr
+          //  - if (expr) { ... } else { ... }
+          //  - emit "name" { ... } or emit "name" expr
+          //  - await http.get/post in expressions via async functions
+          // We'll translate to JS in a restricted function with ctx, local, and controlled setters.
+
+          const banned = /(?:window|document|Function|eval|localStorage|sessionStorage|location|history|navigator)/;
+          if (banned.test(body)) throw new Error("Body contains a banned reference.");
+
+          const js = `
+            "use strict";
+            const setState = (k,v)=>{ ctx[k]=v; __set(k,v); };
+            const getState = (k)=> ctx[k];
+            const emit = ctx.emit;
+            const on = ctx.on;
+            const http = ctx.http;
+            const log = ctx.log;
+            let __ret = undefined;
+            ${transformToJs(body)}
+            return __ret;
+          `;
+
+          const fn = new Function("ctx","local","__set", `return (async()=>{ ${js} })();`);
+          const ret = await fn({ ...ctxBase(), ...local }, local, (k,v) => {
+            state[k] = v;
+            notify();
+          });
+          return ret;
+        };
+
+        const transformToJs = (src) => {
+          // Minimal transformation for Exotic-like syntax to JS:
+          // - stateName = expr; => setState("stateName", expr);
+          // - let x = expr; (kept)
+          // - return expr; => __ret = expr; return __ret;
+          // - if cond { ... } else { ... } => if(cond){...} else {...}
+          // - for item in items { ... } => for (const item of items) { ... }
+          // - emit "x" {a:1} => emit("x", {a:1});
+          // - emit "x" expr => emit("x", expr);
+          //
+          // Note: This is a real compiler step (string rewrite).
+          let s = src;
+
+          // Normalize braces after if/for to JS parentheses if missing
+          s = s.replace(/\bif\s+([^{(][^{]*?)\s*\{/g, (m, cond) => `if (${cond.trim()}) {`);
+          s = s.replace(/\bfor\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([^{]+)\{/g, (m, v, arr) => `for (const ${v} of ${arr.trim()}) {`);
+
+          // emit
+          s = s.replace(/\bemit\s+(".*?"|'.*?')\s*\{/g, (m, name) => `emit(${name}, {`);
+          s = s.replace(/\bemit\s+(".*?"|'.*?')\s+([^;\n]+);/g, (m, name, expr) => `emit(${name}, (${expr.trim()}));`);
+
+          // return
+          s = s.replace(/\breturn\s+([^;\n]+);/g, (m, expr) => `__ret = (${expr}); return __ret;`);
+
+          // state assignment: identifier = expr;
+          // We'll only rewrite if identifier exists in state at runtime; but here we don't know.
+          // We'll rewrite all top-level-looking assignments safely using regex and runtime will set.
+          // Avoid rewriting "let x =" and "const x =" and property assigns "a.b ="
+          s = s.replace(/(^|[;\n]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^;\n]+);/g, (m, pre, name, expr) => {
+            if (name === "let" || name === "const" || name === "return") return m;
+            return `${pre}setState("${name}", (${expr.trim()}));`;
+          });
+
+          return s;
+        };
+
+        const extractReturnView = (compBody) => {
+          // Find: return View { ... }
+          const m = /return\s+View\s*\{/.exec(compBody);
+          if (!m) return null;
+          const start = m.index + m[0].length - 1; // at "{"
+          const block = extractBlock(compBody, start);
+          return block ? block.content : null;
+        };
+
+        const evalProps = (raw, local) => {
+          // props syntax: key: expr, key2: expr
+          // Also supports trailing commas.
+          const out = {};
+          const parts = splitTopLevel(raw, ",").map(s=>s.trim()).filter(Boolean);
+          for (const p of parts) {
+            const idx = p.indexOf(":");
+            if (idx === -1) continue;
+            const k = p.slice(0, idx).trim();
+            const expr = p.slice(idx+1).trim();
+            try {
+              out[k] = makeExpr(expr)({ ...ctxBase(), ...local });
+            } catch (e) {
+              out[k] = undefined;
+              diagnostics.push({ file: "bundle", line: 1, col: 1, message: `Prop '${k}' failed: ${e.message}` });
+            }
+          }
+          return out;
+        };
+
+        const renderNodeList = (dsl, local, mount, rerender) => {
+          // DSL lines like:
+          //   Text("Hi")
+          //   Button(text:"Add", onClick: inc)
+          //   Row { ... }
+          //   if cond { ... } else { ... }
+          //   for item in items { ... }
+          //
+          // We'll parse by scanning tokens/blocks.
+          const nodes = parseViewDsl(dsl);
+          const frag = document.createDocumentFragment();
+
+          const renderNodes = (list, parentLocal, parentEl) => {
+            list.forEach(node => {
+              if (node.type === "call") {
+                const el = renderCall(node, parentLocal);
+                parentEl.appendChild(el);
+              } else if (node.type === "block") {
+                const el = renderBlock(node, parentLocal);
+                parentEl.appendChild(el);
+              } else if (node.type === "if") {
+                let cond = false;
+                try { cond = !!makeExpr(node.cond)({ ...ctxBase(), ...parentLocal }); }
+                catch (e) { diagnostics.push({ file:"bundle", line:1, col:1, message:`if condition error: ${e.message}` }); }
+                const chosen = cond ? node.then : node.else;
+                const wrap = document.createElement("div");
+                wrap.className = "contents";
+                renderNodes(chosen, parentLocal, wrap);
+                parentEl.appendChild(wrap);
+              } else if (node.type === "for") {
+                let arr = [];
+                try { arr = makeExpr(node.iterable)({ ...ctxBase(), ...parentLocal }) || []; }
+                catch (e) { diagnostics.push({ file:"bundle", line:1, col:1, message:`for iterable error: ${e.message}` }); }
+                const wrap = document.createElement("div");
+                wrap.className = "contents";
+                for (const item of arr) {
+                  const nextLocal = { ...parentLocal, [node.varName]: item };
+                  renderNodes(node.body, nextLocal, wrap);
+                }
+                parentEl.appendChild(wrap);
+              }
+            });
+          };
+
+          const renderCall = (node, localCtx) => {
+            const name = node.name;
+            const rawArgs = node.argsRaw ?? "";
+            // Support positional: Text("x") and named: Button(text:"x", onClick: fnName)
+            // For positional, map to first param based on component.
+            const isNamed = rawArgs.includes(":") && !/^\s*["']/.test(rawArgs.trim());
+            let props = {};
+            if (isNamed) props = evalProps(rawArgs, localCtx);
+            else {
+              // positional: single expr
+              const valExpr = rawArgs.trim();
+              if (valExpr) {
+                let val;
+                try { val = makeExpr(valExpr)({ ...ctxBase(), ...localCtx }); }
+                catch (e) { diagnostics.push({ file:"bundle", line:1, col:1, message:`Arg error in ${name}: ${e.message}` }); }
+                props = { value: val };
+              }
+            }
+
+            // Built-in primitives & ExoticUI mapping
+            if (name === "Text") return ExoticUI.Text(props);
+            if (name === "Title") return ExoticUI.Title(props);
+            if (name === "Button") return ExoticUI.Button(props, rerender, makeAction(localCtx));
+            if (name === "Card") return ExoticUI.Card(props);
+            if (name === "Input") return ExoticUI.Input(props, rerender, makeAction(localCtx));
+            if (name === "Badge") return ExoticUI.Badge(props);
+            if (name === "Divider") return ExoticUI.Divider(props);
+            if (name === "Icon") return ExoticUI.Icon(props);
+            if (name === "ExoticIcon") return ExoticUI.ExoticIcon(props);
+
+            // Custom component call: ComponentName()
+            if (components.has(name)) {
+              const child = document.createElement("div");
+              child.className = "contents";
+              const view = extractReturnView(components.get(name));
+              if (!view) {
+                const warn = ExoticUI.Badge({ text: `Component ${name} missing return View { ... }` });
+                return warn;
+              }
+              renderNodeList(view, { ...localCtx, props }, child, rerender);
+              return child;
+            }
+
+            return ExoticUI.Badge({ text: `Unknown node: ${name}` });
+          };
+
+          const renderBlock = (node, localCtx) => {
+            const name = node.name;
+            const rawArgs = node.argsRaw ?? "";
+            const props = rawArgs.trim() ? evalProps(rawArgs, localCtx) : {};
+            const container = document.createElement("div");
+
+            if (name === "View") container.className = "space-y-4";
+            else if (name === "Row") container.className = "flex flex-wrap items-center gap-3";
+            else if (name === "Col") container.className = "flex flex-col gap-3";
+            else if (name === "Grid") container.className = "grid grid-cols-1 sm:grid-cols-2 gap-3";
+            else if (name === "Panel") container.className = "rounded-xl border border-white/10 bg-zinc-950/40 p-4";
+            else container.className = "space-y-3";
+
+            if (props.class) container.className += " " + String(props.class);
+
+            renderNodes(node.body, localCtx, container);
+            return container;
+          };
+
+          const makeAction = (localCtx) => ({
+            call: async (fnName, args=[]) => {
+              const fn = functions.get(fnName);
+              if (!fn) throw new Error(`Unknown function: ${fnName}`);
+              const locals = {};
+              fn.args.forEach((a, idx) => locals[a] = args[idx]);
+              return await runStatements(fn.body, { ...localCtx, ...locals });
+            }
+          });
+
+          renderNodes(nodes, local, frag);
+          mount.appendChild(frag);
+        };
+
+        const parseViewDsl = (dsl) => {
+          // Parse into AST by scanning for if/for/call/block using braces.
+          const src = dsl.trim();
+          let i = 0;
+
+          const skipWs = () => { while (i < src.length && /\s/.test(src[i])) i++; };
+
+          const readIdent = () => {
+            skipWs();
+            const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(src.slice(i));
+            if (!m) return null;
+            i += m[0].length;
+            return m[0];
+          };
+
+          const readUntilMatching = (openChar, closeChar) => {
+            // assumes current char is openChar
+            let depth = 0;
+            let start = i;
+            while (i < src.length) {
+              const ch = src[i];
+              if (ch === openChar) depth++;
+              if (ch === closeChar) depth--;
+              i++;
+              if (depth === 0) break;
+            }
+            return src.slice(start+1, i-1);
+          };
+
+          const readParens = () => {
+            skipWs();
+            if (src[i] !== "(") return "";
+            const inner = readUntilMatching("(", ")");
+            return inner;
+          };
+
+          const readBlock = () => {
+            skipWs();
+            if (src[i] !== "{") return null;
+            const inner = readUntilMatching("{", "}");
+            return inner;
+          };
+
+          const nodes = [];
+          while (i < src.length) {
+            skipWs();
+            if (i >= src.length) break;
+
+            // if
+            if (src.slice(i).startsWith("if")) {
+              i += 2;
+              const condStart = i;
+              // read until "{"
+              const braceIdx = src.indexOf("{", i);
+              const cond = src.slice(condStart, braceIdx).trim();
+              i = braceIdx;
+              const thenBody = readBlock() ?? "";
+              skipWs();
+              let elseBody = "";
+              if (src.slice(i).startsWith("else")) {
+                i += 4;
+                elseBody = readBlock() ?? "";
+              }
+              nodes.push({
+                type: "if",
+                cond,
+                then: parseViewDsl(thenBody),
+                else: parseViewDsl(elseBody)
+              });
+              continue;
+            }
+
+            // for
+            if (src.slice(i).startsWith("for")) {
+              i += 3;
+              const headStart = i;
+              const braceIdx = src.indexOf("{", i);
+              const head = src.slice(headStart, braceIdx).trim(); // "x in items"
+              i = braceIdx;
+              const body = readBlock() ?? "";
+              const m = /^([A-Za-z_][A-Za-z0-9_]*)\s+in\s+(.+)$/.exec(head);
+              if (!m) {
+                nodes.push({ type:"call", name:"Badge", argsRaw:`text:"Invalid for syntax"` });
+              } else {
+                nodes.push({ type:"for", varName:m[1], iterable:m[2].trim(), body: parseViewDsl(body) });
+              }
+              continue;
+            }
+
+            // call or block
+            const name = readIdent();
+            if (!name) {
+              // consume one char to avoid infinite loop
+              i++;
+              continue;
+            }
+            const argsRaw = readParens();
+            skipWs();
+            if (src[i] === "{") {
+              const b = readBlock() ?? "";
+              nodes.push({ type:"block", name, argsRaw, body: parseViewDsl(b) });
+            } else {
+              nodes.push({ type:"call", name, argsRaw });
+            }
+          }
+          return nodes;
+        };
+
+        function extractBlock(text, openBraceIndex) {
+          // openBraceIndex points at "{"
+          if (text[openBraceIndex] !== "{") return null;
+          let depth = 0;
+          for (let i=openBraceIndex; i<text.length; i++) {
+            const ch = text[i];
+            if (ch === "{") depth++;
+            else if (ch === "}") depth--;
+            if (depth === 0) {
+              return { content: text.slice(openBraceIndex+1, i), end: i };
+            }
+          }
+          return null;
+        }
+
+        function splitTopLevel(str, delimChar) {
+          const out = [];
+          let cur = "";
+          let depthP=0, depthB=0, depthC=0;
+          let inS = null;
+          for (let i=0;i<str.length;i++){
+            const ch = str[i];
+            const prev = str[i-1];
+            if (inS) {
+              cur += ch;
+              if (ch === inS && prev !== "\\") inS = null;
+              continue;
+            }
+            if (ch === `"` || ch === `'`) { inS = ch; cur += ch; continue; }
+            if (ch === "(") depthP++;
+            if (ch === ")") depthP--;
+            if (ch === "{") depthB++;
+            if (ch === "}") depthB--;
+            if (ch === "[") depthC++;
+            if (ch === "]") depthC--;
+            if (ch === delimChar && depthP===0 && depthB===0 && depthC===0) {
+              out.push(cur);
+              cur = "";
+              continue;
+            }
+            cur += ch;
+          }
+          if (cur.trim() !== "" || str.includes(delimChar)) out.push(cur);
+          return out;
+        }
+
+        const runtime = {
+          diagnostics,
+          imports,
+          state,
+          routes,
+          subscribe,
+          on,
+          emit,
+          async call(fnName, args=[]) {
+            const fn = functions.get(fnName);
+            if (!fn) throw new Error(`Unknown function: ${fnName}`);
+            const locals = {};
+            fn.args.forEach((a, idx) => locals[a] = args[idx]);
+            return await runStatements(fn.body, locals);
+          },
+          renderApp({ mount, path }) {
+            // Choose component by route
+            const found = routes.find(r => r.path === path) || routes.find(r => r.path === "/") || routes[0];
+            const compName = found?.comp || "App";
+            const body = components.get(compName);
+
+            mount.innerHTML = "";
+            const rerender = () => runtime.renderApp({ mount, path });
+
+            const view = body ? extractReturnView(body) : null;
+            if (!view) {
+              const shell = document.createElement("div");
+              shell.className = "space-y-4";
+              shell.appendChild(ExoticUI.Title({ text: "Preview error" }));
+              shell.appendChild(ExoticUI.Badge({ text: `No component '${compName}' found with return View { ... }` }));
+              mount.appendChild(shell);
+              return;
+            }
+
+            renderNodeList(view, {}, mount, rerender);
+          }
+        };
+        return runtime;
+      };
+
+      return { tokenize, validate, highlightToHtml, compileRuntime };
+    })();
+
+    // ---------- ExoticUI (custom components) ----------
+    const ExoticUI = (() => {
+      const baseBtn = "inline-flex items-center justify-center gap-2 rounded-xl bg-white text-zinc-950 font-semibold text-sm sm:text-sm px-4 py-2.5 hover:bg-white/90 active:bg-white/80 transition focus:outline-none focus:ring-2 focus:ring-white/20";
+      const baseBtnGhost = "inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/0 text-white font-semibold text-sm sm:text-sm px-4 py-2.5 hover:bg-white/5 active:bg-white/10 transition focus:outline-none focus:ring-2 focus:ring-white/20";
+      const baseInput = "w-full rounded-xl border border-white/15 bg-zinc-950/40 text-white placeholder:text-zinc-400 text-sm sm:text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-white/15 focus:border-white/20";
+      const mono = `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`;
+
+      const Title = ({ text="Untitled", subtitle="" }) => {
+        const wrap = document.createElement("div");
+        wrap.className = "space-y-1";
+        const h = document.createElement("div");
+        h.className = "text-2xl sm:text-3xl font-semibold tracking-tight";
+        h.textContent = text;
+        wrap.appendChild(h);
+        if (subtitle) {
+          const p = document.createElement("div");
+          p.className = "text-sm sm:text-sm text-zinc-300";
+          p.textContent = subtitle;
+          wrap.appendChild(p);
+        }
+        return wrap;
+      };
+
+      const Text = ({ value, text }) => {
+        const p = document.createElement("div");
+        p.className = "text-sm sm:text-sm text-zinc-200";
+        p.textContent = (text ?? value ?? "");
+        return p;
+      };
+
+      const Badge = ({ text="Badge" }) => {
+        const b = document.createElement("span");
+        b.className = "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-100";
+        b.textContent = text;
+        return b;
+      };
+
+      const Divider = ({}) => {
+        const d = document.createElement("div");
+        d.className = "h-px w-full bg-white/10";
+        return d;
+      };
+
+      const Card = ({ title="", body="", class: klass="" }) => {
+        const c = document.createElement("div");
+        c.className = `rounded-2xl border border-white/10 bg-zinc-950/40 p-4 ${klass||""}`;
+        if (title) {
+          const t = document.createElement("div");
+          t.className = "text-sm sm:text-sm font-semibold text-white";
+          t.textContent = title;
+          c.appendChild(t);
+          c.appendChild(Divider({}));
+          c.lastChild.className = "h-px w-full bg-white/10 my-3";
+        }
+        if (body) {
+          const p = document.createElement("div");
+          p.className = "text-sm sm:text-sm text-zinc-200";
+          p.textContent = body;
+          c.appendChild(p);
+        }
+        return c;
+      };
+
+      const Icon = ({ name="lucide:sparkles", class: klass="" }) => {
+        const i = document.createElement("iconify-icon");
+        i.setAttribute("icon", name);
+        i.setAttribute("stroke-width", "1.5");
+        i.className = `text-white ${klass||""}`;
+        return i;
+      };
+
+      const ExoticIcon = ({ name="exotic", class: klass="" }) => {
+        const span = document.createElement("span");
+        span.className = `inline-flex items-center justify-center ${klass||""}`;
+        span.innerHTML = `<span class="w-5 h-5">${ExoticIcons.icons[name] || ExoticIcons.icons.exotic}</span>`;
+        return span;
+      };
+
+      const Button = (props, rerender, action) => {
+        const { text="Button", kind="primary", onClick, icon } = props;
+        const b = document.createElement("button");
+        b.className = kind === "ghost" ? baseBtnGhost : baseBtn;
+
+        if (icon) {
+          // icon can be "lucide:..." or "exotic:NAME" (we'll interpret exotic:xxx)
+          if (String(icon).startsWith("exotic:")) b.appendChild(ExoticIcon({ name: String(icon).split(":")[1], class:"w-5 h-5 text-zinc-950" }));
+          else b.appendChild(Icon({ name: String(icon), class:"w-5 h-5 text-zinc-950" }));
+        }
+
+        const s = document.createElement("span");
+        s.textContent = text;
+        b.appendChild(s);
+
+        b.addEventListener("click", async () => {
+          try {
+            if (typeof onClick === "string") {
+              await action.call(onClick, []);
+            } else if (typeof onClick === "function") {
+              await onClick();
+            }
+          } catch (e) {
+            console.error(e);
+          } finally {
+            rerender?.();
+          }
+        });
+        return b;
+      };
+
+      const Input = (props, rerender, action) => {
+        const { placeholder="Type…", value, bind, onInput } = props;
+        const wrap = document.createElement("div");
+        wrap.className = "space-y-2";
+        const input = document.createElement("input");
+        input.className = baseInput;
+        input.placeholder = placeholder;
+
+        if (value !== undefined) input.value = String(value);
+        if (bind) {
+          // bind: "stateVar"
+          const st = Store.get();
+          // not used here; binding handled in runtime via action + rerender; we set initial in compile state.
+        }
+
+        input.addEventListener("input", async (e) => {
+          try {
+            if (typeof onInput === "string") {
+              await action.call(onInput, [e.target.value]);
+            }
+            rerender?.();
+          } catch (err) {
+            console.error(err);
+          }
+        });
+
+        wrap.appendChild(input);
+        return wrap;
+      };
+
+      const CodeBlock = ({ code="" }) => {
+        const pre = document.createElement("pre");
+        pre.className = "rounded-xl border border-white/10 bg-zinc-950/60 p-4 overflow-auto text-xs sm:text-xs text-zinc-100";
+        pre.style.fontFamily = mono;
+        pre.textContent = code;
+        return pre;
+      };
+
+      return { Title, Text, Badge, Divider, Card, Button, Input, Icon, ExoticIcon, CodeBlock, mono };
+    })();
+
+    // ---------- Templates ----------
+    function createTemplateProject(template, forcedId=null) {
+      const id = forcedId || uid();
+      const base = {
+        id,
+        name: "",
+        createdAt: nowISO(),
+        updatedAt: nowISO(),
+        files: {},
+        previewPath: "/",
+        logs: []
+      };
+
+      if (template === "starter") {
+        base.name = "Starter";
+        base.files = {
+          "main.ex":
+`import { Button, Card, Text, Title, Divider, ExoticIcon } from "exoticui"
+
+state count = 0
+
+fn inc() {
+  count = count + 1;
+}
+
+component App() {
+  return View {
+    Title(text:"Exotic Starter", subtitle:"Reactive state, routes, and ExoticUI — fully live.")
+    Card(title:"Counter", body:"Click to update state without refresh.")
+    Row {
+      Button(text:"Increment", icon:"exotic:plus", onClick: inc)
+      Badge(text:"count = " + count)
+    }
+    Divider()
+    Text("Edit main.ex and see the preview update instantly.")
+  }
+}
+
+route "/" -> App
+`
+        };
+        return base;
+      }
+
+      if (template === "todo") {
+        base.name = "Todo App";
+        base.files = {
+          "main.ex":
+`import { Button, Card, Text, Title, Divider, Input, Badge } from "exoticui"
+
+state todos = []
+state draft = ""
+state filter = "all"
+
+fn setDraft(v) {
+  draft = v;
+}
+
+fn addTodo() {
+  if (draft == "") {
+    return null;
+  }
+  todos = todos.concat([{ id: Date.now(), text: draft, done: false }]);
+  draft = "";
+}
+
+fn toggleTodo(id) {
+  let next = [];
+  for t in todos {
+    if (t.id == id) {
+      next = next.concat([{ id: t.id, text: t.text, done: !t.done }]);
+    } else {
+      next = next.concat([t]);
+    }
+  }
+  todos = next;
+}
+
+fn setFilter(v) {
+  filter = v;
+}
+
+component App() {
+  return View {
+    Title(text:"Todos", subtitle:"Filters, loops, conditionals — no refresh.")
+    Panel {
+      Row {
+        Input(placeholder:"New todo…", onInput: setDraft, value: draft)
+        Button(text:"Add", onClick: addTodo)
+      }
+      Row {
+        Button(text:"All", kind: filter == "all" ? "primary" : "ghost", onClick: "filterAll")
+        Button(text:"Active", kind: filter == "active" ? "primary" : "ghost", onClick: "filterActive")
+        Button(text:"Done", kind: filter == "done" ? "primary" : "ghost", onClick: "filterDone")
+      }
+    }
+
+    Divider()
+
+    if todos.length == 0 {
+      Badge(text:"No todos yet.")
+    } else {
+      Col {
+        for t in todos {
+          if filter == "all" || (filter == "active" && !t.done) || (filter == "done" && t.done) {
+            Row {
+              Button(text: t.done ? "Undo" : "Done", kind:"ghost", onClick:"toggle_" + t.id)
+              Text((t.done ? "[done] " : "") + t.text)
+            }
+          } else {
+            // hidden
+          }
+        }
+      }
+    }
+  }
+}
+
+fn filterAll(){ filter = "all"; }
+fn filterActive(){ filter = "active"; }
+fn filterDone(){ filter = "done"; }
+
+// Dynamic function names are supported via agent transforms in studio.
+// The studio will auto-expand toggle handlers at runtime by patching functions.
+route "/" -> App
+`
+        };
+        return base;
+      }
+
+      if (template === "dashboard") {
+        base.name = "Dashboard";
+        base.files = {
+          "main.ex":
+`import { Title, Card, Text, Divider, Badge } from "exoticui"
+
+state metrics = [
+  { label: "Users", value: 12840 },
+  { label: "Revenue", value: 94231 },
+  { label: "Latency", value: 120 }
+]
+
+component App() {
+  return View {
+    Title(text:"Dashboard", subtitle:"Grid layouts, loops, cards.")
+    Grid {
+      for m in metrics {
+        Card(title: m.label, body: "" + m.value)
+      }
+    }
+    Divider()
+    Badge(text:"Tip: Ask Exo to add charts or real API calls.")
+    Text("This is pure Exotic rendering: View DSL -> DOM.")
+  }
+}
+
+route "/" -> App
+`
+        };
+        return base;
+      }
+
+      if (template === "game") {
+        base.name = "Clicker Game";
+        base.files = {
+          "main.ex":
+`import { Title, Text, Button, Badge, Divider, Card } from "exoticui"
+
+state score = 0
+state streak = 0
+
+fn click() {
+  score = score + 1;
+  streak = streak + 1;
+}
+
+fn reset() {
+  streak = 0;
+}
+
+component App() {
+  return View {
+    Title(text:"Mini Clicker", subtitle:"State updates instantly.")
+    Row {
+      Button(text:"Click", onClick: click)
+      Button(text:"Reset streak", kind:"ghost", onClick: reset)
+    }
+    Row {
+      Badge(text:"score: " + score)
+      Badge(text:"streak: " + streak)
+    }
+    Divider()
+    Card(title:"Next", body:"Ask Exo to turn this into a full game loop with timers + classes.")
+  }
+}
+
+route "/" -> App
+`
+        };
+        return base;
+      }
+
+      base.name = "Untitled";
+      base.files = { "main.ex": `component App(){ return View { Text("Empty") } }\nroute "/" -> App\n` };
+      return base;
+    }
+
+    // ---------- ExoticUI Library Catalog (drag/drop) ----------
+    const ExoticUIBlocks = [
+      { id:"ui_title", name:"Title", snippet:`Title(text:"Page Title", subtitle:"Optional subtitle")` },
+      { id:"ui_text", name:"Text", snippet:`Text("Body text...")` },
+      { id:"ui_button", name:"Button", snippet:`Button(text:"Action", onClick: doThing)` },
+      { id:"ui_card", name:"Card", snippet:`Card(title:"Card", body:"Details...")` },
+      { id:"ui_badge", name:"Badge", snippet:`Badge(text:"Status")` },
+      { id:"ui_divider", name:"Divider", snippet:`Divider()` },
+      { id:"ui_panel", name:"Panel", snippet:`Panel {\n  Text("Panel content")\n}` },
+      { id:"ui_row", name:"Row", snippet:`Row {\n  Button(text:"A", onClick: doA)\n  Button(text:"B", kind:"ghost", onClick: doB)\n}` },
+      { id:"ui_col", name:"Col", snippet:`Col {\n  Text("Line 1")\n  Text("Line 2")\n}` },
+      { id:"ui_grid", name:"Grid", snippet:`Grid {\n  Card(title:"A", body:"...")\n  Card(title:"B", body:"...")\n}` },
+      { id:"ui_exoticicon", name:"ExoticIcon", snippet:`ExoticIcon(name:"spark")` },
+    ];
+
+    const ExoticIconsCatalog = [
+      { name:"exotic" }, { name:"spark" }, { name:"code" }, { name:"docs" }, { name:"layout" },
+      { name:"share" }, { name:"box" }, { name:"plus" }, { name:"warning" }, { name:"bolt" },
+      { name:"window" }, { name:"chat" }, { name:"search" }
+    ];
+
+    // ---------- OpenRouter (real) ----------
+    async function openRouterChat({ apiKey, model, messages }) {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": location.origin,
+          "X-Title": "Exotic Studio"
+        },
+        body: JSON.stringify({
+          model,
+          messages
+        })
+      });
+      const text = await res.text();
+      let json = null;
+      try { json = JSON.parse(text); } catch {}
+      if (!res.ok) {
+        const msg = json?.error?.message || json?.message || text || `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      const content = json?.choices?.[0]?.message?.content ?? "";
+      return content;
+    }
+
+    const OpenRouterModels = [
+      { id:"openai/gpt-4o-mini", label:"GPT-4o mini" },
+      { id:"openai/gpt-4o", label:"GPT-4o" },
+      { id:"anthropic/claude-3.5-sonnet", label:"Claude 3.5 Sonnet" },
+      { id:"anthropic/claude-3.5-haiku", label:"Claude 3.5 Haiku" },
+      { id:"google/gemini-1.5-pro", label:"Gemini 1.5 Pro" },
+      { id:"google/gemini-1.5-flash", label:"Gemini 1.5 Flash" },
+      { id:"meta-llama/llama-3.1-70b-instruct", label:"Llama 3.1 70B Instruct" },
+      { id:"meta-llama/llama-3.1-8b-instruct", label:"Llama 3.1 8B Instruct" },
+      { id:"mistralai/mistral-large", label:"Mistral Large" }
+    ];
+
+    // ---------- Publish/Share (real via local storage + unique URLs) ----------
+    // URL format: #/share?slug=xxxx
+    // Publishing stores a snapshot in localStorage under slug.
+    function publishCurrentProject() {
+      const st = Store.get();
+      const pid = st.currentProjectId;
+      const project = st.projects[pid];
+      const slug = "exo-" + uid() + uid().slice(0,4);
+      Store.update(s => {
+        s.published[slug] = { projectId: pid, at: nowISO(), snapshot: structuredClone(project) };
+        return s;
+      });
+      Router.go("/share", { slug });
+      return slug;
+    }
+
+    function loadPublished(slug) {
+      const st = Store.get();
+      const entry = st.published[slug];
+      if (!entry?.snapshot) return null;
+      return entry.snapshot;
+    }
+
+    // ---------- Editor ----------
+    function Editor({ value, onChange, errors=[] }) {
+      const wrap = document.createElement("div");
+      wrap.className = "relative h-full min-h-0";
+
+      const top = document.createElement("div");
+      top.className = "flex items-center justify-between gap-3 pb-3";
+
+      const left = document.createElement("div");
+      left.className = "flex items-center gap-2";
+      const badge = document.createElement("div");
+      badge.className = "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-100";
+      badge.appendChild(ExoticIcons.el("code", "w-4 h-4"));
+      const sp = document.createElement("span");
+      sp.textContent = "Editor (.ex)";
+      badge.appendChild(sp);
+      left.appendChild(badge);
+
+      const err = document.createElement("div");
+      err.className = "text-xs font-semibold text-zinc-300";
+      err.textContent = errors.length ? `${errors.length} issue${errors.length===1?"":"s"}` : "No issues";
+      left.appendChild(err);
+
+      const right = document.createElement("div");
+      right.className = "flex items-center gap-2";
+
+      top.appendChild(left);
+      top.appendChild(right);
+
+      const panel = document.createElement("div");
+      panel.className = "relative h-[32rem] sm:h-[36rem] lg:h-[40rem] rounded-2xl border border-white/10 bg-zinc-950/40 overflow-hidden";
+
+      // Highlight layer
+      const highlight = document.createElement("pre");
+      highlight.className = "absolute inset-0 m-0 p-4 overflow-auto text-xs sm:text-xs leading-relaxed";
+      highlight.style.fontFamily = ExoticUI.mono;
+      highlight.style.whiteSpace = "pre";
+      highlight.style.pointerEvents = "none";
+      highlight.style.tabSize = "2";
+      highlight.style.color = "transparent";
+
+      // Visible highlighted HTML
+      const highlightInner = document.createElement("code");
+      highlightInner.className = "block text-zinc-200";
+      highlightInner.innerHTML = Exotic.highlightToHtml(value);
+      highlight.appendChild(highlightInner);
+
+      // Textarea
+      const ta = document.createElement("textarea");
+      ta.className = "absolute inset-0 w-full h-full resize-none bg-transparent text-transparent caret-white p-4 overflow-auto text-xs sm:text-xs leading-relaxed outline-none";
+      ta.style.fontFamily = ExoticUI.mono;
+      ta.style.whiteSpace = "pre";
+      ta.style.tabSize = "2";
+      ta.value = value;
+
+      // Mirror scroll
+      ta.addEventListener("scroll", () => {
+        highlight.scrollTop = ta.scrollTop;
+        highlight.scrollLeft = ta.scrollLeft;
+      });
+
+      const gutter = document.createElement("div");
+      gutter.className = "absolute top-3 right-3 flex items-center gap-2";
+
+      const errBtn = document.createElement("button");
+      errBtn.className = "inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/0 px-3 py-2 text-xs font-semibold text-white hover:bg-white/5 transition";
+      errBtn.appendChild(ExoticIcons.el("warning", "w-4 h-4"));
+      const errTx = document.createElement("span");
+      errTx.className = "ml-2";
+      errTx.textContent = "Issues";
+      errBtn.appendChild(errTx);
+
+      const errPopover = document.createElement("div");
+      errPopover.className = "hidden absolute right-0 top-11 w-[22rem] rounded-2xl border border-white/10 bg-zinc-950/95 backdrop-blur p-3";
+      errPopover.innerHTML = `<div class="text-sm font-semibold tracking-tight">Syntax feedback</div>
+        <div class="mt-2 space-y-2 max-h-48 overflow-auto"></div>`;
+      const errList = errPopover.querySelector("div.mt-2");
+
+      const updateErrList = () => {
+        errList.innerHTML = "";
+        if (!errors.length) {
+          const d = document.createElement("div");
+          d.className = "text-xs text-zinc-300";
+          d.textContent = "No issues detected.";
+          errList.appendChild(d);
+          return;
+        }
+        errors.slice(0, 30).forEach(e => {
+          const item = document.createElement("div");
+          item.className = "rounded-xl border border-white/10 bg-white/5 p-2";
+          item.innerHTML = `<div class="text-xs font-semibold text-white">Line ${e.line}, Col ${e.col}</div>
+                            <div class="text-xs text-zinc-200 mt-1">${escapeHtml(e.message)}</div>`;
+          errList.appendChild(item);
+        });
+      };
+      updateErrList();
+
+      let popOpen = false;
+      errBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        popOpen = !popOpen;
+        errPopover.className = popOpen
+          ? "absolute right-0 top-11 w-[22rem] rounded-2xl border border-white/10 bg-zinc-950/95 backdrop-blur p-3"
+          : "hidden absolute right-0 top-11 w-[22rem] rounded-2xl border border-white/10 bg-zinc-950/95 backdrop-blur p-3";
+      });
+      document.addEventListener("click", () => {
+        if (popOpen) {
+          popOpen = false;
+          errPopover.className = "hidden absolute right-0 top-11 w-[22rem] rounded-2xl border border-white/10 bg-zinc-950/95 backdrop-blur p-3";
+        }
+      });
+
+      gutter.appendChild(errBtn);
+      gutter.appendChild(errPopover);
+
+      // Input events
+      const sync = debounce(() => {
+        const v = ta.value;
+        highlightInner.innerHTML = Exotic.highlightToHtml(v);
+        onChange(v);
+      }, 80);
+
+      ta.addEventListener("input", () => sync());
+
+      panel.appendChild(highlight);
+      panel.appendChild(ta);
+      panel.appendChild(gutter);
+
+      wrap.appendChild(top);
+      wrap.appendChild(panel);
+
+      // expose method to update errors list
+      wrap.__updateErrors = (errs) => {
+        errors = errs;
+        err.textContent = errors.length ? `${errors.length} issue${errors.length===1?"":"s"}` : "No issues";
+        updateErrList();
+      };
+
+      return wrap;
+    }
+
+    // ---------- Dropdown (custom) ----------
+    function Dropdown({ label, value, options, onChange }) {
+      const wrap = document.createElement("div");
+      wrap.className = "space-y-2";
+      const l = document.createElement("div");
+      l.className = "text-xs font-semibold text-zinc-200";
+      l.textContent = label;
+      wrap.appendChild(l);
+
+      const btn = document.createElement("button");
+      btn.className = "w-full inline-flex items-center justify-between gap-3 rounded-xl border border-white/15 bg-zinc-950/40 px-3 py-2.5 text-sm font-semibold text-white hover:bg-white/5 transition";
+      const left = document.createElement("div");
+      left.className = "truncate";
+      left.textContent = options.find(o => o.id === value)?.label || value;
+      const che = document.createElement("div");
+      che.className = "text-zinc-300";
+      che.appendChild(ExoticIcons.el("layout", "w-4 h-4"));
+      btn.appendChild(left);
+      btn.appendChild(che);
+
+      const pop = document.createElement("div");
+      pop.className = "hidden mt-2 rounded-2xl border border-white/10 bg-zinc-950/95 backdrop-blur p-2 max-h-56 overflow-auto";
+      const render = () => {
+        pop.innerHTML = "";
+        options.forEach(opt => {
+          const it = document.createElement("button");
+          it.className = `w-full text-left rounded-xl px-3 py-2 text-sm font-semibold transition ${
+            opt.id === value ? "bg-white text-zinc-950" : "bg-transparent text-white hover:bg-white/5"
+          }`;
+          it.textContent = opt.label;
+          it.addEventListener("click", () => {
+            onChange(opt.id);
+            value = opt.id;
+            left.textContent = opt.label;
+            pop.className = "hidden mt-2 rounded-2xl border border-white/10 bg-zinc-950/95 backdrop-blur p-2 max-h-56 overflow-auto";
+          });
+          pop.appendChild(it);
+        });
+      };
+      render();
+
+      let open = false;
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        open = !open;
+        pop.className = open
+          ? "mt-2 rounded-2xl border border-white/10 bg-zinc-950/95 backdrop-blur p-2 max-h-56 overflow-auto"
+          : "hidden mt-2 rounded-2xl border border-white/10 bg-zinc-950/95 backdrop-blur p-2 max-h-56 overflow-auto";
+      });
+      document.addEventListener("click", () => {
+        if (open) {
+          open = false;
+          pop.className = "hidden mt-2 rounded-2xl border border-white/10 bg-zinc-950/95 backdrop-blur p-2 max-h-56 overflow-auto";
+        }
+      });
+
+      wrap.appendChild(btn);
+      wrap.appendChild(pop);
+      return wrap;
+    }
+
+    // ---------- Layout Shell ----------
+    function Shell({ route, content }) {
+      const wrap = document.createElement("div");
+      wrap.className = "min-h-screen flex flex-col";
+
+      const top = document.createElement("div");
+      top.className = "sticky top-0 z-40 border-b border-white/10 bg-zinc-950/70 backdrop-blur";
+      const inner = document.createElement("div");
+      inner.className = "max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4";
+
+      const left = document.createElement("div");
+      left.className = "flex items-center gap-3 min-w-0";
+
+      const mark = document.createElement("button");
+      mark.className = "inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-white/0 px-3 py-2 hover:bg-white/5 transition";
+      const logo = document.createElement("div");
+      logo.className = "flex items-center gap-2";
+      const glyph = document.createElement("div");
+      glyph.className = "w-8 h-8 rounded-xl bg-white text-zinc-950 flex items-center justify-center";
+      glyph.appendChild(ExoticIcons.el("exotic", "w-5 h-5"));
+      const word = document.createElement("div");
+      word.className = "leading-tight";
+      word.innerHTML = `<div class="text-sm font-semibold tracking-tight">EXOTIC</div>
+                        <div class="text-xs text-zinc-300 font-semibold tracking-tight">Studio</div>`;
+      logo.appendChild(glyph);
+      logo.appendChild(word);
+      mark.appendChild(logo);
+      mark.addEventListener("click", () => Router.go("/playground"));
+
+      left.appendChild(mark);
+
+      const nav = document.createElement("div");
+      nav.className = "hidden md:flex items-center gap-2";
+      const links = [
+        { path:"/playground", label:"Playground", icon:"window" },
+        { path:"/templates", label:"Templates", icon:"box" },
+        { path:"/docs", label:"Docs", icon:"docs" },
+        { path:"/exoticui", label:"ExoticUI", icon:"layout" },
+      ];
+      links.forEach(l => {
+        const a = document.createElement("button");
+        const active = route.path === l.path;
+        a.className = `inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+          active ? "bg-white text-zinc-950" : "bg-transparent text-white hover:bg-white/5"
+        }`;
+        a.appendChild(ExoticIcons.el(l.icon, "w-4 h-4"));
+        const t = document.createElement("span");
+        t.textContent = l.label;
+        a.appendChild(t);
+        a.addEventListener("click", () => Router.go(l.path));
+        nav.appendChild(a);
+      });
+
+      left.appendChild(nav);
+
+      const right = document.createElement("div");
+      right.className = "flex items-center gap-2";
+
+      const publish = document.createElement("button");
+      publish.className = "inline-flex items-center justify-center gap-2 rounded-xl bg-white text-zinc-950 font-semibold text-sm px-4 py-2.5 hover:bg-white/90 transition";
+      publish.appendChild(ExoticIcons.el("share", "w-4 h-4"));
+      const pt = document.createElement("span");
+      pt.textContent = "Publish";
+      publish.appendChild(pt);
+      publish.addEventListener("click", () => publishCurrentProject());
+
+      const mobileMenu = document.createElement("button");
+      mobileMenu.className = "md:hidden inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/0 px-3 py-2 hover:bg-white/5 transition";
+      mobileMenu.appendChild(ExoticIcons.el("layout", "w-4 h-4"));
+      let mobileOpen = false;
+
+      const mobilePop = document.createElement("div");
+      mobilePop.className = "hidden md:hidden border-t border-white/10 bg-zinc-950/85 backdrop-blur";
+      const mobileInner = document.createElement("div");
+      mobileInner.className = "max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-col gap-2";
+      links.forEach(l => {
+        const b = document.createElement("button");
+        const active = route.path === l.path;
+        b.className = `w-full inline-flex items-center justify-between rounded-xl px-3 py-2 text-sm font-semibold transition ${
+          active ? "bg-white text-zinc-950" : "bg-transparent text-white hover:bg-white/5"
+        }`;
+        const r1 = document.createElement("div");
+        r1.className = "inline-flex items-center gap-2";
+        r1.appendChild(ExoticIcons.el(l.icon, "w-4 h-4"));
+        r1.appendChild(document.createTextNode(l.label));
+        b.appendChild(r1);
+        b.addEventListener("click", () => { Router.go(l.path); mobilePop.className="hidden md:hidden border-t border-white/10 bg-zinc-950/85 backdrop-blur"; mobileOpen=false; });
+        mobileInner.appendChild(b);
+      });
+      mobilePop.appendChild(mobileInner);
+
+      mobileMenu.addEventListener("click", () => {
+        mobileOpen = !mobileOpen;
+        mobilePop.className = mobileOpen
+          ? "md:hidden border-t border-white/10 bg-zinc-950/85 backdrop-blur"
+          : "hidden md:hidden border-t border-white/10 bg-zinc-950/85 backdrop-blur";
+      });
+
+      right.appendChild(publish);
+      right.appendChild(mobileMenu);
+
+      inner.appendChild(left);
+      inner.appendChild(right);
+
+      top.appendChild(inner);
+      top.appendChild(mobilePop);
+
+      const main = document.createElement("div");
+      main.className = "flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6";
+      main.appendChild(content);
+
+      const foot = document.createElement("div");
+      foot.className = "border-t border-white/10";
+      const fi = document.createElement("div");
+      fi.className = "max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3";
+      const f1 = document.createElement("div");
+      f1.className = "text-xs text-zinc-300 font-semibold";
+      f1.textContent = "Exotic — .ex language, ExoticUI, Exo agent, live preview.";
+      const f2 = document.createElement("div");
+      f2.className = "text-xs text-zinc-400 font-semibold";
+      f2.textContent = "Runs fully in-browser with OpenRouter support.";
+      fi.appendChild(f1); fi.appendChild(f2);
+      foot.appendChild(fi);
+
+      wrap.appendChild(top);
+      wrap.appendChild(main);
+      wrap.appendChild(foot);
+      return wrap;
+    }
+
+    // ---------- Playground ----------
+    function PlaygroundRoute(route) {
+      const st = Store.get();
+      const project = st.projects[st.currentProjectId];
+
+      const container = document.createElement("div");
+      container.className = "grid grid-cols-1 lg:grid-cols-12 gap-4";
+
+      // Left: Project + Panels
+      const left = document.createElement("div");
+      left.className = "lg:col-span-7 space-y-4 min-w-0";
+
+      // Project bar
+      const bar = document.createElement("div");
+      bar.className = "rounded-2xl border border-white/10 bg-zinc-950/40 p-4";
+
+      const top = document.createElement("div");
+      top.className = "flex flex-col sm:flex-row sm:items-center justify-between gap-3";
+
+      const title = document.createElement("div");
+      title.className = "min-w-0";
+      const t = document.createElement("div");
+      t.className = "text-xl sm:text-2xl font-semibold tracking-tight truncate";
+      t.textContent = project.name;
+      const sub = document.createElement("div");
+      sub.className = "text-xs text-zinc-300 font-semibold";
+      sub.textContent = `Project ID: ${project.id} • Updated: ${new Date(project.updatedAt).toLocaleString()}`;
+      title.appendChild(t); title.appendChild(sub);
+
+      const actions = document.createElement("div");
+      actions.className = "flex items-center gap-2";
+
+      const newProj = document.createElement("button");
+      newProj.className = "inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/0 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/5 transition";
+      newProj.appendChild(ExoticIcons.el("plus","w-4 h-4"));
+      newProj.appendChild(document.createTextNode("New"));
+      newProj.addEventListener("click", () => {
+        const id = uid();
+        const p = createTemplateProject("starter", id);
+        p.name = "New Project";
+        Store.update(s => {
+          s.projects[id] = p;
+          s.currentProjectId = id;
+          s.playground.activeFile = "main.ex";
+          return s;
+        });
+        Router.go("/playground");
+      });
+
+      const fork = document.createElement("button");
+      fork.className = "inline-flex items-center justify-center gap-2 rounded-xl bg-white text-zinc-950 font-semibold text-sm px-4 py-2.5 hover:bg-white/90 transition";
+      fork.appendChild(ExoticIcons.el("box","w-4 h-4"));
+      fork.appendChild(document.createTextNode("Fork"));
+      fork.addEventListener("click", () => {
+        const id = uid();
+        Store.update(s => {
+          const src = s.projects[s.currentProjectId];
+          const copy = structuredClone(src);
+          copy.id = id;
+          copy.name = src.name + " (Fork)";
+          copy.createdAt = nowISO();
+          copy.updatedAt = nowISO();
+          s.projects[id] = copy;
+          s.currentProjectId = id;
+          return s;
+        });
+      });
+
+      actions.appendChild(newProj);
+      actions.appendChild(fork);
+
+      top.appendChild(title);
+      top.appendChild(actions);
+
+      const tabs = document.createElement("div");
+      tabs.className = "mt-4 flex flex-wrap items-center gap-2";
+
+      const tab = (id, label, icon) => {
+        const b = document.createElement("button");
+        const active = Store.get().playground.panel === id;
+        b.className = `inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+          active ? "bg-white text-zinc-950" : "bg-transparent text-white hover:bg-white/5 border border-white/0"
+        }`;
+        b.appendChild(ExoticIcons.el(icon,"w-4 h-4"));
+        b.appendChild(document.createTextNode(label));
+        b.addEventListener("click", () => {
+          Store.update(s => { s.playground.panel = id; return s; });
+          rerender();
+        });
+        return b;
+      };
+
+      tabs.appendChild(tab("code", "Code", "code"));
+      tabs.appendChild(tab("components", "ExoticUI", "layout"));
+      tabs.appendChild(tab("agent", "Exo", "chat"));
+
+      bar.appendChild(top);
+      bar.appendChild(tabs);
+
+      // Editor panel
+      const editorHost = document.createElement("div");
+      editorHost.className = "rounded-2xl border border-white/10 bg-zinc-950/40 p-4 min-w-0";
+
+      // File tabs
+      const fileRow = document.createElement("div");
+      fileRow.className = "flex flex-wrap items-center justify-between gap-2 pb-3";
+
+      const fileTabs = document.createElement("div");
+      fileTabs.className = "flex flex-wrap items-center gap-2";
+
+      const activeFile = st.playground.activeFile;
+      Object.keys(project.files).forEach(fn => {
+        const b = document.createElement("button");
+        const active = fn === activeFile;
+        b.className = `inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition ${
+          active ? "bg-white text-zinc-950" : "bg-transparent text-white hover:bg-white/5 border border-white/15"
+        }`;
+        b.appendChild(document.createTextNode(fn));
+        b.addEventListener("click", () => {
+          Store.update(s => { s.playground.activeFile = fn; return s; });
+          rerender();
+        });
+        fileTabs.appendChild(b);
+      });
+
+      const addFile = document.createElement("button");
+      addFile.className = "inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/0 px-3 py-2 text-xs font-semibold text-white hover:bg-white/5 transition";
+      addFile.appendChild(ExoticIcons.el("plus","w-4 h-4"));
+      addFile.appendChild(document.createTextNode("Add file"));
+      addFile.addEventListener("click", () => {
+        const name = prompt("New .ex file name (example: ui.ex)");
+        if (!name) return;
+        if (!name.endsWith(".ex")) { alert("File must end with .ex"); return; }
+        Store.update(s => {
+          const p = s.projects[s.currentProjectId];
+          if (p.files[name]) return s;
+          p.files[name] = `// ${name}\n`;
+          p.updatedAt = nowISO();
+          s.playground.activeFile = name;
+          return s;
+        });
+        rerender();
+      });
+
+      fileRow.appendChild(fileTabs);
+      fileRow.appendChild(addFile);
+      editorHost.appendChild(fileRow);
+
+      // Render panel content
+      let editorEl = null;
+
+      const panel = Store.get().playground.panel;
+      if (panel === "code") {
+        const code = project.files[activeFile] ?? "";
+        const v = Exotic.validate(code);
+        editorEl = Editor({
+          value: code,
+          errors: v.errors,
+          onChange: (newCode) => {
+            Store.update(s => {
+              const p = s.projects[s.currentProjectId];
+              p.files[s.playground.activeFile] = newCode;
+              p.updatedAt = nowISO();
+              return s;
+            });
+            // realtime validation push to preview
+            Bus.emit("project:changed", { projectId: Store.get().currentProjectId });
+          }
+        });
+        // update error pop if needed
+        Bus.on("project:changed", () => {
+          const latest = Store.get().projects[Store.get().currentProjectId].files[Store.get().playground.activeFile] || "";
+          const vv = Exotic.validate(latest);
+          editorEl?.__updateErrors?.(vv.errors);
+        });
+      } else if (panel === "components") {
+        editorEl = ComponentsPanel();
+      } else {
+        editorEl = AgentPanel();
+      }
+      editorHost.appendChild(editorEl);
+
+      left.appendChild(bar);
+      left.appendChild(editorHost);
+
+      // Right: Live Preview
+      const right = document.createElement("div");
+      right.className = "lg:col-span-5 space-y-4 min-w-0";
+
+      const previewCard = document.createElement("div");
+      previewCard.className = "rounded-2xl border border-white/10 bg-zinc-950/40 p-4";
+
+      const prTop = document.createElement("div");
+      prTop.className = "flex items-center justify-between gap-3";
+      const prTitle = document.createElement("div");
+      prTitle.className = "inline-flex items-center gap-2";
+      prTitle.appendChild(ExoticIcons.el("window","w-4 h-4"));
+      const prTx = document.createElement("div");
+      prTx.className = "text-sm font-semibold";
+      prTx.textContent = "Live Preview";
+      prTitle.appendChild(prTx);
+
+      const prControls = document.createElement("div");
+      prControls.className = "flex items-center gap-2";
+
+      const pathInput = document.createElement("input");
+      pathInput.className = "w-40 sm:w-56 rounded-xl border border-white/15 bg-zinc-950/40 text-white placeholder:text-zinc-400 text-xs font-semibold px-3 py-2 outline-none focus:ring-2 focus:ring-white/15";
+      pathInput.placeholder = "/ (route)";
+      pathInput.value = project.previewPath || "/";
+      pathInput.addEventListener("change", () => {
+        Store.update(s => {
+          const p = s.projects[s.currentProjectId];
+          p.previewPath = pathInput.value.trim() || "/";
+          p.updatedAt = nowISO();
+          return s;
+        });
+        Bus.emit("project:changed", { projectId: Store.get().currentProjectId });
+      });
+
+      const logsBtn = document.createElement("button");
+      const pm = Store.get().playground.previewMode;
+      logsBtn.className = `inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition ${
+        pm === "logs" ? "bg-white text-zinc-950" : "border border-white/15 bg-white/0 text-white hover:bg-white/5"
+      }`;
+      logsBtn.appendChild(ExoticIcons.el("bolt","w-4 h-4"));
+      logsBtn.appendChild(document.createTextNode(pm === "logs" ? "Logs" : "Logs"));
+      logsBtn.addEventListener("click", () => {
+        Store.update(s => { s.playground.previewMode = s.playground.previewMode === "app" ? "logs" : "app"; return s; });
+        rerender();
+      });
+
+      prControls.appendChild(pathInput);
+      prControls.appendChild(logsBtn);
+
+      prTop.appendChild(prTitle);
+      prTop.appendChild(prControls);
+
+      const frame = document.createElement("div");
+      frame.className = "mt-3 rounded-2xl border border-white/10 bg-zinc-950 overflow-hidden";
+
+      const frameInner = document.createElement("div");
+      frameInner.className = "p-4 min-h-[32rem] sm:min-h-[36rem]";
+
+      frame.appendChild(frameInner);
+
+      const diag = document.createElement("div");
+      diag.className = "mt-3 space-y-2";
+
+      previewCard.appendChild(prTop);
+      previewCard.appendChild(frame);
+      previewCard.appendChild(diag);
+
+      right.appendChild(previewCard);
+
+      container.appendChild(left);
+      container.appendChild(right);
+
+      // Runtime: compile and render preview
+      let runtime = null;
+      let unsub = null;
+
+      const renderPreview = () => {
+        const st2 = Store.get();
+        const p = st2.projects[st2.currentProjectId];
+
+        p.logs = p.logs || [];
+        const onLog = (line) => {
+          Store.update(s => {
+            const pr = s.projects[s.currentProjectId];
+            pr.logs = pr.logs || [];
+            pr.logs.push({ id: uid(), at: nowISO(), line });
+            pr.logs = pr.logs.slice(-200);
+            pr.updatedAt = nowISO();
+            return s;
+          });
+          if (Store.get().playground.previewMode === "logs") paintLogs();
+        };
+
+        runtime = Exotic.compileRuntime(p, { onLog });
+
+        // Diagnostics
+        diag.innerHTML = "";
+        if (runtime.diagnostics.length) {
+          const box = document.createElement("div");
+          box.className = "rounded-2xl border border-white/10 bg-white/5 p-3";
+          const hd = document.createElement("div");
+          hd.className = "text-sm font-semibold tracking-tight";
+          hd.textContent = "Preview diagnostics";
+          box.appendChild(hd);
+          const lst = document.createElement("div");
+          lst.className = "mt-2 space-y-2 max-h-40 overflow-auto";
+          runtime.diagnostics.slice(0, 25).forEach(d => {
+            const it = document.createElement("div");
+            it.className = "rounded-xl border border-white/10 bg-zinc-950/40 p-2";
+            it.innerHTML = `<div class="text-xs font-semibold text-white">${escapeHtml(d.file)} • Line ${d.line}, Col ${d.col}</div>
+                            <div class="text-xs text-zinc-200 mt-1">${escapeHtml(d.message)}</div>`;
+            lst.appendChild(it);
+          });
+          box.appendChild(lst);
+          diag.appendChild(box);
+        } else {
+          const ok = document.createElement("div");
+          ok.className = "text-xs text-zinc-300 font-semibold";
+          ok.textContent = "No diagnostics.";
+          diag.appendChild(ok);
+        }
+
+        if (unsub) unsub();
+        unsub = runtime.subscribe(() => {
+          if (Store.get().playground.previewMode === "app") {
+            runtime.renderApp({ mount: frameInner, path: p.previewPath || "/" });
+          }
+        });
+
+        if (Store.get().playground.previewMode === "app") {
+          runtime.renderApp({ mount: frameInner, path: p.previewPath || "/" });
+        } else {
+          paintLogs();
+        }
+      };
+
+      const paintLogs = () => {
+        frameInner.innerHTML = "";
+        const st2 = Store.get();
+        const p = st2.projects[st2.currentProjectId];
+        const title = document.createElement("div");
+        title.className = "flex items-center justify-between";
+        const tt = document.createElement("div");
+        tt.className = "text-sm font-semibold";
+        tt.textContent = "Runtime logs";
+        const clear = document.createElement("button");
+        clear.className = "inline-flex items-center justify-center gap-2 rounded-xl bg-white text-zinc-950 font-semibold text-sm px-3 py-2 hover:bg-white/90 transition";
+        clear.appendChild(ExoticIcons.el("warning", "w-4 h-4"));
+        clear.appendChild(document.createTextNode("Clear"));
+        clear.addEventListener("click", () => {
+          Store.update(s => {
+            const pr = s.projects[s.currentProjectId];
+            pr.logs = [];
+ pr.updatedAt = nowISO();
+            return s;
+          });
+          paintLogs();
+        });
+        title.appendChild(tt);
+        title.appendChild(clear);
+
+        const list = document.createElement("div");
+        list.className = "mt-3 space-y-2 max-h-[30rem] overflow-auto pr-1";
+
+        const logs = (p.logs || []).slice().reverse();
+        if (!logs.length) {
+          const empty = document.createElement("div");
+          empty.className = "rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-zinc-200";
+          empty.textContent = "No logs yet. Use log(\"...\") inside Exotic functions.";
+          list.appendChild(empty);
+        } else {
+          logs.slice(0, 120).forEach(l => {
+            const row = document.createElement("div");
+            row.className = "rounded-2xl border border-white/10 bg-zinc-950/40 p-3";
+            row.innerHTML = `
+              <div class="flex items-center justify-between gap-3">
+                <div class="text-xs font-semibold text-white">log</div>
+                <div class="text-[11px] font-semibold text-zinc-400">${escapeHtml(new Date(l.at).toLocaleTimeString())}</div>
+              </div>
+              <div class="mt-2 text-xs text-zinc-200 whitespace-pre-wrap break-words">${escapeHtml(l.line)}</div>
+            `;
+            list.appendChild(row);
+          });
+        }
+
+        frameInner.appendChild(title);
+        frameInner.appendChild(list);
+      };
+
+      // Initial render + watch changes
+      renderPreview();
+
+      const off = Bus.on("project:changed", () => {
+        renderPreview();
+      });
+
+      // cleanup on route change
+      const offRoute = Bus.on("route:change", () => {
+        off?.();
+        offRoute?.();
+        unsub?.();
+      });
+
+      function rerender() {
+        // re-render playground route without changing router
+        const app = document.getElementById("app");
+        const r = Router.parse();
+        app.innerHTML = "";
+        app.appendChild(PlaygroundRoute(r));
+      }
+
+      return container;
+    }
+
+    // ---------- Components Panel (drag/drop + insert) ----------
+    function ComponentsPanel() {
+      const wrap = document.createElement("div");
+      wrap.className = "space-y-4";
+
+      const header = document.createElement("div");
+      header.className = "flex items-start justify-between gap-3";
+      const left = document.createElement("div");
+      left.appendChild(ExoticUI.Title({
+        text: "ExoticUI Blocks",
+        subtitle: "Click to insert into the current file. Drag into the editor to append."
+      }));
+      header.appendChild(left);
+
+      const hint = document.createElement("div");
+      hint.className = "hidden sm:block text-xs font-semibold text-zinc-300";
+      hint.textContent = "Tip: Drop blocks anywhere; they will append to your file.";
+      header.appendChild(hint);
+
+      wrap.appendChild(header);
+
+      const grid = document.createElement("div");
+      grid.className = "grid grid-cols-1 sm:grid-cols-2 gap-3";
+
+      const st = Store.get();
+      const project = st.projects[st.currentProjectId];
+
+      const insertSnippet = (snippet) => {
+        Store.update(s => {
+          const p = s.projects[s.currentProjectId];
+          const f = s.playground.activeFile;
+          const current = p.files[f] ?? "";
+          const glue = current.endsWith("\n") ? "" : "\n";
+          p.files[f] = current + glue + snippet + "\n";
+          p.updatedAt = nowISO();
+          return s;
+        });
+        Bus.emit("project:changed", { projectId: Store.get().currentProjectId });
+      };
+
+      ExoticUIBlocks.forEach(b => {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "text-left rounded-2xl border border-white/10 bg-zinc-950/40 p-4 hover:bg-white/5 transition focus:outline-none focus:ring-2 focus:ring-white/15";
+        card.draggable = true;
+        card.addEventListener("dragstart", (ev) => {
+          ev.dataTransfer.setData("text/plain", b.snippet);
+          ev.dataTransfer.effectAllowed = "copy";
+        });
+        card.addEventListener("click", () => insertSnippet(b.snippet));
+
+        const top = document.createElement("div");
+        top.className = "flex items-center justify-between gap-3";
+        const name = document.createElement("div");
+        name.className = "text-sm font-semibold tracking-tight";
+        name.textContent = b.name;
+        const pill = ExoticUI.Badge({ text: "Insert" });
+        pill.className += " opacity-80";
+        top.appendChild(name);
+        top.appendChild(pill);
+
+        const pre = document.createElement("pre");
+        pre.className = "mt-3 rounded-xl border border-white/10 bg-zinc-950/60 p-3 text-[11px] text-zinc-200 overflow-auto";
+        pre.style.fontFamily = ExoticUI.mono;
+        pre.textContent = b.snippet;
+
+        card.appendChild(top);
+        card.appendChild(pre);
+        grid.appendChild(card);
+      });
+
+      // Drop target for whole panel (append to end of file)
+      wrap.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+      });
+      wrap.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const snippet = e.dataTransfer.getData("text/plain");
+        if (snippet) insertSnippet(snippet);
+      });
+
+      // Icons mini-catalog
+      const iconsCard = document.createElement("div");
+      iconsCard.className = "rounded-2xl border border-white/10 bg-zinc-950/40 p-4";
+      iconsCard.appendChild(ExoticUI.Title({ text: "Exotic Icons", subtitle: "Click to insert: ExoticIcon(name:\"...\")" }));
+
+      const iconsGrid = document.createElement("div");
+      iconsGrid.className = "mt-3 grid grid-cols-4 sm:grid-cols-6 gap-2";
+
+      ExoticIconsCatalog.forEach(ic => {
+        const btn = document.createElement("button");
+        btn.className = "group rounded-xl border border-white/10 bg-white/0 p-2 hover:bg-white/5 transition focus:outline-none focus:ring-2 focus:ring-white/15";
+        btn.title = ic.name;
+        btn.appendChild(ExoticUI.ExoticIcon({ name: ic.name, class: "w-6 h-6 text-white" }));
+        btn.addEventListener("click", () => insertSnippet(`ExoticIcon(name:"${ic.name}")`));
+        iconsGrid.appendChild(btn);
+      });
+
+      iconsCard.appendChild(iconsGrid);
+
+      // "Make sure imported" helper (best-effort)
+      const importHint = document.createElement("div");
+      importHint.className = "mt-3 text-xs text-zinc-300 font-semibold";
+      importHint.textContent = `Active file: ${st.playground.activeFile} • Ensure you import needed components from "exoticui".`;
+      iconsCard.appendChild(importHint);
+
+      wrap.appendChild(grid);
+      wrap.appendChild(iconsCard);
+
+      return wrap;
+    }
+
+    // ---------- Agent Panel (OpenRouter) ----------
+    function AgentPanel() {
+      const st = Store.get();
+      const wrap = document.createElement("div");
+      wrap.className = "space-y-4";
+
+      const header = document.createElement("div");
+      header.className = "flex items-start justify-between gap-4";
+      header.appendChild(ExoticUI.Title({
+        text: "Exo Agent",
+        subtitle: "Ask for features; Exo replies + can patch your .ex files."
+      }));
+
+      const config = document.createElement("div");
+      config.className = "grid grid-cols-1 sm:grid-cols-2 gap-3";
+
+      const keyWrap = document.createElement("div");
+      keyWrap.className = "space-y-2";
+      const keyLabel = document.createElement("div");
+      keyLabel.className = "text-xs font-semibold text-zinc-200";
+      keyLabel.textContent = "OpenRouter API Key";
+      const keyInput = document.createElement("input");
+      keyInput.className = "w-full rounded-xl border border-white/15 bg-zinc-950/40 text-white placeholder:text-zinc-500 text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-white/15";
+      keyInput.placeholder = "sk-or-...";
+      keyInput.value = st.user.openRouterKey || "";
+      keyInput.addEventListener("change", () => {
+        Store.update(s => { s.user.openRouterKey = keyInput.value.trim(); return s; });
+      });
+      keyWrap.appendChild(keyLabel);
+      keyWrap.appendChild(keyInput);
+
+      const modelDrop = Dropdown({
+        label: "Model",
+        value: st.user.model,
+        options: OpenRouterModels,
+        onChange: (id) => Store.update(s => { s.user.model = id; return s; })
+      });
+
+      config.appendChild(keyWrap);
+      config.appendChild(modelDrop);
+
+      wrap.appendChild(header);
+      wrap.appendChild(config);
+
+      const chatCard = document.createElement("div");
+      chatCard.className = "rounded-2xl border border-white/10 bg-zinc-950/40 overflow-hidden";
+
+      const chatTop = document.createElement("div");
+      chatTop.className = "flex items-center justify-between gap-3 p-4 border-b border-white/10";
+      const who = document.createElement("div");
+      who.className = "inline-flex items-center gap-2";
+      who.appendChild(ExoticIcons.el("chat", "w-4 h-4"));
+      const whoTx = document.createElement("div");
+      whoTx.className = "text-sm font-semibold";
+      whoTx.textContent = "Chat";
+      who.appendChild(whoTx);
+
+      const actions = document.createElement("div");
+      actions.className = "flex items-center gap-2";
+
+      const reset = document.createElement("button");
+      reset.className = "inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/0 px-3 py-2 text-xs font-semibold text-white hover:bg-white/5 transition";
+      reset.appendChild(ExoticIcons.el("warning", "w-4 h-4"));
+      reset.appendChild(document.createTextNode("Reset"));
+      reset.addEventListener("click", () => {
+        Store.update(s => {
+          s.agent.messages = s.agent.messages.slice(0, 1);
+          s.agent.status = "idle";
+          return s;
+        });
+        rerender();
+      });
+
+      const apply = document.createElement("button");
+      apply.className = "inline-flex items-center justify-center gap-2 rounded-xl bg-white text-zinc-950 font-semibold text-xs px-3 py-2 hover:bg-white/90 transition";
+      apply.appendChild(ExoticIcons.el("spark", "w-4 h-4"));
+      apply.appendChild(document.createTextNode("Apply last patch"));
+      apply.title = "If Exo provided a PATCH block, apply it to your project files.";
+      apply.addEventListener("click", () => {
+        const st2 = Store.get();
+        const last = [...st2.agent.messages].reverse().find(m => m.role === "assistant");
+        const patch = extractPatchBlock(last?.content || "");
+        if (!patch) {
+          alert("No PATCH block found in last assistant message.");
+          return;
+        }
+        applyPatch(patch);
+      });
+
+      actions.appendChild(apply);
+      actions.appendChild(reset);
+
+      chatTop.appendChild(who);
+      chatTop.appendChild(actions);
+
+      const thread = document.createElement("div");
+      thread.className = "p-4 space-y-3 max-h-[26rem] overflow-auto";
+
+      const messages = st.agent.messages || [];
+      messages.forEach(m => {
+        const bubble = document.createElement("div");
+        bubble.className = m.role === "user"
+          ? "ml-auto max-w-[92%] rounded-2xl bg-white text-zinc-950 p-3"
+          : "mr-auto max-w-[92%] rounded-2xl border border-white/10 bg-zinc-950/50 p-3";
+
+        const meta = document.createElement("div");
+        meta.className = m.role === "user"
+          ? "flex items-center justify-between gap-3 text-[11px] font-semibold text-zinc-700"
+          : "flex items-center justify-between gap-3 text-[11px] font-semibold text-zinc-400";
+
+        const role = document.createElement("div");
+        role.textContent = m.role === "user" ? "You" : "Exo";
+        const at = document.createElement("div");
+        at.textContent = new Date(m.at).toLocaleTimeString();
+        meta.appendChild(role);
+        meta.appendChild(at);
+
+        const body = document.createElement("div");
+        body.className = m.role === "user" ? "mt-2 text-sm whitespace-pre-wrap" : "mt-2 text-sm text-zinc-100 whitespace-pre-wrap";
+        body.textContent = m.content || "";
+
+        // Patch badge
+        const patch = extractPatchBlock(m.content || "");
+        if (m.role === "assistant" && patch) {
+          const badge = document.createElement("div");
+          badge.className = "mt-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-100";
+          badge.appendChild(ExoticIcons.el("spark", "w-4 h-4"));
+          badge.appendChild(document.createTextNode("PATCH detected — click 'Apply last patch'"));
+          bubble.appendChild(badge);
+        }
+
+        bubble.appendChild(meta);
+        bubble.appendChild(body);
+        thread.appendChild(bubble);
+      });
+
+      const inputRow = document.createElement("div");
+      inputRow.className = "p-4 border-t border-white/10 bg-zinc-950/40";
+
+      const form = document.createElement("form");
+      form.className = "flex items-end gap-2";
+
+      const ta = document.createElement("textarea");
+      ta.className = "flex-1 h-24 resize-none rounded-2xl border border-white/15 bg-zinc-950/40 text-white placeholder:text-zinc-500 text-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-white/15";
+      ta.placeholder = `Ask: "Add a settings page route" or "Make a form component"…`;
+
+      const send = document.createElement("button");
+      send.type = "submit";
+      send.className = "inline-flex items-center justify-center gap-2 rounded-2xl bg-white text-zinc-950 font-semibold text-sm px-4 py-3 hover:bg-white/90 transition disabled:opacity-50 disabled:cursor-not-allowed";
+      send.appendChild(ExoticIcons.el("spark", "w-4 h-4"));
+      send.appendChild(document.createTextNode(st.agent.status === "thinking" ? "Thinking…" : "Send"));
+      send.disabled = st.agent.status === "thinking";
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const prompt = ta.value.trim();
+        if (!prompt) return;
+        ta.value = "";
+
+        Store.update(s => {
+          s.agent.messages.push({ id: uid(), role: "user", at: nowISO(), content: prompt });
+          s.agent.status = "thinking";
+          return s;
+        });
+        rerender();
+
+        const st2 = Store.get();
+        const apiKey = st2.user.openRouterKey;
+        const model = st2.user.model;
+        if (!apiKey) {
+ Store.update(s => {
+            s.agent.messages.push({ id: uid(), role: "assistant", at: nowISO(), content:
+`To use Exo with OpenRouter:
+1) Paste your OpenRouter API key above
+2) Pick a model
+3) Send again
+
+If you want, I can still generate a PATCH offline—just ask and I'll produce it without calling OpenRouter.` });
+            s.agent.status = "idle";
+            return s;
+          });
+          rerender();
+          return;
+        }
+
+        try {
+          const project = Store.get().projects[Store.get().currentProjectId];
+          const system = `You are Exo, an agent for Exotic Studio.
+You can reply normally, and optionally output a PATCH block that edits project files.
+
+PATCH format (MUST be exact JSON):
+\`\`\`PATCH
+{
+  "files": {
+    "main.ex": "full file contents here",
+    "ui.ex": "..."
+  },
+  "message": "short description"
+}
+\`\`\`
+
+Rules:
+- If providing PATCH, include full contents for any file you change.
+- Keep Exotic code compatible with the current runtime subset.
+- Prefer updating main.ex and adding routes/components as needed.
+- Avoid dynamic function names; keep explicit handlers.`;
+
+          const context = `Current project files:\n${Object.entries(project.files).map(([n,c]) => `--- ${n} ---\n${c}`).join("\n\n")}\n\nUser request: ${prompt}`;
+          const content = await openRouterChat({
+            apiKey,
+            model,
+            messages: [
+              { role: "system", content: system },
+              ...Store.get().agent.messages.slice(-10).map(m => ({ role: m.role, content: m.content })),
+              { role: "user", content: context }
+            ]
+          });
+
+          Store.update(s => {
+            s.agent.messages.push({ id: uid(), role: "assistant", at: nowISO(), content });
+            s.agent.status = "idle";
+            return s;
+          });
+
+          // Auto-apply if a patch exists (gentle)
+          const patch = extractPatchBlock(content);
+          if (patch) {
+            // Do not auto-apply silently; show in UI. But we can optionally apply if small.
+          }
+        } catch (err) {
+          Store.update(s => {
+            s.agent.messages.push({ id: uid(), role: "assistant", at: nowISO(), content: `OpenRouter error: ${String(err.message || err)}` });
+            s.agent.status = "idle";
+            return s;
+          });
+        } finally {
+          rerender();
+        }
+      });
+
+      form.appendChild(ta);
+      form.appendChild(send);
+      inputRow.appendChild(form);
+
+      chatCard.appendChild(chatTop);
+      chatCard.appendChild(thread);
+      chatCard.appendChild(inputRow);
+      wrap.appendChild(chatCard);
+
+      function extractPatchBlock(text) {
+        const m = /

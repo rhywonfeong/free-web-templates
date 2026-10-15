@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="fr" class="scroll-smooth">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#f5eed8">
+<title>YŪZU — Du sushi. Du vrai. Tout de suite.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&family=DM+Sans:wght@400;450;500;600;650&family=Noto+Serif+JP:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script></head>
+
+<body class="overflow-x-hidden bg-[#f5eed8] text-[#302c21] antialiased selection:bg-[#bd562f] selection:text-[#fff8e8]" style="font-family:'DM Sans',sans-serif;">
+  <!-- Grain de papier -->
+  <svg class="pointer-events-none fixed inset-0 z-[60] h-full w-full opacity-[0.065]" aria-hidden="true">
+    <filter id="paper">
+      <feTurbulence type="fractalNoise" baseFrequency=".72" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+    </filter>
+    <rect width="100%" height="100%" filter="url(#paper)" opacity=".65"/>
+  </svg>
+
+  <header class="absolute inset-x-0 top-0 z-30">
+    <nav class="mx-auto flex max-w-[100rem] items-center justify-between px-6 py-6 sm:px-10 lg:px-16 lg:py-8" aria-label="Navigation principale">
+      <a href="#" class="group flex items-center gap-3" aria-label="Yūzu, accueil">
+        <span class="flex h-11 w-11 items-center justify-center rounded-full border border-[#302c21]/70">
+          <i data-lucide="fish-symbol" class="h-7 w-7 -rotate-12"></i>
+        </span>
+        <span class="text-3xl font-semibold tracking-tight">yūzu<span class="text-[#a64b2a]">.</span></span>
+      </a>
+      <div class="hidden items-center gap-9 md:flex">
+        <a href="#carte" class="text-sm font-medium transition hover:text-[#a64b2a]">La carte</a>
+        <a href="#esprit" class="text-sm font-medium transition hover:text-[#a64b2a]">L’esprit Yūzu</a>
+        <a href="#comptoir" class="text-sm font-medium transition hover:text-[#a64b2a]">Le comptoir</a>
+      </div>
+      <div class="flex items-center gap-3">
+        <button onclick="openCart()" class="flex items-center gap-3 rounded-full border border-[#302c21]/25 px-4 py-2.5 text-sm font-medium transition hover:bg-[#302c21] hover:text-[#f5eed8] sm:px-5" aria-label="Ouvrir mon panier">
+          <span class="hidden sm:inline">Mon panier</span>
+          <i data-lucide="shopping-bag" class="h-4 w-4"></i>
+          <span id="cart-count" class="flex h-5 w-5 items-center justify-center rounded-full bg-[#a64b2a] text-xs text-white">0</span>
+        </button>
+        <button id="mobile-toggle" class="p-2 md:hidden" aria-label="Ouvrir le menu" aria-expanded="false">
+          <i data-lucide="menu" class="h-6 w-6"></i>
+        </button>
+      </div>
+    </nav>
+    <div id="mobile-menu" class="mx-6 hidden rounded-2xl border border-[#302c21]/10 bg-[#f5eed8] p-6 shadow-lg md:hidden">
+      <a href="#carte" class="block py-3">La carte</a>
+      <a href="#esprit" class="block py-3">L’esprit Yūzu</a>
+      <a href="#comptoir" class="block py-3">Le comptoir</a>
+    </div>
+  </header>
+
+  <main>
+    <!-- La landing originale, revisitée plein écran -->
+    <section class="relative flex min-h-[100svh] flex-col items-center justify-center overflow-hidden px-6 pb-20 pt-32 sm:pt-36">
+      <div data-parallax="0.15" class="pointer-events-none absolute -top-[15%] left-[5%] h-[110%] w-[90%] rounded-[45%] opacity-90 blur-2xl" style="background:radial-gradient(ellipse at 50% 36%,#a8cbbb 0%,#bed5bf 43%,transparent 70%);"></div>
+      <div class="pointer-events-none absolute left-8 top-36 hidden border-l border-[#76623d]/30 py-5 pl-4 lg:block" data-parallax="-0.1">
+        <span class="text-lg tracking-[.25em]" style="font-family:'Noto Serif JP',serif;writing-mode:vertical-rl;">新鮮な毎日</span>
+        <span class="ml-3 text-xs uppercase tracking-[.2em]" style="writing-mode:vertical-rl;">Fraîcheur, chaque jour</span>
+      </div>
+
+      <div class="relative z-10 text-center">
+        <div class="mb-4 flex items-center justify-center gap-3 text-xs font-medium uppercase tracking-[.25em]">
+          <span class="h-px w-7 bg-[#302c21]/50"></span>
+          Japanese soul. Urban rhythm.
+          <span class="h-px w-7 bg-[#302c21]/50"></span>
+        </div>
+        <h1 class="text-6xl font-semibold uppercase leading-[.95] tracking-tight sm:text-8xl lg:text-9xl">
+          Japanese<span class="text-[#a64b2a]">.</span>
+        </h1>
+        <p class="mt-3 text-3xl italic tracking-tight sm:text-4xl lg:text-5xl" style="font-family:'Cormorant Garamond',serif;">L’art du sushi. Le rythme de la ville.</p>
+        <a href="#carte" class="mt-7 inline-flex items-center gap-5 rounded-full bg-[#a64b2a] px-7 py-3.5 text-sm font-medium text-[#fff8e8] transition hover:-translate-y-1 hover:bg-[#873c22]">
+          À table, sans attendre
+          <i data-lucide="arrow-up-right" class="h-4 w-4"></i>
+        </a>
+      </div>
+
+      <div class="relative mx-auto mt-7 w-full max-w-3xl sm:mt-9">
+        <div data-parallax="0.09" class="relative">
+          <div class="absolute inset-x-[12%] bottom-0 h-1/3 rounded-full bg-[#303a28]/25 blur-2xl"></div>
+          <img
+            src="https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=1500&q=90"
+            alt="Assortiment de sushis frais au saumon, makis et wasabi"
+            fetchpriority="high"
+            class="relative aspect-[1.85/1] w-full rounded-[50%] border-[7px] border-[#c4c5ae] object-cover shadow-[0_20px_35px_-20px_rgba(45,45,25,0.5)] sm:border-[10px]"
+          >
+        </div>
+        <div data-parallax="-0.16" class="absolute -right-1 top-0 flex h-24 w-24 -rotate-12 flex-col items-center justify-center rounded-full border border-[#a64b2a] bg-[#f5eed8] text-[#a64b2a] sm:-right-6 sm:top-4 sm:h-28 sm:w-28">
+          <span class="text-xs uppercase tracking-[.15em]">Fait minute</span>
+          <i data-lucide="sparkles" class="my-1.5 h-5 w-5"></i>
+          <span class="text-xs uppercase tracking-[.15em]">Avec amour</span>
+        </div>
+        <div data-parallax="-0.12" class="absolute -left-1 bottom-0 hidden -rotate-6 rounded-sm bg-[#fff8e8] px-5 py-4 shadow-lg sm:block">
+          <span class="block text-xl" style="font-family:'Noto Serif JP',serif;">いただきます</span>
+          <span class="mt-1 block text-xs uppercase tracking-[.15em] text-[#786b55]">Bon appétit, tout simplement.</span>
+        </div>
+      </div>
+
+      <div class="relative mt-10 flex items-center gap-6 text-xs uppercase tracking-[.16em] text-[#605f47] sm:gap-10">
+        <span class="flex items-center gap-2"><i data-lucide="fish" class="h-4 w-4"></i> Ultra frais</span>
+        <span class="flex items-center gap-2"><i data-lucide="timer" class="h-4 w-4"></i> Prêt en 5 min</span>
+        <span class="hidden items-center gap-2 sm:flex"><i data-lucide="leaf" class="h-4 w-4"></i> Sans compromis</span>
+      </div>
+      <a href="#carte" class="absolute bottom-5 left-1/2 -translate-x-1/2 p-2" aria-label="Découvrir la carte">
+        <i data-lucide="arrow-down" class="h-5 w-5"></i>
+      </a>
+      <div class="absolute right-10 top-1/3 hidden flex-col items-center gap-3 lg:flex" aria-hidden="true" data-parallax="-0.18">
+        <span class="h-20 w-px bg-[#a64b2a]/50"></span>
+        <span class="flex h-12 w-12 items-center justify-center rounded-full bg-[#a64b2a] text-[#f5eed8]" style="font-family:'Noto Serif JP',serif;">鮨</span>
+        <span class="h-9 w-px bg-[#a64b2a]/50"></span>
+        <span class="flex h-12 w-12 items-center justify-center rounded-full bg-[#a64b2a] text-[#f5eed8]" style="font-family:'Noto Serif JP',serif;">心</span>
+      </div>
+    </section>
+
+    <!-- La carte -->
+    <section id="carte" class="relative scroll-mt-6 px-6 py-20 sm:px-10 lg:px-16 lg:py-28">
+      <div class="mx-auto max-w-6xl">
+        <div class="mx-auto max-w-xl text-center">
+          <div class="mb-4 flex items-center justify-center gap-5">
+            <span class="h-px w-16 bg-[#a64b2a]/35"></span>
+            <span class="text-xs uppercase tracking-[.22em] text-[#a64b2a]">Les favoris du comptoir</span>
+            <span class="h-px w-16 bg-[#a64b2a]/35"></span>
+          </div>
+          <h2 class="text-5xl font-medium italic tracking-tight sm:text-6xl" style="font-family:'Cormorant Garamond',serif;">Petites bouchées.<br>Grand bonheur.</h2>
+          <p class="mt-4 text-lg leading-relaxed text-[#79705d]">Du poisson bien choisi, du riz juste comme il faut.<br class="hidden sm:block"> Et ce petit truc qui donne envie d’y revenir.</p>
+        </div>
+
+        <div class="mt-12 grid grid-cols-2 gap-x-5 gap-y-10 lg:grid-cols-4 lg:gap-7">
+          <article class="group">
+            <div class="relative aspect-[4/5] overflow-hidden rounded-t-[5rem] rounded-b-lg bg-[#ded9bf]">
+              <img src="https://images.unsplash.com/photo-1553621042-f6e147245754?auto=format&fit=crop&w=650&q=85" alt="Sushis de saumon frais" loading="lazy" class="h-full w-full object-cover transition duration-700 group-hover:scale-105">
+              <span class="absolute left-3 top-8 rounded-full bg-[#f5eed8] px-3 py-1 text-xs text-[#765b35]">Le classique</span>
+              <button onclick="addToCart('Salmon lover', 9.90)" class="absolute bottom-3 right-3 flex h-11 w-11 items-center justify-center rounded-full bg-[#f5eed8] text-[#302c21] shadow-sm transition hover:bg-[#a64b2a] hover:text-white" aria-label="Ajouter Salmon lover au panier"><i data-lucide="plus" class="h-5 w-5"></i></button>
+            </div>
+            <div class="mt-5 flex items-start justify-between gap-2">
+              <h3 class="text-lg font-medium">Salmon lover</h3>
+              <span class="whitespace-nowrap text-sm text-[#a64b2a]">9,90 €</span>
+            </div>
+            <p class="mt-1 text-base text-[#79705d]">6 nigiris saumon, pur bonheur.</p>
+          </article>
+
+          <article class="group lg:pt-8">
+            <div class="relative aspect-[4/5] overflow-hidden rounded-t-[5rem] rounded-b-lg bg-[#ded9bf]">
+              <img src="https://images.unsplash.com/photo-1617196034796-73dfa7b1fd56?auto=format&fit=crop&w=650&q=85" alt="California rolls, avocat et saumon" loading="lazy" class="h-full w-full object-cover transition duration-700 group-hover:scale-105">
+              <button onclick="addToCart('California dream', 10.90)" class="absolute bottom-3 right-3 flex h-11 w-11 items-center justify-center rounded-full bg-[#f5eed8] shadow-sm transition hover:bg-[#a64b2a] hover:text-white" aria-label="Ajouter California dream au panier"><i data-lucide="plus" class="h-5 w-5"></i></button>
+            </div>
+            <div class="mt-5 flex items-start justify-between gap-2">
+              <h3 class="text-lg font-medium">California dream</h3>
+              <span class="whitespace-nowrap text-sm text-[#a64b2a]">10,90 €</span>
+            </div>
+            <p class="mt-1 text-base text-[#79705d]">8 rolls saumon, avocat, sésame.</p>
+          </article>
+
+          <article class="group">
+            <div class="relative aspect-[4/5] overflow-hidden rounded-t-[5rem] rounded-b-lg bg-[#ded9bf]">
+              <img src="https://images.unsplash.com/photo-1611143669185-af224c5e3252?auto=format&fit=crop&w=650&q=85" alt="Assortiment de makis japonais" loading="lazy" class="h-full w-full object-cover transition duration-700 group-hover:scale-105">
+              <span class="absolute left-3 top-8 rounded-full bg-[#f5eed8] px-3 py-1 text-xs text-[#765b35]">Ça croustille</span>
+              <button onclick="addToCart('Crunch time', 11.90)" class="absolute bottom-3 right-3 flex h-11 w-11 items-center justify-center rounded-full bg-[#f5eed8] shadow-sm transition hover:bg-[#a64b2a] hover:text-white" aria-label="Ajouter Crunch time au panier"><i data-lucide="plus" class="h-5 w-5"></i></button>
+            </div>
+            <div class="mt-5 flex items-start justify-between gap-2">
+              <h3 class="text-lg font-medium">Crunch time</h3>
+              <span class="whitespace-nowrap text-sm text-[#a64b2a]">11,90 €</span>
+            </div>
+            <p class="mt-1 text-base text-[#79705d]">8 crispy rolls, sauce signature.</p>
+          </article>
+
+          <article class="group lg:pt-8">
+            <div class="relative aspect-[4/5] overflow-hidden rounded-t-[5rem] rounded-b-lg bg-[#ded9bf]">
+              <img src="https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=650&q=85" alt="Bowl frais de légumes et avocat" loading="lazy" class="h-full w-full object-cover transition duration-700 group-hover:scale-105">
+              <span class="absolute left-3 top-8 rounded-full bg-[#e2ebd3] px-3 py-1 text-xs text-[#42644f]">100 % veggie</span>
+              <button onclick="addToCart('Green mood', 12.90)" class="absolute bottom-3 right-3 flex h-11 w-11 items-center justify-center rounded-full bg-[#f5eed8] shadow-sm transition hover:bg-[#a64b2a] hover:text-white" aria-label="Ajouter Green mood au panier"><i data-lucide="plus" class="h-5 w-5"></i></button>
+            </div>
+            <div class="mt-5 flex items-start justify-between gap-2">
+              <h3 class="text-lg font-medium">Green mood</h3>
+              <span class="whitespace-nowrap text-sm text-[#a64b2a]">12,90 €</span>
+            </div>
+            <p class="mt-1 text-base text-[#79705d]">Le bowl qui fait du bien.</p>
+          </article>
+        </div>
+        <p class="mt-10 text-center text-sm text-[#79705d]">Tout est préparé sur place. Chaque jour. Sans exception.</p>
+      </div>
+    </section>
+
+    <!-- Section ajoutée 1 : le concept -->
+    <section id="esprit" class="relative isolate scroll-mt-10 bg-[#284f43] px-6 pb-24 pt-28 text-[#f5eed8] sm:px-10 lg:px-16 lg:pb-32 lg:pt-36">
+      <svg class="absolute -top-1 left-0 h-16 w-full text-[#f5eed8] sm:h-20" viewBox="0 0 1440 100" preserveAspectRatio="none" aria-hidden="true"><path fill="currentColor" d="M0,0H1440V30C1290,110,1170,0,1010,48S800,110,665,53S470,10,330,55S150,100,0,35Z"/></svg>
+      <span data-parallax="0.12" class="pointer-events-none absolute right-4 top-24 text-[12rem] leading-none tracking-tight text-[#f5eed8]/[.035] lg:text-[24rem]" style="font-family:'Noto Serif JP',serif;" aria-hidden="true">鮮</span>
+      <div class="relative mx-auto grid max-w-6xl items-center gap-14 lg:grid-cols-2 lg:gap-24">
+        <div class="relative">
+          <div class="absolute -left-3 -top-3 h-full w-full rounded-t-[9rem] border border-[#b8c7a5]/30 sm:-left-5 sm:-top-5"></div>
+          <div class="relative aspect-[4/4.5] overflow-hidden rounded-t-[9rem]">
+            <img data-parallax="0.1" src="https://images.unsplash.com/photo-1577219491135-ce391730fb2c?auto=format&fit=crop&w=1000&q=85" alt="Un chef prépare soigneusement des produits frais en cuisine" loading="lazy" class="absolute -top-[12%] h-[125%] w-full object-cover">
+            <div class="absolute inset-0 bg-gradient-to-t from-[#122d24]/45 to-transparent"></div>
+            <span class="absolute bottom-7 left-7 text-sm uppercase tracking-[.2em]">Les mains font la différence.</span>
+          </div>
+          <div class="absolute -bottom-7 right-3 flex h-28 w-28 rotate-6 flex-col items-center justify-center rounded-full bg-[#c7d7bb] text-[#284f43] sm:-right-8 sm:h-36 sm:w-36">
+            <span class="text-4xl font-medium tracking-tight sm:text-5xl" style="font-family:'Cormorant Garamond',serif;">5 min.</span>
+            <span class="mt-1 text-xs uppercase tracking-[.15em]">Et c’est à vous.</span>
+          </div>
+        </div>
+        <div>
+          <span class="text-xs uppercase tracking-[.25em] text-[#bfd0b4]">01 — Le fast, mais le good</span>
+          <h2 class="mt-6 text-5xl font-medium leading-[1.04] tracking-tight sm:text-6xl lg:text-7xl" style="font-family:'Cormorant Garamond',serif;">La vie va vite.<br><span class="italic text-[#c7d7bb]">Mangez bien.</span></h2>
+          <p class="mt-7 max-w-md text-lg leading-relaxed text-[#dde2cd]/80">Une pause déj’ entre deux rendez-vous. Une envie soudaine de saumon. On connaît. Chez Yūzu, on prend le temps de bien faire pour que vous n’ayez pas à attendre.</p>
+          <div class="mt-9 space-y-5">
+            <div class="flex gap-4 border-t border-[#f5eed8]/15 pt-5">
+              <i data-lucide="chef-hat" class="mt-1 h-6 w-6 shrink-0 text-[#c7d7bb]"></i>
+              <div><h3 class="text-lg font-medium">Des chefs, pas des machines.</h3><p class="mt-1 text-base text-[#dde2cd]/65">Roulé à la main, préparé sous vos yeux.</p></div>
+            </div>
+            <div class="flex gap-4 border-t border-[#f5eed8]/15 pt-5">
+              <i data-lucide="sprout" class="mt-1 h-6 w-6 shrink-0 text-[#c7d7bb]"></i>
+              <div><h3 class="text-lg font-medium">Du frais. Un point c’est tout.</h3><p class="mt-1 text-base text-[#dde2cd]/65">Des arrivages quotidiens, des ingrédients de saison.</p></div>
+            </div>
+            <div class="flex gap-4 border-t border-[#f5eed8]/15 pt-5">
+              <i data-lucide="package-check" class="mt-1 h-6 w-6 shrink-0 text-[#c7d7bb]"></i>
+              <div><h3 class="text-lg font-medium">À emporter, pas à regretter.</h3><p class="mt-1 text-base text-[#dde2cd]/65">Des emballages pensés pour alléger l’addition côté planète.</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Transition parallax -->
+    <div class="relative h-52 overflow-hidden sm:h-72 lg:h-96">
+      <img data-parallax="0.22" src="https://images.unsplash.com/photo-1553621042-f6e147245754?auto=format&fit=crop&w=2200&q=85" alt="" loading="lazy" class="absolute -top-[45%] h-[190%] w-full object-cover">
+      <div class="absolute inset-0 bg-[#262b1f]/45"></div>
+      <div class="absolute inset-0 flex items-center justify-center px-6">
+        <p class="text-center text-5xl font-medium italic tracking-tight text-[#fff7e2] sm:text-7xl lg:text-8xl" style="font-family:'Cormorant Garamond',serif;">Good food. Good mood.</p>
+      </div>
+    </div>
+
+    <!-- Section ajoutée 2 : les formules -->
+    <section id="boxes" class="relative overflow-hidden bg-[#eadfc5] px-6 py-20 sm:px-10 lg:px-16 lg:py-28">
+      <div class="mx-auto max-w-6xl">
+        <div class="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
+          <div>
+            <span class="text-xs uppercase tracking-[.25em] text-[#a64b2a]">02 — La pause qui tombe à pic</span>
+            <h2 class="mt-5 text-5xl font-medium tracking-tight sm:text-6xl" style="font-family:'Cormorant Garamond',serif;">Votre journée.<br><span class="italic">Votre happy box.</span></h2>
+          </div>
+          <p class="max-w-sm text-lg leading-relaxed text-[#79705d]">Solo, à deux ou avec toute la bande.<br>Il y a toujours une bonne raison de partager. Ou pas.</p>
+        </div>
+
+        <div class="mt-12 grid gap-6 md:grid-cols-3">
+          <article class="flex flex-col rounded-2xl border border-[#76623d]/20 bg-[#f5eed8]/50 p-7 lg:p-8">
+            <div class="flex items-center justify-between"><span class="text-xs uppercase tracking-[.2em] text-[#8a7150]">Pour la pause déj’</span><i data-lucide="sun" class="h-6 w-6 text-[#a64b2a]"></i></div>
+            <h3 class="mt-8 text-4xl font-medium tracking-tight" style="font-family:'Cormorant Garamond',serif;">Midi, merci.</h3>
+            <p class="mt-3 flex-1 text-base leading-relaxed text-[#79705d]">12 pièces, une salade de chou et une boisson. Votre nouveau rituel de 12 h 30.</p>
+            <div class="my-7 h-px bg-[#76623d]/20"></div>
+            <div class="flex items-end justify-between"><span class="text-3xl font-medium tracking-tight">14,90 €</span><span class="text-sm text-[#79705d]">1 personne</span></div>
+            <button onclick="addToCart('Box Midi, merci.', 14.90)" class="mt-7 flex w-full items-center justify-between rounded-full border border-[#302c21]/30 px-5 py-3.5 text-sm font-medium transition hover:bg-[#302c21] hover:text-[#f5eed8]">C’est pour moi<i data-lucide="plus" class="h-4 w-4"></i></button>
+          </article>
+
+          <article class="relative flex flex-col rounded-2xl bg-[#a64b2a] p-7 text-[#fff5df] lg:p-8">
+            <span class="absolute -top-3 right-6 -rotate-3 rounded-sm bg-[#c7d7bb] px-4 py-1.5 text-xs font-medium uppercase tracking-[.12em] text-[#284f43]">Le crush du moment</span>
+            <div class="flex items-center justify-between"><span class="text-xs uppercase tracking-[.2em] text-[#fff5df]/75">Pour les inséparables</span><i data-lucide="heart" class="h-6 w-6"></i></div>
+            <h3 class="mt-8 text-4xl font-medium tracking-tight" style="font-family:'Cormorant Garamond',serif;">Juste nous deux.</h3>
+            <p class="mt-3 flex-1 text-base leading-relaxed text-[#fff5df]/80">24 pièces signature, 2 accompagnements. Un date, un canapé, et c’est parfait.</p>
+            <div class="my-7 h-px bg-[#fff5df]/25"></div>
+            <div class="flex items-end justify-between"><span class="text-3xl font-medium tracking-tight">29,90 €</span><span class="text-sm text-[#fff5df]/75">2 personnes</span></div>
+            <button onclick="addToCart('Box Juste nous deux.', 29.90)" class="mt-7 flex w-full items-center justify-between rounded-full bg-[#f5eed8] px-5 py-3.5 text-sm font-medium text-[#a64b2a] transition hover:bg-white">On partage ?<i data-lucide="plus" class="h-4 w-4"></i></button>
+          </article>
+
+          <article class="flex flex-col rounded-2xl border border-[#76623d]/20 bg-[#f5eed8]/50 p-7 lg:p-8">
+            <div class="flex items-center justify-between"><span class="text-xs uppercase tracking-[.2em] text-[#8a7150]">Pour toute la bande</span><i data-lucide="party-popper" class="h-6 w-6 text-[#a64b2a]"></i></div>
+            <h3 class="mt-8 text-4xl font-medium tracking-tight" style="font-family:'Cormorant Garamond',serif;">Roll together.</h3>
+            <p class="mt-3 flex-1 text-base leading-relaxed text-[#79705d]">48 pièces à picorer, 4 accompagnements. Les bonnes soirées commencent ici.</p>
+            <div class="my-7 h-px bg-[#76623d]/20"></div>
+            <div class="flex items-end justify-between"><span class="text-3xl font-medium tracking-tight">54,90 €</span><span class="text-sm text-[#79705d]">4 personnes</span></div>
+            <button onclick="addToCart('Box Roll together.', 54.90)" class="mt-7 flex w-full items-center justify-between rounded-full border border-[#302c21]/30 px-5 py-3.5 text-sm font-medium transition hover:bg-[#302c21] hover:text-[#f5eed8]">J’invite la bande<i data-lucide="plus" class="h-4 w-4"></i></button>
+          </article>
+        </div>
+      </div>
+      <span data-parallax="-0.12" class="pointer-events-none absolute -bottom-12 right-0 text-[10rem] italic tracking-tight text-[#a64b2a]/[.04]" style="font-family:'Cormorant Garamond',serif;" aria-hidden="true">It’s sushi time.</span>
+    </section>
+
+    <!-- Section ajoutée 3 : le comptoir -->
+    <section id="comptoir" class="relative px-6 py-20 sm:px-10 lg:px-16 lg:py-28">
+      <div class="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-20">
+        <div>
+          <span class="text-xs uppercase tracking-[.25em] text-[#a64b2a]">03 — On se voit au comptoir ?</span>
+          <h2 class="mt-5 text-5xl font-medium leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl" style="font-family:'Cormorant Garamond',serif;">Votre nouveau<br><span class="italic text-[#a64b2a]">coin préféré.</span></h2>
+          <p class="mt-6 max-w-md text-lg leading-relaxed text-[#79705d]">Passez dire konnichiwa. Installez-vous, prenez à emporter ou commandez avant de passer. On s’occupe du reste.</p>
+          <div class="mt-8 space-y-5">
+            <div class="flex items-start gap-4"><i data-lucide="map-pin" class="mt-1 h-5 w-5 shrink-0 text-[#a64b2a]"></i><div><p class="text-lg font-medium">Yūzu — Paris Marais</p><p class="mt-1 text-base text-[#79705d]">24, rue du Temple · 75004 Paris</p></div></div>
+            <div class="flex items-start gap-4"><i data-lucide="clock-3" class="mt-1 h-5 w-5 shrink-0 text-[#a64b2a]"></i><div><p class="text-lg font-medium">Tous les jours, pour toutes vos envies.</p><p class="mt-1 text-base text-[#79705d]">11 h 30 – 14 h 30 & 18 h – 22 h</p></div></div>
+          </div>
+          <div class="mt-9 flex flex-wrap gap-3">
+            <a href="#carte" class="inline-flex items-center gap-5 rounded-full bg-[#a64b2a] px-6 py-3.5 text-sm font-medium text-[#fff5df] transition hover:bg-[#873c22]">Commander & passer<i data-lucide="arrow-up-right" class="h-4 w-4"></i></a>
+            <a href="https://www.google.com/maps/search/?api=1&query=24+rue+du+Temple+75004+Paris" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-4 rounded-full border border-[#302c21]/25 px-6 py-3.5 text-sm font-medium transition hover:bg-[#eadfc5]">Itinéraire<i data-lucide="navigation" class="h-4 w-4"></i></a>
+          </div>
+          <p class="mt-5 text-xs text-[#79705d]">Adresse illustrative pour cette démonstration.</p>
+        </div>
+        <div class="relative">
+          <div class="relative aspect-[5/4] overflow-hidden rounded-t-full rounded-b-lg">
+            <img data-parallax="0.08" src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1100&q=85" alt="Un comptoir chaleureux et lumineux pour votre prochaine pause déjeuner" loading="lazy" class="absolute -top-[10%] h-[120%] w-full object-cover">
+            <div class="absolute inset-0 bg-[#665231]/10"></div>
+          </div>
+          <div data-parallax="-0.1" class="absolute -bottom-6 left-4 -rotate-6 border border-[#a64b2a]/20 bg-[#f5eed8] px-6 py-5 shadow-md sm:-left-6">
+            <span class="block text-3xl italic tracking-tight text-[#a64b2a]" style="font-family:'Cormorant Garamond',serif;">À tout de suite !</span>
+            <span class="mt-2 block text-xs uppercase tracking-[.2em]">Sur place · À emporter · À partager</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="relative mt-10 bg-[#284f43] px-6 pb-8 pt-24 text-[#f5eed8] sm:px-10 lg:px-16">
+    <svg class="absolute -top-1 left-0 h-12 w-full text-[#f5eed8] sm:h-16" viewBox="0 0 1440 100" preserveAspectRatio="none" aria-hidden="true"><path fill="currentColor" d="M0,0H1440V40C1300,0,1200,105,1050,55S830,15,705,58S490,105,355,50S125,0,0,55Z"/></svg>
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-col justify-between gap-8 border-b border-[#f5eed8]/20 pb-10 sm:flex-row sm:items-center">
+        <a href="#" class="text-5xl font-medium tracking-tight">yūzu<span class="text-[#c7d7bb]">.</span></a>
+        <p class="text-3xl italic tracking-tight text-[#c7d7bb] sm:text-4xl" style="font-family:'Cormorant Garamond',serif;">Un peu de Japon. Beaucoup de bonheur.</p>
+        <a href="#carte" class="flex h-12 w-12 items-center justify-center rounded-full border border-[#f5eed8]/35 transition hover:bg-[#f5eed8] hover:text-[#284f43]" aria-label="Retour à la carte"><i data-lucide="arrow-up-right" class="h-5 w-5"></i></a>
+      </div>
+      <div class="flex flex-col justify-between gap-4 pt-7 text-xs text-[#f5eed8]/60 sm:flex-row">
+        <p>© <span id="year"></span> Yūzu. Fait avec cœur et un peu de wasabi.</p>
+        <p>Site de démonstration · Aucune commande réelle</p>
+        <span style="font-family:'Noto Serif JP',serif;">ごちそうさまでした</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Panier -->
+  <div id="cart-modal" class="fixed inset-0 z-[70] hidden" role="dialog" aria-modal="true" aria-labelledby="cart-title">
+    <button class="absolute inset-0 bg-[#182b23]/55 backdrop-blur-sm" onclick="closeCart()" aria-label="Fermer le panier"></button>
+    <div class="absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-[#f5eed8] p-6 shadow-2xl sm:p-8">
+      <div class="flex items-center justify-between border-b border-[#302c21]/15 pb-6">
+        <div><p class="text-xs uppercase tracking-[.2em] text-[#a64b2a]">Le bonheur à emporter</p><h2 id="cart-title" class="mt-2 text-4xl font-medium tracking-tight" style="font-family:'Cormorant Garamond',serif;">Votre panier.</h2></div>
+        <button id="cart-close" onclick="closeCart()" class="rounded-full border border-[#302c21]/20 p-2.5" aria-label="Fermer"><i data-lucide="x" class="h-5 w-5"></i></button>
+      </div>
+      <div id="cart-items" class="flex-1 overflow-y-auto py-6"></div>
+      <div id="cart-bottom" class="border-t border-[#302c21]/15 pt-6">
+        <div class="mb-5 flex justify-between text-lg"><span>Total</span><span id="cart-total" class="font-medium">0,00 €</span></div>
+        <button id="checkout-button" onclick="checkout()" class="flex w-full items-center justify-between rounded-full bg-[#a64b2a] px-6 py-4 text-base text-[#fff5df] transition hover:bg-[#873c22] disabled:cursor-not-allowed disabled:opacity-40">Préparer ma commande<i data-lucide="arrow-right" class="h-5 w-5"></i></button>
+        <p class="mt-4 text-center text-xs leading-relaxed text-[#79705d]">Démonstration uniquement. Aucun paiement ni commande ne sera transmis.</p>
+      </div>
+    </div>
+  </div>
+  <div id="toast" role="status" class="pointer-events-none fixed bottom-6 left-1/2 z-[80] flex w-max max-w-[90%] -translate-x-1/2 translate-y-4 items-center gap-3 rounded-full bg-[#284f43] px-6 py-4 text-sm text-[#f5eed8] opacity-0 shadow-xl transition duration-300">
+    <i data-lucide="check" class="h-4 w-4 shrink-0"></i><span id="toast-text"></span>
+  </div>
+
+  <script>
+    lucide.createIcons({ attrs: { 'stroke-width': 1.5 } });
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    const mobileToggle = document.getElementById('mobile-toggle');
+    const mobileMenu = document.getElementById('mobile-menu');
+    mobileToggle.addEventListener('click', () => {
+      const open = mobileMenu.classList.toggle('hidden') === false;
+      mobileToggle.setAttribute('aria-expanded', String(open));
+    });
+    mobileMenu.querySelectorAll('a').forEach(link => link.addEventListener('click', () => {
+      mobileMenu.classList.add('hidden');
+      mobileToggle.setAttribute('aria-expanded', 'false');
+    }));
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const parallaxElements = [...document.querySelectorAll('[data-parallax]')];
+    let scheduled = false;
+
+    function updateParallax() {
+      parallaxElements.forEach(element => {
+        if (reducedMotion.matches) {
+          element.style.translate = '0 0';
+          return;
+        }
+        const container = element.parentElement.getBoundingClientRect();
+        if (container.bottom < -300 || container.top > innerHeight + 300) return;
+        const centerDistance = innerHeight / 2 - (container.top + container.height / 2);
+        const shift = Math.max(-110, Math.min(110, centerDistance * Number(element.dataset.parallax)));
+        element.style.translate = `0 ${shift}px`;
+      });
+      scheduled = false;
+    }
+    function scheduleParallax() {
+      if (!scheduled) {
+        scheduled = true;
+        requestAnimationFrame(updateParallax);
+      }
+    }
+    if (reducedMotion.matches) document.documentElement.classList.remove('scroll-smooth');
+    window.addEventListener('scroll', scheduleParallax, { passive: true });
+    window.addEventListener('resize', scheduleParallax);
+    reducedMotion.addEventListener('change', () => {
+      document.documentElement.classList.toggle('scroll-smooth', !reducedMotion.matches);
+      scheduleParallax();
+    });
+    updateParallax();
+
+    const cart = new Map();
+    const money = value => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
+    const modal = document.getElementById('cart-modal');
+    let previousFocus;
+    let toastTimeout;
+
+    function notify(message) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-text').textContent = message;
+      toast.classList.remove('opacity-0', 'translate-y-4');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => toast.classList.add('opacity-0', 'translate-y-4'), 2600);
+    }
+
+    function addToCart(name, price) {
+      const item = cart.get(name);
+      cart.set(name, { price, quantity: item ? item.quantity + 1 : 1 });
+      renderCart();
+      notify(`${name} ajouté au panier`);
+    }
+
+    function changeQuantity(name, amount) {
+      const item = cart.get(name);
+      if (!item) return;
+      item.quantity += amount;
+      if (item.quantity <= 0) cart.delete(name);
+      renderCart();
+    }
+
+    function renderCart() {
+      const items = document.getElementById('cart-items');
+      items.replaceChildren();
+      let count = 0;
+      let total = 0;
+
+      cart.forEach((item, name) => {
+        count += item.quantity;
+        total += item.price * item.quantity;
+        const row = document.createElement('div');
+        row.setAttribute('class', 'mb-5 border-b border-[#302c21]/10 pb-5');
+        const top = document.createElement('div');
+        top.setAttribute('class', 'flex items-start justify-between gap-4');
+        const title = document.createElement('p');
+        title.setAttribute('class', 'text-lg font-medium');
+        title.textContent = name;
+        const price = document.createElement('span');
+        price.setAttribute('class', 'whitespace-nowrap text-base text-[#a64b2a]');
+        price.textContent = money(item.price * item.quantity);
+        top.append(title, price);
+
+        const controls = document.createElement('div');
+        controls.setAttribute('class', 'mt-3 inline-flex items-center gap-4 rounded-full border border-[#302c21]/20 p-1');
+        const minus = document.createElement('button');
+        minus.setAttribute('class', 'flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#eadfc5]');
+        minus.setAttribute('aria-label', `Retirer une unité de ${name}`);
+        minus.innerHTML = '<i data-lucide="minus" class="h-4 w-4"></i>';
+        minus.onclick = () => changeQuantity(name, -1);
+        const qty = document.createElement('span');
+        qty.setAttribute('class', 'min-w-4 text-center text-sm');
+        qty.textContent = item.quantity;
+        const plus = document.createElement('button');
+        plus.setAttribute('class', 'flex h-8 w-8 items-center justify-center rounded-full hover:bg-[#eadfc5]');
+        plus.setAttribute('aria-label', `Ajouter une unité de ${name}`);
+        plus.innerHTML = '<i data-lucide="plus" class="h-4 w-4"></i>';
+        plus.onclick = () => changeQuantity(name, 1);
+        controls.append(minus, qty, plus);
+        row.append(top, controls);
+        items.append(row);
+      });
+
+      if (!count) {
+        items.innerHTML = '<div class="flex h-full flex-col items-center justify-center text-center"><i data-lucide="shopping-bag" class="mb-5 h-12 w-12 text-[#a64b2a]/60"></i><p class="text-3xl italic tracking-tight" style="font-family:Cormorant Garamond,serif;">Une petite envie de sushi ?</p><p class="mt-3 text-base text-[#79705d]">Vos prochaines bouchées préférées vous attendent à la carte.</p><button onclick="closeCart();document.getElementById(\'carte\').scrollIntoView({behavior:reducedMotion.matches?\'instant\':\'smooth\'})" class="mt-6 border-b border-[#a64b2a] pb-1 text-base text-[#a64b2a]">Découvrir la carte</button></div>';
+      }
+      document.getElementById('cart-count').textContent = count;
+      document.getElementById('cart-total').textContent = money(total);
+      document.getElementById('checkout-button').disabled = count === 0;
+      lucide.createIcons({ attrs: { 'stroke-width': 1.5 } });
+    }
+
+    function openCart() {
+      previousFocus = document.activeElement;
+      renderCart();
+      modal.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+      document.getElementById('cart-close').focus();
+    }
+
+    function closeCart() {
+      modal.classList.add('hidden');
+      document.body.style.overflow = '';
+      if (previousFocus) previousFocus.focus();
+    }
+
+    function checkout() {
+      if (!cart.size) return;
+      document.getElementById('cart-items').innerHTML = '<div class="flex h-full flex-col items-center justify-center text-center"><span class="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-[#c7d7bb] text-[#284f43]"><i data-lucide="check" class="h-9 w-9"></i></span><h3 class="text-4xl font-medium tracking-tight" style="font-family:Cormorant Garamond,serif;">Excellent choix !</h3><p class="mt-4 text-lg leading-relaxed text-[#79705d]">Votre panier est prêt. Ceci est une démonstration : aucune commande n’a été envoyée et aucun montant ne sera prélevé.</p><button onclick="renderCart()" class="mt-7 rounded-full border border-[#302c21]/25 px-6 py-3 text-sm">Revenir à mon panier</button></div>';
+      document.getElementById('checkout-button').disabled = true;
+      lucide.createIcons({ attrs: { 'stroke-width': 1.5 } });
+    }
+
+    document.addEventListener('keydown', event => {
+      if (modal.classList.contains('hidden')) return;
+      if (event.key === 'Escape') closeCart();
+      if (event.key === 'Tab') {
+        const focusable = [...modal.querySelectorAll('button:not(:disabled), a[href]')].filter(el => el.getClientRects().length);
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    });
+  </script>
+</body>
+</html>

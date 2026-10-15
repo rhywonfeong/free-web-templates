@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC RSI Dashboard</title>
+<script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<style>
+body { background-color: #0b0e14; color: #dde3f0; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #262626; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+@keyframes fadeIn {
+from { opacity: 0; transform: translateY(-5px); }
+to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+@keyframes spinOnce {
+from { transform: rotate(0deg); }
+to { transform: rotate(360deg); }
+}
+.animate-spin-once { animation: spinOnce 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+.log-enter { animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+</style>
+<script src="https://cdn.tailwindcss.com"></script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="font-sans antialiased min-h-screen p-4 md:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed top-6 right-6 z-50 flex flex-col gap-3 pointer-events-none"></div>
+
+    <!-- Header -->
+    <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#262626] pb-4">
+        <div class="flex items-center gap-3">
+            <iconify-icon icon="solar:pulse-linear" class="text-[#f5a623] text-2xl" stroke-width="1.5"></iconify-icon>
+            <div>
+                <h1 class="text-xl font-semibold tracking-tight text-[#ededed]">BTC RSI Auto Trading</h1>
+                <p class="text-sm text-[#a1a1aa]"><span id="conn-status" class="text-[#10b981]">●</span> BTCUSDT · 15분봉 · Bybit Real-time</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-6 text-sm text-[#a1a1aa]">
+            <div class="flex items-center gap-3">
+                <span id="last-update-time">데이터 연결 중...</span>
+                <button id="auto-trade-toggle" class="px-4 py-1.5 text-sm font-medium bg-[#1e1e1e] border border-[#262626] hover:bg-[#262626] text-[#ededed] rounded-md transition-colors cursor-pointer flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-[#ef4444]" id="bot-status-dot"></div>
+                    <span id="bot-status-text">봇 정지됨</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Top Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-[#131720] border border-[#262626] rounded-xl p-4">
+            <div class="text-sm text-[#a1a1aa] mb-1">현재가 (BTC/USDT)</div>
+            <div class="text-2xl font-semibold tracking-tight text-[#ededed]" id="live-price">로딩중...</div>
+        </div>
+        <div class="bg-[#131720] border border-[#262626] rounded-xl p-4">
+            <div class="text-sm text-[#a1a1aa] mb-1">실시간 RSI (15m)</div>
+            <div class="text-2xl font-semibold tracking-tight text-[#ededed]" id="live-rsi">--.--</div>
+        </div>
+        <div class="bg-[#131720] border border-[#262626] rounded-xl p-4 relative overflow-hidden">
+            <div class="absolute right-0 top-0 w-16 h-16 bg-[#10b981] opacity-5 blur-2xl rounded-full"></div>
+            <div class="text-sm text-[#a1a1aa] mb-1 flex justify-between">
+                <span>총 자산 (Paper)</span>
+                <span class="text-xs text-[#10b981]">+<span id="profit-rate">0.00</span>%</span>
+            </div>
+            <div class="text-2xl font-semibold tracking-tight text-[#ededed]" id="paper-balance">$10,000.00</div>
+        </div>
+        <div class="bg-[#131720] border border-[#262626] rounded-xl p-4">
+            <div class="text-sm text-[#a1a1aa] mb-1 flex justify-between">
+                <span>현재 포지션</span>
+                <span id="pos-pnl" class="text-sm font-medium"></span>
+            </div>
+            <div class="text-lg font-semibold tracking-tight text-[#a1a1aa]" id="active-position">없음 (대기중)</div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div id="dashboard-view" class="space-y-6">
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Settings Column -->
+            <div class="space-y-6">
+                
+                <!-- Trading Settings -->
+                <div class="bg-[#131720] border border-[#262626] rounded-xl p-5 md:p-6">
+                    <h3 class="text-lg font-medium tracking-tight flex items-center gap-2 mb-5 text-[#ededed]">
+                        <iconify-icon icon="solar:settings-linear" class="text-[#f5a623] text-xl" stroke-width="1.5"></iconify-icon>
+                        트레이딩 설정 (v15 전략)
+                    </h3>
+                    
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                        <div>
+                            <label class="block text-sm font-medium text-[#a1a1aa] mb-1.5">레버리지</label>
+                            <div class="relative">
+                                <input type="number" id="cfg-lev" value="10" class="w-full bg-[#0a0a0a] border border-[#262626] text-[#ededed] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#f5a623] transition-colors">
+                                <span class="absolute right-3 top-2 text-sm text-[#a1a1aa]">x</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-[#a1a1aa] mb-1.5">기본 증거금</label>
+                            <div class="relative">
+                                <input type="number" id="cfg-margin" value="100" class="w-full bg-[#0a0a0a] border border-[#262626] text-[#ededed] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#f5a623] transition-colors">
+                                <span class="absolute right-3 top-2 text-sm text-[#a1a1aa]">USDT</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-[#a1a1aa] mb-1.5">리스크 (잔고)</label>
+                            <div class="relative">
+                                <input type="number" id="cfg-risk" value="15" class="w-full bg-[#0a0a0a] border border-[#262626] text-[#ededed] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#f5a623] transition-colors">
+                                <span class="absolute right-3 top-2 text-sm text-[#a1a1aa]">%</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-[#a1a1aa] mb-1.5">드로우다운 컷</label>
+                            <div class="relative">
+                                <input type="number" id="cfg-dd" value="30" class="w-full bg-[#0a0a0a] border border-[#262626] text-[#ededed] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#f5a623] transition-colors">
+                                <span class="absolute right-3 top-2 text-sm text-[#a1a1aa]">%</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-[#a1a1aa] mb-1.5">일일손실 컷</label>
+                            <div class="relative">
+                                <input type="number" id="cfg-daily-loss" value="5" class="w-full bg-[#0a0a0a] border border-[#262626] text-[#ededed] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#f5a623] transition-colors">
+                                <span class="absolute right-3 top-2 text-sm text-[#a1a1aa]">%</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-[#a1a1aa] mb-1.5">기본 손절 (SL)</label>
+                            <div class="relative">
+                                <input type="number" id="cfg-sl" value="5" class="w-full bg-[#0a0a0a] border border-[#262626] text-[#ededed] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#f5a623] transition-colors">
+                                <span class="absolute right-3 top-2 text-sm text-[#a1a1aa]">%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-[#0a0a0a] border border-[#262626] rounded-md p-4 text-sm space-y-2">
+                        <ul class="text-[#a1a1aa] space-y-1.5 list-disc list-inside marker:text-[#262626]">
+                            <li><span class="text-[#10b981]">RSI ≤ 20</span> → 극단 과매도 롱 (SL 15%)</li>
+                            <li><span class="text-[#10b981]">RSI 21~40</span> → 과매도 구간 롱 진입</li>
+                            <li><span class="text-[#ef4444]">RSI ≥ 85</span> → 강한 역추세 숏</li>
+                            <li><span class="text-[#ef4444]">RSI ≥ 80</span> + 하락추세 → 역추세 숏</li>
+                            <li><span class="text-[#ededed]">청산:</span> 롱 (RSI ≥ 65) / 숏 (RSI ≤ 40)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Telegram & Bybit API Setup -->
+                <div class="bg-[#131720] border border-[#262626] rounded-xl p-5 md:p-6">
+                    <div class="flex items-center justify-between border-b border-[#262626] pb-4 mb-4">
+                        <h3 class="text-base font-medium flex items-center gap-2 text-[#ededed]">
+                            <iconify-icon icon="solar:bell-bing-linear" class="text-[#f5a623] text-lg" stroke-width="1.5"></iconify-icon>
+                            시스템 연동 설정
+                        </h3>
+                        <div class="flex items-center gap-2 cursor-pointer ui-toggle" id="tg-toggle" data-active="true">
+                            <span class="text-sm text-[#a1a1aa] toggle-label">텔레그램 ON</span>
+                            <div class="relative w-9 h-5 bg-[#10b981] rounded-full transition-colors duration-200 toggle-bg">
+                                <div class="absolute left-1 top-1 w-3 h-3 bg-white rounded-full transition-transform duration-200 translate-x-4 toggle-dot"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4 mb-5">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-[#a1a1aa] mb-1.5">Bot Token</label>
+                                <input type="password" id="tg-token" placeholder="123456:ABC..." class="w-full bg-[#0a0a0a] border border-[#262626] text-[#ededed] rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:border-[#f5a623] transition-colors">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-[#a1a1aa] mb-1.5">Chat ID</label>
+                                <input type="text" id="tg-chat" placeholder="123456789" class="w-full bg-[#0a0a0a] border border-[#262626] text-[#ededed] rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:border-[#f5a623] transition-colors">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4 pt-2">
+                            <div>
+                                <label class="block text-sm font-medium text-[#a1a1aa] mb-1.5 flex items-center gap-1">
+                                    과매도 알림 (RSI ≤)
+                                </label>
+                                <input type="number" id="alert-os" value="30" class="w-full bg-[#0a0a0a] border border-[#262626] text-[#ededed] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#f5a623] transition-colors">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-[#a1a1aa] mb-1.5 flex items-center gap-1">
+                                    과매수 알림 (RSI ≥)
+                                </label>
+                                <input type="number" id="alert-ob" value="70" class="w-full bg-[#0a0a0a] border border-[#262626] text-[#ededed] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#f5a623] transition-colors">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- API settings fold -->
+                    <details class="group mb-5">
+                        <summary class="flex items-center justify-between cursor-pointer list-none text-sm font-medium text-[#a1a1aa] hover:text-[#ededed] transition-colors">
+                            <span class="flex items-center gap-2">
+                                <iconify-icon icon="solar:key-linear" stroke-width="1.5"></iconify-icon> Bybit 실거래 API (옵션)
+                            </span>
+                            <iconify-icon icon="solar:alt-arrow-down-linear" class="transform group-open:-rotate-180 transition-transform"></iconify-icon>
+                        </summary>
+                        <div class="pt-4 space-y-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex bg-[#0a0a0a] border border-[#262626] rounded-md p-0.5 w-full">
+                                    <button class="flex-1 env-btn active px-3 py-1 text-xs font-medium bg-[#262626] rounded text-[#ededed] transition-colors cursor-pointer" data-env="paper">가상 (Paper)</button>
+                                    <button class="flex-1 env-btn px-3 py-1 text-xs font-medium rounded text-[#a1a1aa] hover:text-[#ededed] transition-colors cursor-pointer" data-env="real">실거래</button>
+                                </div>
+                            </div>
+                            <div>
+                                <input type="password" id="api-key" placeholder="YOUR_API_KEY_HERE" class="w-full bg-[#0a0a0a] border border-[#262626] text-[#ededed] rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:border-[#f5a623] transition-colors">
+                            </div>
+                            <div>
+                                <input type="password" id="api-secret" placeholder="YOUR_API_SECRET_HERE" class="w-full bg-[#0a0a0a] border border-[#262626] text-[#ededed] rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:border-[#f5a623] transition-colors">
+                            </div>
+                            <p class="text-xs text-[#52525b]">※ API Key는 브라우저 로컬에만 저장됩니다.</p>
+                        </div>
+                    </details>
+
+                    <div class="flex items-center justify-between pt-4 border-t border-[#262626]">
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm text-[#a1a1aa]">상태 알림 주기</span>
+                            <div class="relative">
+                                <button id="dropdown-btn" class="bg-[#0a0a0a] border border-[#262626] rounded-md px-3 py-1.5 text-sm cursor-pointer min-w-[80px] flex justify-between items-center focus:outline-none hover:border-[#f5a623] transition-colors text-[#ededed]">
+                                    <span id="dropdown-label">10초</span>
+                                    <iconify-icon icon="solar:alt-arrow-down-linear" class="text-[#a1a1aa] ml-2"></iconify-icon>
+                                </button>
+                                <div id="dropdown-menu" class="hidden absolute left-0 bottom-full mb-1 w-full bg-[#1e1e1e] border border-[#262626] rounded-md shadow-lg overflow-hidden z-10">
+                                    <div class="dropdown-item px-3 py-2 text-sm text-[#ededed] hover:bg-[#262626] cursor-pointer transition-colors" data-value="10" data-label="10초">10초</div>
+                                    <div class="dropdown-item px-3 py-2 text-sm text-[#ededed] hover:bg-[#262626] cursor-pointer transition-colors bg-[#262626]" data-value="30" data-label="30초">30초</div>
+                                    <div class="dropdown-item px-3 py-2 text-sm text-[#ededed] hover:bg-[#262626] cursor-pointer transition-colors" data-value="60" data-label="1분">1분</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="test-tg-btn" class="px-3 py-1.5 text-xs font-medium bg-[#1e1e1e] border border-[#262626] hover:bg-[#262626] rounded-md transition-colors text-[#ededed] cursor-pointer">
+                                테스트 전송
+                            </button>
+                            <button id="save-cfg-btn" class="px-4 py-1.5 text-xs font-medium bg-[#f5a623] text-black hover:bg-opacity-90 rounded-md transition-colors shadow-sm cursor-pointer">
+                                설정 적용
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Console Column -->
+            <div class="bg-[#131720] border border-[#262626] rounded-xl overflow-hidden flex flex-col h-[750px]">
+                <div class="flex items-center justify-between px-4 py-3 border-b border-[#262626] bg-[#0a0a0a]">
+                    <h3 class="text-sm font-medium text-[#ededed] flex items-center gap-2">
+                        <iconify-icon icon="solar:chat-line-linear" class="text-[#a1a1aa] text-base" stroke-width="1.5"></iconify-icon>
+                        실시간 시스템 & 매매 로그
+                    </h3>
+                    <button id="clear-logs" class="text-[#a1a1aa] hover:text-[#ef4444] transition-colors cursor-pointer" title="로그 삭제">
+                        <iconify-icon icon="solar:trash-bin-trash-linear" class="text-base" stroke-width="1.5"></iconify-icon>
+                    </button>
+                </div>
+                <div id="log-container" class="p-4 overflow-y-auto font-mono text-xs md:text-sm space-y-4 bg-[#0a0a0a] flex-1 scroll-smooth">
+                    <div class="text-[#a1a1aa] log-enter">
+                        <div class="text-[#10b981] font-medium">⚡ 시스템 초기화 완료</div>
+                        <div class="text-[#52525b]">대기중... 설정값을 적용하고 봇을 활성화하세요.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        // --- 1. UI Helpers ---
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const isSuccess = type === 'success';
+            const bgColor = isSuccess ? 'bg-[#10b981]' : (type === 'error' ? 'bg-[#ef4444]' : 'bg-[#1e1e1e] border border-[#262626]');
+            const textColor = isSuccess || type === 'error' ? 'text-[#0a0a0a]' : 'text-[#ededed]';
+            const icon = isSuccess ? 'solar:check-circle-linear' : (type === 'error' ? 'solar:danger-triangle-linear' : 'solar:info-circle-linear');
+
+            toast.className = `flex items-center gap-2 px-4 py-3 rounded-md shadow-lg text-sm font-medium transform transition-all duration-300 translate-y-4 opacity-0 ${bgColor} ${textColor}`;
+            toast.innerHTML = `<iconify-icon icon="${icon}" class="text-lg"></iconify-icon> ${message}`;
+            container.appendChild(toast);
+            requestAnimationFrame(() => { toast.classList.remove('translate-y-4', 'opacity-0'); toast.classList.add('translate-y-0', 'opacity-100'); });
+            setTimeout(() => { toast.classList.remove('translate-y-0', 'opacity-100'); toast.classList.add('translate-y-4', 'opacity-0'); setTimeout(() => toast.remove(), 300); }, 3000);
+        }
+
+        const formatMoney = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+        const formatTime = (d) => d.toLocaleTimeString('ko-KR', { hour12: true });
+        const formatFullTime = (d) => d.toISOString().replace('T', ' ').substring(0, 19);
+
+        function addLog(htmlContent, isError = false) {
+            const container = document.getElementById('log-container');
+            const div = document.createElement('div');
+            div.className = `log-enter ${isError ? 'text-[#ef4444]' : 'text-[#a1a1aa]'} whitespace-pre-wrap leading-relaxed`;
+            div.innerHTML = htmlContent;
+            container.prepend(div);
+            // Limit log items
+            if(container.children.length > 50) container.removeChild(container.lastChild);
+        }
+
+        // --- 2. State & Config ---
+        let botActive = false;
+        let ws = null;
+        let klines = []; // [timestamp, open, high, low, close]
+        let currentPrice = 0;
+        let currentRSI = 0;
+        let initBalance = 10000;
+        
+        let state = {
+            balance: initBalance,
+            position: null, // { side: 'LONG'|'SHORT', entry: number, qty: number, sl: number, tp1: number, isBE: boolean }
+            trades: 0,
+            wins: 0,
+            statusMsgId: null, // For Telegram EditMessage
+            lastStatusTime: 0
+        };
+
+        let config = {
+            lev: 10, margin: 100, risk: 15, dd: 30, dailyLoss: 5, sl: 5,
+            tgOn: true, tgToken: '', tgChat: '', tgInterval: 30,
+            os: 30, ob: 70, env: 'paper'
+        };
+
+        // --- 3. UI Events & LocalStorage ---
+        function loadConfig() {
+            const saved = localStorage.getItem('btcBotConfig');
+            if(saved) config = { ...config, ...JSON.parse(saved) };
+            
+            document.getElementById('cfg-lev').value = config.lev;
+            document.getElementById('cfg-margin').value = config.margin;
+            document.getElementById('cfg-risk').value = config.risk;
+            document.getElementById('cfg-dd').value = config.dd;
+            document.getElementById('cfg-daily-loss').value = config.dailyLoss;
+            document.getElementById('cfg-sl').value = config.sl;
+            document.getElementById('tg-token').value = config.tgToken;
+            document.getElementById('tg-chat').value = config.tgChat;
+            document.getElementById('alert-os').value = config.os;
+            document.getElementById('alert-ob').value = config.ob;
+            document.getElementById('dropdown-label').textContent = config.tgInterval + "초";
+
+            const tgToggle = document.getElementById('tg-toggle');
+            if(config.tgOn) {
+                tgToggle.setAttribute('data-active', 'true');
+                tgToggle.querySelector('.toggle-bg').classList.replace('bg-[#262626]', 'bg-[#10b981]');
+                tgToggle.querySelector('.toggle-dot').classList.add('translate-x-4');
+                tgToggle.querySelector('.toggle-label').textContent = '텔레그램 ON';
+            } else {
+                tgToggle.setAttribute('data-active', 'false');
+                tgToggle.querySelector('.toggle-bg').classList.replace('bg-[#10b981]', 'bg-[#262626]');
+                tgToggle.querySelector('.toggle-dot').classList.remove('translate-x-4');
+                tgToggle.querySelector('.toggle-label').textContent = '텔레그램 OFF';
+            }
+        }
+
+        document.getElementById('save-cfg-btn').addEventListener('click', () => {
+            config.lev = Number(document.getElementById('cfg-lev').value);
+            config.margin = Number(document.getElementById('cfg-margin').value);
+            config.risk = Number(document.getElementById('cfg-risk').value);
+            config.dd = Number(document.getElementById('cfg-dd').value);
+            config.dailyLoss = Number(document.getElementById('cfg-daily-loss').value);
+            config.sl = Number(document.getElementById('cfg-sl').value);
+            config.tgToken = document.getElementById('tg-token').value;
+            config.tgChat = document.getElementById('tg-chat').value;
+            config.os = Number(document.getElementById('alert-os').value);
+            config.ob = Number(document.getElementById('alert-ob').value);
+            localStorage.setItem('btcBotConfig', JSON.stringify(config));
+            showToast('설정이 안전하게 저장되었습니다.');
+        });
+
+        // Dropdown Logic
+        const dropdownBtn = document.getElementById('dropdown-btn');
+        const dropdownMenu = document.getElementById('dropdown-menu');
+        const dropdownItems = document.querySelectorAll('.dropdown-item');
+        dropdownBtn.addEventListener('click', (e) => { e.stopPropagation(); dropdownMenu.classList.toggle('hidden'); });
+        document.addEventListener('click', () => dropdownMenu.classList.add('hidden'));
+        dropdownItems.forEach(item => {
+            item.addEventListener('click', () => {
+                dropdownItems.forEach(i => i.classList.remove('bg-[#262626]'));
+                item.classList.add('bg-[#262626]');
+                document.getElementById('dropdown-label').textContent = item.getAttribute('data-label');
+                config.tgInterval = Number(item.getAttribute('data-value'));
+            });
+        });
+
+        // Toggle Logic
+        document.getElementById('tg-toggle').addEventListener('click', function() {
+            const isActive = this.getAttribute('data-active') === 'true';
+            config.tgOn = !isActive;
+            const bg = this.querySelector('.toggle-bg');
+            const dot = this.querySelector('.toggle-dot');
+            if (!isActive) {
+                this.setAttribute('data-active', 'true');
+                bg.classList.replace('bg-[#262626]', 'bg-[#10b981]');
+                dot.classList.add('translate-x-4');
+                this.querySelector('.toggle-label').textContent = '텔레그램 ON';
+            } else {
+                this.setAttribute('data-active', 'false');
+                bg.classList.replace('bg-[#10b981]', 'bg-[#262626]');
+                dot.classList.remove('translate-x-4');
+                this.querySelector('.toggle-label').textContent = '텔레그램 OFF';
+            }
+        });
+
+        // Env Toggle
+        const envBtns = document.querySelectorAll('.env-btn');
+        envBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                envBtns.forEach(b => { b.classList.remove('bg-[#262626]', 'text-[#ededed]', 'active'); b.classList.add('text-[#a1a1aa]'); });
+                btn.classList.add('bg-[#262626]', 'text-[#ededed]', 'active');
+                btn.classList.remove('text-[#a1a1aa]');
+                config.env = btn.getAttribute('data-env');
+                showToast(`${btn.textContent} 모드로 변경되었습니다.`, 'info');
+            });
+        });
+
+        document.getElementById('clear-logs').addEventListener('click', () => {
+            document.getElementById('log-container').innerHTML = '';
+        });
+
+        // Bot Toggle
+        const botToggleBtn = document.getElementById('auto-trade-toggle');
+        botToggleBtn.addEventListener('click', () => {
+            botActive = !botActive;
+            const dot = document.getElementById('bot-status-dot');
+            const txt = document.getElementById('bot-status-text');
+            if(botActive) {
+                dot.classList.replace('bg-[#ef4444]', 'bg-[#10b981]');
+                txt.textContent = '봇 동작중';
+                txt.classList.add('text-[#10b981]');
+                showToast('자동 매매가 시작되었습니다.', 'success');
+                addLog(`[${formatTime(new Date())}] 🟢 자동 매매 봇이 시작되었습니다.`);
+            } else {
+                dot.classList.replace('bg-[#10b981]', 'bg-[#ef4444]');
+                txt.textContent = '봇 정지됨';
+                txt.classList.remove('text-[#10b981]');
+                showToast('자동 매매가 중지되었습니다.', 'error');
+                addLog(`[${formatTime(new Date())}] 🔴 자동 매매 봇이 중지되었습니다.`);
+            }
+        });
+
+
+        // --- 4. RSI Calculation ---
+        function calculateRSI(data, period = 14) {
+            if (data.length < period + 1) return 50;
+            let gains = 0, losses = 0;
+            
+            // First average
+            for (let i = 1; i <= period; i++) {
+                const diff = data[i] - data[i - 1];
+                if (diff >= 0) gains += diff;
+                else losses -= diff;
+            }
+            let avgGain = gains / period;
+            let avgLoss = losses / period;
+
+            // Smoothed Moving Average (RMA) like TradingView
+            for (let i = period + 1; i < data.length; i++) {
+                const diff = data[i] - data[i - 1];
+                if (diff >= 0) {
+                    avgGain = (avgGain * (period - 1) + diff) / period;
+                    avgLoss = (avgLoss * (period - 1)) / period;
+                } else {
+                    avgGain = (avgGain * (period - 1)) / period;
+                    avgLoss = (avgLoss * (period - 1) - diff) / period;
+                }
+            }
+            if (avgLoss === 0) return 100;
+            const rs = avgGain / avgLoss;
+            return 100 - (100 / (1 + rs));
+        }
+
+        // --- 5. Data Fetching ---
+        async function fetchHistory() {
+            try {
+                // Bybit V5 Public Kline
+                const res = await fetch(`https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=15&limit=100`);
+                const json = await res.json();
+                if(json.retCode === 0) {
+                    // data.list is [timestamp, open, high, low, close, volume, turnover] sorted descending
+                    klines = json.result.list.reverse().map(c => parseFloat(c[4])); // keep only close prices ascending
+                    updatePriceAndRSI();
+                }
+            } catch(e) {
+                console.error('History fetch failed', e);
+                addLog('⚠️ API 데이터 로드 실패. 연결을 재시도합니다.', true);
+            }
+        }
+
+        function startWebSocket() {
+            ws = new WebSocket('wss://stream.bybit.com/v5/public/linear');
+            ws.onopen = () => {
+                document.getElementById('conn-status').classList.replace('text-[#ef4444]', 'text-[#10b981]');
+                ws.send(JSON.stringify({op: "subscribe", args: ["kline.15.BTCUSDT"]}));
+            };
+            ws.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                if (data.topic === "kline.15.BTCUSDT") {
+                    const candle = data.data[0];
+                    const close = parseFloat(candle.close);
+                    currentPrice = close;
+                    
+                    if(candle.confirm) {
+                        klines.push(close);
+                        if(klines.length > 200) klines.shift();
+                    } else {
+                        // replace last candle with live close for real-time RSI
+                        klines[klines.length - 1] = close; 
+                    }
+                    updatePriceAndRSI();
+                    runStrategy();
+                }
+            };
+            ws.onerror = () => document.getElementById('conn-status').classList.replace('text-[#10b981]', 'text-[#ef4444]');
+            ws.onclose = () => setTimeout(startWebSocket, 3000);
+        }
+
+        function updatePriceAndRSI() {
+            currentRSI = calculateRSI(klines);
+            
+            const priceEl = document.getElementById('live-price');
+            priceEl.textContent = formatMoney(currentPrice);
+            priceEl.classList.remove('text-[#10b981]', 'text-[#ef4444]');
+            // simple flash effect
+            priceEl.classList.add(Math.random() > 0.5 ? 'text-[#10b981]' : 'text-[#ef4444]');
+            setTimeout(() => priceEl.classList.remove('text-[#10b981]', 'text-[#ef4444]'), 300);
+
+            const rsiEl = document.getElementById('live-rsi');
+            rsiEl.textContent = currentRSI.toFixed(2);
+            if(currentRSI >= 70) rsiEl.className = 'text-2xl font-semibold tracking-tight text-[#ef4444]';
+            else if(currentRSI <= 30) rsiEl.className = 'text-2xl font-semibold tracking-tight text-[#10b981]';
+            else rsiEl.className = 'text-2xl font-semibold tracking-tight text-[#ededed]';
+
+            document.getElementById('last-update-time').textContent = formatTime(new Date()) + ' 갱신';
+        }
+
+        // --- 6. Telegram Functions ---
+        async function sendTg(text, isStatus = false) {
+            if(!config.tgOn || !config.tgToken || !config.tgChat) return;
+            try {
+                let url = `https://api.telegram.org/bot${config.tgToken}/sendMessage`;
+                let payload = { chat_id: config.tgChat, text: text, parse_mode: 'HTML' };
+
+                if(isStatus && state.statusMsgId) {
+                    url = `https://api.telegram.org/bot${config.tgToken}/editMessageText`;
+                    payload.message_id = state.statusMsgId;
+                }
+
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+
+                if(!data.ok && isStatus && data.description.includes('message to edit not found')) {
+                    // fallback to send new if edit fails
+                    state.statusMsgId = null;
+                    sendTg(text, true);
+                } else if(data.ok && isStatus && !state.statusMsgId) {
+                    state.statusMsgId = data.result.message_id;
+                }
+            } catch(e) {
+                console.error('Telegram Error', e);
+            }
+        }
+
+        function buildStatusMessage() {
+            const timeStr = formatFullTime(new Date());
+            const rsiVal = currentRSI.toFixed(1);
+            const trend = currentRSI >= 65 ? '🟠강세' : (currentRSI <= 35 ? '🔵약세' : '🟡횡보');
+            const posStatus = state.position ? `📍 ${state.position.side} 진입가: $${state.position.entry.toFixed(2)}` : '🟡 대기중';
+            const balStr = formatMoney(state.balance);
+            const winRate = state.trades > 0 ? ((state.wins/state.trades)*100).toFixed(1) : '0.0';
+
+            return `📊 [대기중/상태 RSI] 🔄양방향
+━━━━━━━━━━━━━━━━━━━━
+🕐 ${timeStr}
+💲 BTC: $${currentPrice.toFixed(2)}  RSI15: ${rsiVal} ${trend}
+📊 상태: ${posStatus}
+━━━━━━━━━━━━━━━━━━━━
+역추세: 숏≥80/롱≤22
+추  세: 숏≥62/롱≤22
+━━━━━━━━━━━━━━━━━━━━
+💰 잔고: ${balStr}
+📋 ${state.trades}회 거래 | 승률: ${winRate}%`;
+        }
+
+        function buildEntryMessage(side, rsi, reason) {
+            const isShort = side === 'SHORT';
+            const icon = isShort ? '🔴' : '🟢';
+            const qty = (config.margin * config.lev / currentPrice).toFixed(4);
+            const slPrice = isShort ? currentPrice * (1 + (config.sl/100)) : currentPrice * (1 - (config.sl/100));
+            const tp1Price = isShort ? currentPrice * 0.996 : currentPrice * 1.004;
+
+            return `${icon} [${side} 진입!] 🔄양방향
+━━━━━━━━━━━━━━━━━━━━
+🎯 ${icon}${reason} RSI:${rsi} 📦분할1차
+⚡${config.lev}x  📦${qty}BTC
+━━━━━━━━━━━━━━━━━━━━
+💲 진입: $${currentPrice.toFixed(2)}
+🎯 TP1: $${tp1Price.toFixed(2)} (±0.40%)
+🛑 SL : $${slPrice.toFixed(2)} [${config.sl}%]
+🛡️ BE발동조건: 수익1.5% → 본전보장
+━━━━━━━━━━━━━━━━━━━━
+⏰${formatFullTime(new Date())}`;
+        }
+
+        function buildExitMessage(side, pnlAmt, pnlPct, reason) {
+            const isWin = pnlAmt > 0;
+            const icon = isWin ? '✅이익' : '❌손실';
+            const pnlStr = pnlAmt > 0 ? `+$${pnlAmt.toFixed(2)}` : `-$${Math.abs(pnlAmt).toFixed(2)}`;
+            const sign = pnlPct > 0 ? '+' : '';
+            
+            return `${icon} [거래 청산] 🔄양방향
+━━━━━━━━━━━━━━━━━━━━
+📍${side}  ⏱️${reason}
+💲청산가: $${currentPrice.toFixed(2)}
+📈 ${sign}${pnlPct.toFixed(2)}%  ${pnlStr}
+━━━━━━━━━━━━━━━━━━━━
+💰잔고: ${formatMoney(state.balance)}
+⏰${formatFullTime(new Date())}`;
+        }
+
+        document.getElementById('test-tg-btn').addEventListener('click', () => {
+            const msg = `🔔 [테스트 알림] 시스템 접속 확인\n🕐 ${formatFullTime(new Date())}\nRSI 테스트 발송입니다.`;
+            sendTg(msg, false);
+            showToast('텔레그램 테스트 메시지가 전송되었습니다.');
+        });
+
+        // --- 7. Trading Logic (Paper) ---
+        function executeTrade(side, reason) {
+            if(state.position) return; // Prevent double entry
+
+            const qty = (config.margin * config.lev) / currentPrice;
+            const slPrice = side === 'SHORT' ? currentPrice * (1 + (config.sl/100)) : currentPrice * (1 - (config.sl/100));
+
+            state.position = {
+                side,
+                entry: currentPrice,
+                qty,
+                sl: slPrice,
+                isBE: false
+            };
+
+            const msg = buildEntryMessage(side, currentRSI.toFixed(1), reason);
+            
+            // UI HTML formatting
+            const uiMsg = `
+<div class="text-[#52525b] text-xs mb-1">[${formatTime(new Date())}]</div>
+<div class="${side==='SHORT'?'text-[#ef4444]':'text-[#10b981]'} font-medium">${side==='SHORT'?'🔴':'🟢'} [${side} 진입!]</div>
+<div>🎯 ${reason} RSI:${currentRSI.toFixed(1)}</div>
+<div>💲 진입: $${currentPrice.toFixed(2)} | SL: $${slPrice.toFixed(2)}</div>
+`;
+            addLog(uiMsg);
+            sendTg(msg, false);
+            updateDashboardUI();
+        }
+
+        function closePosition(reason) {
+            if(!state.position) return;
+            const pos = state.position;
+            const isShort = pos.side === 'SHORT';
+            
+            // Pnl calculation (simple)
+            const diff = isShort ? pos.entry - currentPrice : currentPrice - pos.entry;
+            const pnlAmt = diff * pos.qty; // Without fees for simplicity
+            const pnlPct = (diff / pos.entry) * config.lev * 100;
+
+            state.balance += pnlAmt;
+            state.trades++;
+            if(pnlAmt > 0) state.wins++;
+
+            const msg = buildExitMessage(pos.side, pnlAmt, pnlPct, reason);
+            
+            // UI HTML
+            const uiMsg = `
+<div class="text-[#52525b] text-xs mb-1">[${formatTime(new Date())}]</div>
+<div class="${pnlAmt>0?'text-[#f5a623]':'text-[#a1a1aa]'} font-medium">${pnlAmt>0?'✅이익':'❌손실'} [거래 청산] ${reason}</div>
+<div>청산가: $${currentPrice.toFixed(2)} (수익률: ${pnlPct>0?'+':''}${pnlPct.toFixed(2)}%)</div>
+<div>💰 잔고: ${formatMoney(state.balance)}</div>
+`;
+            addLog(uiMsg);
+            sendTg(msg, false);
+            
+            state.position = null;
+            updateDashboardUI();
+        }
+
+        function updateDashboardUI() {
+            document.getElementById('paper-balance').textContent = formatMoney(state.balance);
+            const rate = ((state.balance - initBalance) / initBalance) * 100;
+            const rateEl = document.getElementById('profit-rate');
+            rateEl.textContent = rate.toFixed(2);
+            rateEl.className = rate >= 0 ? 'text-xs text-[#10b981]' : 'text-xs text-[#ef4444]';
+
+            const posEl = document.getElementById('active-position');
+            const pnlEl = document.getElementById('pos-pnl');
+            
+            if(state.position) {
+                const p = state.position;
+                posEl.textContent = `${p.side} $${p.entry.toFixed(2)}`;
+                posEl.className = p.side === 'LONG' ? 'text-lg font-semibold tracking-tight text-[#10b981]' : 'text-lg font-semibold tracking-tight text-[#ef4444]';
+            } else {
+                posEl.textContent = '없음 (대기중)';
+                posEl.className = 'text-lg font-semibold tracking-tight text-[#a1a1aa]';
+                pnlEl.textContent = '';
+            }
+        }
+
+        function runStrategy() {
+            // 1. Update Live PNL UI
+            if(state.position) {
+                const p = state.position;
+                const isShort = p.side === 'SHORT';
+                const diff = isShort ? p.entry - currentPrice : currentPrice - p.entry;
+                const pnlPct = (diff / p.entry) * config.lev * 100;
+                
+                const pnlEl = document.getElementById('pos-pnl');
+                pnlEl.textContent = `${pnlPct > 0 ? '+' : ''}${pnlPct.toFixed(2)}%`;
+                pnlEl.className = `text-sm font-medium ${pnlPct > 0 ? 'text-[#10b981]' : 'text-[#ef4444]'}`;
+
+                // Exit Logic
+                // Stop Loss
+                if((isShort && currentPrice >= p.sl) || (!isShort && currentPrice <= p.sl)) {
+                    closePosition('STOP LOSS');
+                }
+                // RSI 청산
+                else if(isShort && currentRSI <= 40) {
+                    closePosition('AUTO_TP (RSI 40도달)');
+                }
+                else if(!isShort && currentRSI >= 65) {
+                    closePosition('AUTO_TP (RSI 65도달)');
+                }
+            }
+
+            if(!botActive) return;
+
+            // 2. Entry Logic
+            if(!state.position) {
+                if(currentRSI <= 20) {
+                    executeTrade('LONG', '극단 과매도');
+                } else if(currentRSI >= 85) {
+                    executeTrade('SHORT', '강한 역추세');
+                } else if(currentRSI >= 80) {
+                    // In real strategy this needs MA trend confirmation. Mocking here.
+                    executeTrade('SHORT', '역추세');
+                }
+            }
+
+            // 3. Status Interval Handling
+            const now = Date.now();
+            if(now - state.lastStatusTime >= config.tgInterval * 1000) {
+                state.lastStatusTime = now;
+                sendTg(buildStatusMessage(), true);
+            }
+        }
+
+        // --- Initialize ---
+        loadConfig();
+        fetchHistory().then(() => {
+            startWebSocket();
+            // Start continuous status update check loop
+            setInterval(() => {
+                if(botActive && currentPrice > 0) runStrategy();
+            }, 1000);
+        });
+
+    </script>
+</body>
+</html>

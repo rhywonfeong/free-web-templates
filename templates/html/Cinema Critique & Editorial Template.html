@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cineaste Reviews</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
+<script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+<style>
+@keyframes hero-gradient-drift {
+0%, 100% { transform: scale(1.1) translate3d(0, 0, 0); }
+25% { transform: scale(1.14) translate3d(2%, -2%, 0); }
+50% { transform: scale(1.18) translate3d(-2%, 3%, 0); }
+75% { transform: scale(1.13) translate3d(1%, 2%, 0); }
+}
+.animate-hero-drift {
+animation: hero-gradient-drift 18s ease-in-out infinite;
+will-change: transform;
+transform-origin: 50% 20%;
+}
+@keyframes film-grain-shift {
+0% { transform: translate3d(0, 0, 0); }
+10% { transform: translate3d(-1%, 1%, 0); }
+20% { transform: translate3d(1%, -2%, 0); }
+30% { transform: translate3d(-2%, -1%, 0); }
+40% { transform: translate3d(2%, 2%, 0); }
+50% { transform: translate3d(-1%, 2%, 0); }
+60% { transform: translate3d(2%, 0%, 0); }
+70% { transform: translate3d(0%, 2%, 0); }
+80% { transform: translate3d(-2%, 0%, 0); }
+90% { transform: translate3d(1%, 1%, 0); }
+100% { transform: translate3d(0, 0, 0); }
+}
+.film-grain-overlay {
+position: fixed;
+inset: 0;
+pointer-events: none;
+z-index: 9999;
+opacity: 0.055;
+mix-blend-mode: overlay;
+background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+background-size: 240px 240px;
+animation: film-grain-shift 1.2s steps(2, end) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+.animate-hero-drift { animation: none; }
+.film-grain-overlay { animation: none; }
+}
+</style>
+<script>document.addEventListener('click', event => {
+const anchor = event.target.closest?.('a[href]');
+const href = anchor?.getAttribute('href');
+if (event.defaultPrevented || !href?.startsWith('#')) return;
+event.preventDefault();
+if (href === '#') { window.scrollTo({top: 0, behavior: 'smooth'}); return; }
+try {
+const id = decodeURIComponent(href.slice(1));
+const target = document.getElementById(id) || document.getElementsByName(id)[0];
+target?.scrollIntoView({behavior: 'smooth', block: 'start'});
+} catch { /* Invalid fragments remain in the saved document. */ }
+});</script>
+<script>document.addEventListener('click', event => {
+if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+const anchor = event.target.closest?.('a[href]');
+if (!anchor || anchor.hasAttribute('download')) return;
+const target = anchor.getAttribute('target')?.toLowerCase();
+if (target && target !== '_self' && target !== '_top') return;
+try {
+const destination = new URL(anchor.href, document.baseURI);
+const base = new URL(document.baseURI);
+if (!['http:', 'https:'].includes(destination.protocol) || destination.origin === base.origin) return;
+event.preventDefault();
+window.open(destination.href, '_blank', 'noopener,noreferrer');
+} catch { /* Leave invalid links to the browser. */ }
+}, true);</script></head>
+  <body class="antialiased selection:bg-[#b89558] selection:text-zinc-950 flex flex-col min-h-screen text-zinc-300 bg-zinc-950 overflow-x-hidden" style="font-family: 'EB Garamond', serif;">
+    <!-- Navigation -->
+    <nav class="w-full border-b border-zinc-800/50">
+      <div class="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
+        <a href="/home" class="uppercase flex items-center gap-2 text-xl font-medium text-zinc-100 tracking-tighter">
+          nostalgia
+        </a>
+        <div class="flex items-center gap-6 text-sm">
+          <a href="/review" class="hover:text-[#b89558] transition-colors duration-300">
+            Archive
+          </a>
+          <a href="#" class="hover:text-[#b89558] transition-colors duration-300">
+            Essays
+          </a>
+          <a href="#" class="hover:text-[#b89558] transition-colors duration-300">
+            About
+          </a>
+          <button class="flex items-center justify-center hover:text-[#b89558] transition-colors duration-300">
+            <iconify-icon icon="solar:magnifer-linear" style="stroke-width: 1.5; font-size: 1.25rem;" class=""></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow w-full flex flex-col pb-12">
+      <header class="relative w-full px-6 pt-16 pb-20 md:pt-24 md:pb-32 flex flex-col items-center text-center border-b border-zinc-800/50 mb-12 md:mb-16 overflow-hidden">
+        <div class="absolute top-0 left-0 w-full h-[600px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#b89558]/15 via-zinc-950/0 to-transparent pointer-events-none animate-hero-drift"></div>
+
+        <div class="flex items-center gap-4 text-xs tracking-widest uppercase text-[#b89558] mb-8 relative z-10">
+          <span class="w-12 md:w-24 h-px bg-[#b89558]/50"></span>
+          <span>A Cinematic Journal</span>
+          <span class="w-12 md:w-24 h-px bg-[#b89558]/50"></span>
+        </div>
+
+        <h1 class="text-[16vw] md:text-[12vw] lg:text-[10vw] leading-[0.75] uppercase select-none font-normal text-zinc-100 tracking-tighter text-center w-full relative z-10" id="hero-title">Nostalgic</h1>
+
+        <div class="text-[7vw] md:text-[4.5vw] lg:text-[3.5vw] text-zinc-500 italic lowercase font-serif leading-none mt-6 md:mt-4 relative z-10">
+          the art of the moving image
+        </div>
+
+        <p class="text-lg md:text-xl text-zinc-400 max-w-2xl mx-auto mt-10 md:mt-12 z-10 font-light leading-relaxed relative">
+          Exploring timeless masterpieces, curated reviews, and deep-dive essays
+          into the history of cinema.
+        </p>
+
+        <div class="film-cue-mark" aria-hidden="true"></div>
+      </header>
+
+      <div class="w-full flex-grow px-0 md:px-4 pb-8 h-[60vh] md:h-[75vh] min-h-[500px] relative overflow-hidden">
+        <div class="swiper w-full h-full !cursor-none swiper-initialized swiper-horizontal swiper-backface-hidden" id="movie-swiper">
+          <div class="swiper-wrapper" style="transition-duration: 0ms; transition-delay: 0ms;" id="swiper-wrapper-f42bce8a0f1057e3" aria-live="polite"><div class="swiper-slide w-[90vw] md:w-[75vw] px-2 md:px-4" role="group" aria-label="6 / 7" data-swiper-slide-index="5">
+              <a href="#" class="w-full h-full relative group block overflow-hidden border border-zinc-800/80 !cursor-none">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/82a1d438-3719-49c7-8a28-57bc423868b8_3840w.png" alt="Legend of a werewolf" class="object-center group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out opacity-70 w-full h-full object-cover absolute top-0 right-0 bottom-0 left-0 grayscale">
+                <div class="group-hover:opacity-70 transition-opacity duration-700 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent opacity-90 absolute top-0 right-0 bottom-0 left-0"></div>
+                <div class="absolute inset-0 border border-[#b89558]/20 m-4 pointer-events-none transition-all duration-700 group-hover:m-5"></div>
+                <div class="absolute bottom-0 left-0 p-8 md:p-16 flex flex-col gap-4 w-full md:w-4/5">
+                  <div class="flex items-center gap-3 text-xs tracking-widest uppercase text-[#b89558]">
+                    <span>Review</span>
+                    <span class="w-8 h-px bg-[#b89558]/50"></span>
+                    <span>Francis, 1975</span>
+                  </div>
+                  <h2 class="md:text-7xl lg:text-8xl leading-none text-5xl font-medium text-zinc-100 tracking-tight">
+                    Legend of a werewolf
+                  </h2>
+                  <p class="text-lg md:text-2xl text-zinc-400 italic line-clamp-2 md:line-clamp-none mt-2">
+                    A terrifying exploration of the beast within, captured in
+                    chilling cinematic detail.
+                  </p>
+                </div>
+              </a>
+            </div><div class="swiper-slide w-[90vw] md:w-[75vw] px-2 md:px-4 swiper-slide-prev" role="group" aria-label="7 / 7" data-swiper-slide-index="6">
+              <a href="#" class="w-full h-full relative group block overflow-hidden border border-zinc-800/80 !cursor-none">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2c201f79-5be3-42c2-b6f2-8c9b737fdbb6_3840w.jpg" alt="Vertigo" class="object-center group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out opacity-70 w-full h-full object-cover absolute top-0 right-0 bottom-0 left-0 grayscale">
+                <div class="group-hover:opacity-70 transition-opacity duration-700 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent opacity-90 absolute top-0 right-0 bottom-0 left-0"></div>
+                <div class="absolute inset-0 border border-[#b89558]/20 m-4 pointer-events-none transition-all duration-700 group-hover:m-5"></div>
+                <div class="absolute bottom-0 left-0 p-8 md:p-16 flex flex-col gap-4 w-full md:w-4/5">
+                  <div class="flex items-center gap-3 text-xs tracking-widest uppercase text-[#b89558]">
+                    <span>Essay</span>
+                    <span class="w-8 h-px bg-[#b89558]/50"></span>
+                    <span>Hitchcock, 1958</span>
+                  </div>
+                  <h2 class="md:text-7xl lg:text-8xl leading-none text-5xl font-medium text-zinc-100 tracking-tight">
+                    Excalibur
+                  </h2>
+                  <p class="text-lg md:text-2xl text-zinc-400 italic line-clamp-2 md:line-clamp-none mt-2">
+                    A dizzying descent into obsession and the manipulation of
+                    memory.
+                  </p>
+                </div>
+              </a>
+            </div>
+            <div class="swiper-slide w-[90vw] md:w-[75vw] px-2 md:px-4 swiper-slide-active" role="group" aria-label="1 / 7" data-swiper-slide-index="0">
+              <a href="#" class="w-full h-full relative group block overflow-hidden border border-zinc-800/80 !cursor-none">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2c92ab93-863f-4df7-93a9-800418e3055c_3840w.png" alt="The Name of the Rose" class="object-center group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out opacity-70 w-full h-full object-cover absolute top-0 right-0 bottom-0 left-0 grayscale">
+                <div class="group-hover:opacity-70 transition-opacity duration-700 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent opacity-90 absolute top-0 right-0 bottom-0 left-0"></div>
+                <div class="absolute inset-0 border border-[#b89558]/20 m-4 pointer-events-none transition-all duration-700 group-hover:m-5"></div>
+                <div class="absolute bottom-0 left-0 p-8 md:p-16 flex flex-col gap-4 w-full md:w-4/5">
+                  <div class="flex items-center gap-3 text-xs tracking-widest uppercase text-[#b89558]">
+                    <span class="">Review</span>
+                    <span class="w-8 h-px bg-[#b89558]/50"></span>
+                    <span class="">Fellini, 1963</span>
+                  </div>
+                  <h2 class="md:text-7xl lg:text-8xl leading-none text-5xl font-medium text-zinc-100 tracking-tight">
+                    The Name of the Rose
+                  </h2>
+                  <p class="text-lg md:text-2xl text-zinc-400 italic line-clamp-2 md:line-clamp-none mt-2">
+                    A surreal autobiographical voyage navigating creative block
+                    and chaotic memories.
+                  </p>
+                </div>
+              </a>
+            </div>
+            <div class="swiper-slide w-[90vw] md:w-[75vw] px-2 md:px-4 swiper-slide-next" role="group" aria-label="2 / 7" data-swiper-slide-index="1">
+              <a href="#" class="w-full h-full relative group block overflow-hidden border border-zinc-800/80 !cursor-none">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/fff0905b-0b9c-4dca-ab7a-840aa8734262_3840w.jpg" alt="In the Mood for Love" class="object-center group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out opacity-70 w-full h-full object-cover absolute top-0 right-0 bottom-0 left-0 grayscale">
+                <div class="group-hover:opacity-70 transition-opacity duration-700 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent opacity-90 absolute top-0 right-0 bottom-0 left-0"></div>
+                <div class="absolute inset-0 border border-[#b89558]/20 m-4 pointer-events-none transition-all duration-700 group-hover:m-5"></div>
+                <div class="absolute bottom-0 left-0 p-8 md:p-16 flex flex-col gap-4 w-full md:w-4/5">
+                  <div class="flex items-center gap-3 text-xs tracking-widest uppercase text-[#b89558]">
+                    <span>Essay</span>
+                    <span class="w-8 h-px bg-[#b89558]/50"></span>
+                    <span class="">Wong, 2000</span>
+                  </div>
+                  <h2 class="md:text-7xl lg:text-8xl leading-none text-5xl font-medium text-zinc-100 tracking-tight">
+                    The Innocents
+                  </h2>
+                  <p class="text-lg md:text-2xl text-zinc-400 italic line-clamp-2 md:line-clamp-none mt-2">
+                    A masterful tapestry of unspoken desire and the agonizing
+                    passage of time.
+                  </p>
+                </div>
+              </a>
+            </div>
+            <div class="swiper-slide w-[90vw] md:w-[75vw] px-2 md:px-4" role="group" aria-label="3 / 7" data-swiper-slide-index="2">
+              <a href="#" class="w-full h-full relative group block overflow-hidden border border-zinc-800/80 !cursor-none">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/04977ebd-15a0-4f72-b791-68792d5a3765_3840w.png?w=800&q=80" alt="Highlander" class="object-center group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out opacity-70 w-full h-full object-cover absolute top-0 right-0 bottom-0 left-0 grayscale">
+                <div class="group-hover:opacity-70 transition-opacity duration-700 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent opacity-90 absolute top-0 right-0 bottom-0 left-0"></div>
+                <div class="absolute inset-0 border border-[#b89558]/20 m-4 pointer-events-none transition-all duration-700 group-hover:m-5"></div>
+                <div class="absolute bottom-0 left-0 p-8 md:p-16 flex flex-col gap-4 w-full md:w-4/5">
+                  <div class="flex items-center gap-3 text-xs tracking-widest uppercase text-[#b89558]">
+                    <span>Featured Essay</span>
+                    <span class="w-8 h-px bg-[#b89558]/50"></span>
+                    <span class="">Published Oct 24</span>
+                  </div>
+                  <h2 class="md:text-7xl lg:text-8xl leading-none text-5xl font-medium text-zinc-100 tracking-tight">
+                    Highlander
+                  </h2>
+                  <p class="text-lg md:text-2xl text-zinc-400 italic line-clamp-2 md:line-clamp-none mt-2">
+                    A haunting exploration of temporal displacement and the
+                    fragility of human connection.
+                  </p>
+                </div>
+              </a>
+            </div>
+            <div class="swiper-slide w-[90vw] md:w-[75vw] px-2 md:px-4" role="group" aria-label="4 / 7" data-swiper-slide-index="3">
+              <a href="#" class="w-full h-full relative group block overflow-hidden border border-zinc-800/80 !cursor-none">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/e446b403-a642-449c-9c52-b05c7ca2fa90_3840w.jpg" alt="Stalker" class="object-center group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out opacity-70 w-full h-full object-cover absolute top-0 right-0 bottom-0 left-0 grayscale">
+                <div class="group-hover:opacity-70 transition-opacity duration-700 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent opacity-90 absolute top-0 right-0 bottom-0 left-0"></div>
+                <div class="absolute inset-0 border border-[#b89558]/20 m-4 pointer-events-none transition-all duration-700 group-hover:m-5"></div>
+                <div class="absolute bottom-0 left-0 p-8 md:p-16 flex flex-col gap-4 w-full md:w-4/5">
+                  <div class="flex items-center gap-3 text-xs tracking-widest uppercase text-[#b89558]">
+                    <span>Review</span>
+                    <span class="w-8 h-px bg-[#b89558]/50"></span>
+                    <span class="">Tarkovsky, 1979</span>
+                  </div>
+                  <h2 class="md:text-7xl lg:text-8xl leading-none text-5xl font-medium text-zinc-100 tracking-tight">
+                    The Monster Club
+                  </h2>
+                  <p class="text-lg md:text-2xl text-zinc-400 italic line-clamp-2 md:line-clamp-none mt-2">
+                    A journey into the Zone, where the deepest desires of the
+                    heart are revealed in stark, mesmerizing detail.
+                  </p>
+                </div>
+              </a>
+            </div>
+            <div class="swiper-slide w-[90vw] md:w-[75vw] px-2 md:px-4" role="group" aria-label="5 / 7" data-swiper-slide-index="4">
+              <a href="#" class="w-full h-full relative group block overflow-hidden border border-zinc-800/80 !cursor-none">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/8cb128f7-e4c9-4a41-8bd5-779e4a83bbe6_3840w.jpg" alt="Persona" class="object-center group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out opacity-70 w-full h-full object-cover absolute top-0 right-0 bottom-0 left-0 grayscale">
+                <div class="group-hover:opacity-70 transition-opacity duration-700 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent opacity-90 absolute top-0 right-0 bottom-0 left-0"></div>
+                <div class="absolute inset-0 border border-[#b89558]/20 m-4 pointer-events-none transition-all duration-700 group-hover:m-5"></div>
+                <div class="absolute bottom-0 left-0 p-8 md:p-16 flex flex-col gap-4 w-full md:w-4/5">
+                  <div class="flex items-center gap-3 text-xs tracking-widest uppercase text-[#b89558]">
+                    <span>Review</span>
+                    <span class="w-8 h-px bg-[#b89558]/50"></span>
+                    <span class="">Bergman, 1966</span>
+                  </div>
+                  <h2 class="md:text-7xl lg:text-8xl leading-none text-5xl font-medium text-zinc-100 tracking-tight">
+                    Horror Express
+                  </h2>
+                  <p class="text-lg md:text-2xl text-zinc-400 italic line-clamp-2 md:line-clamp-none mt-2">
+                    The merging of identities and the agonizing silence of the
+                    soul captured in brilliant monochrome.
+                  </p>
+                </div>
+              </a>
+            </div>
+            
+            
+
+            <!-- Slide 1 -->
+
+            <!-- Slide 2 -->
+
+            <!-- Slide 3 -->
+
+            <!-- Slide 4 -->
+
+            <!-- Slide 5 -->
+
+            <!-- Slide 6 -->
+          </div>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+          <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span>
+        <span class="swiper-notification" aria-live="assertive" aria-atomic="true"></span></div>
+
+        <!-- Custom Cursor -->
+        <div id="custom-cursor" class="fixed top-0 left-0 w-16 h-16 bg-[#b89558] text-zinc-950 rounded-full flex items-center justify-center text-[10px] font-bold tracking-widest pointer-events-none opacity-0 z-50 transition-[opacity,transform,background-color] duration-300 ease-out transform -translate-x-1/2 -translate-y-1/2 mix-blend-screen shadow-[0_0_20px_rgba(184,149,88,0.5)]" style=" left: 822px; top: 538px;">
+          DRAG
+        </div>
+
+        
+      <script>
+          document.addEventListener('DOMContentLoaded', () => {
+            const initSwiper = () => {
+              if (typeof Swiper !== 'undefined') {
+                new Swiper('#movie-swiper', {
+                  slidesPerView: 'auto',
+                  centeredSlides: true,
+                  spaceBetween: 0,
+                  loop: true,
+                  speed: 800,
+                  grabCursor: false
+                });
+              } else {
+                setTimeout(initSwiper, 100);
+              }
+            };
+            initSwiper();
+
+            const cursor = document.getElementById('custom-cursor');
+            const swiperContainer = document.getElementById('movie-swiper');
+
+            if (cursor && swiperContainer) {
+              swiperContainer.addEventListener('mousemove', (e) => {
+                cursor.style.left = e.clientX + 'px';
+                cursor.style.top = e.clientY + 'px';
+              });
+
+              swiperContainer.addEventListener('mouseenter', () => {
+                cursor.style.opacity = '1';
+              });
+
+              swiperContainer.addEventListener('mouseleave', () => {
+                cursor.style.opacity = '0';
+              });
+
+              swiperContainer.addEventListener('mousedown', () => {
+                cursor.style.transform = 'translate(-50%, -50%) scale(0.8)';
+                cursor.style.backgroundColor = '#d4af37';
+              });
+
+              swiperContainer.addEventListener('mouseup', () => {
+                cursor.style.transform = 'translate(-50%, -50%) scale(1)';
+                cursor.style.backgroundColor = '#b89558';
+              });
+            }
+          });
+        </script></div>
+    </main>
+    <section class="w-full max-w-6xl mx-auto px-6 py-16 md:py-24 border-t border-zinc-800/50">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 md:gap-16 items-center">
+        <div class="lg:col-span-7 relative aspect-[16/9] lg:aspect-[4/3] overflow-hidden group border border-zinc-800/80">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/827b0b9b-c573-44fc-abc1-9f94c902547c_1600w.jpg" alt="Featured Review" class="group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out opacity-70 w-full h-full object-cover absolute top-0 right-0 bottom-0 left-0 grayscale-0">
+          <div class="absolute inset-0 border border-[#b89558]/20 m-4 pointer-events-none transition-all duration-700 group-hover:m-5"></div>
+        </div>
+        <div class="lg:col-span-5 flex flex-col gap-6">
+          <div class="flex items-center gap-3 text-xs tracking-widest uppercase text-[#b89558]">
+            <span class="">Editor's Pick</span>
+            <span class="w-8 h-px bg-[#b89558]/50"></span>
+          </div>
+          <h2 class="md:text-5xl leading-none text-4xl font-medium text-zinc-100 tracking-tight">
+            Bram Stokers Dracula
+          </h2>
+          <div class="flex items-center gap-4 text-sm text-zinc-400">
+            <span class="">Kurosawa, 1954</span>
+            <span class="w-1 h-1 rounded-full bg-zinc-700"></span>
+            <div class="flex items-center gap-1 text-[#b89558]">
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+            </div>
+          </div>
+          <p class="text-lg text-zinc-400 italic leading-relaxed">
+            A monumental achievement in cinematic storytelling. Kurosawa
+            masterfully balances intense action with profound character studies,
+            setting the blueprint for the modern ensemble epic while maintaining
+            a deeply humanist core.
+          </p>
+          <a href="#" class="inline-flex items-center gap-2 text-xs tracking-widest uppercase text-zinc-100 hover:text-[#b89558] transition-colors mt-2 w-fit">
+            Read Full Critique
+            <iconify-icon icon="solar:arrow-right-linear" class="text-lg"></iconify-icon>
+          </a>
+        </div>
+      </div>
+    </section>
+    <section class="w-full max-w-6xl mx-auto px-6 py-16 md:py-24 border-t border-zinc-800/50">
+      <div class="flex items-center gap-3 text-xs tracking-widest uppercase text-[#b89558] mb-12">
+        <span class="w-8 h-px bg-[#b89558]/50"></span>
+        <span>Curator's List</span>
+      </div>
+
+      <div class="flex flex-col lg:flex-row gap-16 relative">
+        <div class="w-full lg:w-1/2 flex flex-col gap-8">
+          <div class="">
+            <h2 class="text-4xl md:text-5xl font-medium text-zinc-100 tracking-tight leading-none mb-4">
+              Top 10 All-Time Favorites
+            </h2>
+            <p class="text-lg text-zinc-400 italic mb-8">
+              A definitive ranking of cinematic masterpieces that have shaped
+              the medium and our understanding of it.
+            </p>
+          </div>
+
+          <div class="flex flex-col gap-8" id="top-10-list">
+            <div class="flex gap-6 group cursor-default items-baseline pb-8 border-b border-zinc-800/50">
+              <span class="w-16 shrink-0 text-4xl md:text-5xl font-medium text-zinc-800 transition-colors">
+                01
+              </span>
+              <div class="flex flex-col gap-1">
+                <h3 class="transition-colors text-2xl font-medium text-zinc-100 tracking-tight">
+                  The Name of the Rose
+                </h3>
+                <p class="text-base text-zinc-400 italic">
+                  Stanley Kubrick, 1968
+                </p>
+              </div>
+            </div>
+            <div class="flex gap-6 group cursor-default items-baseline pb-8 border-b border-zinc-800/50">
+              <span class="w-16 shrink-0 text-4xl md:text-5xl font-medium text-zinc-800 transition-colors">
+                02
+              </span>
+              <div class="flex flex-col gap-1">
+                <h3 class="transition-colors text-2xl font-medium text-zinc-100 tracking-tight">
+                  12 Angry Men
+                </h3>
+                <p class="text-base text-zinc-400 italic">
+                  Francis Ford Coppola, 1972
+                </p>
+              </div>
+            </div>
+            <div class="flex gap-6 group cursor-default items-baseline pb-8 border-b border-zinc-800/50">
+              <span class="w-16 shrink-0 text-4xl md:text-5xl font-medium text-zinc-800 transition-colors">
+                03
+              </span>
+              <div class="flex flex-col gap-1">
+                <h3 class="transition-colors text-2xl font-medium text-zinc-100 tracking-tight">
+                  Bram Stokers Dracula
+                </h3>
+                <p class="text-base text-zinc-400 italic">
+                  Chantal Akerman, 1975
+                </p>
+              </div>
+            </div>
+            <div class="flex gap-6 group cursor-default items-baseline pb-8 border-b border-zinc-800/50">
+              <span class="w-16 shrink-0 text-4xl md:text-5xl font-medium text-zinc-800 transition-colors">
+                04
+              </span>
+              <div class="flex flex-col gap-1">
+                <h3 class="transition-colors text-2xl font-medium text-zinc-100 tracking-tight">
+                  Oldboy
+                </h3>
+                <p class="text-base text-zinc-400 italic">Yasujirō Ozu, 1953</p>
+              </div>
+            </div>
+            <div class="flex gap-6 group cursor-default items-baseline pb-8 border-b border-zinc-800/50">
+              <span class="w-16 shrink-0 text-4xl md:text-5xl font-medium text-zinc-800 transition-colors">
+                05
+              </span>
+              <div class="flex flex-col gap-1">
+                <h3 class="transition-colors text-2xl font-medium text-zinc-100 tracking-tight">
+                  Aliens
+                </h3>
+                <p class="text-base text-zinc-400 italic">Orson Welles, 1941</p>
+              </div>
+            </div>
+            <div class="flex gap-6 group cursor-default items-baseline pb-8 border-b border-zinc-800/50">
+              <span class="w-16 shrink-0 text-4xl md:text-5xl font-medium text-zinc-800 transition-colors">
+                06
+              </span>
+              <div class="flex flex-col gap-1">
+                <h3 class="transition-colors text-2xl font-medium text-zinc-100 tracking-tight">
+                  The Exorcist
+                </h3>
+                <p class="text-base text-zinc-400 italic">Wong Kar-wai, 2000</p>
+              </div>
+            </div>
+            <div class="flex gap-6 group cursor-default items-baseline pb-8 border-b border-zinc-800/50">
+              <span class="w-16 shrink-0 text-4xl md:text-5xl font-medium text-zinc-800 transition-colors">
+                07
+              </span>
+              <div class="flex flex-col gap-1">
+                <h3 class="transition-colors text-2xl font-medium text-zinc-100 tracking-tight">
+                  The Shining
+                </h3>
+                <p class="text-base text-zinc-400 italic">
+                  Federico Fellini, 1963
+                </p>
+              </div>
+            </div>
+            <div class="flex gap-6 group cursor-default items-baseline pb-8 border-b border-zinc-800/50">
+              <span class="w-16 shrink-0 text-4xl md:text-5xl font-medium text-zinc-800 transition-colors">
+                08
+              </span>
+              <div class="flex flex-col gap-1">
+                <h3 class="transition-colors text-2xl font-medium text-zinc-100 tracking-tight">
+                  The Thing
+                </h3>
+                <p class="text-base text-zinc-400 italic">David Lynch, 2001</p>
+              </div>
+            </div>
+            <div class="flex gap-6 group cursor-default items-baseline pb-8 border-b border-zinc-800/50">
+              <span class="w-16 shrink-0 text-4xl md:text-5xl font-medium text-zinc-800 transition-colors">
+                09
+              </span>
+              <div class="flex flex-col gap-1">
+                <h3 class="transition-colors text-2xl font-medium text-zinc-100 tracking-tight">
+                  The Dirty Dozen
+                </h3>
+                <p class="text-base text-zinc-400 italic">
+                  Ingmar Bergman, 1966
+                </p>
+              </div>
+            </div>
+            <div class="flex gap-6 group cursor-default items-baseline">
+              <span class="w-16 shrink-0 text-4xl md:text-5xl font-medium text-zinc-800 transition-colors">
+                10
+              </span>
+              <div class="flex flex-col gap-1">
+                <h3 class="transition-colors text-2xl font-medium text-zinc-100 tracking-tight">
+                  Muppet Christmas Carol
+                </h3>
+                <p class="text-base text-zinc-400 italic">
+                  Akira Kurosawa, 1954
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hidden lg:block w-full lg:w-1/2 relative">
+          <div class="sticky top-24 w-full pt-4">
+            <div class="relative w-[85%] ml-auto aspect-[3/4] border border-zinc-800/80 overflow-hidden group">
+              <img src="https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=2070&auto=format&fit=crop" class="absolute inset-0 w-full h-full object-cover object-center grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out" alt="The Memory of Light" id="sticky-img-main" data-current-index="0">
+              <div class="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent opacity-90 group-hover:opacity-70 transition-opacity duration-700"></div>
+              <div class="absolute inset-0 border border-[#b89558]/20 m-4 pointer-events-none transition-all duration-700 group-hover:m-5"></div>
+              <div class="absolute bottom-0 left-0 p-8 w-full">
+                <div class="flex items-center gap-3 text-xs tracking-widest uppercase text-[#b89558] mb-3">
+                  <span class="w-8 h-px bg-[#b89558]/50"></span>
+                  <span>The Essentials</span>
+                </div>
+                <p class="text-xl text-zinc-100 italic leading-snug">
+                  "Cinema is a matter of what's in the frame and what's out."
+                </p>
+              </div>
+            </div>
+            <div class="absolute top-1/2 -translate-y-1/4 left-0 w-[45%] aspect-[4/5] border border-zinc-800/80 overflow-hidden group shadow-[0_0_40px_rgba(9,9,11,0.8)]">
+              <img src="https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=2025&auto=format&fit=crop" class="absolute inset-0 w-full h-full object-cover grayscale opacity-80 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out" alt="Classic Cinema Overlay" id="sticky-img-sub">
+              <div class="absolute inset-0 border border-[#b89558]/20 m-2 pointer-events-none transition-all duration-700 group-hover:m-3"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Recent Reviews Grid -->
+
+    <!-- Footer -->
+
+    <section class="w-full max-w-6xl mx-auto px-6 py-16 md:py-24 border-t border-zinc-800/50">
+      <div class="flex items-center gap-3 text-xs tracking-widest uppercase text-[#b89558] mb-12">
+        <span class="w-8 h-px bg-[#b89558]/50"></span>
+        <span>Recent Reviews</span>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
+        <a href="#" class="group flex flex-col gap-4">
+          <div class="relative aspect-video overflow-hidden border border-zinc-800/80">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2c92ab93-863f-4df7-93a9-800418e3055c_3840w.png" alt="The Name of the Rose" class="w-full h-full object-cover grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out">
+            <div class="absolute inset-0 border border-[#b89558]/20 m-3 pointer-events-none transition-all duration-700 group-hover:m-4"></div>
+          </div>
+          <div>
+            <h3 class="text-xl font-medium text-zinc-100 tracking-tight mb-2 group-hover:text-[#b89558] transition-colors">
+              The Name of the Rose
+            </h3>
+            <div class="flex items-center gap-1 text-[#b89558] text-sm">
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+            </div>
+          </div>
+        </a>
+        <a href="#" class="group flex flex-col gap-4">
+          <div class="relative aspect-video overflow-hidden border border-zinc-800/80">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/fff0905b-0b9c-4dca-ab7a-840aa8734262_3840w.jpg" alt="In the Mood for Love" class="w-full h-full object-cover grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out">
+            <div class="absolute inset-0 border border-[#b89558]/20 m-3 pointer-events-none transition-all duration-700 group-hover:m-4"></div>
+          </div>
+          <div>
+            <h3 class="text-xl font-medium text-zinc-100 tracking-tight mb-2 group-hover:text-[#b89558] transition-colors">
+              In the Mood for Love
+            </h3>
+            <div class="flex items-center gap-1 text-[#b89558] text-sm">
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+            </div>
+          </div>
+        </a>
+        <a href="#" class="group flex flex-col gap-4">
+          <div class="relative aspect-video overflow-hidden border border-zinc-800/80">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/04977ebd-15a0-4f72-b791-68792d5a3765_3840w.png?w=800&q=80" alt="Highlander" class="w-full h-full object-cover grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out">
+            <div class="absolute inset-0 border border-[#b89558]/20 m-3 pointer-events-none transition-all duration-700 group-hover:m-4"></div>
+          </div>
+          <div>
+            <h3 class="text-xl font-medium text-zinc-100 tracking-tight mb-2 group-hover:text-[#b89558] transition-colors">
+              Highlander
+            </h3>
+            <div class="flex items-center gap-1 text-[#b89558] text-sm">
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+            </div>
+          </div>
+        </a>
+        <a href="#" class="group flex flex-col gap-4">
+          <div class="relative aspect-video overflow-hidden border border-zinc-800/80">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/e446b403-a642-449c-9c52-b05c7ca2fa90_3840w.jpg" alt="Stalker" class="w-full h-full object-cover grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out">
+            <div class="absolute inset-0 border border-[#b89558]/20 m-3 pointer-events-none transition-all duration-700 group-hover:m-4"></div>
+          </div>
+          <div>
+            <h3 class="text-xl font-medium text-zinc-100 tracking-tight mb-2 group-hover:text-[#b89558] transition-colors">
+              Stalker
+            </h3>
+            <div class="flex items-center gap-1 text-[#b89558] text-sm">
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+            </div>
+          </div>
+        </a>
+        <a href="#" class="group flex flex-col gap-4">
+          <div class="relative aspect-video overflow-hidden border border-zinc-800/80">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/8cb128f7-e4c9-4a41-8bd5-779e4a83bbe6_3840w.jpg" alt="Persona" class="w-full h-full object-cover grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out">
+            <div class="absolute inset-0 border border-[#b89558]/20 m-3 pointer-events-none transition-all duration-700 group-hover:m-4"></div>
+          </div>
+          <div>
+            <h3 class="text-xl font-medium text-zinc-100 tracking-tight mb-2 group-hover:text-[#b89558] transition-colors">
+              Persona
+            </h3>
+            <div class="flex items-center gap-1 text-[#b89558] text-sm">
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+            </div>
+          </div>
+        </a>
+        <a href="#" class="group flex flex-col gap-4">
+          <div class="relative aspect-video overflow-hidden border border-zinc-800/80">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/82a1d438-3719-49c7-8a28-57bc423868b8_3840w.png" alt="Legend of a werewolf" class="w-full h-full object-cover grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out">
+            <div class="absolute inset-0 border border-[#b89558]/20 m-3 pointer-events-none transition-all duration-700 group-hover:m-4"></div>
+          </div>
+          <div>
+            <h3 class="text-xl font-medium text-zinc-100 tracking-tight mb-2 group-hover:text-[#b89558] transition-colors">
+              Legend of a werewolf
+            </h3>
+            <div class="flex items-center gap-1 text-[#b89558] text-sm">
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+            </div>
+          </div>
+        </a>
+        <a href="#" class="group flex flex-col gap-4">
+          <div class="relative aspect-video overflow-hidden border border-zinc-800/80">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2c201f79-5be3-42c2-b6f2-8c9b737fdbb6_3840w.jpg" alt="Vertigo" class="w-full h-full object-cover grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out">
+            <div class="absolute inset-0 border border-[#b89558]/20 m-3 pointer-events-none transition-all duration-700 group-hover:m-4"></div>
+          </div>
+          <div>
+            <h3 class="text-xl font-medium text-zinc-100 tracking-tight mb-2 group-hover:text-[#b89558] transition-colors">
+              Vertigo
+            </h3>
+            <div class="flex items-center gap-1 text-[#b89558] text-sm">
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+            </div>
+          </div>
+        </a>
+        <a href="#" class="group flex flex-col gap-4">
+          <div class="relative aspect-video overflow-hidden border border-zinc-800/80">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/827b0b9b-c573-44fc-abc1-9f94c902547c_1600w.jpg" alt="Bram Stokers Dracula" class="w-full h-full object-cover grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out">
+            <div class="absolute inset-0 border border-[#b89558]/20 m-3 pointer-events-none transition-all duration-700 group-hover:m-4"></div>
+          </div>
+          <div>
+            <h3 class="text-xl font-medium text-zinc-100 tracking-tight mb-2 group-hover:text-[#b89558] transition-colors">
+              Bram Stokers Dracula
+            </h3>
+            <div class="flex items-center gap-1 text-[#b89558] text-sm">
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+            </div>
+          </div>
+        </a>
+        <a href="#" class="group flex flex-col gap-4">
+          <div class="relative aspect-video overflow-hidden border border-zinc-800/80">
+            <img src="https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=2070&auto=format&fit=crop" alt="The Shining" class="w-full h-full object-cover grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 ease-out">
+            <div class="absolute inset-0 border border-[#b89558]/20 m-3 pointer-events-none transition-all duration-700 group-hover:m-4"></div>
+          </div>
+          <div>
+            <h3 class="text-xl font-medium text-zinc-100 tracking-tight mb-2 group-hover:text-[#b89558] transition-colors">
+              The Shining
+            </h3>
+            <div class="flex items-center gap-1 text-[#b89558] text-sm">
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+              <iconify-icon icon="solar:star-bold"></iconify-icon>
+            </div>
+          </div>
+        </a>
+      </div>
+    </section>
+    <section class="w-full max-w-6xl mx-auto px-6 py-16 md:py-24 border-t border-zinc-800/50 flex flex-col items-center text-center">
+      <div class="flex items-center gap-3 text-xs tracking-widest uppercase text-[#b89558] mb-6">
+        <span class="w-8 h-px bg-[#b89558]/50"></span>
+        <span>Join The Archive</span>
+        <span class="w-8 h-px bg-[#b89558]/50"></span>
+      </div>
+      <h2 class="text-4xl md:text-5xl font-medium text-zinc-100 tracking-tight leading-none mb-4">
+        The Cineaste Newsletter
+      </h2>
+      <p class="text-lg text-zinc-400 italic mb-8 max-w-lg">
+        Get the latest essays, curated film lists, and deep dives into cinematic
+        history delivered directly to your inbox.
+      </p>
+      <form class="flex w-full max-w-md mx-auto group">
+        <input type="email" placeholder="Your email address" class="flex-grow bg-transparent border border-zinc-800/80 focus:border-[#b89558] focus:outline-none px-4 py-3 text-zinc-100 placeholder:text-zinc-600 transition-colors" required="">
+        <button type="submit" class="px-6 py-3 bg-zinc-800/80 text-zinc-100 hover:bg-[#b89558] hover:text-zinc-950 text-xs font-medium tracking-widest uppercase transition-colors border border-l-0 border-zinc-800/80 group-focus-within:border-[#b89558]">
+          Subscribe
+        </button>
+      </form>
+    </section>
+
+    <footer class="w-full border-t border-zinc-800/50 pb-8 pt-12 mt-8 md:mt-12">
+      <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-8 md:gap-6 text-center md:text-left">
+        <div class="flex flex-col items-center md:items-start gap-2">
+          <a href="/home" class="uppercase text-xl font-medium text-zinc-100 tracking-tighter">
+            nostalgia
+          </a>
+          <p class="text-sm text-zinc-500 italic">
+            Exploring the art of cinema.
+          </p>
+        </div>
+
+        <div class="flex flex-wrap justify-center items-center gap-6 text-sm">
+          <a href="/review" class="hover:text-[#b89558] transition-colors duration-300">
+            Archive
+          </a>
+          <a href="#" class="hover:text-[#b89558] transition-colors duration-300">
+            Essays
+          </a>
+          <a href="#" class="hover:text-[#b89558] transition-colors duration-300">
+            About
+          </a>
+          <a href="#" class="hover:text-[#b89558] transition-colors duration-300">
+            Contact
+          </a>
+        </div>
+
+        <div class="flex items-center justify-center gap-5 text-zinc-400">
+          <a href="#" class="hover:text-[#b89558] transition-colors">
+            <iconify-icon icon="ri:twitter-x-fill" class="text-xl"></iconify-icon>
+          </a>
+          <a href="#" class="hover:text-[#b89558] transition-colors">
+            <iconify-icon icon="ri:instagram-line" class="text-xl"></iconify-icon>
+          </a>
+          <a href="#" class="hover:text-[#b89558] transition-colors">
+            <iconify-icon icon="ri:youtube-fill" class="text-xl"></iconify-icon>
+          </a>
+        </div>
+      </div>
+      <div class="max-w-6xl mx-auto px-6 mt-12 flex flex-col md:flex-row items-center justify-between text-xs text-zinc-600 border-t border-zinc-800/50 pt-8 gap-4 text-center md:text-left">
+        <p>© 2024 Nostalgia Cinema. All rights reserved.</p>
+        <div class="flex gap-4">
+          <a href="#" class="hover:text-zinc-400 transition-colors">
+            Privacy Policy
+          </a>
+          <a href="#" class="hover:text-zinc-400 transition-colors">
+            Terms of Service
+          </a>
+        </div>
+      </div>
+    </footer>
+
+    
+  
+
+<script class="">
+      document.addEventListener('DOMContentLoaded', () => {
+        const listItems = document.querySelectorAll('#top-10-list > div');
+        const mainImg = document.getElementById('sticky-img-main');
+        const subImg = document.getElementById('sticky-img-sub');
+
+        const images = [
+          { main: 'https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=2070&auto=format&fit=crop', sub: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=2025&auto=format&fit=crop' },
+          { main: 'https://images.unsplash.com/photo-1478720568477-152d9b164e26?q=80&w=2070&auto=format&fit=crop', sub: 'https://images.unsplash.com/photo-1542204165-65bf26472b9b?q=80&w=1974&auto=format&fit=crop' },
+          { main: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=2059&auto=format&fit=crop', sub: 'https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg' },
+          { main: 'https://images.unsplash.com/photo-1533422902779-babd49fc5981?q=80&w=2070&auto=format&fit=crop', sub: 'https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=2070&auto=format&fit=crop' },
+          { main: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=2025&auto=format&fit=crop', sub: 'https://images.unsplash.com/photo-1478720568477-152d9b164e26?q=80&w=2070&auto=format&fit=crop' },
+          { main: 'https://images.unsplash.com/photo-1542204165-65bf26472b9b?q=80&w=1974&auto=format&fit=crop', sub: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=2059&auto=format&fit=crop' },
+          { main: 'https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg', sub: 'https://images.unsplash.com/photo-1533422902779-babd49fc5981?q=80&w=2070&auto=format&fit=crop' },
+          { main: 'https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=2070&auto=format&fit=crop', sub: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=2025&auto=format&fit=crop' },
+          { main: 'https://images.unsplash.com/photo-1478720568477-152d9b164e26?q=80&w=2070&auto=format&fit=crop', sub: 'https://images.unsplash.com/photo-1542204165-65bf26472b9b?q=80&w=1974&auto=format&fit=crop' },
+          { main: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=2059&auto=format&fit=crop', sub: 'https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg' }
+        ];
+
+        if (!listItems.length || !mainImg || !subImg) return;
+
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              const index = Array.from(listItems).indexOf(entry.target);
+
+              listItems.forEach(item => {
+                const numberSpan = item.querySelector('span:first-child');
+                const title = item.querySelector('h3');
+                if(numberSpan) numberSpan.classList.remove('!text-[#b89558]');
+                if(title) title.classList.remove('!text-[#b89558]');
+              });
+
+              const activeSpan = entry.target.querySelector('span:first-child');
+              const activeTitle = entry.target.querySelector('h3');
+              if(activeSpan) activeSpan.classList.add('!text-[#b89558]');
+              if(activeTitle) activeTitle.classList.add('!text-[#b89558]');
+
+              if (images[index] && mainImg.dataset.currentIndex !== index.toString()) {
+                mainImg.classList.add('!opacity-0');
+                subImg.classList.add('!opacity-0');
+
+                setTimeout(() => {
+                  mainImg.src = images[index].main;
+                  subImg.src = images[index].sub;
+                  mainImg.classList.remove('!opacity-0');
+                  subImg.classList.remove('!opacity-0');
+                  mainImg.dataset.currentIndex = index.toString();
+                }, 300);
+              }
+            }
+          });
+        }, {
+          rootMargin: '-40% 0px -40% 0px',
+          threshold: 0
+        });
+
+        listItems.forEach(item => observer.observe(item));
+      });
+    </script></body></html>

@@ -1,0 +1,576 @@
+<html lang="de" class="antialiased">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Familien-Planer</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Noto+Naskh+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+darkMode: 'class',
+theme: {
+extend: {
+fontFamily: {
+sans: ['Inter', 'sans-serif'],
+arabic: ['Noto Naskh Arabic', 'serif'],
+},
+colors: {
+stone: {
+50: '#fafaf9',
+100: '#f5f5f4',
+200: '#e7e5e4',
+300: '#d6d3d1',
+400: '#a8a29e',
+500: '#78716c',
+600: '#57534e',
+800: '#292524',
+900: '#1c1917',
+},
+warm: {
+500: '#ea580c',
+50: '#fff7ed',
+}
+},
+animation: {
+'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+}
+}
+}
+}
+</script>
+<style>
+body {
+background-color: #fafaf9;
+-webkit-tap-highlight-color: transparent;
+}
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+:lang(ku) { font-family: 'Noto Naskh Arabic', sans-serif; }
+/* Progress Bar Animation */
+.progress-bar { transition: width 1s cubic-bezier(0.4, 0, 0.2, 1); }
+</style></head>
+<body class="text-stone-800 h-screen flex flex-col overflow-hidden selection:bg-warm-500 selection:text-white">
+
+    <!-- App Logic -->
+    <script>
+        // --- CONFIGURATION ---
+        const USERS = [
+            { id: 'nima', name: 'Nima', color: 'bg-blue-100 text-blue-700', border: 'border-blue-200' },
+            { id: 'sheida', name: 'Sheida', color: 'bg-rose-100 text-rose-700', border: 'border-rose-200' },
+            { id: 'mohammed', name: 'Mohammed', color: 'bg-emerald-100 text-emerald-700', border: 'border-emerald-200' },
+            { id: 'attar', name: 'Attar', color: 'bg-amber-100 text-amber-700', border: 'border-amber-200' }
+        ];
+
+        const STORES = ['Migros', 'Coop', 'Aldi', 'Lidl', 'Denner', 'Asian Market', 'Kurdish Market', 'Online', 'Other'];
+
+        const TRANSLATIONS = {
+            de: {
+                welcome: "Wer bist du?",
+                tabs: { list: "Einkaufen", overview: "Übersicht" },
+                addItem: "Produkt hinzufügen",
+                add: "Hinzufügen",
+                store: "Laden",
+                quantity: "Menge",
+                price: "Preis (CHF)",
+                date: "Fällig bis",
+                estPrice: "~",
+                bought: "Erledigt",
+                pending: "Offen",
+                totalEst: "Geschätzte Summe",
+                spent: "Ausgegeben",
+                byStore: "Nach Laden",
+                byPerson: "Nach Person",
+                syncing: "Synchronisiere...",
+                synced: "Aktuell",
+                emptyList: "Alles erledigt!",
+                selectStore: "Laden wählen",
+                productName: "Produktname",
+                changeUser: "Wechseln",
+                today: "Heute",
+                overdue: "Überfällig"
+            },
+            ku: {
+                welcome: "تۆ کێیت؟",
+                tabs: { list: "کڕین", overview: "پوختە" },
+                addItem: "کاڵایەک زیاد بکە",
+                add: "زیاد بکە",
+                store: "فرۆشگا",
+                quantity: "بڕ",
+                price: "نرخ (CHF)",
+                date: "بەرواری کۆتایی",
+                estPrice: "~",
+                bought: "کڕرا",
+                pending: "ماوە",
+                totalEst: "نرخی مەزندەکراو",
+                spent: "خەرجکراو",
+                byStore: "بەپێی فرۆشگا",
+                byPerson: "بەپێی کەس",
+                syncing: "نوێ دەبێتەوە...",
+                synced: "نوێ",
+                emptyList: "هەمووی تەواو بوو!",
+                selectStore: "فرۆشگا هەڵبژێرە",
+                productName: "ناوی کاڵا",
+                changeUser: "گۆڕین",
+                today: "ئەمڕۆ",
+                overdue: "بە سەرچوو"
+            }
+        };
+
+        // --- STATE MANAGEMENT ---
+        let state = {
+            lang: 'de',
+            currentUser: null,
+            view: 'list', // 'list' or 'overview'
+            items: [],
+            lastSync: Date.now()
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadState();
+            
+            // Simulating Sync across tabs
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'familyShoppingList_v2') {
+                    loadState();
+                    render();
+                }
+            });
+
+            render();
+            
+            // Simulate cloud sync interval
+            setInterval(() => {
+                const icon = document.getElementById('sync-icon');
+                if(icon) {
+                    icon.classList.add('text-warm-500', 'animate-pulse');
+                    setTimeout(() => icon.classList.remove('text-warm-500', 'animate-pulse'), 2000);
+                }
+            }, 30000);
+        });
+
+        function loadState() {
+            const saved = localStorage.getItem('familyShoppingList_v2');
+            if (saved) state = JSON.parse(saved);
+        }
+
+        function saveState() {
+            state.lastSync = Date.now();
+            localStorage.setItem('familyShoppingList_v2', JSON.stringify(state));
+            render();
+        }
+
+        function setUser(userId) { state.currentUser = userId; saveState(); }
+        function setView(view) { state.view = view; render(); }
+        function setLang(lang) { 
+            state.lang = lang; 
+            document.documentElement.lang = lang; 
+            document.documentElement.dir = lang === 'ku' ? 'rtl' : 'ltr';
+            saveState(); 
+        }
+
+        function addItem(e) {
+            e.preventDefault();
+            const form = e.target;
+            const name = form.itemName.value.trim();
+            const store = form.itemStore.value;
+            const quantity = form.itemQty.value.trim();
+            const priceVal = form.itemPrice.value;
+            const dateVal = form.itemDate.value;
+
+            if (!name || !store) return;
+
+            // Simulate online price check if empty
+            let finalPrice = priceVal ? parseFloat(priceVal) : (Math.random() * 15 + 1).toFixed(2);
+            let isEstimated = !priceVal;
+
+            const newItem = {
+                id: Date.now().toString(),
+                name, store, quantity,
+                price: parseFloat(finalPrice),
+                isEstimated,
+                dueDate: dateVal || null,
+                addedBy: state.currentUser,
+                checked: false,
+                createdAt: Date.now()
+            };
+
+            state.items.push(newItem);
+            form.reset();
+            saveState();
+        }
+
+        function toggleItem(id) {
+            const item = state.items.find(i => i.id === id);
+            if (item) { item.checked = !item.checked; saveState(); }
+        }
+
+        function deleteItem(id) {
+            state.items = state.items.filter(i => i.id !== id);
+            saveState();
+        }
+
+        // --- HELPERS ---
+        function getTranslation() { return TRANSLATIONS[state.lang]; }
+        
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('de-CH', { style: 'currency', currency: 'CHF' }).format(amount);
+        }
+
+        function formatDateDisplay(dateString) {
+            if (!dateString) return '';
+            const t = getTranslation();
+            const date = new Date(dateString);
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            date.setHours(0,0,0,0);
+
+            const diffTime = date - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays < 0) return `<span class="text-red-600 font-bold">${t.overdue}</span>`;
+            if (diffDays === 0) return `<span class="text-warm-500 font-bold">${t.today}</span>`;
+            return date.toLocaleDateString(state.lang === 'ku' ? 'ar-IQ' : 'de-DE', { day: 'numeric', month: 'numeric' });
+        }
+
+        function getStoreName(storeKey) {
+            const t = getTranslation();
+            if (storeKey === 'Asian Market') return state.lang === 'ku' ? 'فرۆشگای ئاسیایی' : 'Asiatischer Laden';
+            if (storeKey === 'Kurdish Market') return state.lang === 'ku' ? 'فرۆشگای عەرەبی' : 'Kurdischer Laden';
+            if (storeKey === 'Online') return 'Online Shop';
+            if (storeKey === 'Other') return state.lang === 'ku' ? 'هیتر' : 'Sonstiges';
+            return storeKey;
+        }
+
+        // --- RENDER ---
+        function render() {
+            const app = document.getElementById('app');
+            const t = getTranslation();
+            document.documentElement.lang = state.lang;
+            document.documentElement.dir = state.lang === 'ku' ? 'rtl' : 'ltr';
+
+            // 1. LOGIN SCREEN
+            if (!state.currentUser) {
+                renderLogin(app, t);
+                return;
+            }
+
+            // 2. MAIN APP
+            let contentHtml = '';
+            
+            if (state.view === 'list') {
+                contentHtml = renderListView(t);
+            } else {
+                contentHtml = renderOverviewView(t);
+            }
+
+            app.innerHTML = `
+                <!-- Top Bar -->
+                <header class="flex-none bg-stone-50/80 backdrop-blur-md z-20 sticky top-0 border-b border-stone-200/50">
+                    <div class="max-w-xl mx-auto px-4 py-3 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full ${USERS.find(u => u.id === state.currentUser).color} flex items-center justify-center text-xs font-bold ring-2 ring-white shadow-sm uppercase">
+                                ${USERS.find(u => u.id === state.currentUser).name.charAt(0)}
+                            </div>
+                            <div>
+                                <h1 class="text-sm font-semibold tracking-tight text-stone-900 leading-none">${t.tabs[state.view]}</h1>
+                                <div class="flex items-center gap-1 mt-0.5">
+                                    <iconify-icon id="sync-icon" icon="solar:cloud-check-linear" class="text-stone-400 text-[10px]"></iconify-icon>
+                                    <span class="text-[10px] text-stone-400 font-medium">${t.synced}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                             <button onclick="setLang('${state.lang === 'de' ? 'ku' : 'de'}')" class="h-8 px-3 rounded-full bg-white border border-stone-200 text-stone-600 text-xs font-bold hover:bg-stone-50 transition-colors uppercase">
+                                ${state.lang === 'de' ? 'Ku' : 'De'}
+                            </button>
+                            <button onclick="setUser(null)" class="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-stone-200 text-stone-600 hover:text-red-500 transition-colors">
+                                <iconify-icon icon="solar:logout-2-linear" width="16"></iconify-icon>
+                            </button>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- Scroll Area -->
+                <main class="flex-1 overflow-y-auto no-scrollbar pb-32 bg-stone-50">
+                    <div class="max-w-xl mx-auto px-4 py-4 space-y-6">
+                        ${contentHtml}
+                    </div>
+                </main>
+
+                <!-- Bottom Navigation -->
+                <nav class="flex-none bg-white border-t border-stone-200 pb-safe z-30">
+                    <div class="max-w-xl mx-auto grid grid-cols-2 h-16">
+                        <button onclick="setView('list')" class="flex flex-col items-center justify-center gap-1 ${state.view === 'list' ? 'text-stone-900' : 'text-stone-400'}">
+                            <iconify-icon icon="${state.view === 'list' ? 'solar:cart-large-2-bold' : 'solar:cart-large-2-linear'}" width="24"></iconify-icon>
+                            <span class="text-[10px] font-medium tracking-wide">${t.tabs.list}</span>
+                        </button>
+                        <button onclick="setView('overview')" class="flex flex-col items-center justify-center gap-1 ${state.view === 'overview' ? 'text-stone-900' : 'text-stone-400'}">
+                            <iconify-icon icon="${state.view === 'overview' ? 'solar:chart-square-bold' : 'solar:chart-square-linear'}" width="24"></iconify-icon>
+                            <span class="text-[10px] font-medium tracking-wide">${t.tabs.overview}</span>
+                        </button>
+                    </div>
+                </nav>
+            `;
+        }
+
+        function renderLogin(app, t) {
+            app.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full p-6 max-w-md mx-auto w-full animate-[fadeIn_0.5s_ease-out]">
+                    <div class="flex justify-end w-full mb-8">
+                        <button onclick="setLang('${state.lang === 'de' ? 'ku' : 'de'}')" class="text-sm font-medium bg-white border border-stone-200 px-4 py-2 rounded-full shadow-sm uppercase">
+                            ${state.lang === 'de' ? 'کوردی' : 'Deutsch'}
+                        </button>
+                    </div>
+                    <div class="text-center mb-10">
+                        <div class="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-gradient-to-br from-stone-100 to-white border border-stone-200 shadow-xl mb-6">
+                             <iconify-icon icon="solar:users-group-rounded-linear" class="text-4xl text-stone-700"></iconify-icon>
+                        </div>
+                        <h1 class="text-2xl font-semibold tracking-tight text-stone-900">${t.welcome}</h1>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 w-full">
+                        ${USERS.map(u => `
+                            <button onclick="setUser('${u.id}')" class="group relative flex flex-col items-center justify-center p-6 bg-white rounded-2xl border border-stone-200 shadow-sm hover:border-stone-400 hover:shadow-md transition-all duration-300">
+                                <div class="w-14 h-14 rounded-full ${u.color} flex items-center justify-center text-xl font-bold mb-3 uppercase ring-4 ring-white shadow-sm group-hover:scale-110 transition-transform">
+                                    ${u.name.charAt(0)}
+                                </div>
+                                <span class="font-medium text-stone-800">${u.name}</span>
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderListView(t) {
+            const activeItems = state.items.filter(i => !i.checked).sort((a,b) => (a.dueDate || '9999') > (b.dueDate || '9999') ? 1 : -1);
+            const boughtItems = state.items.filter(i => i.checked);
+            
+            // Grouping logic can be maintained or simplified
+            const grouped = activeItems.reduce((acc, item) => {
+                if (!acc[item.store]) acc[item.store] = [];
+                acc[item.store].push(item);
+                return acc;
+            }, {});
+
+            return `
+                <!-- Add Form -->
+                <div class="bg-white rounded-2xl shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] border border-stone-100 p-4 transition-all">
+                    <form onsubmit="addItem(event)" class="space-y-3">
+                        <!-- Row 1: Name -->
+                        <div class="relative">
+                            <input type="text" name="itemName" placeholder="${t.productName}" class="w-full bg-stone-50 border-0 rounded-xl px-4 py-3 text-base placeholder-stone-400 focus:ring-1 focus:ring-stone-800 focus:bg-white transition-all" required autocomplete="off">
+                            <div class="absolute inset-y-0 right-3 flex items-center text-stone-400 rtl:right-auto rtl:left-3">
+                                <iconify-icon icon="solar:pen-linear"></iconify-icon>
+                            </div>
+                        </div>
+                        
+                        <!-- Row 2: Store & Quantity -->
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="relative">
+                                <select name="itemStore" class="w-full appearance-none bg-stone-50 border-0 rounded-xl px-4 py-3 text-sm text-stone-700 focus:ring-1 focus:ring-stone-800 focus:bg-white pr-8 rtl:pl-8" required>
+                                    <option value="" disabled selected>${t.selectStore}</option>
+                                    ${STORES.map(s => `<option value="${s}">${getStoreName(s)}</option>`).join('')}
+                                </select>
+                                <div class="absolute inset-y-0 right-3 flex items-center pointer-events-none text-stone-400 rtl:right-auto rtl:left-3">
+                                    <iconify-icon icon="solar:shop-linear"></iconify-icon>
+                                </div>
+                            </div>
+                            <input type="text" name="itemQty" placeholder="${t.quantity}" class="w-full bg-stone-50 border-0 rounded-xl px-4 py-3 text-sm text-stone-700 placeholder-stone-400 focus:ring-1 focus:ring-stone-800 focus:bg-white">
+                        </div>
+
+                        <!-- Row 3: Price & Date (New) -->
+                        <div class="grid grid-cols-2 gap-3">
+                             <div class="relative">
+                                <input type="number" step="0.05" name="itemPrice" placeholder="${t.price}" class="w-full bg-stone-50 border-0 rounded-xl px-4 py-3 text-sm text-stone-700 placeholder-stone-400 focus:ring-1 focus:ring-stone-800 focus:bg-white">
+                                <div class="absolute inset-y-0 right-3 flex items-center pointer-events-none text-stone-400 rtl:right-auto rtl:left-3">
+                                    <span class="text-xs font-bold">CHF</span>
+                                </div>
+                            </div>
+                            <div class="relative">
+                                <input type="date" name="itemDate" class="w-full bg-stone-50 border-0 rounded-xl px-4 py-3 text-xs text-stone-700 placeholder-stone-400 focus:ring-1 focus:ring-stone-800 focus:bg-white min-h-[44px]">
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="w-full bg-stone-900 text-white font-medium rounded-xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-lg shadow-stone-200/50 hover:bg-black">
+                            <iconify-icon icon="solar:add-circle-linear" width="20"></iconify-icon>
+                            ${t.add}
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Active Lists -->
+                ${Object.keys(grouped).length === 0 ? `
+                    <div class="flex flex-col items-center justify-center py-12 text-stone-400">
+                        <div class="w-16 h-16 rounded-full bg-stone-100 flex items-center justify-center mb-4">
+                             <iconify-icon icon="solar:bag-check-linear" class="text-3xl"></iconify-icon>
+                        </div>
+                        <p class="text-sm font-medium">${t.emptyList}</p>
+                    </div>
+                ` : ''}
+
+                <div class="space-y-6 pb-4">
+                    ${Object.keys(grouped).sort().map(storeName => `
+                        <div class="space-y-3">
+                            <h3 class="text-xs font-bold tracking-wider text-stone-400 uppercase px-1 flex items-center gap-2">
+                                ${getStoreName(storeName)}
+                            </h3>
+                            <div class="space-y-2">
+                                ${grouped[storeName].map(item => renderItemCard(item, t)).join('')}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <!-- Completed Items (Collapsed View style) -->
+                ${boughtItems.length > 0 ? `
+                    <div class="border-t border-stone-200 pt-6">
+                        <div class="flex items-center gap-2 mb-4 px-1 opacity-50">
+                            <iconify-icon icon="solar:check-circle-linear" class="text-stone-500"></iconify-icon>
+                            <span class="text-xs font-bold uppercase text-stone-500 tracking-wider">${t.bought} (${boughtItems.length})</span>
+                        </div>
+                         <div class="space-y-2 opacity-60 grayscale hover:grayscale-0 transition-all duration-300">
+                             ${boughtItems.map(item => renderItemCard(item, t)).join('')}
+                         </div>
+                    </div>
+                ` : ''}
+            `;
+        }
+
+        function renderItemCard(item, t) {
+            const user = USERS.find(u => u.id === item.addedBy);
+            const dateDisplay = formatDateDisplay(item.dueDate);
+            
+            return `
+            <div class="group relative bg-white rounded-xl p-3 shadow-sm border border-stone-100 flex items-center gap-3 transition-all ${item.checked ? 'bg-stone-50' : 'hover:border-stone-300'}">
+                
+                <!-- Checkbox -->
+                <button onclick="toggleItem('${item.id}')" class="flex-none w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${item.checked ? 'bg-stone-800 border-stone-800' : 'border-stone-300 hover:border-warm-500'}">
+                    ${item.checked ? '<iconify-icon icon="solar:check-read-linear" class="text-white text-[14px]"></iconify-icon>' : ''}
+                </button>
+
+                <!-- Content -->
+                <div class="flex-1 min-w-0 flex flex-col gap-1 cursor-pointer" onclick="toggleItem('${item.id}')">
+                    <div class="flex items-start justify-between gap-2">
+                        <p class="text-[15px] font-medium leading-tight ${item.checked ? 'line-through text-stone-400' : 'text-stone-800'}">
+                            ${item.name}
+                        </p>
+                        <div class="text-right flex flex-col items-end">
+                            <span class="text-sm font-semibold tracking-tight tabular-nums text-stone-900">
+                                ${item.isEstimated ? '<span class="text-stone-400 font-normal">~</span>' : ''}${formatCurrency(item.price)}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center flex-wrap gap-2 text-[11px]">
+                         <!-- Qty -->
+                        ${item.quantity ? `<span class="bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded border border-stone-200">${item.quantity}</span>` : ''}
+                        
+                        <!-- User -->
+                        <span class="flex items-center gap-1 bg-white border ${user ? user.border : 'border-stone-200'} px-1.5 py-0.5 rounded-md text-stone-600 shadow-sm">
+                            <span class="w-1.5 h-1.5 rounded-full ${user ? user.color.split(' ')[0] : 'bg-gray-300'}"></span>
+                            ${user ? user.name : '?'}
+                        </span>
+
+                        <!-- Date -->
+                        ${dateDisplay ? `
+                            <span class="flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-stone-100 bg-stone-50 text-stone-500">
+                                <iconify-icon icon="solar:calendar-linear" width="10"></iconify-icon>
+                                ${dateDisplay}
+                            </span>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <!-- Delete -->
+                <button onclick="deleteItem('${item.id}')" class="p-2 -mr-2 text-stone-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">
+                    <iconify-icon icon="solar:trash-bin-trash-linear" width="18"></iconify-icon>
+                </button>
+            </div>
+            `;
+        }
+
+        function renderOverviewView(t) {
+            const activeItems = state.items.filter(i => !i.checked);
+            const totalEst = activeItems.reduce((sum, i) => sum + (i.price || 0), 0);
+            
+            // Stats by Person (Pending)
+            const byPerson = USERS.map(u => {
+                const total = activeItems.filter(i => i.addedBy === u.id).reduce((sum, i) => sum + (i.price || 0), 0);
+                return { ...u, total };
+            }).sort((a,b) => b.total - a.total);
+
+            // Stats by Store (Pending)
+            const byStore = STORES.map(s => {
+                const total = activeItems.filter(i => i.store === s).reduce((sum, i) => sum + (i.price || 0), 0);
+                return { name: s, total };
+            }).filter(s => s.total > 0).sort((a,b) => b.total - a.total);
+
+            return `
+                <!-- Total Card -->
+                <div class="bg-stone-900 text-white rounded-2xl p-6 shadow-xl shadow-stone-200">
+                    <div class="flex items-center gap-2 text-stone-400 mb-1">
+                        <iconify-icon icon="solar:wallet-linear"></iconify-icon>
+                        <span class="text-xs font-medium uppercase tracking-wider">${t.totalEst}</span>
+                    </div>
+                    <div class="text-4xl font-bold tracking-tight font-sans">
+                        ${formatCurrency(totalEst)}
+                    </div>
+                    <div class="mt-4 flex gap-2">
+                        <span class="text-xs bg-white/10 px-2 py-1 rounded-md">${activeItems.length} items</span>
+                    </div>
+                </div>
+
+                <!-- By Person Chart -->
+                <div>
+                    <h3 class="text-sm font-bold text-stone-900 mb-3">${t.byPerson}</h3>
+                    <div class="space-y-3">
+                        ${byPerson.map(u => {
+                            const percent = totalEst > 0 ? (u.total / totalEst) * 100 : 0;
+                            if (percent === 0) return '';
+                            return `
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 rounded-full ${u.color} flex items-center justify-center text-xs font-bold border-2 border-white shadow-sm">
+                                        ${u.name.charAt(0)}
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span class="font-medium text-stone-700">${u.name}</span>
+                                            <span class="font-bold text-stone-900">${formatCurrency(u.total)}</span>
+                                        </div>
+                                        <div class="h-1.5 w-full bg-stone-100 rounded-full overflow-hidden">
+                                            <div class="h-full bg-stone-800 rounded-full progress-bar" style="width: ${percent}%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+
+                <!-- By Store List -->
+                <div>
+                    <h3 class="text-sm font-bold text-stone-900 mb-3">${t.byStore}</h3>
+                    <div class="bg-white rounded-xl border border-stone-100 divide-y divide-stone-50 overflow-hidden">
+                        ${byStore.map(s => `
+                            <div class="flex items-center justify-between p-3">
+                                <span class="text-sm font-medium text-stone-600">${getStoreName(s.name)}</span>
+                                <span class="text-sm font-semibold text-stone-900 tabular-nums">${formatCurrency(s.total)}</span>
+                            </div>
+                        `).join('')}
+                        ${byStore.length === 0 ? `<div class="p-4 text-center text-xs text-stone-400">Keine Daten</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+    </script>
+
+    <div class="flex flex-col h-full" id="app"></div>
+
+</body>
+</html>

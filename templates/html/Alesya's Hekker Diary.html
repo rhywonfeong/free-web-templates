@@ -1,0 +1,208 @@
+<html lang="en"><head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Velvet Pages | Sketch &amp; Write</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+<style>
+:root { --accent: #9168b7; --paper: #fdfcf8; }
+body {
+background: #0f0f14; color: white; font-family: 'Outfit', sans-serif;
+margin: 0; height: 100vh; overflow: hidden; touch-action: none;
+}
+#book {
+perspective: 2000px; height: 70vh; width: 100vw;
+display: flex; align-items: center; justify-content: center;
+margin-top: 5vh; position: relative;
+}
+.page {
+position: absolute; width: 85vw; max-width: 340px; height: 60vh;
+background: var(--paper); color: #2d3436; border-radius: 4px 15px 15px 4px;
+box-shadow: -10px 10px 30px rgba(0,0,0,0.5);
+transition: transform 0.6s cubic-bezier(0.15, 0.85, 0.35, 1);
+transform-origin: left center; overflow: hidden;
+}
+.page.turned { transform: rotateY(-170deg); opacity: 0; pointer-events: none; }
+canvas { position: absolute; top: 0; left: 0; touch-action: none; cursor: crosshair; }
+.toolbar {
+background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(15px);
+border-top: 1px solid rgba(255, 255, 255, 0.1);
+padding: 15px; position: fixed; bottom: 0; width: 100%; z-index: 100;
+}
+.color-dot { width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
+.color-dot.active { border-color: white; transform: scale(1.2); }
+</style></head>
+<body>
+
+    <header class="p-6 flex justify-between items-center relative z-50">
+        <div>
+            <h1 class="text-lg font-bold">Velvet Pages</h1>
+            <p class="text-[9px] uppercase tracking-widest opacity-40">Portrait Sketchbook</p>
+        </div>
+        <div class="flex gap-4">
+             <button onclick="clearCanvas()" class="text-[10px] opacity-40 uppercase">Clear Page</button>
+             <button onclick="resetDiary()" class="text-[10px] text-red-400 uppercase">Reset Book</button>
+        </div>
+    </header>
+
+    <div id="book">
+        </div>
+
+    <div class="toolbar">
+        <div class="max-w-md mx-auto flex flex-col gap-4">
+            <div class="flex justify-center gap-4 items-center">
+                <div class="color-dot active" style="background: #2d3436;" onclick="setColor('#2d3436', this)"></div>
+                <div class="color-dot" style="background: #9168b7;" onclick="setColor('#9168b7', this)"></div>
+                <div class="color-dot" style="background: #e74c3c;" onclick="setColor('#e74c3c', this)"></div>
+                <div class="color-dot" style="background: #2ecc71;" onclick="setColor('#2ecc71', this)"></div>
+                <div class="color-dot" style="background: #3498db;" onclick="setColor('#3498db', this)"></div>
+            </div>
+            
+            <div class="flex justify-between items-center px-4">
+                <p class="text-[10px] opacity-40 uppercase tracking-tighter">Swipe edges to turn</p>
+                <button onclick="addNewPage()" class="bg-[#9168b7] px-6 py-2 rounded-full text-xs font-bold shadow-lg">Add New Page</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentColor = '#2d3436';
+        let isDrawing = false;
+        let pagesData = JSON.parse(localStorage.getItem('velvet_sketches')) || [];
+
+        function init() {
+            if (pagesData.length === 0) pagesData.push(""); // Start with one blank page
+            renderBook();
+        }
+
+        function renderBook() {
+            const container = document.getElementById('book');
+            container.innerHTML = '';
+
+            pagesData.forEach((data, i) => {
+                const div = document.createElement('div');
+                div.className = 'page';
+                div.style.zIndex = pagesData.length - i;
+                
+                const canvas = document.createElement('canvas');
+                canvas.id = `canvas-${i}`;
+                div.appendChild(canvas);
+                
+                // Page Header
+                const info = document.createElement('div');
+                info.className = 'absolute top-4 left-4 pointer-events-none opacity-20 text-[10px] uppercase font-bold';
+                info.innerText = `Page ${i + 1}`;
+                div.appendChild(info);
+
+                container.appendChild(div);
+                setupCanvas(canvas, data, i);
+                setupGestures(div, i);
+            });
+        }
+
+        function setupCanvas(canvas, savedData, index) {
+            const ctx = canvas.getContext('2d');
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+
+            if (savedData) {
+                const img = new Image();
+                img.onload = () => ctx.drawImage(img, 0, 0);
+                img.src = savedData;
+            }
+
+            const startDraw = (e) => {
+                isDrawing = true;
+                ctx.beginPath();
+                const pos = getPos(e, canvas);
+                ctx.moveTo(pos.x, pos.y);
+            };
+
+            const draw = (e) => {
+                if (!isDrawing) return;
+                const pos = getPos(e, canvas);
+                ctx.lineTo(pos.x, pos.y);
+                ctx.strokeStyle = currentColor;
+                ctx.lineWidth = 1.5;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            };
+
+            const endDraw = () => {
+                if (!isDrawing) return;
+                isDrawing = false;
+                savePage(index, canvas.toDataURL());
+            };
+
+            canvas.addEventListener('mousedown', startDraw);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', endDraw);
+            canvas.addEventListener('touchstart', (e) => { startDraw(e.touches[0]); e.preventDefault(); });
+            canvas.addEventListener('touchmove', (e) => { draw(e.touches[0]); e.preventDefault(); });
+            canvas.addEventListener('touchend', endDraw);
+        }
+
+        function getPos(e, canvas) {
+            const rect = canvas.getBoundingClientRect();
+            return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        }
+
+        function setupGestures(pageElement, index) {
+            const mc = new Hammer(pageElement);
+            // We only trigger flip if swiping from the right edge to avoid drawing interference
+            mc.on("swipeleft", (e) => {
+                if (e.center.x > window.innerWidth * 0.5) pageElement.classList.add('turned');
+            });
+            mc.on("swiperight", () => {
+                const prev = pageElement.previousElementSibling;
+                if (prev) prev.classList.remove('turned');
+            });
+        }
+
+        function setColor(color, el) {
+            currentColor = color;
+            document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
+            el.classList.add('active');
+        }
+
+        function addNewPage() {
+            pagesData.push("");
+            saveAll();
+            renderBook();
+        }
+
+        function savePage(index, data) {
+            pagesData[index] = data;
+            saveAll();
+        }
+
+        function saveAll() {
+            localStorage.setItem('velvet_sketches', JSON.stringify(pagesData));
+        }
+
+        function clearCanvas() {
+            const activePageIdx = [...document.querySelectorAll('.page')].filter(p => !p.classList.contains('turned')).length - 1;
+            const canvas = document.getElementById(`canvas-${activePageIdx}`);
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                savePage(activePageIdx, "");
+            }
+        }
+
+        function resetDiary() {
+            if(confirm("Erase your entire book?")) {
+                localStorage.removeItem('velvet_sketches');
+                pagesData = [""];
+                renderBook();
+            }
+        }
+
+        window.onload = init;
+    </script>
+
+</body></html>

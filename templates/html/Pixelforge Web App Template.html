@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pixel Physics App</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+body {
+font-family: 'Inter', sans-serif;
+background-color: #000000;
+color: #e5e5e5;
+}
+::-webkit-scrollbar { width: 0; height: 0; }
+.pixel-cell {
+width: 100%;
+aspect-ratio: 1 / 1;
+min-width: 0;
+min-height: 0;
+background-color: transparent;
+border-right: 1px solid #1f1f1f;
+border-bottom: 1px solid #1f1f1f;
+cursor: crosshair;
+}
+.pixel-cell.active-cell:hover {
+background-color: #1f1f1f;
+}
+#draw-grid {
+display: grid;
+border-top: 1px solid #1f1f1f;
+border-left: 1px solid #1f1f1f;
+width: 100%;
+max-width: 480px;
+background-color: #050505;
+}
+.color-swatch {
+width: 28px;
+height: 28px;
+cursor: pointer;
+border: 1px solid #333;
+transition: none;
+}
+.color-swatch.active {
+border: 1px solid #fff;
+outline: 2px solid #fff;
+outline-offset: 2px;
+z-index: 10;
+}
+.color-swatch.eraser {
+background: repeating-linear-gradient(
+45deg,
+#111,
+#111 4px,
+#222 4px,
+#222 8px
+);
+display: flex;
+align-items: center;
+justify-content: center;
+}
+.view-container {
+transition: opacity 0.2s ease;
+}
+.view-hidden {
+opacity: 0;
+pointer-events: none;
+transform: translateY(10px);
+}
+.view-active {
+opacity: 1;
+pointer-events: auto;
+transform: translateY(0);
+}
+canvas {
+display: block;
+width: 100%;
+height: 100%;
+background: repeating-linear-gradient(
+0deg,
+transparent,
+transparent 39px,
+#0a0a0a 39px,
+#0a0a0a 40px
+),
+repeating-linear-gradient(
+90deg,
+transparent,
+transparent 39px,
+#0a0a0a 39px,
+#0a0a0a 40px
+);
+background-color: #000;
+}
+/* Custom select options styling */
+select option {
+background-color: #000;
+color: #fff;
+}
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body class="h-screen w-screen overflow-hidden flex flex-col antialiased selection:bg-white selection:text-black">
+    <!-- Header -->
+    <header class="flex-none h-14 border-b border-neutral-800 flex items-center justify-between px-6 bg-black z-50">
+      <div class="flex items-center gap-3">
+        <iconify-icon icon="solar:box-minimalistic-linear" class="text-white text-xl" stroke-width="1.5"></iconify-icon>
+        <h1 class="text-lg font-medium tracking-tighter text-white uppercase">
+          PIXELFORGE
+        </h1>
+      </div>
+      <div class="text-xs text-neutral-500 uppercase tracking-widest hidden sm:block">
+        Draw // Simulate // Destroy
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative overflow-hidden bg-black">
+      <!-- DRAWING VIEW -->
+      <div id="view-draw" class="view-container view-active absolute inset-0 flex flex-col items-center justify-center p-6 z-20 overflow-y-auto">
+        <div class="w-full max-w-2xl flex flex-col items-center gap-8 my-auto">
+          <div class="text-center space-y-2">
+            <h2 class="text-2xl font-medium tracking-tighter text-white uppercase">
+              Design Entity
+            </h2>
+            <p class="text-sm text-neutral-500 uppercase tracking-wide">
+              Paint grid. Leave spaces raw.
+            </p>
+          </div>
+
+          <!-- Layout Box -->
+          <div class="flex flex-col gap-4 w-full">
+            
+            <!-- Shape Selection Row -->
+            <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2 w-full pl-0 sm:pl-[72px]">
+                <div class="flex items-center gap-1">
+                    <button class="shape-btn px-4 py-2 border border-neutral-800 text-xs font-medium tracking-widest uppercase transition-none bg-white text-black" data-shape="square">Square</button>
+                    <!-- Resolution Selector -->
+                    <div id="square-res-wrapper" class="relative h-full hidden">
+                        <select id="square-res-select" class="appearance-none bg-black border border-neutral-800 text-neutral-500 hover:text-white hover:border-neutral-500 text-xs font-medium tracking-widest uppercase px-3 py-2 pr-7 cursor-pointer outline-none transition-none h-full">
+                            <option value="16">16x16</option>
+                            <option value="32">32x32</option>
+                            <option value="64">64x64</option>
+                        </select>
+                        <iconify-icon icon="solar:alt-arrow-down-linear" class="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none text-sm"></iconify-icon>
+                    </div>
+                </div>
+                <button class="shape-btn px-4 py-2 border border-neutral-800 text-xs font-medium tracking-widest uppercase transition-none text-neutral-500 hover:text-white hover:border-neutral-500" data-shape="rectangle">Rect</button>
+                <button class="shape-btn px-4 py-2 border border-neutral-800 text-xs font-medium tracking-widest uppercase transition-none text-neutral-500 hover:text-white hover:border-neutral-500" data-shape="circle">Circle</button>
+                <button class="shape-btn px-4 py-2 border border-neutral-800 text-xs font-medium tracking-widest uppercase transition-none text-neutral-500 hover:text-white hover:border-neutral-500" data-shape="star">Star</button>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center sm:items-start gap-0 sm:gap-6 w-full justify-center">
+                <!-- Tools/Palette Sidebar -->
+                <div class="flex sm:flex-col items-center gap-4 p-4 bg-black border border-neutral-800 order-2 sm:order-1 w-full sm:w-auto h-auto sm:h-fit">
+                <!-- Drawing Tools -->
+                <div class="flex sm:flex-col gap-2 w-full justify-center">
+                    <button id="tool-draw" class="w-8 h-8 flex items-center justify-center border border-neutral-800 transition-none" title="Pen Tool">
+                    <iconify-icon icon="solar:pen-linear" class="text-sm" stroke-width="1.5"></iconify-icon>
+                    </button>
+                    <button id="tool-fill" class="w-8 h-8 flex items-center justify-center border border-neutral-800 transition-none" title="Fill Tool">
+                    <iconify-icon icon="solar:paint-roller-linear" class="text-sm" stroke-width="1.5"></iconify-icon>
+                    </button>
+                </div>
+                
+                <div class="w-px h-6 sm:w-8 sm:h-px bg-neutral-800 my-0 sm:my-2"></div>
+
+                <!-- Colors -->
+                <div id="palette-container" class="flex sm:flex-col gap-2 flex-wrap justify-center max-w-[150px] sm:max-w-none">
+                    <!-- Populated by JS -->
+                </div>
+                
+                <div class="w-px h-6 sm:w-8 sm:h-px bg-neutral-800 my-0 sm:my-2"></div>
+                
+                <!-- Eraser -->
+                <div class="color-swatch eraser group relative flex-shrink-0" data-color="null" title="Eraser">
+                    <iconify-icon icon="solar:eraser-linear" class="text-neutral-500 group-hover:text-white transition-none text-sm" stroke-width="1.5"></iconify-icon>
+                </div>
+                
+                <div class="w-px h-6 sm:w-8 sm:h-px bg-neutral-800 my-0 sm:my-2 hidden sm:block"></div>
+                
+                <!-- Actions -->
+                <div class="flex sm:flex-col gap-2 w-full justify-center">
+                    <label class="w-8 h-8 flex items-center justify-center border border-neutral-800 hover:bg-white text-neutral-500 hover:text-black transition-none cursor-pointer" title="Upload Image">
+                    <input type="file" id="image-upload" accept="image/*" class="sr-only">
+                    <iconify-icon icon="solar:upload-minimalistic-linear" class="text-sm" stroke-width="1.5"></iconify-icon>
+                    </label>
+                    <button id="btn-clear-grid" class="w-8 h-8 flex items-center justify-center border border-neutral-800 hover:bg-white text-neutral-500 hover:text-black transition-none" title="Clear Grid">
+                    <iconify-icon icon="solar:trash-bin-trash-linear" class="text-sm" stroke-width="1.5"></iconify-icon>
+                    </button>
+                </div>
+                </div>
+
+                <!-- Canvas Grid Container -->
+                <div class="p-4 bg-black border border-neutral-800 order-1 sm:order-2 w-full max-w-[480px] mb-6 sm:mb-0 flex items-center justify-center">
+                <div id="draw-grid">
+                    <!-- Populated by JS -->
+                </div>
+                </div>
+            </div>
+          </div>
+
+          <button id="btn-generate" class="px-8 py-4 bg-black border border-white text-white text-xs font-medium uppercase tracking-widest hover:bg-white hover:text-black transition-none flex items-center gap-3">
+            <span>Initialize Physics</span>
+            <iconify-icon icon="solar:play-linear" class="text-base" stroke-width="1.5"></iconify-icon>
+          </button>
+        </div>
+      </div>
+
+      <!-- PHYSICS VIEW -->
+      <div id="view-physics" class="view-container view-hidden absolute inset-0 z-10">
+        <!-- Physics Toolbar overlay -->
+        <div class="absolute top-6 left-0 right-0 flex justify-center items-center gap-4 z-30 px-6 flex-wrap">
+          <button id="btn-back" class="px-5 py-3 bg-black border border-neutral-800 text-white text-xs uppercase tracking-widest font-medium hover:bg-white hover:text-black transition-none flex items-center gap-2">
+            <iconify-icon icon="solar:alt-arrow-left-linear" class="text-base" stroke-width="1.5"></iconify-icon>
+            Editor
+          </button>
+          
+          <div class="flex items-center gap-3 px-5 py-3 bg-black border border-neutral-800">
+            <label class="flex items-center gap-3 cursor-pointer group">
+              <div class="relative flex items-center">
+                <input type="checkbox" id="toggle-explode" class="sr-only peer">
+                <div class="w-4 h-4 border border-neutral-500 bg-black peer-checked:bg-white peer-checked:border-white transition-none"></div>
+                <iconify-icon icon="solar:check-linear" class="absolute inset-0 text-black text-sm opacity-0 peer-checked:opacity-100 pointer-events-none" stroke-width="2"></iconify-icon>
+              </div>
+              <span class="text-xs uppercase tracking-widest font-medium text-neutral-500 group-hover:text-white transition-none select-none">Auto-Explode</span>
+            </label>
+          </div>
+
+          <button id="btn-explode" class="px-5 py-3 bg-black border border-red-900 text-red-500 text-xs uppercase tracking-widest font-medium hover:bg-red-600 hover:text-white hover:border-red-600 transition-none flex items-center gap-2">
+            <iconify-icon icon="solar:bomb-minimalistic-linear" class="text-base" stroke-width="1.5"></iconify-icon>
+            Detonate
+          </button>
+        </div>
+
+        <!-- Hint text -->
+        <div class="absolute bottom-8 left-0 right-0 text-center pointer-events-none z-30">
+          <span class="px-4 py-2 bg-black border border-neutral-800 text-neutral-500 text-xs uppercase tracking-widest">
+            Drag structure to manipulate
+          </span>
+        </div>
+
+        <!-- Matter.js Canvas Container -->
+        <div id="canvas-container" class="w-full h-full cursor-crosshair"></div>
+      </div>
+    </main>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+          // --- STATE & CONSTANTS ---
+          let GRID_COLS = 16;
+          let GRID_ROWS = 16;
+          let currentShape = 'square';
+          let squareRes = 16;
+          let gridData = [];
+          
+          const gridEl = document.getElementById('draw-grid');
+          const paletteEl = document.getElementById('palette-container');
+          const btnGenerate = document.getElementById('btn-generate');
+          const btnClear = document.getElementById('btn-clear-grid');
+          const imageUpload = document.getElementById('image-upload');
+          
+          const toolDraw = document.getElementById('tool-draw');
+          const toolFill = document.getElementById('tool-fill');
+          const shapeBtns = document.querySelectorAll('.shape-btn');
+          const squareResWrapper = document.getElementById('square-res-wrapper');
+          const squareResSelect = document.getElementById('square-res-select');
+
+          let isDrawing = false;
+          let currentColor = '#ef4444'; 
+          let activeTool = 'draw'; 
+
+          // --- TOOLS & PALETTE ---
+          function setTool(tool) {
+              activeTool = tool;
+              toolDraw.classList.remove('bg-white', 'text-black', 'border-white');
+              toolDraw.classList.add('text-neutral-500', 'border-neutral-800', 'hover:text-white');
+              toolFill.classList.remove('bg-white', 'text-black', 'border-white');
+              toolFill.classList.add('text-neutral-500', 'border-neutral-800', 'hover:text-white');
+              const activeEl = tool === 'draw' ? toolDraw : toolFill;
+              activeEl.classList.remove('text-neutral-500', 'border-neutral-800', 'hover:text-white');
+              activeEl.classList.add('bg-white', 'text-black', 'border-white');
+          }
+
+          toolDraw.addEventListener('click', () => setTool('draw'));
+          toolFill.addEventListener('click', () => setTool('fill'));
+          setTool('draw');
+
+          const colors = [
+              '#ffffff', '#a3a3a3', '#ef4444', '#ea580c', '#ca8a04', '#16a34a', '#2563eb', '#9333ea'
+          ];
+
+          colors.forEach((color, index) => {
+              const swatch = document.createElement('div');
+              swatch.className = `color-swatch ${index === 2 ? 'active' : ''}`;
+              swatch.style.backgroundColor = color;
+              swatch.dataset.color = color;
+              swatch.addEventListener('click', () => selectColor(color, swatch));
+              paletteEl.appendChild(swatch);
+          });
+
+          const customColorWrapper = document.createElement('label');
+          customColorWrapper.className = 'color-swatch flex items-center justify-center relative overflow-hidden cursor-pointer';
+          customColorWrapper.title = 'Custom Color Picker';
+          customColorWrapper.style.background = 'conic-gradient(from 90deg, #ef4444, #ea580c, #ca8a04, #16a34a, #2563eb, #9333ea, #ef4444)';
+
+          const customColorIcon = document.createElement('div');
+          customColorIcon.className = 'z-10 pointer-events-none flex items-center justify-center mix-blend-difference text-white';
+          customColorIcon.innerHTML = '<iconify-icon icon="solar:palette-linear" class="text-xs" stroke-width="1.5"></iconify-icon>';
+
+          const customColorInput = document.createElement('input');
+          customColorInput.type = 'color';
+          customColorInput.value = '#000000';
+          customColorInput.className = 'absolute inset-0 w-full h-full opacity-0 cursor-pointer';
+
+          customColorWrapper.appendChild(customColorIcon);
+          customColorWrapper.appendChild(customColorInput);
+          paletteEl.appendChild(customColorWrapper);
+
+          customColorInput.addEventListener('input', (e) => {
+              const newColor = e.target.value;
+              customColorWrapper.style.background = newColor;
+              selectColor(newColor, customColorWrapper);
+          });
+          
+          customColorInput.addEventListener('click', (e) => {
+              selectColor(customColorInput.value, customColorWrapper);
+          });
+
+          document.querySelector('.color-swatch.eraser').addEventListener('click', function() {
+              selectColor(null, this);
+          });
+
+          function selectColor(color, element) {
+              currentColor = color;
+              document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+              element.classList.add('active');
+          }
+
+          // --- GRID GENERATION & SHAPES ---
+          function inShape(c, r, shape, cols, rows) {
+              if (shape === 'square' || shape === 'rectangle') return true;
+
+              const cx = cols / 2 - 0.5;
+              const cy = rows / 2 - 0.5;
+              const dx = c - cx;
+              const dy = r - cy;
+
+              if (shape === 'circle') {
+                  const radius = cols / 2;
+                  return Math.sqrt(dx*dx + dy*dy) <= radius;
+              }
+
+              if (shape === 'star') {
+                  const angle = Math.atan2(dy, dx);
+                  const radius = Math.sqrt(dx*dx + dy*dy);
+                  const points = 5;
+                  const outerR = cols / 2;
+                  const innerR = (cols / 2) * 0.45;
+                  const p = (angle + Math.PI / 2) / (Math.PI * 2 / points);
+                  const pMod = p - Math.floor(p);
+                  const sweep = Math.abs(pMod - 0.5) * 2;
+                  const maxR = innerR + (outerR - innerR) * sweep;
+                  return radius <= maxR + 0.5;
+              }
+              return true;
+          }
+
+          squareResSelect.addEventListener('change', (e) => {
+              squareRes = parseInt(e.target.value);
+              if (currentShape === 'square') {
+                  initGrid('square');
+              }
+          });
+
+          function initGrid(shape) {
+              currentShape = shape;
+              
+              if (shape === 'square') {
+                  GRID_COLS = squareRes;
+                  GRID_ROWS = squareRes;
+                  squareResWrapper.classList.remove('hidden');
+              } else {
+                  squareResWrapper.classList.add('hidden');
+                  if (shape === 'rectangle') {
+                      GRID_COLS = 20;
+                      GRID_ROWS = 12;
+                  } else {
+                      GRID_COLS = 16;
+                      GRID_ROWS = 16;
+                  }
+              }
+
+              gridEl.style.gridTemplateColumns = `repeat(${GRID_COLS}, 1fr)`;
+              gridEl.style.aspectRatio = `${GRID_COLS} / ${GRID_ROWS}`;
+              gridEl.innerHTML = '';
+              gridData = Array(GRID_COLS * GRID_ROWS).fill(null);
+
+              for (let i = 0; i < GRID_COLS * GRID_ROWS; i++) {
+                  const c = i % GRID_COLS;
+                  const r = Math.floor(i / GRID_COLS);
+
+                  const cell = document.createElement('div');
+                  cell.className = 'pixel-cell relative';
+                  cell.dataset.index = i;
+
+                  const inner = document.createElement('div');
+                  inner.className = 'absolute inset-0';
+                  cell.appendChild(inner);
+
+                  if (!inShape(c, r, shape, GRID_COLS, GRID_ROWS)) {
+                      cell.classList.add('opacity-0', 'pointer-events-none');
+                  } else {
+                      cell.classList.add('active-cell');
+                      cell.addEventListener('mousedown', () => {
+                          if (activeTool === 'fill') {
+                              floodFill(i);
+                          } else {
+                              isDrawing = true;
+                              paintCell(cell, inner, i);
+                          }
+                      });
+                      cell.addEventListener('mouseenter', () => {
+                          if (isDrawing && activeTool === 'draw') paintCell(cell, inner, i);
+                      });
+                  }
+
+                  gridEl.appendChild(cell);
+              }
+
+              // Update shape UI buttons
+              shapeBtns.forEach(btn => {
+                  if (btn.dataset.shape === shape) {
+                      btn.classList.add('bg-white', 'text-black');
+                      btn.classList.remove('text-neutral-500', 'hover:border-neutral-500');
+                  } else {
+                      btn.classList.remove('bg-white', 'text-black');
+                      btn.classList.add('text-neutral-500', 'hover:border-neutral-500');
+                  }
+              });
+          }
+
+          shapeBtns.forEach(btn => {
+              btn.addEventListener('click', () => {
+                  initGrid(btn.dataset.shape);
+              });
+          });
+
+          // Initialize Default Grid
+          initGrid('square');
+
+          document.addEventListener('mouseup', () => isDrawing = false);
+          gridEl.addEventListener('dragstart', e => e.preventDefault());
+
+          function paintCell(cell, inner, index) {
+              gridData[index] = currentColor;
+              if (currentColor) {
+                  inner.style.backgroundColor = currentColor;
+              } else {
+                  inner.style.backgroundColor = 'transparent';
+              }
+          }
+
+          function floodFill(startIndex) {
+              const originalColor = gridData[startIndex];
+              if (originalColor === currentColor) return;
+              
+              const queue = [startIndex];
+              const visited = new Set([startIndex]);
+              
+              while(queue.length > 0) {
+                  const idx = queue.shift();
+                  
+                  const cell = gridEl.children[idx];
+                  const inner = cell.firstChild;
+                  paintCell(cell, inner, idx);
+                  
+                  const r = Math.floor(idx / GRID_COLS);
+                  const c = idx % GRID_COLS;
+                  
+                  const neighbors = [];
+                  if (r > 0) neighbors.push(idx - GRID_COLS);
+                  if (r < GRID_ROWS - 1) neighbors.push(idx + GRID_COLS);
+                  if (c > 0) neighbors.push(idx - 1);
+                  if (c < GRID_COLS - 1) neighbors.push(idx + 1);
+                  
+                  for (const n of neighbors) {
+                      const nc = n % GRID_COLS;
+                      const nr = Math.floor(n / GRID_COLS);
+                      
+                      if (!visited.has(n) && gridData[n] === originalColor && inShape(nc, nr, currentShape, GRID_COLS, GRID_ROWS)) {
+                          visited.add(n);
+                          queue.push(n);
+                      }
+                  }
+              }
+          }
+
+          btnClear.addEventListener('click', () => {
+              gridData.fill(null);
+              document.querySelectorAll('.pixel-cell > div').forEach(inner => {
+                  inner.style.backgroundColor = 'transparent';
+              });
+          });
+
+          imageUpload.addEventListener('change', (e) => {
+              const file = e.target.files[0];
+              if (!file) return;
+
+              const reader = new FileReader();
+              reader.onload = (event) => {
+                  const img = new Image();
+                  img.onload = () => {
+                      const tempCanvas = document.createElement('canvas');
+                      tempCanvas.width = GRID_COLS;
+                      tempCanvas.height = GRID_ROWS;
+                      const ctx = tempCanvas.getContext('2d');
+                      
+                      const imgAspect = img.width / img.height;
+                      const gridAspect = GRID_COLS / GRID_ROWS;
+                      
+                      let drawWidth, drawHeight, startX, startY;
+                      if (imgAspect > gridAspect) {
+                          drawHeight = img.height;
+                          drawWidth = img.height * gridAspect;
+                          startX = (img.width - drawWidth) / 2;
+                          startY = 0;
+                      } else {
+                          drawWidth = img.width;
+                          drawHeight = img.width / gridAspect;
+                          startX = 0;
+                          startY = (img.height - drawHeight) / 2;
+                      }
+                      
+                      ctx.drawImage(img, startX, startY, drawWidth, drawHeight, 0, 0, GRID_COLS, GRID_ROWS);
+                      const imageData = ctx.getImageData(0, 0, GRID_COLS, GRID_ROWS).data;
+                      
+                      for (let i = 0; i < GRID_COLS * GRID_ROWS; i++) {
+                          const c = i % GRID_COLS;
+                          const r = Math.floor(i / GRID_COLS);
+                          
+                          if (!inShape(c, r, currentShape, GRID_COLS, GRID_ROWS)) continue;
+
+                          const rColor = imageData[i * 4];
+                          const gColor = imageData[i * 4 + 1];
+                          const bColor = imageData[i * 4 + 2];
+                          const aColor = imageData[i * 4 + 3];
+                          
+                          const cell = gridEl.children[i];
+                          const inner = cell.firstChild;
+                          
+                          if (aColor > 128) {
+                              const hex = "#" + (1 << 24 | rColor << 16 | gColor << 8 | bColor).toString(16).slice(1);
+                              gridData[i] = hex;
+                              inner.style.backgroundColor = hex;
+                          } else {
+                              gridData[i] = null;
+                              inner.style.backgroundColor = 'transparent';
+                          }
+                      }
+                      e.target.value = '';
+                  };
+                  img.src = event.target.result;
+              };
+              reader.readAsDataURL(file);
+          });
+
+          // --- PHYSICS LOGIC (THREE.JS) ---
+          const canvasContainer = document.getElementById('canvas-container');
+          const toggleExplode = document.getElementById('toggle-explode');
+          
+          let scene, camera, renderer, animationId;
+          let pixelBlocks = [];
+          let entityGroup;
+          let isExploded = false;
+          let autoExplode = false;
+          let currentBlockSize = 1;
+
+          toggleExplode.addEventListener('change', (e) => {
+              autoExplode = e.target.checked;
+          });
+
+          let entityVelocity = new THREE.Vector3(0, 0, 0);
+          let entityAngularVelocity = new THREE.Vector3(0, 0, 0);
+          let raycaster = new THREE.Raycaster();
+          let pointer = new THREE.Vector2();
+          let dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+          let dragOffset = new THREE.Vector3();
+          let isYoinking = false;
+
+          function initPhysics() {
+              if(scene) return;
+
+              scene = new THREE.Scene();
+              camera = new THREE.PerspectiveCamera(45, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 1000);
+              
+              // We lock the camera distance because blocks are dynamically scaled to fill the physical space seamlessly
+              camera.position.set(0, 0, 45);
+
+              renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false }); 
+              renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+              renderer.setPixelRatio(window.devicePixelRatio);
+              canvasContainer.innerHTML = '';
+              canvasContainer.appendChild(renderer.domElement);
+
+              const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+              scene.add(ambientLight);
+
+              const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+              dirLight.position.set(10, 20, 10);
+              scene.add(dirLight);
+
+              const floorGeo = new THREE.PlaneGeometry(200, 200);
+              const floorMat = new THREE.MeshBasicMaterial({ visible: false });
+              const floor = new THREE.Mesh(floorGeo, floorMat);
+              floor.rotation.x = -Math.PI / 2;
+              floor.position.y = -15;
+              scene.add(floor);
+
+              renderer.domElement.addEventListener('pointerdown', (e) => {
+                  if (isExploded || !entityGroup) return;
+
+                  const rect = canvasContainer.getBoundingClientRect();
+                  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+                  raycaster.setFromCamera(pointer, camera);
+                  const intersects = raycaster.intersectObjects(entityGroup.children);
+
+                  if (intersects.length > 0) {
+                      isYoinking = true;
+                      raycaster.ray.intersectPlane(dragPlane, dragOffset);
+                      dragOffset.sub(entityGroup.position);
+                      entityVelocity.set(0, 0, 0);
+                      entityAngularVelocity.set(0, 0, 0);
+                  }
+              });
+
+              window.addEventListener('pointermove', (e) => {
+                  if (!isYoinking || isExploded || !entityGroup) return;
+
+                  const rect = canvasContainer.getBoundingClientRect();
+                  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+                  raycaster.setFromCamera(pointer, camera);
+                  const target = new THREE.Vector3();
+                  if (raycaster.ray.intersectPlane(dragPlane, target)) {
+                      const newPos = target.sub(dragOffset);
+                      
+                      entityVelocity.copy(newPos).sub(entityGroup.position);
+                      if (entityVelocity.length() > 3) entityVelocity.setLength(3);
+                      entityGroup.position.copy(newPos);
+                      
+                      entityAngularVelocity.x = entityVelocity.y * 0.05;
+                      entityAngularVelocity.y = entityVelocity.x * 0.05;
+                  }
+              });
+
+              window.addEventListener('pointerup', () => {
+                  if (isYoinking) isYoinking = false;
+              });
+
+              window.addEventListener('resize', () => {
+                  if(!camera || !renderer) return;
+                  camera.aspect = canvasContainer.clientWidth / canvasContainer.clientHeight;
+                  camera.updateProjectionMatrix();
+                  renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+              });
+
+              animate();
+          }
+
+          function buildPhysicsEntity() {
+              if(entityGroup) scene.remove(entityGroup);
+              pixelBlocks.forEach(b => scene.remove(b.mesh));
+              pixelBlocks = [];
+              isExploded = false;
+              isYoinking = false;
+
+              entityVelocity.set(0, 0, 0);
+              entityAngularVelocity.set(0, 0, 0);
+
+              entityGroup = new THREE.Group();
+              
+              // Dynamically scale down large grids to fit within the same physical space
+              const maxDim = Math.max(GRID_COLS, GRID_ROWS);
+              currentBlockSize = 16 / maxDim; 
+              
+              const offsetX = (GRID_COLS * currentBlockSize) / 2 - (currentBlockSize / 2);
+              const offsetY = (GRID_ROWS * currentBlockSize) / 2 - (currentBlockSize / 2);
+
+              const boxGeo = new THREE.BoxGeometry(currentBlockSize, currentBlockSize, currentBlockSize);
+
+              for (let r = 0; r < GRID_ROWS; r++) {
+                  for (let c = 0; c < GRID_COLS; c++) {
+                      const index = r * GRID_COLS + c;
+                      const color = gridData[index];
+                      if (color && inShape(c, r, currentShape, GRID_COLS, GRID_ROWS)) {
+                          const material = new THREE.MeshLambertMaterial({ color: color });
+                          const mesh = new THREE.Mesh(boxGeo, material);
+                          
+                          // Disable wireframes on very high resolutions to prevent heavy visual clutter
+                          if (maxDim <= 32) {
+                              const edges = new THREE.EdgesGeometry(boxGeo);
+                              const lineOpacity = maxDim > 16 ? 0.3 : 1.0;
+                              const lineMat = new THREE.LineBasicMaterial({ 
+                                  color: 0x000000, 
+                                  transparent: true, 
+                                  opacity: lineOpacity 
+                              });
+                              const line = new THREE.LineSegments(edges, lineMat);
+                              mesh.add(line);
+                          }
+
+                          mesh.position.x = (c * currentBlockSize) - offsetX;
+                          mesh.position.y = -((r * currentBlockSize) - offsetY);
+                          mesh.position.z = 0;
+
+                          entityGroup.add(mesh);
+
+                          pixelBlocks.push({
+                              mesh: mesh,
+                              velocity: new THREE.Vector3(0, 0, 0),
+                              rotationSpeed: new THREE.Vector3(0, 0, 0)
+                          });
+                      }
+                  }
+              }
+              
+              entityGroup.position.set(0, 15, 0);
+              scene.add(entityGroup);
+          }
+
+          function triggerExplosion() {
+              if(isExploded || !entityGroup) return;
+              isExploded = true;
+              isYoinking = false;
+
+              const worldPositions = [];
+              pixelBlocks.forEach(block => {
+                  const pos = new THREE.Vector3();
+                  block.mesh.getWorldPosition(pos);
+                  worldPositions.push(pos);
+              });
+
+              pixelBlocks.forEach((block, i) => {
+                  scene.add(block.mesh);
+                  block.mesh.position.copy(worldPositions[i]);
+                  block.mesh.rotation.copy(entityGroup.rotation);
+
+                  const angle = Math.random() * Math.PI * 2;
+                  const speed = Math.random() * 0.6 + 0.3;
+
+                  block.velocity.x = (block.mesh.position.x - entityGroup.position.x) * 0.05 + Math.cos(angle) * speed + (entityVelocity.x * 0.5);
+                  block.velocity.y = Math.random() * 0.5 + 0.3 + (entityVelocity.y * 0.5);
+                  block.velocity.z = (block.mesh.position.z - entityGroup.position.z) * 0.05 + Math.sin(angle) * speed + (Math.random() - 0.5) + (entityVelocity.z * 0.5);
+
+                  block.rotationSpeed.x = (Math.random() - 0.5) * 0.2 + entityAngularVelocity.x;
+                  block.rotationSpeed.y = (Math.random() - 0.5) * 0.2 + entityAngularVelocity.y;
+                  block.rotationSpeed.z = (Math.random() - 0.5) * 0.2 + entityAngularVelocity.z;
+              });
+
+              scene.remove(entityGroup);
+          }
+
+          function animate() {
+              animationId = requestAnimationFrame(animate);
+              const floorY = -15;
+
+              if(isExploded) {
+                  pixelBlocks.forEach(block => {
+                      block.velocity.y -= 0.02;
+
+                      block.mesh.position.add(block.velocity);
+                      block.mesh.rotation.x += block.rotationSpeed.x;
+                      block.mesh.rotation.y += block.rotationSpeed.y;
+                      block.mesh.rotation.z += block.rotationSpeed.z;
+
+                      if(block.mesh.position.y - (currentBlockSize / 2) < floorY) {
+                          block.mesh.position.y = floorY + (currentBlockSize / 2);
+                          block.velocity.y *= -0.6;
+                          block.velocity.x *= 0.8;
+                          block.velocity.z *= 0.8;
+                      }
+                  });
+              } else if (entityGroup) {
+                  if (!isYoinking) {
+                      entityVelocity.y -= 0.02; 
+                      
+                      entityGroup.position.add(entityVelocity);
+                      entityGroup.rotation.x += entityAngularVelocity.x;
+                      entityGroup.rotation.y += entityAngularVelocity.y;
+                      entityGroup.rotation.z += entityAngularVelocity.z;
+
+                      entityAngularVelocity.multiplyScalar(0.98);
+
+                      const groupHeight = GRID_ROWS * currentBlockSize;
+                      const groupBottom = entityGroup.position.y - (groupHeight / 2); 
+                      
+                      if (groupBottom < floorY) {
+                          if (autoExplode && entityVelocity.y < -0.1) {
+                              entityGroup.position.y = floorY + (groupHeight / 2);
+                              triggerExplosion();
+                          } else {
+                              entityGroup.position.y = floorY + (groupHeight / 2);
+                              entityVelocity.y *= -0.6;
+                              entityVelocity.x *= 0.8;
+                              entityVelocity.z *= 0.8;
+                              
+                              if(Math.abs(entityVelocity.y) > 0.1) {
+                                  entityAngularVelocity.z += (Math.random() - 0.5) * 0.05;
+                                  entityAngularVelocity.x += (Math.random() - 0.5) * 0.05;
+                              }
+                          }
+                      }
+
+                      if (entityGroup.position.length() > 200) {
+                          entityGroup.position.set(0, 15, 0);
+                          entityVelocity.set(0, 0, 0);
+                          entityAngularVelocity.set(0, 0, 0);
+                          entityGroup.rotation.set(0, 0, 0);
+                      }
+                  }
+              }
+
+              renderer.render(scene, camera);
+          }
+
+          // --- VIEW MANAGEMENT ---
+          const viewDraw = document.getElementById('view-draw');
+          const viewPhysics = document.getElementById('view-physics');
+          const btnBack = document.getElementById('btn-back');
+          const btnExplode = document.getElementById('btn-explode');
+
+          btnGenerate.addEventListener('click', () => {
+              if(!gridData.some(c => c !== null)) {
+                  alert("Grid is empty. Paint structure first.");
+                  return;
+              }
+
+              viewDraw.classList.remove('view-active');
+              viewDraw.classList.add('view-hidden');
+
+              setTimeout(() => {
+                  viewPhysics.classList.remove('view-hidden');
+                  viewPhysics.classList.add('view-active');
+                  initPhysics();
+                  buildPhysicsEntity();
+              }, 200);
+          });
+
+          btnBack.addEventListener('click', () => {
+              viewPhysics.classList.remove('view-active');
+              viewPhysics.classList.add('view-hidden');
+
+              setTimeout(() => {
+                  viewDraw.classList.remove('view-hidden');
+                  viewDraw.classList.add('view-active');
+
+                  if(scene && entityGroup) scene.remove(entityGroup);
+                  pixelBlocks.forEach(b => scene.remove(b.mesh));
+                  pixelBlocks = [];
+                  isExploded = false;
+                  isYoinking = false;
+              }, 200);
+          });
+
+          btnExplode.addEventListener('click', triggerExplosion);
+      });
+    </script>
+  </body>
+</html>

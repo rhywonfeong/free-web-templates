@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="fr" class="scroll-smooth">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#101510">
+<title>Baseline — Tennis Social Club</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script></head>
+
+<body class="overflow-x-hidden bg-[#101510] text-[#f5f5ee] antialiased selection:bg-[#d3fa24] selection:text-[#101510]" style="font-family: 'Inter', sans-serif;">
+
+  <!-- Navigation -->
+  <header class="absolute inset-x-0 top-0 z-30">
+    <nav class="mx-auto flex max-w-[120rem] items-center justify-between px-5 py-7 md:px-10 lg:px-14" aria-label="Navigation principale">
+      <div class="hidden w-1/3 items-center gap-7 text-xs md:flex">
+        <a href="#coachs" class="transition-colors hover:text-[#d3fa24]">Les coachs</a>
+        <a href="#courts" class="transition-colors hover:text-[#d3fa24]">Les courts</a>
+        <a href="#club" class="transition-colors hover:text-[#d3fa24]">Le club</a>
+        <a href="#agenda" class="transition-colors hover:text-[#d3fa24]">L’agenda</a>
+      </div>
+
+      <a href="#" class="flex items-center gap-2.5 md:justify-center" aria-label="Baseline, accueil">
+        <span data-dot-logo class="grid h-7 w-7 grid-cols-5 items-center gap-[3px] text-[#d3fa24]" aria-hidden="true"></span>
+        <span class="text-xs font-medium uppercase tracking-[-0.04em]">Baseline <span class="text-white/60">Social Club</span></span>
+      </a>
+
+      <div class="hidden w-1/3 justify-end md:flex">
+        <button data-book="Un court" class="group flex items-center gap-3 text-xs">
+          On se retrouve sur le court ?
+          <i data-lucide="arrow-up-right" class="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5"></i>
+        </button>
+      </div>
+
+      <button id="menu-button" class="flex h-10 w-10 items-center justify-center rounded-full border border-white/30 md:hidden" aria-label="Ouvrir le menu" aria-expanded="false" aria-controls="mobile-menu">
+        <i data-lucide="menu" class="h-5 w-5"></i>
+      </button>
+    </nav>
+
+    <div id="mobile-menu" class="mx-5 hidden rounded-2xl border border-white/10 bg-[#101510]/95 p-6 backdrop-blur-xl md:hidden">
+      <div class="flex flex-col gap-5 text-lg">
+        <a href="#coachs">Les coachs</a>
+        <a href="#courts">Les courts</a>
+        <a href="#academie">L’académie</a>
+        <a href="#agenda">L’agenda</a>
+        <a href="#club" class="text-[#d3fa24]">Rejoindre le club ↗</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- 01 / Fullscreen hero -->
+    <section class="relative isolate flex min-h-[48rem] flex-col justify-between overflow-hidden bg-[#18323d]" style="height: 100svh;" aria-labelledby="hero-title">
+      <div data-parallax="0.22" class="absolute -inset-y-[15%] inset-x-0 -z-20 will-change-transform">
+        <img src="https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=2600&q=90" alt="Court de tennis en plein air, entouré de verdure" class="h-full w-full object-cover object-center" fetchpriority="high">
+      </div>
+      <div class="absolute inset-0 -z-10 bg-[#071d29]/40"></div>
+      <div class="absolute inset-0 -z-10 bg-gradient-to-b from-[#081821]/55 via-transparent to-[#08120d]/70"></div>
+
+      <div class="px-5 pt-[25vh] md:px-10 lg:px-14">
+        <div class="mb-7 flex items-center gap-3 text-xs uppercase tracking-[0.2em] text-white/70 md:hidden">
+          <span class="h-1.5 w-1.5 rounded-full bg-[#d3fa24]"></span>
+          Un autre jeu commence
+        </div>
+        <h1 id="hero-title" class="flex flex-col justify-between gap-0 tracking-tight md:flex-row md:items-center" style="font-family: 'Manrope', sans-serif; font-size: clamp(4rem, 8.7vw, 10rem); font-weight: 400; line-height: 1.04;">
+          <span>Motion.</span>
+          <span class="text-[#d3fa24]">Discipline.</span>
+          <span>Résultat.</span>
+        </h1>
+
+        <div class="mt-7 hidden grid-cols-3 text-xs leading-snug text-white/75 md:grid">
+          <div class="flex items-center gap-5">
+            <p>Le jeu se travaille.<br>La passion se partage.</p>
+            <div class="flex -space-x-2">
+              <img src="https://i.pravatar.cc/80?img=12" alt="" class="h-7 w-7 rounded-full border-2 border-white/60">
+              <img src="https://i.pravatar.cc/80?img=47" alt="" class="h-7 w-7 rounded-full border-2 border-white/60">
+              <img src="https://i.pravatar.cc/80?img=13" alt="" class="h-7 w-7 rounded-full border-2 border-white/60">
+            </div>
+          </div>
+          <p class="pl-8">Entrez sur le court.<br>Trouvez votre rythme.</p>
+          <p class="justify-self-end pr-3">Chaque échange compte.<br>À vous de jouer.</p>
+        </div>
+      </div>
+
+      <div class="flex items-end justify-between gap-6 px-5 pb-8 md:px-10 lg:px-14 lg:pb-10">
+        <div class="flex items-end gap-8">
+          <a href="#club" class="group relative hidden h-44 w-44 overflow-hidden rounded-xl border border-white/20 p-4 shadow-xl sm:block">
+            <img src="https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=500&q=85" alt="Tennis au club" class="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-110">
+            <div class="absolute inset-0 bg-gradient-to-t from-black/95 via-black/20 to-black/20"></div>
+            <div class="relative flex items-start justify-between">
+              <p class="text-sm leading-tight">Votre prochain<br>terrain de jeu.</p>
+              <span data-dot-logo class="grid h-6 w-6 grid-cols-5 items-center gap-[2px] text-[#d3fa24]" aria-hidden="true"></span>
+            </div>
+            <div class="absolute inset-x-4 bottom-4 flex items-end justify-between">
+              <div><p class="text-xl tracking-tight">2.8k</p><p class="text-xs text-white/60">passionnés</p></div>
+              <div class="text-right"><p class="text-3xl tracking-tight text-[#d3fa24]">4.9</p><p class="text-xs text-white/60">sur le court</p></div>
+            </div>
+          </a>
+          <a href="#experience" class="flex items-center gap-3 text-xs text-white/70 transition-colors hover:text-white">
+            <span>Votre nouvelle<br>routine commence ici</span>
+            <i data-lucide="arrow-down" class="h-5 w-5"></i>
+          </a>
+        </div>
+
+        <div class="flex flex-col items-end gap-14">
+          <div class="hidden max-w-48 lg:block">
+            <p class="text-xs">Plus qu’un sport. Un état d’esprit.</p>
+            <p class="mt-2 text-xs leading-relaxed text-white/55">Du premier service au dernier échange, vivez le tennis autrement.</p>
+            <p class="mt-5 -rotate-6 text-3xl tracking-tight text-[#d3fa24]" style="font-family: cursive; font-style: italic;">See you on court.</p>
+          </div>
+          <button data-book="Un court" class="group flex items-center gap-5 border-b border-[#d3fa24]/70 pb-1 text-sm font-medium uppercase tracking-tight text-[#d3fa24] md:gap-9 md:text-xl">
+            Réserver un court
+            <i data-lucide="arrow-up-right" class="h-6 w-6 transition-transform group-hover:-translate-y-1 group-hover:translate-x-1 md:h-8 md:w-8"></i>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 / The experience -->
+    <section id="experience" class="relative isolate overflow-hidden bg-[#141a0a]">
+      <div data-parallax="0.13" class="pointer-events-none absolute -inset-y-[10%] inset-x-0 -z-20 will-change-transform">
+        <img src="https://images.unsplash.com/photo-1519861531473-9200262188bf?auto=format&fit=crop&w=2200&q=85" alt="" class="h-full w-full object-cover opacity-35" loading="lazy">
+      </div>
+      <div class="absolute inset-0 -z-10 bg-gradient-to-b from-[#819151]/20 via-[#11170b]/60 to-[#080b08]"></div>
+
+      <div class="flex justify-center gap-12 overflow-hidden whitespace-nowrap border-y border-white/10 py-4 text-sm uppercase tracking-tight text-white/30" aria-hidden="true">
+        <span>Baseline Social Club</span><span>Baseline Social Club</span><span>Baseline Social Club</span><span>Baseline Social Club</span><span>Baseline Social Club</span><span>Baseline Social Club</span>
+      </div>
+
+      <div class="relative flex min-h-[42rem] flex-col items-center justify-center px-6 py-24 text-center md:min-h-[48rem]">
+        <p class="absolute top-10 text-xs text-white/60">Du premier échauffement au dernier verre. Tout est dans l’expérience.</p>
+
+        <div aria-hidden="true" class="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[28rem] w-[28rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#b8d438]/15 blur-3xl md:h-[38rem] md:w-[38rem]"></div>
+        <span data-dot-logo class="mb-10 grid h-16 w-16 grid-cols-5 items-center gap-[6px] text-[#d3fa24]" aria-hidden="true"></span>
+        <p class="mb-5 text-xs uppercase tracking-[0.2em] text-white/60">Feel the game</p>
+        <h2 class="max-w-3xl text-5xl uppercase leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl" style="font-family: 'Manrope', sans-serif;">
+          L’énergie du jeu.<br>La force<br><span class="text-[#d3fa24]">du collectif.</span>
+        </h2>
+        <p class="mt-7 max-w-sm text-sm leading-relaxed text-white/65">
+          Le bruit de la balle. L’intensité de l’échange. Le plaisir de se retrouver.
+          Un lieu pour progresser, se dépasser et simplement aimer jouer.
+        </p>
+        <button data-book="Un court" class="group mt-9 flex items-center gap-6 border-b border-white/50 pb-1 text-sm uppercase">
+          Entrez dans le jeu
+          <i data-lucide="arrow-up-right" class="h-5 w-5 transition-transform group-hover:-translate-y-1 group-hover:translate-x-1"></i>
+        </button>
+      </div>
+
+      <!-- Coaches -->
+      <div id="coachs" class="pb-20 pt-5 md:pb-28">
+        <div class="mb-6 flex items-end gap-6 px-5 md:px-10 lg:px-14">
+          <div class="shrink-0">
+            <p class="mb-1 text-xs text-white/50">L’équipe</p>
+            <h2 class="text-xl uppercase tracking-tight md:text-2xl">Entraînez-vous avec les pros.</h2>
+          </div>
+          <div class="mb-2 hidden h-px flex-1 bg-white/30 sm:block"></div>
+          <div class="ml-auto flex items-center gap-4">
+            <span class="hidden text-xs text-white/60 md:inline">Rencontrez vos coachs</span>
+            <button id="coach-prev" class="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 transition-colors hover:bg-white/10" aria-label="Coach précédent">
+              <i data-lucide="arrow-left" class="h-4 w-4"></i>
+            </button>
+            <button id="coach-next" class="flex h-9 w-9 items-center justify-center rounded-full bg-[#d3fa24] text-[#141810] transition-colors hover:bg-white" aria-label="Coach suivant">
+              <i data-lucide="arrow-right" class="h-4 w-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <div id="coach-track" class="flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-5 md:px-10 lg:px-14" style="scrollbar-width: none;">
+          <article class="group relative h-[29rem] w-[88%] shrink-0 snap-start overflow-hidden rounded-3xl bg-[#304439] sm:w-[65%] lg:w-[49%]">
+            <img src="https://images.unsplash.com/photo-1562077772-3bd90403f7f0?auto=format&fit=crop&w=1200&q=85" alt="Entraînement de tennis sur un court extérieur" class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy">
+            <div class="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-black/30"></div>
+            <div class="absolute inset-x-6 top-6 flex items-start justify-between">
+              <span data-dot-logo class="grid h-10 w-10 grid-cols-5 items-center gap-1 text-[#d3fa24]" aria-hidden="true"></span>
+              <button data-book="Coaching avec Max Davis" class="flex items-center gap-2 border-b border-[#d3fa24]/50 pb-1 text-xs uppercase text-[#d3fa24]">Réserver une session <i data-lucide="arrow-up-right" class="h-4 w-4"></i></button>
+            </div>
+            <div class="absolute right-6 top-28 space-y-5 text-right">
+              <div><p class="text-4xl tracking-tight text-[#d3fa24]">9 000h</p><p class="text-xs text-white/65">sur le court</p></div>
+              <div><p class="text-4xl tracking-tight text-[#d3fa24]">700+</p><p class="text-xs text-white/65">joueurs accompagnés</p></div>
+            </div>
+            <div class="absolute inset-x-6 bottom-7">
+              <p class="mb-2 text-xs uppercase tracking-widest text-white/60">Performance & technique</p>
+              <div class="flex items-end justify-between gap-3">
+                <h3 class="text-4xl tracking-tight sm:text-5xl">Max Davis</h3>
+                <span class="mb-1 hidden text-xs uppercase text-white/50 sm:block">Baseline Club</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="group relative h-[29rem] w-[88%] shrink-0 snap-start overflow-hidden rounded-3xl bg-[#354538] sm:w-[65%] lg:w-[49%]">
+            <img src="https://images.unsplash.com/photo-1622163642998-1ea32b0bbc67?auto=format&fit=crop&w=1200&q=85" alt="Joueur prêt à disputer un échange" class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy">
+            <div class="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-black/30"></div>
+            <div class="absolute inset-x-6 top-6 flex items-start justify-between">
+              <span data-dot-logo class="grid h-10 w-10 grid-cols-5 items-center gap-1 text-[#d3fa24]" aria-hidden="true"></span>
+              <button data-book="Coaching avec Alex Mercer" class="flex items-center gap-2 border-b border-[#d3fa24]/50 pb-1 text-xs uppercase text-[#d3fa24]">Réserver une session <i data-lucide="arrow-up-right" class="h-4 w-4"></i></button>
+            </div>
+            <div class="absolute right-6 top-28 space-y-5 text-right">
+              <div><p class="text-4xl tracking-tight text-[#d3fa24]">5 000h</p><p class="text-xs text-white/65">sur le court</p></div>
+              <div><p class="text-4xl tracking-tight text-[#d3fa24]">300+</p><p class="text-xs text-white/65">joueurs accompagnés</p></div>
+            </div>
+            <div class="absolute inset-x-6 bottom-7">
+              <p class="mb-2 text-xs uppercase tracking-widest text-white/60">Stratégie & mental</p>
+              <h3 class="text-4xl tracking-tight sm:text-5xl">Alex Mercer</h3>
+            </div>
+          </article>
+
+          <article class="group relative h-[29rem] w-[88%] shrink-0 snap-start overflow-hidden rounded-3xl bg-[#354538] sm:w-[65%] lg:w-[49%]">
+            <img src="https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=1200&q=85" alt="Court de tennis pour une séance à l’académie" class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy">
+            <div class="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-black/30"></div>
+            <div class="absolute inset-x-6 top-6 flex items-start justify-between">
+              <span data-dot-logo class="grid h-10 w-10 grid-cols-5 items-center gap-1 text-[#d3fa24]" aria-hidden="true"></span>
+              <button data-book="Coaching avec Emma Laurent" class="flex items-center gap-2 border-b border-[#d3fa24]/50 pb-1 text-xs uppercase text-[#d3fa24]">Réserver une session <i data-lucide="arrow-up-right" class="h-4 w-4"></i></button>
+            </div>
+            <div class="absolute right-6 top-28 text-right"><p class="text-4xl tracking-tight text-[#d3fa24]">450+</p><p class="text-xs text-white/65">nouvelles passions</p></div>
+            <div class="absolute inset-x-6 bottom-7">
+              <p class="mb-2 text-xs uppercase tracking-widest text-white/60">Découverte & nouvelle génération</p>
+              <h3 class="text-4xl tracking-tight sm:text-5xl">Emma Laurent</h3>
+            </div>
+          </article>
+        </div>
+
+        <div class="mt-7 flex items-center gap-6 px-5 md:px-10 lg:px-14">
+          <div class="h-px flex-1 bg-white/25"></div>
+          <p class="text-lg uppercase tracking-tight md:text-xl">Jouez comme vous êtes. Progressez ensemble.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 03 / Courts -->
+    <section id="courts" class="relative isolate flex min-h-[45rem] flex-col justify-between overflow-hidden bg-[#22434a] px-5 py-8 md:px-10 lg:px-14" style="height: 100svh;">
+      <div data-parallax="0.19" class="absolute -inset-y-[15%] inset-x-0 -z-20 will-change-transform">
+        <img id="court-image" src="https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=2400&q=90" alt="Vue des courts de tennis du club" class="h-full w-full object-cover transition-opacity duration-300" loading="lazy">
+      </div>
+      <div class="absolute inset-0 -z-10 bg-gradient-to-b from-[#031b25]/45 via-[#031b25]/20 to-[#031b25]/70"></div>
+      <div class="flex items-center justify-between gap-5">
+        <a href="#court-options" class="flex items-center gap-3 rounded-full border border-white/60 px-3 py-1.5 text-xs uppercase">
+          Choisissez votre court <span class="h-2.5 w-2.5 rounded-full bg-[#d3fa24]"></span>
+        </a>
+        <p id="court-name" class="text-sm uppercase md:text-lg">Court 01 — Green</p>
+        <span class="hidden items-center gap-2 text-xs uppercase text-white/70 lg:flex"><span data-dot-logo class="grid h-5 w-5 grid-cols-5 items-center gap-[2px] text-[#d3fa24]" aria-hidden="true"></span> Baseline Social Club</span>
+      </div>
+
+      <h2 class="flex flex-col justify-between text-[#d3fa24] sm:flex-row" style="font-family: 'Manrope', sans-serif; font-size: clamp(4rem, 7.4vw, 8.5rem); line-height: 1; letter-spacing: -0.065em;">
+        <span>Un court.</span><span>Votre</span><span>terrain</span><span>de jeu.</span>
+      </h2>
+
+      <div class="flex flex-col items-start justify-between gap-8 sm:flex-row sm:items-end">
+        <button id="court-book" data-book="Court 01 — Green" class="group flex items-center gap-8 border-b border-[#d3fa24]/70 pb-1 text-lg uppercase text-[#d3fa24]">
+          Réserver ce court <i data-lucide="arrow-up-right" class="h-6 w-6 transition-transform group-hover:-translate-y-1 group-hover:translate-x-1"></i>
+        </button>
+
+        <div id="court-options" class="flex gap-2 rounded-2xl border border-white/15 bg-black/15 p-2 backdrop-blur-md" aria-label="Choisir un court">
+          <button data-court="0" aria-pressed="true" class="relative h-24 w-36 overflow-hidden rounded-lg border-2 border-[#d3fa24] text-left">
+            <img src="https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=400&q=75" alt="" class="h-full w-full object-cover">
+            <span class="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></span>
+            <span class="absolute bottom-2 left-3 text-xs">01 / Green court</span>
+          </button>
+          <button data-court="1" aria-pressed="false" class="relative h-24 w-36 overflow-hidden rounded-lg border-2 border-transparent text-left">
+            <img src="https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=400&q=75" alt="" class="h-full w-full object-cover">
+            <span class="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></span>
+            <span class="absolute bottom-2 left-3 text-xs">02 / Blue court</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Additional section 1 / Academy -->
+    <section id="academie" class="overflow-hidden bg-[#f0f0e7] px-5 py-20 text-[#20261e] md:px-10 md:py-28 lg:px-14">
+      <div class="mb-14 flex items-center justify-between border-b border-[#20261e]/20 pb-4 text-xs uppercase tracking-widest">
+        <span>01 / L’académie</span>
+        <span>Le prochain niveau, c’est vous.</span>
+      </div>
+
+      <div class="grid items-center gap-12 lg:grid-cols-2 lg:gap-20">
+        <div>
+          <div class="mb-7 flex items-center gap-2 text-xs uppercase tracking-widest">
+            <span class="h-2 w-2 rounded-full bg-[#718734]"></span> Tous les niveaux. Toutes les ambitions.
+          </div>
+          <h2 class="text-5xl leading-[1.02] tracking-tight md:text-6xl xl:text-7xl" style="font-family: 'Manrope', sans-serif;">
+            Le talent se révèle.<br>
+            <span class="text-[#74813e]">Le jeu se construit.</span>
+          </h2>
+          <p class="mt-7 max-w-md text-base leading-relaxed text-[#20261e]/60">
+            Un premier revers ou votre prochain tournoi. Nos coachs partent de là où vous êtes, pour vous emmener là où vous voulez jouer.
+          </p>
+
+          <div class="mt-10">
+            <button data-book="Académie — Premier service" class="group flex w-full items-center justify-between border-t border-[#20261e]/20 py-5 text-left">
+              <span class="flex items-center gap-5"><span class="text-xs text-[#20261e]/40">01</span><span class="text-lg">Premier service</span></span>
+              <span class="flex items-center gap-5"><span class="hidden text-xs text-[#20261e]/50 sm:inline">Découverte & initiation</span><i data-lucide="arrow-up-right" class="h-5 w-5 transition-transform group-hover:-translate-y-1 group-hover:translate-x-1"></i></span>
+            </button>
+            <button data-book="Académie — Next level" class="group flex w-full items-center justify-between border-t border-[#20261e]/20 py-5 text-left">
+              <span class="flex items-center gap-5"><span class="text-xs text-[#20261e]/40">02</span><span class="text-lg">Next level</span></span>
+              <span class="flex items-center gap-5"><span class="hidden text-xs text-[#20261e]/50 sm:inline">Technique & régularité</span><i data-lucide="arrow-up-right" class="h-5 w-5 transition-transform group-hover:-translate-y-1 group-hover:translate-x-1"></i></span>
+            </button>
+            <button data-book="Académie — Match point" class="group flex w-full items-center justify-between border-y border-[#20261e]/20 py-5 text-left">
+              <span class="flex items-center gap-5"><span class="text-xs text-[#20261e]/40">03</span><span class="text-lg">Match point</span></span>
+              <span class="flex items-center gap-5"><span class="hidden text-xs text-[#20261e]/50 sm:inline">Performance & compétition</span><i data-lucide="arrow-up-right" class="h-5 w-5 transition-transform group-hover:-translate-y-1 group-hover:translate-x-1"></i></span>
+            </button>
+          </div>
+        </div>
+
+        <div class="relative isolate h-[32rem] overflow-hidden rounded-2xl md:h-[40rem]">
+          <div data-parallax="0.1" class="absolute -inset-y-[12%] inset-x-0 -z-10 will-change-transform">
+            <img src="https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=1200&q=90" alt="Court de tennis baigné de lumière, prêt pour l’entraînement" class="h-full w-full object-cover" loading="lazy">
+          </div>
+          <div class="absolute inset-0 bg-gradient-to-t from-[#10221a]/75 to-transparent"></div>
+          <span class="absolute left-6 top-6 rounded-full border border-white/50 px-4 py-2 text-xs text-white">Make every shot count.</span>
+          <div class="absolute inset-x-7 bottom-7 flex items-end justify-between text-white">
+            <p class="text-3xl leading-tight tracking-tight">Petit groupe.<br>Grande progression.</p>
+            <span class="flex h-14 w-14 items-center justify-center rounded-full bg-[#d3fa24] text-[#20261e]"><i data-lucide="move-up-right" class="h-6 w-6"></i></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Additional section 2 / Community and events -->
+    <section id="agenda" class="relative isolate overflow-hidden bg-[#172a22] px-5 py-20 md:px-10 md:py-28 lg:px-14">
+      <div data-parallax="0.16" class="absolute -inset-y-[15%] inset-x-0 -z-20 will-change-transform">
+        <img src="https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&w=2200&q=85" alt="" class="h-full w-full object-cover" loading="lazy">
+      </div>
+      <div class="absolute inset-0 -z-10 bg-[#0b211a]/85"></div>
+
+      <div class="mb-16 flex items-center justify-between border-b border-white/20 pb-4 text-xs uppercase tracking-widest text-white/60">
+        <span>02 / En dehors des lignes</span>
+        <span class="hidden sm:inline">Good games. Great people.</span>
+      </div>
+
+      <div class="grid gap-14 lg:grid-cols-[1.1fr_1fr] lg:gap-24">
+        <div class="flex flex-col items-start">
+          <span data-dot-logo class="mb-9 grid h-12 w-12 grid-cols-5 items-center gap-1 text-[#d3fa24]" aria-hidden="true"></span>
+          <h2 class="text-5xl leading-[1.02] tracking-tight md:text-6xl xl:text-7xl" style="font-family: 'Manrope', sans-serif;">
+            Venez pour le jeu.<br><span class="text-[#d3fa24]">Restez pour<br>les rencontres.</span>
+          </h2>
+          <p class="mt-7 max-w-sm text-base leading-relaxed text-white/60">
+            Des doubles improvisés aux tournois du dimanche. Ici, les meilleurs échanges continuent après la balle de match.
+          </p>
+          <a href="#club" class="mt-9 flex items-center gap-8 border-b border-[#d3fa24]/60 pb-2 text-sm uppercase text-[#d3fa24]">
+            Trouvez votre communauté <i data-lucide="arrow-up-right" class="h-5 w-5"></i>
+          </a>
+        </div>
+
+        <div class="lg:pt-10">
+          <p class="mb-6 text-xs uppercase tracking-widest text-white/50">Les rendez-vous du club</p>
+          <button data-book="Événement — Afterwork doubles" class="group flex w-full gap-5 border-t border-white/25 py-8 text-left">
+            <div class="w-16 shrink-0"><p class="text-xs text-[#d3fa24]">CHAQUE</p><p class="mt-1 text-3xl tracking-tight">JEU.</p></div>
+            <div class="flex-1"><span class="text-xs text-white/50">19:00 — 22:00 / Social play</span><h3 class="mt-2 text-2xl tracking-tight">Afterwork doubles</h3><p class="mt-3 text-sm leading-relaxed text-white/55">On change de partenaire, on partage un verre. Le jeudi a trouvé son rythme.</p></div>
+            <i data-lucide="arrow-up-right" class="mt-2 h-6 w-6 shrink-0 text-[#d3fa24] transition-transform group-hover:-translate-y-1 group-hover:translate-x-1"></i>
+          </button>
+          <button data-book="Événement — Sunday social cup" class="group flex w-full gap-5 border-t border-white/25 py-8 text-left">
+            <div class="w-16 shrink-0"><p class="text-xs text-[#d3fa24]">CHAQUE</p><p class="mt-1 text-3xl tracking-tight">DIM.</p></div>
+            <div class="flex-1"><span class="text-xs text-white/50">10:00 — 14:00 / Tournoi amical</span><h3 class="mt-2 text-2xl tracking-tight">Sunday social cup</h3><p class="mt-3 text-sm leading-relaxed text-white/55">Un peu de compétition. Beaucoup de bonne humeur. Et un brunch pour finir.</p></div>
+            <i data-lucide="arrow-up-right" class="mt-2 h-6 w-6 shrink-0 text-[#d3fa24] transition-transform group-hover:-translate-y-1 group-hover:translate-x-1"></i>
+          </button>
+          <button data-book="Événement — First serve morning" class="group flex w-full gap-5 border-y border-white/25 py-8 text-left">
+            <div class="w-16 shrink-0"><p class="text-xs text-[#d3fa24]">CHAQUE</p><p class="mt-1 text-3xl tracking-tight">SAM.</p></div>
+            <div class="flex-1"><span class="text-xs text-white/50">09:00 — 11:00 / Découverte</span><h3 class="mt-2 text-2xl tracking-tight">First serve morning</h3><p class="mt-3 text-sm leading-relaxed text-white/55">Jamais tenu une raquette ? C’est exactement pour vous. Café et matériel inclus.</p></div>
+            <i data-lucide="arrow-up-right" class="mt-2 h-6 w-6 shrink-0 text-[#d3fa24] transition-transform group-hover:-translate-y-1 group-hover:translate-x-1"></i>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Additional section 3 / Membership -->
+    <section id="club" class="bg-[#d3fa24] px-5 py-20 text-[#19200f] md:px-10 md:py-28 lg:px-14">
+      <div class="mb-16 flex items-center justify-between border-b border-[#19200f]/25 pb-4 text-xs uppercase tracking-widest">
+        <span>03 / Votre place est ici</span>
+        <span>More than a tennis club.</span>
+      </div>
+
+      <div class="grid gap-12 lg:grid-cols-[1.1fr_1fr] lg:gap-24">
+        <div>
+          <h2 class="text-6xl leading-[0.98] tracking-tight md:text-7xl xl:text-8xl" style="font-family: 'Manrope', sans-serif;">Même passion.<br>Nouveau club.<br>À vous de jouer.</h2>
+          <p class="mt-8 max-w-md text-base leading-relaxed text-[#19200f]/65">Un court à deux pas. Des partenaires à votre niveau. Et toujours une bonne raison de revenir.</p>
+          <div class="mt-9 flex items-center gap-4">
+            <div class="flex -space-x-3">
+              <img src="https://i.pravatar.cc/100?img=12" alt="" class="h-11 w-11 rounded-full border-2 border-[#d3fa24]">
+              <img src="https://i.pravatar.cc/100?img=47" alt="" class="h-11 w-11 rounded-full border-2 border-[#d3fa24]">
+              <img src="https://i.pravatar.cc/100?img=13" alt="" class="h-11 w-11 rounded-full border-2 border-[#d3fa24]">
+              <span class="flex h-11 w-11 items-center justify-center rounded-full border-2 border-[#d3fa24] bg-[#19200f] text-xs text-[#d3fa24]">+2k</span>
+            </div>
+            <p class="text-xs leading-relaxed">Des joueurs. Des rencontres.<br>Votre prochain collectif.</p>
+          </div>
+        </div>
+
+        <div class="self-center rounded-2xl border border-[#19200f]/20 bg-[#19200f]/[0.04] p-7 md:p-10">
+          <div class="flex items-center justify-between">
+            <p class="text-xs uppercase tracking-widest">L’esprit club, sans compromis</p>
+            <i data-lucide="racket" class="h-6 w-6" aria-hidden="true"></i>
+          </div>
+          <div class="mt-8 flex items-baseline gap-2">
+            <span class="text-7xl tracking-tight">49€</span>
+            <span class="text-sm text-[#19200f]/60">/ mois</span>
+          </div>
+          <p class="mt-3 text-sm text-[#19200f]/60">L’abonnement Social. Sans engagement.</p>
+
+          <ul class="my-8 space-y-4 border-t border-[#19200f]/20 pt-7 text-sm">
+            <li class="flex items-center gap-3"><i data-lucide="check" class="h-4 w-4 shrink-0"></i> Réservation prioritaire des courts</li>
+            <li class="flex items-center gap-3"><i data-lucide="check" class="h-4 w-4 shrink-0"></i> 2 heures de jeu incluses chaque mois</li>
+            <li class="flex items-center gap-3"><i data-lucide="check" class="h-4 w-4 shrink-0"></i> Accès aux rencontres Social Play</li>
+            <li class="flex items-center gap-3"><i data-lucide="check" class="h-4 w-4 shrink-0"></i> −15 % sur les sessions de coaching</li>
+          </ul>
+
+          <button data-book="Abonnement Social — 49 € / mois" class="group flex w-full items-center justify-between rounded-lg bg-[#19200f] px-6 py-5 text-sm text-[#d3fa24] transition-colors hover:bg-[#303c1d]">
+            Rejoindre le club
+            <i data-lucide="arrow-up-right" class="h-5 w-5 transition-transform group-hover:-translate-y-1 group-hover:translate-x-1"></i>
+          </button>
+          <p class="mt-4 text-center text-xs text-[#19200f]/50">Pas besoin d’être un pro. Juste d’aimer le jeu.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="overflow-hidden bg-[#0c110d] px-5 pb-7 pt-16 md:px-10 lg:px-14">
+    <div class="flex flex-col justify-between gap-10 border-b border-white/15 pb-12 md:flex-row">
+      <div>
+        <a href="#" class="flex items-center gap-3">
+          <span data-dot-logo class="grid h-8 w-8 grid-cols-5 items-center gap-[3px] text-[#d3fa24]" aria-hidden="true"></span>
+          <span class="text-sm uppercase">Baseline Social Club</span>
+        </a>
+        <p class="mt-5 max-w-xs text-sm leading-relaxed text-white/45">Moins de scroll. Plus de tennis.<br>On se retrouve de l’autre côté du filet.</p>
+      </div>
+      <div class="flex gap-16 text-sm sm:gap-24">
+        <div class="flex flex-col gap-4">
+          <p class="text-xs uppercase tracking-widest text-white/35">Le jeu</p>
+          <a href="#courts" class="hover:text-[#d3fa24]">Nos courts</a>
+          <a href="#academie" class="hover:text-[#d3fa24]">L’académie</a>
+          <a href="#coachs" class="hover:text-[#d3fa24]">Nos coachs</a>
+        </div>
+        <div class="flex flex-col gap-4">
+          <p class="text-xs uppercase tracking-widest text-white/35">Le collectif</p>
+          <a href="#club" class="hover:text-[#d3fa24]">Devenir membre</a>
+          <a href="#agenda" class="hover:text-[#d3fa24]">Les rendez-vous</a>
+          <button data-book="Visite du club" class="text-left hover:text-[#d3fa24]">Nous rencontrer ↗</button>
+        </div>
+      </div>
+    </div>
+    <p class="my-8 select-none text-center uppercase leading-none tracking-tight text-[#d3fa24]" style="font-family: 'Manrope', sans-serif; font-size: clamp(4.5rem, 17vw, 22rem); letter-spacing: -0.075em;">Baseline.</p>
+    <div class="flex flex-col justify-between gap-4 border-t border-white/15 pt-6 text-xs text-white/40 sm:flex-row">
+      <p>© <span id="year"></span> Baseline Social Club. Tous droits réservés.</p>
+      <p>Du beau jeu. Et de belles rencontres.</p>
+      <a href="#" class="flex items-center gap-2 hover:text-white">Retour en haut <i data-lucide="arrow-up" class="h-3.5 w-3.5"></i></a>
+    </div>
+  </footer>
+
+  <!-- Booking dialog -->
+  <dialog id="booking-dialog" class="fixed inset-0 m-auto max-h-[90svh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-2xl border border-white/15 bg-[#171f17] p-0 text-[#f5f5ee] shadow-2xl backdrop:bg-black/70 backdrop:backdrop-blur-sm">
+    <div class="p-6 sm:p-9">
+      <div class="flex items-start justify-between gap-4">
+        <span data-dot-logo class="grid h-8 w-8 grid-cols-5 items-center gap-[3px] text-[#d3fa24]" aria-hidden="true"></span>
+        <button id="close-dialog" class="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 transition-colors hover:bg-white/10" aria-label="Fermer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+      <h2 id="booking-title" class="mt-6 text-3xl tracking-tight">On se retrouve sur le court.</h2>
+      <p class="mt-3 text-sm leading-relaxed text-white/50">Préparez votre demande. L’équipe vous confirmera les disponibilités et les détails par e-mail.</p>
+      <form id="booking-form" class="mt-7 space-y-5">
+        <div class="rounded-lg border border-[#d3fa24]/20 bg-[#d3fa24]/5 p-4">
+          <p class="text-xs uppercase tracking-widest text-white/45">Votre sélection</p>
+          <p id="booking-selection" class="mt-2 text-base text-[#d3fa24]"></p>
+        </div>
+        <div>
+          <label for="booking-name" class="mb-2 block text-sm">Votre prénom et nom</label>
+          <input id="booking-name" name="name" required autocomplete="name" placeholder="Camille Martin" class="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-base outline-none placeholder:text-white/25 focus:border-[#d3fa24]">
+        </div>
+        <div>
+          <label for="booking-email" class="mb-2 block text-sm">Votre e-mail</label>
+          <input id="booking-email" name="email" required type="email" autocomplete="email" placeholder="camille@exemple.fr" class="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-base outline-none placeholder:text-white/25 focus:border-[#d3fa24]">
+        </div>
+        <div>
+          <label for="booking-date" class="mb-2 block text-sm">Date souhaitée <span class="text-white/40">(facultatif)</span></label>
+          <input id="booking-date" name="date" type="date" class="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-base outline-none focus:border-[#d3fa24]" style="color-scheme: dark;">
+        </div>
+        <button type="submit" class="flex w-full items-center justify-between rounded-lg bg-[#d3fa24] px-5 py-4 text-sm text-[#18210e] transition-colors hover:bg-[#e0ff62]">
+          Préparer ma demande <i data-lucide="arrow-up-right" class="h-5 w-5"></i>
+        </button>
+      </form>
+      <div id="booking-result" class="mt-6 hidden rounded-xl border border-[#d3fa24]/25 bg-[#d3fa24]/5 p-5" role="status">
+        <i data-lucide="mail" class="mb-4 h-6 w-6 text-[#d3fa24]"></i>
+        <p class="text-lg">Votre demande est prête.</p>
+        <p class="mt-2 text-sm leading-relaxed text-white/60">Ouvrez votre messagerie pour l’envoyer. Aucune réservation n’est confirmée avant le retour de notre équipe.</p>
+        <a id="booking-mail" href="#" class="mt-5 flex items-center justify-between rounded-lg bg-[#d3fa24] px-4 py-3 text-sm text-[#18210e]">Ouvrir ma messagerie <i data-lucide="arrow-up-right" class="h-4 w-4"></i></a>
+        <button id="edit-booking" class="mt-4 text-xs text-white/60 underline underline-offset-4">Modifier ma demande</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    // Dot-matrix club signature.
+    document.querySelectorAll('[data-dot-logo]').forEach(logo => {
+      const shape = [
+        0, 1, 1, 1, 0,
+        1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1,
+        0, 1, 1, 1, 0,
+        0, 0, 1, 0, 0
+      ];
+      shape.forEach(visible => {
+        const dot = document.createElement('span');
+        dot.className = 'block aspect-square w-full rounded-full bg-current';
+        if (!visible) dot.style.opacity = '0';
+        logo.appendChild(dot);
+      });
+    });
+
+    // Use a supported racket-like sport mark.
+    document.querySelectorAll('[data-lucide="racket"]').forEach(el => el.setAttribute('data-lucide', 'circle-dot'));
+    lucide.createIcons({ attrs: { 'stroke-width': 1.5 } });
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Mobile navigation.
+    const menuButton = document.getElementById('menu-button');
+    const mobileMenu = document.getElementById('mobile-menu');
+    function closeMenu() {
+      mobileMenu.classList.add('hidden');
+      menuButton.setAttribute('aria-expanded', 'false');
+      menuButton.setAttribute('aria-label', 'Ouvrir le menu');
+    }
+    menuButton.addEventListener('click', () => {
+      const open = menuButton.getAttribute('aria-expanded') !== 'true';
+      mobileMenu.classList.toggle('hidden', !open);
+      menuButton.setAttribute('aria-expanded', String(open));
+      menuButton.setAttribute('aria-label', open ? 'Fermer le menu' : 'Ouvrir le menu');
+    });
+    mobileMenu.querySelectorAll('a').forEach(link => link.addEventListener('click', closeMenu));
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') closeMenu();
+    });
+
+    // Scroll-driven parallax, without hijacking native scrolling.
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const layers = [...document.querySelectorAll('[data-parallax]')];
+    let framePending = false;
+    function renderParallax() {
+      const viewport = window.innerHeight;
+      layers.forEach(layer => {
+        if (reducedMotion.matches) {
+          layer.style.transform = 'none';
+          return;
+        }
+        const section = layer.parentElement.getBoundingClientRect();
+        if (section.bottom < 0 || section.top > viewport) return;
+        const speed = Number(layer.dataset.parallax);
+        const distance = (viewport / 2 - section.top - section.height / 2) * speed;
+        const safeDistance = Math.max(-section.height * 0.11, Math.min(section.height * 0.11, distance));
+        layer.style.transform = `translate3d(0, ${safeDistance}px, 0)`;
+      });
+      framePending = false;
+    }
+    function requestParallax() {
+      if (!framePending) {
+        framePending = true;
+        requestAnimationFrame(renderParallax);
+      }
+    }
+    window.addEventListener('scroll', requestParallax, { passive: true });
+    window.addEventListener('resize', requestParallax);
+    reducedMotion.addEventListener('change', () => {
+      document.documentElement.style.scrollBehavior = reducedMotion.matches ? 'auto' : '';
+      requestParallax();
+    });
+    if (reducedMotion.matches) document.documentElement.style.scrollBehavior = 'auto';
+    requestParallax();
+
+    // Coach carousel.
+    const coachTrack = document.getElementById('coach-track');
+    function moveCoach(direction) {
+      const distance = coachTrack.firstElementChild.getBoundingClientRect().width + 16;
+      coachTrack.scrollBy({
+        left: direction * distance,
+        behavior: reducedMotion.matches ? 'instant' : 'smooth'
+      });
+    }
+    document.getElementById('coach-prev').addEventListener('click', () => moveCoach(-1));
+    document.getElementById('coach-next').addEventListener('click', () => moveCoach(1));
+
+    // Court preview.
+    const courts = [
+      { name: 'Court 01 — Green', image: 'photo-1554068865-24cecd4e34b8' },
+      { name: 'Court 02 — Blue', image: 'photo-1622279457486-62dcc4a431d6' }
+    ];
+    document.querySelectorAll('[data-court]').forEach(button => {
+      button.addEventListener('click', () => {
+        const court = courts[Number(button.dataset.court)];
+        document.getElementById('court-image').src = `https://images.unsplash.com/${court.image}?auto=format&fit=crop&w=2400&q=90`;
+        document.getElementById('court-image').alt = court.name + ', court de tennis du club';
+        document.getElementById('court-name').textContent = court.name;
+        document.getElementById('court-book').dataset.book = court.name;
+        document.querySelectorAll('[data-court]').forEach(option => {
+          const selected = option === button;
+          option.setAttribute('aria-pressed', String(selected));
+          option.classList.toggle('border-[#d3fa24]', selected);
+          option.classList.toggle('border-transparent', !selected);
+        });
+      });
+    });
+
+    // Accessible booking dialog and editable e-mail request.
+    const dialog = document.getElementById('booking-dialog');
+    const form = document.getElementById('booking-form');
+    const result = document.getElementById('booking-result');
+    let previousFocus;
+    let selectedBooking = '';
+    dialog.setAttribute('aria-labelledby', 'booking-title');
+
+    const today = new Date();
+    const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    document.getElementById('booking-date').min = localDate;
+
+    document.querySelectorAll('[data-book]').forEach(button => {
+      button.addEventListener('click', () => {
+        previousFocus = button;
+        selectedBooking = button.dataset.book;
+        document.getElementById('booking-selection').textContent = selectedBooking;
+        form.classList.remove('hidden');
+        result.classList.add('hidden');
+        dialog.showModal();
+        document.body.style.overflow = 'hidden';
+      });
+    });
+
+    document.getElementById('close-dialog').addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', event => {
+      const rect = dialog.getBoundingClientRect();
+      if (event.target === dialog && (
+        event.clientX < rect.left || event.clientX > rect.right ||
+        event.clientY < rect.top || event.clientY > rect.bottom
+      )) dialog.close();
+    });
+    dialog.addEventListener('close', () => {
+      document.body.style.overflow = '';
+      previousFocus?.focus();
+    });
+
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      const name = document.getElementById('booking-name').value.trim();
+      const email = document.getElementById('booking-email').value.trim();
+      const date = document.getElementById('booking-date').value;
+      const subject = `Demande Baseline — ${selectedBooking}`;
+      const body = [
+        'Bonjour l’équipe Baseline,',
+        '',
+        `Je souhaite recevoir les disponibilités et informations pour : ${selectedBooking}.`,
+        date ? `Date souhaitée : ${new Date(date + 'T12:00:00').toLocaleDateString('fr-FR')}.` : 'Je suis flexible sur la date.',
+        '',
+        `Nom : ${name}`,
+        `E-mail : ${email}`,
+        '',
+        'Merci et à bientôt sur le court !'
+      ].join('\n');
+
+      // Set the club's real contact address here before publishing.
+      const clubEmail = 'bonjour@baseline.example';
+      document.getElementById('booking-mail').href = `mailto:${clubEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      form.classList.add('hidden');
+      result.classList.remove('hidden');
+      document.getElementById('booking-mail').focus();
+    });
+
+    document.getElementById('edit-booking').addEventListener('click', () => {
+      result.classList.add('hidden');
+      form.classList.remove('hidden');
+      document.getElementById('booking-name').focus();
+    });
+  </script>
+</body>
+</html>

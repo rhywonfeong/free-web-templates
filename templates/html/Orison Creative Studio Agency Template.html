@@ -1,0 +1,1895 @@
+<!DOCTYPE html>
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b0c17">
+<title>Orison — Ideas, made magnetic</title>
+<meta name="description" content="Orison is an independent creative practice shaping identities, digital products and spatial stories.">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Manrope:wght@300;400;500;600&display=swap');
+:root {
+--ink: #09090b;
+--paper: #f5f3ef;
+--acid: #d9ff63;
+--violet: #795dff;
+--coral: #ff656f;
+--line: rgba(9, 9, 11, .18);
+--ease: cubic-bezier(.22, 1, .36, 1)
+}
+* {
+box-sizing: border-box
+}
+html {
+scroll-behavior: auto;
+background: var(--paper)
+}
+body {
+margin: 0;
+background: var(--paper);
+color: var(--ink);
+font-family: Manrope, Arial, sans-serif;
+overflow-x: hidden;
+-webkit-font-smoothing: antialiased
+}
+body.loading {
+overflow: hidden
+}
+::selection {
+background: var(--acid);
+color: var(--ink)
+}
+a {
+color: inherit
+}
+.mono {
+font-family: 'DM Mono', monospace;
+text-transform: uppercase;
+letter-spacing: .12em;
+font-size: 10px
+}
+.display {
+font-weight: 400;
+line-height: .89;
+letter-spacing: -.075em
+}
+.wrap {
+width: min(94vw, 1540px);
+margin: auto
+}
+#loader {
+position: fixed;
+z-index: 1000;
+inset: 0;
+background: #f8f7f3;
+display: grid;
+place-items: center;
+transition: opacity .6s var(--ease), visibility .6s
+}
+.loader-mark {
+width: 32px;
+height: 32px;
+border: 3px solid #111;
+border-top-color: transparent;
+border-radius: 50%;
+animation: spin .75s linear infinite
+}
+.loader-count {
+position: absolute;
+bottom: 28px;
+right: 3vw;
+font: 11px 'DM Mono'
+}
+.loaded #loader {
+opacity: 0;
+visibility: hidden
+}
+@keyframes spin {
+to {
+transform: rotate(1turn)
+}
+}
+#cursor {
+position: fixed;
+z-index: 999;
+pointer-events: none;
+width: 12px;
+height: 12px;
+border-radius: 50%;
+background: var(--acid);
+mix-blend-mode: difference;
+transform: translate(-50%, -50%);
+transition: width .25s, height .25s;
+display: none
+}
+.has-cursor #cursor {
+display: block
+}
+.has-cursor #cursor.big {
+width: 64px;
+height: 64px
+}
+.nav {
+position: fixed;
+z-index: 50;
+top: 16px;
+left: 2vw;
+right: 2vw;
+height: 48px;
+padding: 0 18px;
+border-radius: 99px;
+background: rgba(255, 255, 255, .92);
+color: var(--ink);
+display: flex;
+align-items: center;
+justify-content: space-between;
+box-shadow: 0 8px 35px rgba(0, 0, 0, .07);
+backdrop-filter: blur(18px);
+transition: transform .45s var(--ease)
+}
+.brand {
+font-weight: 600;
+letter-spacing: -.06em;
+font-size: 17px
+}
+.navlinks {
+display: flex;
+gap: 28px;
+font-size: 11px
+}
+.nav a {
+text-decoration: none
+}
+.nav a:hover {
+opacity: .5
+}
+.nav-right {
+display: flex;
+align-items: center;
+gap: 18px
+}
+.menu-btn {
+display: none;
+border: 0;
+background: transparent;
+font: inherit
+}
+.nav.hidden {
+transform: translateY(-90px)
+}
+.hero {
+position: relative;
+min-height: 100svh;
+overflow: hidden;
+color: white;
+background: #5537ee
+}
+.hero canvas {
+position: absolute;
+inset: 0;
+width: 100%;
+height: 100%
+}
+.hero-grain {
+position: absolute;
+inset: 0;
+opacity: .15;
+mix-blend-mode: overlay;
+background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E")
+}
+.hero-copy {
+position: relative;
+z-index: 4;
+padding: 22svh 5vw 8vh;
+max-width: 900px
+}
+.hero h1 {
+font-size: clamp(62px, 8vw, 132px);
+margin: 23px 0 25px
+}
+.hero .lede {
+font-size: clamp(14px, 1.1vw, 18px);
+line-height: 1.5;
+max-width: 540px
+}
+.actions {
+display: flex;
+gap: 10px;
+margin-top: 29px;
+flex-wrap: wrap
+}
+.pill {
+position: relative;
+display: inline-flex;
+align-items: center;
+justify-content: center;
+min-height: 41px;
+padding: 0 18px;
+border: 1px solid currentColor;
+border-radius: 999px;
+text-decoration: none;
+font-size: 11px;
+overflow: hidden;
+transition: color .35s
+}
+.pill:before {
+content: "";
+position: absolute;
+inset: 0;
+background: white;
+transform: translateY(102%);
+transition: transform .4s var(--ease)
+}
+.pill span {
+position: relative
+}
+.pill:hover {
+color: #111
+}
+.pill:hover:before {
+transform: none
+}
+.pill.solid {
+background: var(--ink);
+border-color: var(--ink)
+}
+.pill.solid:before {
+background: var(--acid)
+}
+#hero3d {
+position: absolute;
+z-index: 3;
+right: 2vw;
+top: 15%;
+width: 54vw;
+height: 78vh;
+pointer-events: none
+}
+.scroll-cue {
+position: absolute;
+z-index: 4;
+bottom: 25px;
+left: 50%;
+display: flex;
+gap: 8px;
+align-items: center;
+transform: translateX(-50%);
+font: 10px 'DM Mono';
+text-transform: uppercase;
+letter-spacing: .1em
+}
+.scroll-cue i {
+display: block;
+width: 17px;
+height: 27px;
+border: 1px solid rgba(255, 255, 255, .6);
+border-radius: 12px;
+position: relative
+}
+.scroll-cue i:after {
+content: "";
+position: absolute;
+left: 7px;
+top: 6px;
+width: 2px;
+height: 5px;
+background: white;
+animation: scrollDot 1.6s infinite
+}
+@keyframes scrollDot {
+to {
+transform: translateY(8px);
+opacity: 0
+}
+}
+.intro {
+position: relative;
+min-height: 145vh;
+padding: 12vh 0 10vh;
+background: #f8f7f3;
+overflow: hidden
+}
+.intro-grid {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 6vw;
+align-items: start
+}
+.intro-small {
+max-width: 440px;
+margin-left: auto;
+font-size: 14px;
+line-height: 1.55
+}
+.kinetic {
+position: sticky;
+top: 22vh;
+height: 64vh;
+margin-top: 22vh;
+display: flex;
+flex-direction: column;
+justify-content: center
+}
+.kinetic-line {
+font-size: clamp(52px, 8.6vw, 150px);
+white-space: nowrap
+}
+.kinetic-line:nth-child(2) {
+text-align: center;
+font-weight: 300
+}
+.kinetic-line:nth-child(3) {
+text-align: right
+}
+.float-glyph {
+position: absolute;
+width: 86px;
+aspect-ratio: 1;
+border-radius: 24px;
+background: linear-gradient(145deg, var(--acid), #59cbff 45%, #ff84b8 80%);
+box-shadow: inset 8px 8px 18px rgba(255, 255, 255, .65), 0 30px 45px rgba(57, 38, 152, .15);
+transform: rotate(20deg)
+}
+.float-glyph.g1 {
+top: 24%;
+left: 22%
+}
+.float-glyph.g2 {
+top: 58%;
+right: 13%;
+width: 52px;
+border-radius: 50%
+}
+.process {
+position: relative;
+min-height: 220vh;
+background: #f8f7f3;
+padding-top: 10vh
+}
+.process-sticky {
+position: sticky;
+top: 0;
+height: 100vh;
+overflow: hidden
+}
+.process-title {
+position: absolute;
+left: 5vw;
+top: 12vh;
+font-size: clamp(38px, 6.8vw, 108px);
+max-width: 900px;
+z-index: 1
+}
+.process-copy {
+position: absolute;
+right: 5vw;
+top: 16vh;
+width: min(31vw, 430px);
+font-size: 14px;
+line-height: 1.55
+}
+.process-track {
+position: absolute;
+left: 5vw;
+right: 5vw;
+bottom: 6vh;
+height: 49vh
+}
+.p-card {
+position: absolute;
+width: min(29vw, 440px);
+height: 100%;
+border: 1px solid var(--line);
+border-radius: 14px;
+background: rgba(248, 247, 243, .92);
+padding: 24px;
+box-shadow: 0 15px 40px rgba(20, 20, 25, .05);
+overflow: hidden
+}
+.p-card:nth-child(1) {
+left: 0;
+transform: rotate(-2deg)
+}
+.p-card:nth-child(2) {
+left: 35%;
+transform: translateY(14%) rotate(1.5deg)
+}
+.p-card:nth-child(3) {
+right: 0;
+transform: translateY(-6%) rotate(-1deg)
+}
+.p-num {
+font: 10px 'DM Mono';
+letter-spacing: .12em
+}
+.p-card h3 {
+font-size: clamp(24px, 2.6vw, 42px);
+letter-spacing: -.055em;
+line-height: 1;
+margin: 11vh 0 15px
+}
+.p-card p {
+font-size: 12px;
+line-height: 1.55;
+max-width: 280px
+}
+.mini-orbit {
+position: absolute;
+right: 20px;
+top: 20px;
+width: 55px;
+height: 55px;
+border: 9px solid var(--violet);
+border-top-color: var(--acid);
+border-radius: 50%;
+animation: spin 5s linear infinite
+}
+.services {
+position: relative;
+background: #0b0c17;
+color: white;
+min-height: 120vh;
+padding: 14vh 0 10vh;
+overflow: hidden
+}
+.services:before {
+content: "";
+position: absolute;
+inset: -30%;
+background: radial-gradient(circle at 75% 18%, rgba(219, 255, 75, .18), transparent 22%), radial-gradient(circle at 11% 64%, rgba(127, 78, 255, .42), transparent 32%), radial-gradient(circle at 82% 78%, rgba(255, 83, 125, .22), transparent 26%);
+filter: blur(40px)
+}
+.services-inner {
+position: relative
+}
+.services h2 {
+font-size: clamp(40px, 5vw, 84px);
+max-width: 950px;
+margin: 0 0 12vh
+}
+.service-grid {
+display: grid;
+grid-template-columns: repeat(3, 1fr);
+gap: 1px;
+background: rgba(255, 255, 255, .18);
+border: 1px solid rgba(255, 255, 255, .18)
+}
+.service {
+min-height: 390px;
+padding: 28px;
+background: rgba(11, 12, 23, .74);
+backdrop-filter: blur(18px);
+display: flex;
+flex-direction: column;
+justify-content: space-between;
+transition: background .4s
+}
+.service:hover {
+background: rgba(103, 72, 217, .34)
+}
+.service h3 {
+font-size: 25px;
+font-weight: 400;
+letter-spacing: -.04em
+}
+.service ul {
+list-style: none;
+padding: 0;
+margin: 0;
+font: 10px/2 'DM Mono';
+text-transform: uppercase;
+color: rgba(255, 255, 255, .65)
+}
+.service .orb {
+width: 70px;
+height: 70px;
+border-radius: 26px;
+background: linear-gradient(145deg, #ff7bbb, #4d79ff 45%, var(--acid));
+box-shadow: inset 8px 8px 18px rgba(255, 255, 255, .55);
+transform: rotate(20deg);
+transition: transform .6s var(--ease)
+}
+.service:hover .orb {
+transform: rotate(120deg) scale(1.15)
+}
+.work {
+padding: 13vh 0 16vh;
+background: #f8f7f3
+}
+.section-head {
+display: flex;
+align-items: end;
+justify-content: space-between;
+margin-bottom: 9vh
+}
+.section-head h2 {
+font-size: clamp(58px, 8.8vw, 145px);
+margin: 0
+}
+.section-head p {
+max-width: 330px;
+font-size: 13px;
+line-height: 1.55
+}
+.work-grid {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 7vw 3vw
+}
+.work-card {
+position: relative
+}
+.work-card:nth-child(even) {
+margin-top: 18vh
+}
+.work-media {
+aspect-ratio: 4/5;
+overflow: hidden;
+border-radius: 13px;
+background: #ddd
+}
+.work-media img {
+width: 100%;
+height: 115%;
+object-fit: cover;
+display: block;
+transform: translateY(-7%);
+transition: transform .9s var(--ease), filter .6s
+}
+.work-card:hover img {
+transform: translateY(-7%) scale(1.035);
+filter: saturate(1.16)
+}
+.work-meta {
+display: flex;
+justify-content: space-between;
+align-items: start;
+margin-top: 16px
+}
+.work-meta h3 {
+font-size: 25px;
+letter-spacing: -.04em;
+margin: 0
+}
+.work-meta p {
+font: 9px/1.5 'DM Mono';
+text-transform: uppercase;
+text-align: right
+}
+.poster {
+position: relative;
+background: #0b0c17;
+aspect-ratio: 4/5;
+overflow: hidden;
+border-radius: 13px;
+color: white;
+display: grid;
+place-items: center
+}
+.poster-word {
+font-size: clamp(70px, 9vw, 160px);
+line-height: .75;
+letter-spacing: -.1em;
+transform: rotate(-8deg);
+mix-blend-mode: difference
+}
+.poster:before,
+.poster:after {
+content: "";
+position: absolute;
+border-radius: 50%;
+filter: blur(2px)
+}
+.poster:before {
+width: 65%;
+aspect-ratio: 1;
+background: conic-gradient(from 80deg, var(--acid), #38c7ff, var(--violet), var(--coral), var(--acid));
+animation: spin 9s linear infinite
+}
+.poster:after {
+width: 42%;
+aspect-ratio: 1;
+background: #0b0c17
+}
+.marquee {
+overflow: hidden;
+border-block: 1px solid var(--line);
+padding: 20px 0;
+background: #f8f7f3
+}
+.marquee-track {
+display: flex;
+width: max-content;
+animation: marquee 22s linear infinite
+}
+.marquee span {
+font-size: clamp(42px, 5vw, 82px);
+letter-spacing: -.06em;
+padding-right: 40px
+}
+.marquee i {
+display: inline-block;
+width: .4em;
+height: .4em;
+background: var(--acid);
+border-radius: 50%;
+vertical-align: middle;
+margin-left: 38px
+}
+@keyframes marquee {
+to {
+transform: translateX(-50%)
+}
+}
+.timeline {
+padding: 14vh 0;
+background: #f8f7f3
+}
+.timeline h2 {
+font-size: clamp(56px, 8vw, 128px);
+margin: 0 0 11vh
+}
+.timeline-row {
+display: grid;
+grid-template-columns: 100px 1fr 1fr;
+border-top: 1px solid var(--line);
+padding: 25px 0 54px;
+gap: 4vw
+}
+.timeline-row .year {
+font: 11px 'DM Mono'
+}
+.timeline-row h3 {
+font-size: 28px;
+margin: 0;
+letter-spacing: -.045em
+}
+.timeline-row p {
+font-size: 13px;
+line-height: 1.55;
+margin: 0;
+max-width: 520px
+}
+.testimonials {
+background: var(--acid);
+padding: 13vh 0;
+overflow: hidden
+}
+.quote-wrap {
+display: flex;
+gap: 3vw;
+width: max-content;
+padding-left: 3vw
+}
+.quote {
+width: min(72vw, 880px);
+min-height: 430px;
+border: 1px solid rgba(0, 0, 0, .35);
+border-radius: 14px;
+padding: 34px;
+display: flex;
+flex-direction: column;
+justify-content: space-between;
+background: rgba(255, 255, 255, .15)
+}
+.quote blockquote {
+font-size: clamp(34px, 4.3vw, 67px);
+line-height: .97;
+letter-spacing: -.06em;
+margin: 0
+}
+.quote cite {
+font: 10px/1.6 'DM Mono';
+text-transform: uppercase;
+font-style: normal
+}
+.pricing {
+padding: 14vh 0;
+background: #f8f7f3
+}
+.pricing-head {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 5vw;
+margin-bottom: 8vh
+}
+.pricing h2 {
+font-size: clamp(55px, 8vw, 125px);
+margin: 0
+}
+.pricing-head p {
+align-self: end;
+max-width: 480px;
+font-size: 14px;
+line-height: 1.55
+}
+.price-grid {
+display: grid;
+grid-template-columns: repeat(3, 1fr);
+gap: 12px
+}
+.price {
+position: relative;
+border: 1px solid var(--line);
+border-radius: 14px;
+min-height: 470px;
+padding: 26px;
+display: flex;
+flex-direction: column;
+background: #f8f7f3;
+transition: transform .45s var(--ease), background .45s
+}
+.price.featured {
+background: #0b0c17;
+color: white;
+transform: translateY(-18px)
+}
+.price:hover {
+transform: translateY(-12px) rotateX(2deg)
+}
+.price.featured:hover {
+transform: translateY(-28px) rotateX(2deg)
+}
+.price h3 {
+font-size: 27px;
+margin: 20px 0 4px
+}
+.amount {
+font-size: clamp(55px, 5vw, 78px);
+letter-spacing: -.07em;
+margin: 6vh 0 0
+}
+.price ul {
+list-style: none;
+padding: 0;
+margin: auto 0 24px;
+font-size: 12px;
+line-height: 2
+}
+.price .pill {
+color: inherit;
+width: 100%
+}
+.price.featured .pill:before {
+background: var(--acid)
+}
+.faq {
+padding: 13vh 0;
+background: #f8f7f3
+}
+.faq-layout {
+display: grid;
+grid-template-columns: 1fr 1.25fr;
+gap: 8vw
+}
+.faq h2 {
+font-size: clamp(60px, 8vw, 130px);
+margin: 0;
+position: sticky;
+top: 18vh;
+height: max-content
+}
+.faq-item {
+border-top: 1px solid var(--line)
+}
+.faq-q {
+width: 100%;
+padding: 24px 0;
+display: flex;
+justify-content: space-between;
+gap: 20px;
+border: 0;
+background: transparent;
+text-align: left;
+font: 400 19px Manrope;
+cursor: pointer
+}
+.faq-q i {
+font-style: normal;
+transition: transform .3s
+}
+.faq-a {
+height: 0;
+overflow: hidden;
+font-size: 13px;
+line-height: 1.6;
+max-width: 600px
+}
+.faq-item.open .faq-a {
+height: auto;
+padding: 0 0 25px
+}
+.faq-item.open .faq-q i {
+transform: rotate(45deg)
+}
+.clients {
+padding: 13vh 0;
+background: #f8f7f3
+}
+.clients-top {
+display: flex;
+justify-content: space-between;
+align-items: end;
+margin-bottom: 8vh
+}
+.clients h2 {
+font-size: clamp(36px, 4.5vw, 70px);
+margin: 0
+}
+.logo-grid {
+display: grid;
+grid-template-columns: repeat(4, 1fr);
+border-top: 1px solid var(--line);
+border-left: 1px solid var(--line)
+}
+.logo {
+height: 150px;
+display: grid;
+place-items: center;
+border-right: 1px solid var(--line);
+border-bottom: 1px solid var(--line);
+font-size: 20px;
+font-weight: 600;
+letter-spacing: -.04em;
+transition: background .3s
+}
+.logo:hover {
+background: var(--acid)
+}
+.cta {
+position: relative;
+min-height: 90vh;
+background: #f8f7f3;
+display: grid;
+place-items: center;
+overflow: hidden;
+text-align: center
+}
+.cta h2 {
+position: relative;
+z-index: 2;
+font-size: clamp(70px, 12.5vw, 210px);
+line-height: .73;
+letter-spacing: -.095em;
+margin: 0
+}
+.cta .ring {
+position: absolute;
+width: min(38vw, 600px);
+aspect-ratio: 1;
+border: clamp(20px, 3vw, 45px) solid transparent;
+border-left-color: var(--violet);
+border-right-color: var(--acid);
+border-bottom-color: #3fc7ff;
+border-radius: 50%;
+filter: drop-shadow(0 30px 28px rgba(92, 53, 218, .15));
+animation: spin 16s linear infinite
+}
+.cta .pill {
+position: absolute;
+bottom: 8vh;
+z-index: 3
+}
+footer {
+position: relative;
+background: #0b0c17;
+color: white;
+padding: 13vh 3vw 35px;
+overflow: hidden
+}
+footer:before {
+content: "";
+position: absolute;
+inset: -50%;
+background: radial-gradient(circle at 73% 30%, rgba(215, 255, 73, .16), transparent 24%), radial-gradient(circle at 18% 62%, rgba(121, 70, 255, .36), transparent 31%), radial-gradient(circle at 90% 86%, rgba(255, 91, 113, .22), transparent 22%)
+}
+.footer-inner {
+position: relative
+}
+.footer-title {
+font-size: clamp(46px, 7.5vw, 125px);
+margin: 0 0 11vh
+}
+.footer-grid {
+display: grid;
+grid-template-columns: 1.1fr .7fr .7fr;
+gap: 5vw;
+border-top: 1px solid rgba(255, 255, 255, .25);
+padding-top: 28px
+}
+.footer-grid p,
+.footer-grid a {
+font-size: 12px;
+line-height: 1.9;
+text-decoration: none
+}
+.footer-links {
+display: flex;
+flex-wrap: wrap;
+gap: 8px
+}
+.footer-links a {
+border: 1px solid rgba(255, 255, 255, .45);
+border-radius: 99px;
+padding: 5px 12px
+}
+.copyright {
+display: flex;
+justify-content: space-between;
+margin-top: 10vh;
+font: 9px 'DM Mono';
+text-transform: uppercase;
+color: rgba(255, 255, 255, .55)
+}
+@media(max-width:800px) {
+.navlinks,
+.nav-clock {
+display: none
+}
+.menu-btn {
+display: block
+}
+.hero-copy {
+padding: 23svh 6vw 12vh
+}
+.hero h1 {
+font-size: 17vw
+}
+.hero .lede {
+max-width: 80%
+}
+#hero3d {
+width: 82vw;
+height: 55vh;
+right: -27vw;
+top: 37%
+}
+.scroll-cue {
+display: none
+}
+.intro {
+min-height: 125vh
+}
+.intro-grid,
+.pricing-head,
+.faq-layout {
+grid-template-columns: 1fr
+}
+.intro-small {
+margin: 0
+}
+.kinetic {
+top: 15vh;
+margin-top: 12vh
+}
+.kinetic-line {
+font-size: 14vw
+}
+.float-glyph.g1 {
+left: 12%
+}
+.process {
+min-height: 190vh
+}
+.process-title {
+top: 13vh;
+font-size: 12vw
+}
+.process-copy {
+top: 34vh;
+left: 6vw;
+width: 84vw
+}
+.process-track {
+left: 6vw;
+right: 6vw;
+height: 49vh
+}
+.p-card {
+width: 73vw
+}
+.p-card:nth-child(2) {
+left: 13%
+}
+.p-card:nth-child(3) {
+right: -14%
+}
+.service-grid,
+.price-grid {
+grid-template-columns: 1fr
+}
+.service {
+min-height: 320px
+}
+.work-grid {
+gap: 5vh 3vw
+}
+.work-card:nth-child(even) {
+margin-top: 10vh
+}
+.section-head {
+display: block
+}
+.section-head p {
+margin-top: 30px
+}
+.timeline-row {
+grid-template-columns: 56px 1fr
+}
+.timeline-row p {
+grid-column: 2
+}
+.quote {
+width: 88vw
+}
+.price.featured {
+transform: none
+}
+.faq h2 {
+position: static;
+margin-bottom: 50px
+}
+.logo-grid {
+grid-template-columns: repeat(2, 1fr)
+}
+.logo {
+height: 110px
+}
+.footer-grid {
+grid-template-columns: 1fr
+}
+.copyright {
+gap: 20px
+}
+.cta h2 {
+font-size: 20vw
+}
+}
+@media(max-width:520px) {
+.hero .lede {
+max-width: 95%
+}
+.work-grid {
+grid-template-columns: 1fr
+}
+.work-card:nth-child(even) {
+margin-top: 0
+}
+.p-card {
+width: 78vw
+}
+.timeline-row {
+grid-template-columns: 1fr
+}
+.timeline-row p {
+grid-column: auto
+}
+.quote {
+min-height: 360px
+}
+.logo-grid {
+grid-template-columns: 1fr 1fr
+}
+.footer-title {
+font-size: 14vw
+}
+}
+@media(prefers-reduced-motion:reduce) {
+* {
+scroll-behavior: auto !important;
+animation-duration: .001ms !important;
+animation-iteration-count: 1 !important;
+transition-duration: .001ms !important
+}
+}
+.mockup .kinetic,
+.mockup .process-sticky,
+.mockup .faq h2 {
+position: relative;
+top: auto
+}
+.mockup .process {
+min-height: auto;
+padding: 10vh 0
+}
+.mockup .process-sticky {
+height: auto;
+min-height: 100vh
+}
+.mockup .quote-wrap {
+width: auto;
+flex-wrap: wrap;
+padding: 3vw
+}
+.mockup .quote {
+flex: 1 1 30%;
+min-width: 300px
+}
+.mobile-panel {
+position: fixed;
+z-index: 45;
+inset: 0;
+background: var(--acid);
+padding: 110px 6vw 30px;
+display: flex;
+flex-direction: column;
+justify-content: space-between;
+transform: translateY(-105%);
+transition: transform .65s var(--ease)
+}
+.mobile-panel.open {
+transform: none
+}
+.mobile-panel nav {
+display: flex;
+flex-direction: column
+}
+.mobile-panel a {
+font-size: 15vw;
+line-height: 1.02;
+letter-spacing: -.07em;
+text-decoration: none
+}
+.mobile-panel .mono {
+display: flex;
+justify-content: space-between
+}
+.hero {
+background: #08080a
+}
+.anima-hero-frame {
+position: absolute;
+inset: 0;
+width: 100%;
+height: 100%;
+border: 0;
+background: #08080a;
+display: block
+}
+.mobile-panel:not(.open) {
+visibility: hidden;
+pointer-events: none
+}
+.mobile-panel.open {
+visibility: visible
+}
+</style></head>
+
+  <body class="loading">
+    <div id="loader" class="">
+      <div class="loader-mark"></div>
+      <div class="loader-count">
+        CALIBRATING /
+        <span>00</span>
+      </div>
+    </div>
+    <div id="cursor" class=""></div>
+    <nav class="nav" aria-label="Primary navigation">
+      <a class="brand" href="#top">ORISON°</a>
+      <div class="navlinks">
+        <a href="#about">Studio</a>
+        <a href="#process">Approach</a>
+        <a href="#work">Selected work</a>
+        <a href="#services">Capabilities</a>
+        <a href="#contact">Contact</a>
+      </div>
+      <div class="nav-right">
+        <div class="mono nav-clock">
+          SG ·
+          <span id="clock">18:42</span>
+        </div>
+        <button class="menu-btn" aria-label="Open menu" aria-expanded="false">
+          Menu
+        </button>
+      </div>
+    </nav>
+    <div class="mobile-panel" aria-hidden="true">
+      <nav>
+        <a href="#about">Studio</a>
+        <a href="#process">Approach</a>
+        <a href="#work">Work</a>
+        <a href="#contact">Contact</a>
+      </nav>
+      <div class="mono">
+        <span>Singapore</span>
+        <span>Available worldwide</span>
+      </div>
+    </div>
+    <main id="top">
+      <section class="relative min-h-[100svh] overflow-hidden text-white" style="background: rgb(8, 8, 10)">
+        <div class="absolute inset-0" style="background:radial-gradient(60vw 60vw at 78% 26%,rgba(195,164,123,.35),transparent 62%),radial-gradient(48vw 48vw at 18% 74%,rgba(217,255,99,.12),transparent 60%),radial-gradient(45vw 45vw at 88% 84%,rgba(121,93,255,.28),transparent 60%)"></div>
+        <div class="absolute inset-0 opacity-[0.16] mix-blend-overlay" style="background-image:url(&quot;data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E&quot;)"></div>
+
+        <div class="relative z-10 w-[92vw] max-w-[96rem] mx-auto pt-[20svh] pb-[14vh] grid lg:grid-cols-[1fr_1.05fr] gap-[6vw] items-center">
+          <div class="">
+            <div class="text-xs uppercase tracking-[0.16em] text-white/60" style="font-family:'DM Mono',monospace">
+              Independent creative practice — Singapore, est. 2022
+            </div>
+            <h1 class="mt-6 mb-6 font-medium tracking-tight leading-[0.88] text-[clamp(3.4rem,8.4vw,8.2rem)]" style="font-family:'Iowan Old Style','Palatino Linotype',Georgia,serif;letter-spacing:-0.085em">
+              Ideas,
+              <br>
+              made magnetic.
+            </h1>
+            <p class="max-w-[34rem] leading-relaxed text-white/75" style="font-size:17px">
+              An independent studio shaping identities, digital products and
+              spatial stories — strategy, design, motion and code kept in one
+              restless conversation.
+            </p>
+            <div class="flex flex-wrap gap-2.5 mt-8">
+              <a href="#work" class="group relative overflow-hidden inline-flex items-center gap-2 min-h-[2.6rem] px-5 rounded-full border border-[#c3a47b] text-xs text-[#c3a47b] transition-colors hover:text-[#09090b]">
+                <span class="absolute inset-0 bg-[#c3a47b] translate-y-full group-hover:translate-y-0 transition-transform duration-500" style="transition-timing-function:cubic-bezier(.22,1,.36,1)"></span>
+                <span class="relative">See selected work</span>
+                <iconify-icon icon="solar:arrow-right-up-linear" class="relative" width="15" style="--iconify-stroke-width:1.5"></iconify-icon>
+              </a>
+              <a href="#contact" class="group relative overflow-hidden inline-flex items-center gap-2 min-h-[2.6rem] px-5 rounded-full border border-white/40 text-xs transition-colors hover:text-[#09090b]">
+                <span class="absolute inset-0 bg-white translate-y-full group-hover:translate-y-0 transition-transform duration-500" style="transition-timing-function:cubic-bezier(.22,1,.36,1)"></span>
+                <span class="relative">Start a project</span>
+              </a>
+            </div>
+            <div class="mt-10 flex flex-wrap gap-x-8 gap-y-3 text-xs uppercase tracking-[0.12em] text-white/50" style="font-family:'DM Mono',monospace">
+              <span>Strategy &amp; identity</span>
+              <span>Digital &amp; motion</span>
+              <span>Available worldwide</span>
+            </div>
+          </div>
+
+          <div class="relative flex items-end justify-center gap-4 sm:gap-7" style="perspective:1400px">
+            <article class="group relative w-[30%] max-w-[13rem] aspect-[2/3] rounded-l-sm rounded-r-lg -rotate-6 transition-transform duration-700 hover:rotate-0 hover:-translate-y-5" style="background:linear-gradient(155deg,#1c1a17,#3a332a 55%,#0d0c0a);box-shadow:0 40px 60px rgba(0,0,0,.55)">
+              <div class="absolute inset-x-5 top-12 bottom-24 overflow-hidden border border-[#c3a47b]/25" aria-hidden="true">
+                <div class="absolute inset-3 border border-[#c3a47b]/15"></div>
+                <div class="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-[#c3a47b]/70"></div>
+                <div class="absolute left-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-[#c3a47b]/80"></div>
+                <span class="absolute left-3 top-3 text-[0.5rem] uppercase tracking-[0.2em] text-[#c3a47b]/70" style="font-family:'DM Mono',monospace">
+                  Orison Editions
+                </span>
+              </div>
+              <span class="absolute left-0 top-0 h-full w-[9px] rounded-l-sm bg-black/40"></span>
+              <span class="absolute left-6 right-5 top-6 h-px bg-[#c3a47b]/60"></span>
+              <div class="absolute inset-x-5 bottom-6">
+                <div class="text-[0.62rem] uppercase tracking-[0.18em] text-[#c3a47b]" style="font-family:'DM Mono',monospace">
+                  No. 01 · Identity
+                </div>
+                <h3 class="mt-1.5 text-lg leading-tight text-white/90" style="font-family:'Iowan Old Style','Palatino Linotype',Georgia,serif">
+                  Identity systems
+                </h3>
+              </div>
+            </article>
+            <article class="group relative w-[34%] max-w-[15rem] aspect-[2/3] rounded-l-sm rounded-r-lg transition-transform duration-700 hover:-translate-y-6" style="background:linear-gradient(160deg,#c3a47b,#8d6f4b 50%,#2a2119);box-shadow:0 50px 70px rgba(0,0,0,.6)">
+              <div class="absolute inset-x-6 top-14 bottom-28 overflow-hidden" aria-hidden="true">
+                <div class="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#0d0c0a]/60"></div>
+                <div class="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#0d0c0a]/45"></div>
+                <div class="absolute left-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0d0c0a]"></div>
+                <div class="absolute left-0 right-0 top-1/2 h-px bg-[#0d0c0a]/40"></div>
+                <span class="absolute right-0 top-0 text-[0.5rem] uppercase tracking-[0.2em] text-[#0d0c0a]/60" style="font-family:'DM Mono',monospace">
+                  Volume Two
+                </span>
+              </div>
+              <span class="absolute left-0 top-0 h-full w-[10px] rounded-l-sm bg-black/25"></span>
+              <span class="absolute left-6 right-6 top-7 h-px bg-[#0d0c0a]/40"></span>
+              <div class="absolute inset-x-6 bottom-7">
+                <div class="text-[0.62rem] uppercase tracking-[0.18em] text-[#0d0c0a]/70" style="font-family:'DM Mono',monospace">
+                  No. 02 · Most requested
+                </div>
+                <h3 class="mt-1.5 text-xl leading-tight text-[#0d0c0a]" style="font-family:'Iowan Old Style','Palatino Linotype',Georgia,serif">
+                  Digital experiences
+                </h3>
+              </div>
+            </article>
+            <article class="group relative w-[30%] max-w-[13rem] aspect-[2/3] rounded-l-sm rounded-r-lg rotate-6 transition-transform duration-700 hover:rotate-0 hover:-translate-y-5" style="background:linear-gradient(150deg,#f4efe6,#d8cdbb 60%,#a8987f);box-shadow:0 40px 60px rgba(0,0,0,.5)">
+              <div class="absolute inset-x-5 top-12 bottom-24 overflow-hidden border-y border-[#0d0c0a]/20" aria-hidden="true">
+                <div class="absolute inset-0 opacity-40" style="background-image:linear-gradient(rgba(13,12,10,.28) 1px,transparent 1px),linear-gradient(90deg,rgba(13,12,10,.28) 1px,transparent 1px);background-size:18px 18px;transform:perspective(180px) rotateX(56deg) scale(1.35)"></div>
+                <div class="absolute left-1/2 top-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rotate-12 border border-[#0d0c0a]/55 bg-[#f4efe6]/70 shadow-lg"></div>
+                <div class="absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 -rotate-12 bg-[#0d0c0a]/80"></div>
+                <span class="absolute left-2 top-2 text-[0.5rem] uppercase tracking-[0.2em] text-[#0d0c0a]/55" style="font-family:'DM Mono',monospace">
+                  Spatial Studies
+                </span>
+              </div>
+              <span class="absolute left-0 top-0 h-full w-[9px] rounded-l-sm bg-black/15"></span>
+              <span class="absolute left-5 right-5 top-6 h-px bg-[#0d0c0a]/25"></span>
+              <div class="absolute inset-x-5 bottom-6">
+                <div class="text-[0.62rem] uppercase tracking-[0.18em] text-[#0d0c0a]/60" style="font-family:'DM Mono',monospace">
+                  No. 03 · Spatial
+                </div>
+                <h3 class="mt-1.5 text-lg leading-tight text-[#0d0c0a]" style="font-family:'Iowan Old Style','Palatino Linotype',Georgia,serif">
+                  Launch worlds
+                </h3>
+              </div>
+            </article>
+            <div class="absolute -bottom-10 left-1/2 -translate-x-1/2 w-[76%] h-px bg-white/15"></div>
+          </div>
+        </div>
+
+        <div class="absolute z-10 bottom-6 left-1/2 -translate-x-1/2 hidden sm:flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-white/70" style="font-family:'DM Mono',monospace">
+          Scroll to explore
+          <i class="relative block w-[1.05rem] h-[1.7rem] rounded-full border border-white/60">
+            <i class="absolute left-1/2 top-[0.35rem] -ml-px block w-[2px] h-[0.35rem] bg-white" style="animation:dot 1.6s infinite"></i>
+          </i>
+        </div>
+      </section>
+      <section class="intro" id="about">
+        <div class="wrap intro-grid">
+          <div class="mono">01 / Our point of view</div>
+          <p class="intro-small">
+            We believe the most memorable work lives between disciplines. Our
+            practice brings strategy, identity and digital craft into one
+            restless conversation—so every touchpoint feels unmistakably
+            connected.
+          </p>
+        </div>
+        <div class="kinetic">
+          <div class="kinetic-line display k1">NOT QUIET</div>
+          <div class="kinetic-line display k2">IDEAS. CLEAR</div>
+          <div class="kinetic-line display k3">EXPRESSION.</div>
+        </div>
+        <div class="float-glyph g1"></div>
+        <div class="float-glyph g2"></div>
+      </section>
+      <section class="process" id="process">
+        <div class="process-sticky">
+          <h2 class="process-title display">
+            From loose signal
+            <br>
+            to living system.
+          </h2>
+          <p class="process-copy">
+            A compact, senior team stays close from the first sketch to the
+            final release. We make decisions in the open, prototype early and
+            build only what earns its place.
+          </p>
+          <div class="process-track">
+            <article class="p-card">
+              <span class="p-num">01 · ORIENT</span>
+              <div class="mini-orbit"></div>
+              <h3>
+                Find the
+                <br>
+                true tension.
+              </h3>
+              <p>
+                Interviews, field notes and rapid audits reveal the useful
+                contradiction hiding inside the brief.
+              </p>
+            </article>
+            <article class="p-card">
+              <span class="p-num">02 · FORM</span>
+              <div class="mini-orbit"></div>
+              <h3>
+                Build a world,
+                <br>
+                not a wrapper.
+              </h3>
+              <p>
+                We turn the central idea into a flexible visual and verbal
+                system that can keep growing.
+              </p>
+            </article>
+            <article class="p-card">
+              <span class="p-num">03 · RELEASE</span>
+              <div class="mini-orbit"></div>
+              <h3>
+                Make it move
+                <br>
+                in the wild.
+              </h3>
+              <p>
+                Design, motion and code converge in a launch-ready experience
+                with a practical handover.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+      <section class="services" id="services">
+        <div class="wrap services-inner">
+          <div class="mono">02 / What we make</div>
+          <h2 class="display">
+            We help ambitious teams become impossible to misread.
+          </h2>
+          <div class="service-grid">
+            <article class="service">
+              <div class="orb"></div>
+              <div>
+                <h3>Identity systems</h3>
+                <ul>
+                  <li>Positioning &amp; naming</li>
+                  <li>Visual identity</li>
+                  <li>Campaign language</li>
+                  <li>Guidelines &amp; toolkits</li>
+                </ul>
+              </div>
+            </article>
+            <article class="service">
+              <div class="orb"></div>
+              <div>
+                <h3>Digital experiences</h3>
+                <ul>
+                  <li>Product direction</li>
+                  <li>Web design &amp; build</li>
+                  <li>Motion systems</li>
+                  <li>Creative technology</li>
+                </ul>
+              </div>
+            </article>
+            <article class="service">
+              <div class="orb"></div>
+              <div>
+                <h3>Launch worlds</h3>
+                <ul>
+                  <li>Art direction</li>
+                  <li>3D &amp; image making</li>
+                  <li>Spatial moments</li>
+                  <li>Content systems</li>
+                </ul>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+      <section class="work" id="work">
+        <div class="wrap">
+          <div class="section-head">
+            <h2 class="display">
+              WE LOVE
+              <br>
+              THE WORK.
+            </h2>
+            <p>
+              A selection of identities and interfaces made for organizations in
+              motion. Each world is built from scratch; each one learns to
+              adapt.
+            </p>
+          </div>
+          <div class="work-grid">
+            <article class="work-card">
+              <div class="work-media">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/35b4f446-4279-4f90-b834-3bca9d228df9_1600w.png" alt="Original blue audio product arranged with colorful acrylic panels" data-element-src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/35b4f446-4279-4f90-b834-3bca9d228df9_1600w.png">
+              </div>
+              <div class="work-meta">
+                <h3>Velin Audio</h3>
+                <p>
+                  Product identity
+                  <br>
+                  Industrial direction · 2026
+                </p>
+              </div>
+            </article>
+            <article class="work-card">
+              <div class="work-media">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/a05d258d-8e3a-4c79-9f20-845860454ef2_1600w.png" alt="Original magenta fragrance bottle and identity materials" data-element-src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/a05d258d-8e3a-4c79-9f20-845860454ef2_1600w.png">
+              </div>
+              <div class="work-meta">
+                <h3>Afterglow No. 4</h3>
+                <p>
+                  Brand world
+                  <br>
+                  Campaign · 2026
+                </p>
+              </div>
+            </article>
+            <article class="work-card">
+              <div class="work-media">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/80610156-66d6-4751-817d-667d3cfabd1f_1600w.png" alt="Original wellness interfaces on three mobile phones" data-element-src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/80610156-66d6-4751-817d-667d3cfabd1f_1600w.png">
+              </div>
+              <div class="work-meta">
+                <h3>Fieldnote Health</h3>
+                <p>
+                  Digital product
+                  <br>
+                  Motion language · 2025
+                </p>
+              </div>
+            </article>
+            <article class="work-card">
+              <div class="poster">
+                <div class="poster-word display">VAST</div>
+              </div>
+              <div class="work-meta">
+                <h3>Vast Commons</h3>
+                <p>
+                  Cultural platform
+                  <br>
+                  Identity · 2025
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+      <div class="marquee" aria-hidden="true">
+        <div class="marquee-track">
+          <span>
+            Strategy
+            <i></i>
+            Identity
+            <i></i>
+            Digital
+            <i></i>
+            Motion
+            <i></i>
+            Spatial
+            <i></i>
+            Strategy
+            <i></i>
+            Identity
+            <i></i>
+            Digital
+            <i></i>
+            Motion
+            <i></i>
+            Spatial
+            <i></i>
+          </span>
+          <span>
+            Strategy
+            <i></i>
+            Identity
+            <i></i>
+            Digital
+            <i></i>
+            Motion
+            <i></i>
+            Spatial
+            <i></i>
+            Strategy
+            <i></i>
+            Identity
+            <i></i>
+            Digital
+            <i></i>
+            Motion
+            <i></i>
+            Spatial
+            <i></i>
+          </span>
+        </div>
+      </div>
+      <section class="timeline">
+        <div class="wrap">
+          <div class="mono">03 / A short orbit</div>
+          <h2 class="display">
+            BUILT TO
+            <br>
+            KEEP MOVING.
+          </h2>
+          <div class="timeline-row">
+            <div class="year">2022</div>
+            <h3>A table for four</h3>
+            <p>
+              Orison begins as a distributed practice connecting strategy,
+              design, motion and code across three time zones.
+            </p>
+          </div>
+          <div class="timeline-row">
+            <div class="year">2024</div>
+            <h3>The studio expands</h3>
+            <p>
+              We open a compact Singapore space for workshops, prototypes,
+              shoots and loud discussions over quiet lunches.
+            </p>
+          </div>
+          <div class="timeline-row">
+            <div class="year">NOW</div>
+            <h3>Small by design</h3>
+            <p>
+              Eight core collaborators, one shared standard and a trusted circle
+              of specialists assembled around each brief.
+            </p>
+          </div>
+        </div>
+      </section>
+      <div class="pin-spacer" style="order: 0; place-self: auto; grid-row-start: auto; grid-column-start: auto; grid-row-end: auto; grid-column-end: auto; z-index: auto; float: none; flex-shrink: 1; display: block; margin: 0px; inset: auto; position: relative; flex-basis: auto; overflow: visible; box-sizing: border-box; width: 1568px; height: 2310px; padding: 0px 0px 1600px;">
+        <section class="testimonials" style=" inset: 0px auto auto 0px; margin: 0px; max-width: 1568px; width: 1568px; max-height: 709.9375px; height: 709.9375px; padding: 132.470001px 0px;">
+          <div class="wrap">
+            <div class="mono">04 / Heard in the room</div>
+          </div>
+          <div class="quote-wrap">
+            <article class="quote">
+              <blockquote>
+                “They found the one idea everyone could believe in—and made
+                every detail sing it.”
+              </blockquote>
+            </article>
+            <article class="quote">
+              <blockquote>
+                “It felt less like hiring a vendor and more like adding a
+                fearless creative co-founder.”
+              </blockquote>
+            </article>
+            <article class="quote">
+              <blockquote>
+                “The work is strange in exactly the right way: clear, useful and
+                impossible to forget.”
+              </blockquote>
+            </article>
+          </div>
+        </section>
+      </div>
+      <section class="pricing">
+        <div class="wrap">
+          <div class="pricing-head">
+            <h2 class="display">
+              WAYS TO
+              <br>
+              WORK.
+            </h2>
+            <p>
+              Transparent starting points for common collaborations. Every scope
+              is shaped around the real task, never a template.
+            </p>
+          </div>
+          <div class="price-grid">
+            <article class="price" data-tilt="">
+              <div class="mono">Focused</div>
+              <h3>Signal Sprint</h3>
+              <div class="amount">12d</div>
+              <ul>
+                <li>Positioning workshop</li>
+                <li>Creative territories</li>
+                <li>Decision-ready direction</li>
+                <li>Two senior collaborators</li>
+              </ul>
+              <a class="pill" href="#contact">
+                <span>Check availability</span>
+              </a>
+            </article>
+            <article class="price featured" data-tilt="">
+              <div class="mono">Most chosen</div>
+              <h3>Identity Orbit</h3>
+              <div class="amount">8wk</div>
+              <ul>
+                <li>Strategy and naming</li>
+                <li>Complete visual system</li>
+                <li>Launch motion toolkit</li>
+                <li>Guidelines and training</li>
+              </ul>
+              <a class="pill" href="#contact"><span>Shape a scope</span></a>
+            </article>
+            <article class="price" data-tilt="">
+              <div class="mono">Embedded</div>
+              <h3>Studio Residency</h3>
+              <div class="amount">90d</div>
+              <ul>
+                <li>Senior creative pod</li>
+                <li>Product and campaign design</li>
+                <li>Weekly working sessions</li>
+                <li>Flexible specialist bench</li>
+              </ul>
+              <a class="pill" href="#contact">
+                <span>Start a conversation</span>
+              </a>
+            </article>
+          </div>
+        </div>
+      </section>
+      <section class="faq">
+        <div class="wrap faq-layout">
+          <h2 class="display">
+            ASK
+            <br>
+            AWAY.
+          </h2>
+          <div class="faq-list">
+            <article class="faq-item open">
+              <button class="faq-q">
+                What kinds of teams fit best?
+                <i>＋</i>
+              </button>
+              <div class="faq-a">
+                We work best with small, ambitious teams navigating a meaningful
+                change: a new category, a sharper proposition, a product launch
+                or a brand that has outgrown its first chapter.
+              </div>
+            </article>
+            <article class="faq-item">
+              <button class="faq-q">
+                Can you work with our internal team?
+                <i>＋</i>
+              </button>
+              <div class="faq-a">
+                Yes. We often pair with in-house product, marketing and
+                engineering teams. Clear ownership and regular shared working
+                sessions make the collaboration feel seamless.
+              </div>
+            </article>
+            <article class="faq-item">
+              <button class="faq-q">
+                Do you build the digital work you design?
+                <i>＋</i>
+              </button>
+              <div class="faq-a">
+                We do. Our creative developers prototype from the beginning and
+                can deliver production websites, motion systems and interactive
+                experiences alongside the design work.
+              </div>
+            </article>
+            <article class="faq-item">
+              <button class="faq-q">
+                Where do projects happen?
+                <i>＋</i>
+              </button>
+              <div class="faq-a">
+                From Singapore, everywhere. Discovery can happen in person or
+                remotely, with milestone workshops scheduled around your team's
+                time zone.
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+      <section class="clients">
+        <div class="wrap">
+          <div class="clients-top">
+            <h2>Selected co-conspirators</h2>
+            <div class="mono">Across culture, climate &amp; technology</div>
+          </div>
+          <div class="logo-grid">
+            <div class="logo">northkind</div>
+            <div class="logo">MORPHO</div>
+            <div class="logo">unfold/lab</div>
+            <div class="logo">TERRA+1</div>
+            <div class="logo">Arcline</div>
+            <div class="logo">SOLACE</div>
+            <div class="logo">KITEWORKS</div>
+            <div class="logo">softmatter</div>
+          </div>
+        </div>
+      </section>
+      <section class="cta">
+        <div class="ring"></div>
+        <h2 class="display">
+          ARE YOU
+          <br>
+          IN?
+        </h2>
+        <a class="pill solid" href="mailto:hello@orison.studio">
+          <span>Make the first move ↗</span>
+        </a>
+      </section>
+    </main>
+    <footer id="contact">
+      <div class="wrap footer-inner">
+        <div class="mono">05 / Contact</div>
+        <h2 class="footer-title display">
+          Tell us what
+          <br>
+          won't leave you alone.
+        </h2>
+        <div class="footer-grid">
+          <div>
+            <div class="mono">Start here</div>
+            <p>
+              <a href="mailto:hello@orison.studio">hello@orison.studio ↗</a>
+              <br>
+              +65 6914 2088
+              <br>
+              Singapore · Available worldwide
+            </p>
+          </div>
+          <div>
+            <div class="mono">Elsewhere</div>
+            <div class="footer-links">
+              <a href="#">Instagram</a>
+              <a href="#">Are.na</a>
+              <a href="#">LinkedIn</a>
+              <a href="#">Behance</a>
+            </div>
+          </div>
+          <div>
+            <div class="mono">Studio notes</div>
+            <p>
+              Occasional field notes on identity, interfaces and the useful
+              edges of technology.
+            </p>
+            <a class="pill" href="#"><span>Join the list</span></a>
+          </div>
+        </div>
+        <div class="copyright">
+          <span>© 2026 Orison Practice</span>
+          <span>Original recreation · Made with care</span>
+          <a href="#top">Back to orbit ↑</a>
+        </div>
+      </div>
+    </footer>
+    <script>
+          gsap.registerPlugin(ScrollTrigger);const mockup=new URLSearchParams(location.search).has('mockup');if(mockup)document.body.classList.add('mockup');const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches||mockup;const loaderNum=document.querySelector('.loader-count span');let loadN=0;const loadTimer=setInterval(()=>{loadN=Math.min(99,loadN+Math.ceil(Math.random()*9));loaderNum.textContent=String(loadN).padStart(2,'0')},70);addEventListener('load',()=>setTimeout(()=>{clearInterval(loadTimer);loaderNum.textContent='100';document.body.classList.remove('loading');document.documentElement.classList.add('loaded');gsap.from('.hero-reveal',{y:45,opacity:0,duration:1.05,stagger:.1,ease:'power4.out',delay:.15})},80));const clock=document.getElementById('clock');setInterval(()=>{clock.textContent=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Singapore',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date())},1000);
+      if(matchMedia('(pointer:fine)').matches){document.documentElement.classList.add('has-cursor');const c=document.getElementById('cursor');addEventListener('pointermove',e=>gsap.to(c,{x:e.clientX,y:e.clientY,duration:.16,ease:'power2.out'}));document.querySelectorAll('a,button,.work-card').forEach(el=>el.addEventListener('mouseenter',()=>c.classList.add('big')));document.querySelectorAll('a,button,.work-card').forEach(el=>el.addEventListener('mouseleave',()=>c.classList.remove('big')))}let lastY=0;addEventListener('scroll',()=>{const y=scrollY;document.querySelector('.nav').classList.toggle('hidden',y>lastY&&y>170);lastY=y},{passive:true});document.querySelectorAll('a[href^="#"]').forEach(a=>a.addEventListener('click',e=>{const target=document.querySelector(a.getAttribute('href'));if(target){e.preventDefault();target.scrollIntoView({behavior:reduced?'auto':'smooth'})}}));document.querySelectorAll('.faq-q').forEach(btn=>btn.addEventListener('click',()=>btn.parentElement.classList.toggle('open')));document.querySelectorAll('[data-tilt]').forEach(el=>{el.addEventListener('pointermove',e=>{const r=el.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;el.style.transform=`perspective(800px) rotateY(${x*5}deg) rotateX(${-y*5}deg) translateY(${el.classList.contains('featured')?-18:-8}px)`});el.addEventListener('pointerleave',()=>el.style.transform='')});
+      function initFluid(){const canvas=document.getElementById('fluid'),gl=canvas.getContext('webgl',{antialias:false});if(!gl)return;const vs=`attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`,fs=`precision highp float;uniform vec2 r,m;uniform float t;float n(vec2 p){return sin(p.x)*sin(p.y);}void main(){vec2 u=gl_FragCoord.xy/r.xy;vec2 q=u-.5;q.x*=r.x/r.y;float z=length(q-m*.13);float w=sin((q.x*3.4+q.y*1.3)+t*.14)+sin(z*13.-t*.25)+n(q*7.+t*.07);vec3 a=vec3(.99,.38,.72),b=vec3(.18,.65,1.),c=vec3(.78,1.,.32),d=vec3(.35,.14,.92);float k=.5+.5*sin(w*1.7+q.x*3.);vec3 col=mix(a,b,k);col=mix(col,c,.5+.5*sin(w*1.2+q.y*8.));col=mix(col,d,smoothstep(.0,.75,length(q)));col+=.16*sin(vec3(0.,2.,4.)+w*2.2);gl_FragColor=vec4(col,1.);}`;function sh(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s}const pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);gl.useProgram(pr);const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);const p=gl.getAttribLocation(pr,'p');gl.enableVertexAttribArray(p);gl.vertexAttribPointer(p,2,gl.FLOAT,false,0,0);const ur=gl.getUniformLocation(pr,'r'),um=gl.getUniformLocation(pr,'m'),ut=gl.getUniformLocation(pr,'t');let mouse={x:0,y:0};addEventListener('pointermove',e=>{mouse.x=e.clientX/innerWidth-.5;mouse.y=.5-e.clientY/innerHeight});function resize(){canvas.width=innerWidth*Math.min(devicePixelRatio,1.5);canvas.height=innerHeight*Math.min(devicePixelRatio,1.5);gl.viewport(0,0,canvas.width,canvas.height)}resize();addEventListener('resize',resize);function draw(ms){gl.uniform2f(ur,canvas.width,canvas.height);gl.uniform2f(um,mouse.x,mouse.y);gl.uniform1f(ut,ms*.001);gl.drawArrays(gl.TRIANGLES,0,6);requestAnimationFrame(draw)}requestAnimationFrame(draw)}
+      function initThree(){if(!window.THREE)return;const host=document.getElementById('hero3d'),scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(38,host.clientWidth/host.clientHeight,.1,100);camera.position.set(0,0,8);const renderer=new THREE.WebGLRenderer({alpha:true,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));renderer.setSize(host.clientWidth,host.clientHeight);host.appendChild(renderer.domElement);scene.add(new THREE.HemisphereLight(0xffffff,0x5030ff,3));const light=new THREE.DirectionalLight(0xdfffff,4);light.position.set(3,5,7);scene.add(light);const group=new THREE.Group(),curve=new THREE.CubicBezierCurve3(new THREE.Vector3(-1.65,.9,0),new THREE.Vector3(-1.3,-1.8,.15),new THREE.Vector3(1.3,-1.8,-.1),new THREE.Vector3(1.65,.9,0)),mat=new THREE.MeshPhysicalMaterial({color:0xa7f7ff,metalness:.08,roughness:.12,transmission:.5,thickness:1.2,iridescence:1,iridescenceIOR:1.8,clearcoat:1});group.add(new THREE.Mesh(new THREE.TubeGeometry(curve,64,.34,14,false),mat));const capGeo=new THREE.BoxGeometry(.7,.7,.7);[-1,1].forEach(s=>{const cap=new THREE.Mesh(capGeo,mat);cap.position.set(s*1.67,.94,0);cap.rotation.set(.35,s*.25,s*.18);group.add(cap)});const orb=new THREE.Mesh(new THREE.IcosahedronGeometry(.23,2),new THREE.MeshPhysicalMaterial({color:0xdfff65,roughness:.08,transmission:.2,iridescence:1}));orb.position.set(-.45,1.72,.3);group.add(orb);group.rotation.set(.05,-.35,.12);scene.add(group);let mx=0,my=0;addEventListener('pointermove',e=>{mx=(e.clientX/innerWidth-.5)*.35;my=(e.clientY/innerHeight-.5)*.25});addEventListener('resize',()=>{camera.aspect=host.clientWidth/host.clientHeight;camera.updateProjectionMatrix();renderer.setSize(host.clientWidth,host.clientHeight)});function draw(){group.rotation.y+=(mx-group.rotation.y)*.025;group.rotation.x+=(my-group.rotation.x)*.025;orb.rotation.y+=.018;renderer.render(scene,camera);requestAnimationFrame(draw)}draw();gsap.to(group.rotation,{z:.65,y:.4,scrollTrigger:{trigger:'.hero',start:'top top',end:'bottom top',scrub:1}});gsap.to(group.position,{y:-1.8,x:1.1,scrollTrigger:{trigger:'.hero',start:'top top',end:'bottom top',scrub:1}})}
+      if(!reduced){gsap.to('.hero-copy',{y:-130,opacity:.25,scrollTrigger:{trigger:'.hero',start:'top top',end:'bottom top',scrub:1}});gsap.to('.k1',{xPercent:-18,scrollTrigger:{trigger:'.intro',start:'top bottom',end:'bottom top',scrub:1}});gsap.to('.k2',{xPercent:15,scrollTrigger:{trigger:'.intro',start:'top bottom',end:'bottom top',scrub:1}});gsap.to('.k3',{xPercent:-11,scrollTrigger:{trigger:'.intro',start:'top bottom',end:'bottom top',scrub:1}});gsap.to('.g1',{y:300,rotation:210,scrollTrigger:{trigger:'.intro',start:'top bottom',end:'bottom top',scrub:1}});gsap.to('.g2',{y:-250,rotation:-190,scrollTrigger:{trigger:'.intro',start:'top bottom',end:'bottom top',scrub:1}});gsap.from('.p-card',{xPercent:110,rotation:12,stagger:.16,scrollTrigger:{trigger:'.process',start:'top top',end:'bottom bottom',scrub:1}});gsap.from('.service',{y:90,opacity:0,stagger:.12,scrollTrigger:{trigger:'.services',start:'top 68%'}});document.querySelectorAll('.work-card img').forEach(img=>gsap.to(img,{yPercent:8,ease:'none',scrollTrigger:{trigger:img.parentElement,start:'top bottom',end:'bottom top',scrub:1}}));gsap.to('.quote-wrap',{x:()=>-(document.querySelector('.quote-wrap').scrollWidth-innerWidth+innerWidth*.12),ease:'none',scrollTrigger:{trigger:'.testimonials',start:'top top',end:'+=1600',pin:true,scrub:1,invalidateOnRefresh:true}});gsap.from('.timeline-row',{y:55,opacity:0,stagger:.15,scrollTrigger:{trigger:'.timeline',start:'top 55%'}});gsap.to('.cta .ring',{scale:1.45,rotation:140,scrollTrigger:{trigger:'.cta',start:'top bottom',end:'bottom top',scrub:1}})}
+    </script>
+    <script>
+      const menuBtn=document.querySelector('.menu-btn'),mobilePanel=document.querySelector('.mobile-panel'),heroFrame=document.querySelector('.anima-hero-frame');menuBtn.addEventListener('click',()=>{const open=mobilePanel.classList.toggle('open');menuBtn.textContent=open?'Close':'Menu';menuBtn.setAttribute('aria-expanded',String(open));mobilePanel.setAttribute('aria-hidden',String(!open));document.body.style.overflow=open?'hidden':''});mobilePanel.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{mobilePanel.classList.remove('open');menuBtn.textContent='Menu';menuBtn.setAttribute('aria-expanded','false');mobilePanel.setAttribute('aria-hidden','true');document.body.style.overflow='' }));window.addEventListener('message',event=>{if(event.source===heroFrame.contentWindow&&event.data?.type==='orison-hero-scroll'&&Number.isFinite(event.data.deltaY))window.scrollBy({top:event.data.deltaY,left:0,behavior:'auto'})});
+    </script>
+  
+</body></html>

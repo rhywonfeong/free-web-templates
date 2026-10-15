@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CampaignIQ - AI Marketing Co-pilot</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+theme: {
+extend: {
+fontFamily: { sans: ['Inter', 'sans-serif'] },
+colors: {
+indigo: { 50: '#eef2ff', 100: '#e0e7ff', 500: '#6366f1', 600: '#4F46E5', 700: '#4338ca' },
+emerald: { 50: '#ecfdf5', 500: '#10B981', 600: '#059669' },
+amber: { 50: '#fffbeb', 500: '#F59E0B', 600: '#d97706' },
+rose: { 50: '#fff1f2', 500: '#F43F5E', 600: '#e11d48' },
+slate: { 50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 400: '#94a3b8', 500: '#64748b', 600: '#475569', 800: '#1e293b', 900: '#0f172a' }
+},
+boxShadow: {
+'sm': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+'md': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
+'card': '0 0 0 1px rgba(15, 23, 42, 0.05), 0 4px 6px -1px rgba(15, 23, 42, 0.05)'
+}
+}
+}
+}
+</script>
+<style>
+body { background-color: #FAFAFA; color: #0f172a; -webkit-font-smoothing: antialiased; }
+/* Animations */
+@keyframes fadeUp {
+from { opacity: 0; transform: translateY(12px); }
+to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+from { opacity: 0; }
+to { opacity: 1; }
+}
+.animate-fade-up { animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+/* Custom Scrollbar for chat */
+.chat-scroll::-webkit-scrollbar { width: 6px; }
+.chat-scroll::-webkit-scrollbar-track { background: transparent; }
+.chat-scroll::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
+/* Custom Range Slider */
+input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; outline: none; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #4F46E5; cursor: pointer; margin-top: -6px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: transform 0.1s; }
+input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.1); }
+input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #e2e8f0; border-radius: 2px; }
+/* Hide views by default */
+.view { display: none; opacity: 0; transition: opacity 0.3s ease; }
+.view.active { display: block; opacity: 1; }
+.view-flex.active { display: flex; opacity: 1; }
+/* Funnel Chart CSS */
+.funnel-bar { transition: width 1s cubic-bezier(0.16, 1, 0.3, 1); }
+/* Utility for markdown-like chat formatting */
+.chat-msg strong { font-weight: 600; color: #0f172a; }
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="min-h-screen text-slate-900 font-sans selection:bg-indigo-100 selection:text-indigo-900">
+
+    <!-- Screen 1: Landing Page -->
+    <div id="view-landing" class="view active min-h-screen flex flex-col">
+        <nav class="flex items-center justify-between px-6 py-4 border-b border-slate-200/60 bg-white/50 backdrop-blur-sm sticky top-0 z-50">
+            <div class="flex items-center gap-2 font-semibold tracking-tight text-lg text-slate-900">
+                <div class="w-6 h-6 bg-indigo-600 text-white rounded-[4px] flex items-center justify-center text-xs tracking-tighter">CQ</div>
+                CampaignIQ
+            </div>
+            <div class="flex items-center gap-4 text-sm font-medium text-slate-600">
+                <button class="hover:text-slate-900 transition-colors">Sign In</button>
+                <button onclick="app.navigate('onboarding')" class="bg-slate-900 text-white px-4 py-2 rounded-md hover:bg-slate-800 transition-colors shadow-sm">Get Started</button>
+            </div>
+        </nav>
+
+        <main class="flex-1 flex flex-col items-center justify-center text-center px-4 relative overflow-hidden pt-20 pb-32">
+            <!-- Subtle background decoration -->
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[600px] bg-indigo-50 rounded-full blur-3xl opacity-50 -z-10 pointer-events-none"></div>
+            
+            <div class="max-w-3xl mx-auto animate-fade-up">
+                <h1 class="text-5xl sm:text-6xl font-semibold tracking-tight text-slate-900 mb-6 leading-tight">
+                    Simulate your marketing campaign before you spend a rupee.
+                </h1>
+                <p class="text-lg text-slate-600 mb-10 max-w-2xl mx-auto leading-relaxed">
+                    Get AI-powered predictions, reasoning, and recommendations before you launch. Stop guessing. Start knowing.
+                </p>
+                <div class="flex flex-col items-center gap-3">
+                    <button onclick="app.navigate('onboarding')" class="bg-indigo-600 text-white px-8 py-3.5 rounded-md text-base font-medium hover:bg-indigo-700 transition-all shadow-sm flex items-center gap-2 group">
+                        Plan Your First Campaign
+                        <iconify-icon icon="solar:arrow-right-linear" class="group-hover:translate-x-1 transition-transform"></iconify-icon>
+                    </button>
+                    <span class="text-xs text-slate-500 font-medium">No credit card required • Free for first 3 campaigns</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto mt-32 text-left px-6">
+                <div class="animate-fade-up delay-100">
+                    <div class="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 mb-4 border border-indigo-100">
+                        <iconify-icon icon="solar:target-linear" width="20"></iconify-icon>
+                    </div>
+                    <h3 class="text-base font-semibold tracking-tight text-slate-900 mb-2">Predict Outcomes</h3>
+                    <p class="text-sm text-slate-600 leading-relaxed">See predicted reach, conversions, and ROAS with confidence ranges before you launch.</p>
+                </div>
+                <div class="animate-fade-up delay-100">
+                    <div class="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 mb-4 border border-emerald-100">
+                        <iconify-icon icon="solar:brain-linear" width="20"></iconify-icon>
+                    </div>
+                    <h3 class="text-base font-semibold tracking-tight text-slate-900 mb-2">Understand Why</h3>
+                    <p class="text-sm text-slate-600 leading-relaxed">Every prediction comes with clear reasoning. No black-box AI.</p>
+                </div>
+                <div class="animate-fade-up delay-100">
+                    <div class="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600 mb-4 border border-amber-100">
+                        <iconify-icon icon="solar:refresh-circle-linear" width="20"></iconify-icon>
+                    </div>
+                    <h3 class="text-base font-semibold tracking-tight text-slate-900 mb-2">Iterate Fast</h3>
+                    <p class="text-sm text-slate-600 leading-relaxed">Apply suggestions, rerun simulations, and converge on a winning campaign in minutes.</p>
+                </div>
+            </div>
+        </main>
+        <footer class="py-6 border-t border-slate-200 text-center text-xs text-slate-400 font-medium flex justify-center gap-4">
+            <span>© 2026 CampaignIQ</span>
+            <a href="#" class="hover:text-slate-600 transition-colors">Privacy</a>
+            <a href="#" class="hover:text-slate-600 transition-colors">Terms</a>
+        </footer>
+    </div>
+
+    <!-- Screen 2: Onboarding -->
+    <div id="view-onboarding" class="view min-h-screen bg-[#FAFAFA] flex flex-col pt-12 px-4">
+        <div class="w-full max-w-lg mx-auto mb-8 cursor-pointer flex items-center gap-2 font-semibold tracking-tight text-lg" onclick="app.navigate('landing')">
+            <div class="w-6 h-6 bg-indigo-600 text-white rounded-[4px] flex items-center justify-center text-xs tracking-tighter">CQ</div>
+            CampaignIQ
+        </div>
+        
+        <div class="w-full max-w-lg mx-auto bg-white rounded-xl shadow-card p-8 animate-fade-up">
+            <div class="flex items-center gap-2 text-xs font-medium text-slate-500 mb-6">
+                <span id="ob-step-indicator">Step 1 of 3</span>
+                <div class="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                    <div id="ob-progress" class="h-full bg-indigo-600 transition-all duration-300 w-1/3"></div>
+                </div>
+            </div>
+
+            <!-- Step 1 -->
+            <div id="ob-step-1" class="space-y-5">
+                <h2 class="text-xl font-semibold tracking-tight text-slate-900">Business Basics</h2>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1.5">What's your business name?</label>
+                    <input type="text" value="ABC Fashion Co." class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-colors placeholder:text-slate-400">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1.5">What do you sell?</label>
+                    <textarea rows="2" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-colors placeholder:text-slate-400">Modest fashion for women</textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1.5">What industry?</label>
+                    <select class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-colors bg-white">
+                        <option>E-commerce</option>
+                        <option selected>Fashion</option>
+                        <option>SaaS</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Step 2 (Hidden init) -->
+            <div id="ob-step-2" class="space-y-5 hidden">
+                <h2 class="text-xl font-semibold tracking-tight text-slate-900">Audience & Geography</h2>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1.5">Who's your typical customer?</label>
+                    <textarea rows="2" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-colors">Urban women aged 25–35 who care about modest fashion</textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Where are you based?</label>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md text-xs font-medium cursor-pointer">Bangladesh</span>
+                        <span class="px-3 py-1 bg-white text-slate-600 border border-slate-200 rounded-md text-xs font-medium cursor-pointer hover:bg-slate-50">India</span>
+                        <span class="px-3 py-1 bg-white text-slate-600 border border-slate-200 rounded-md text-xs font-medium cursor-pointer hover:bg-slate-50">UAE</span>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Monthly revenue range</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer"><input type="radio" name="rev" class="text-indigo-600 focus:ring-indigo-500"> $1K–$10K</label>
+                        <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer"><input type="radio" name="rev" checked class="text-indigo-600 focus:ring-indigo-500"> $10K–$50K</label>
+                        <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer"><input type="radio" name="rev" class="text-indigo-600 focus:ring-indigo-500"> $50K–$200K</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3 (Hidden init) -->
+            <div id="ob-step-3" class="space-y-5 hidden">
+                <h2 class="text-xl font-semibold tracking-tight text-slate-900">Marketing Context</h2>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Which channels have you used?</label>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md text-xs font-medium cursor-pointer">Facebook</span>
+                        <span class="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md text-xs font-medium cursor-pointer">Instagram</span>
+                        <span class="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md text-xs font-medium cursor-pointer">WhatsApp</span>
+                        <span class="px-3 py-1 bg-white text-slate-600 border border-slate-200 rounded-md text-xs font-medium cursor-pointer hover:bg-slate-50">Google Ads</span>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1.5">What's your biggest challenge?</label>
+                    <textarea rows="2" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-colors">Scaling past 3x ROAS during peak seasons.</textarea>
+                </div>
+            </div>
+
+            <div class="mt-8 flex justify-between items-center pt-6 border-t border-slate-100">
+                <button id="ob-back" onclick="app.onboardingPrev()" class="text-sm font-medium text-slate-500 hover:text-slate-900 invisible transition-colors">Back</button>
+                <button id="ob-next" onclick="app.onboardingNext()" class="bg-slate-900 text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm">Continue</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- App Layout Container for internal screens -->
+    <div id="app-layout" class="hidden min-h-screen bg-[#FAFAFA] md:flex">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-[#FAFAFA] border-r border-slate-200 flex flex-col fixed inset-y-0 z-10 md:relative">
+            <div class="p-6">
+                <div class="flex items-center gap-2 font-semibold tracking-tight text-lg text-slate-900 cursor-pointer" onclick="app.navigate('dashboard')">
+                    <div class="w-6 h-6 bg-indigo-600 text-white rounded-[4px] flex items-center justify-center text-xs tracking-tighter">CQ</div>
+                    CampaignIQ
+                </div>
+            </div>
+            <nav class="flex-1 px-4 space-y-1">
+                <a href="#" onclick="app.navigate('dashboard')" id="nav-dashboard" class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium bg-slate-100 text-slate-900">
+                    <iconify-icon icon="solar:home-smile-linear" width="18"></iconify-icon> Dashboard
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
+                    <iconify-icon icon="solar:folder-linear" width="18"></iconify-icon> Campaigns
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
+                    <iconify-icon icon="solar:book-linear" width="18"></iconify-icon> Knowledge Base
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
+                    <iconify-icon icon="solar:settings-linear" width="18"></iconify-icon> Settings
+                </a>
+            </nav>
+            <div class="p-4 border-t border-slate-200">
+                <div class="flex items-center gap-3 px-2">
+                    <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-medium text-xs">MX</div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-slate-900 truncate">Mr. X</p>
+                        <p class="text-xs text-slate-500 truncate">ABC Fashion Co.</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 flex flex-col min-w-0">
+            
+            <!-- Screen 3: Dashboard -->
+            <div id="view-dashboard" class="view flex-1 p-8 overflow-auto">
+                <div class="max-w-5xl mx-auto space-y-8 animate-fade-in">
+                    <div class="flex items-center justify-between">
+                        <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Welcome back, Mr. X</h1>
+                        <button onclick="app.navigate('chat')" class="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm flex items-center gap-2">
+                            <iconify-icon icon="solar:add-circle-linear"></iconify-icon> New Campaign
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                            <p class="text-xs font-medium text-slate-500 mb-1 uppercase tracking-wider">Active Campaigns</p>
+                            <p class="text-3xl font-semibold tabular-nums text-slate-900 tracking-tight">2</p>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                            <p class="text-xs font-medium text-slate-500 mb-1 uppercase tracking-wider">Simulations This Month</p>
+                            <p class="text-3xl font-semibold tabular-nums text-slate-900 tracking-tight">7</p>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                            <p class="text-xs font-medium text-slate-500 mb-1 uppercase tracking-wider">Avg Predicted ROAS</p>
+                            <p class="text-3xl font-semibold tabular-nums text-emerald-600 tracking-tight">3.2x</p>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                            <p class="text-xs font-medium text-slate-500 mb-1 uppercase tracking-wider">Pred. Accuracy</p>
+                            <p class="text-3xl font-semibold tabular-nums text-slate-900 tracking-tight">89%</p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h2 class="text-lg font-semibold tracking-tight text-slate-900 mb-4">Your Campaigns</h2>
+                        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                            <table class="w-full text-sm text-left">
+                                <thead class="text-xs text-slate-500 bg-slate-50/50 uppercase font-medium border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-6 py-3 font-medium">Campaign</th>
+                                        <th class="px-6 py-3 font-medium">Status</th>
+                                        <th class="px-6 py-3 font-medium">Goal</th>
+                                        <th class="px-6 py-3 font-medium">Metric</th>
+                                        <th class="px-6 py-3 font-medium">Date</th>
+                                        <th class="px-6 py-3"></th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-200">
+                                    <tr class="hover:bg-slate-50 transition-colors">
+                                        <td class="px-6 py-4 font-medium text-slate-900">Eid 2025 Collection</td>
+                                        <td class="px-6 py-4"><span class="px-2 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-medium">Completed</span></td>
+                                        <td class="px-6 py-4"><span class="flex items-center gap-1.5 text-slate-600"><div class="w-1.5 h-1.5 rounded-full bg-amber-500"></div> Conversion</span></td>
+                                        <td class="px-6 py-4 tabular-nums text-emerald-600 font-medium">3.2x ROAS</td>
+                                        <td class="px-6 py-4 text-slate-500 tabular-nums">Apr 2025</td>
+                                        <td class="px-6 py-4 text-right"><button class="text-indigo-600 font-medium hover:text-indigo-800">View</button></td>
+                                    </tr>
+                                    <tr class="hover:bg-slate-50 transition-colors">
+                                        <td class="px-6 py-4 font-medium text-slate-900">Winter Sale Push</td>
+                                        <td class="px-6 py-4"><span class="px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-md text-xs font-medium">Launched</span></td>
+                                        <td class="px-6 py-4"><span class="flex items-center gap-1.5 text-slate-600"><div class="w-1.5 h-1.5 rounded-full bg-amber-500"></div> Conversion</span></td>
+                                        <td class="px-6 py-4 tabular-nums font-medium">2.7x (live)</td>
+                                        <td class="px-6 py-4 text-slate-500 tabular-nums">Jan 2026</td>
+                                        <td class="px-6 py-4 text-right"><button class="text-indigo-600 font-medium hover:text-indigo-800">View</button></td>
+                                    </tr>
+                                    <tr class="hover:bg-slate-50 transition-colors">
+                                        <td class="px-6 py-4 font-medium text-slate-900">Brand Awareness Q1</td>
+                                        <td class="px-6 py-4"><span class="px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-md text-xs font-medium">Simulated</span></td>
+                                        <td class="px-6 py-4"><span class="flex items-center gap-1.5 text-slate-600"><div class="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Awareness</span></td>
+                                        <td class="px-6 py-4 tabular-nums text-slate-600">320K Reach</td>
+                                        <td class="px-6 py-4 text-slate-500 tabular-nums">Feb 2026</td>
+                                        <td class="px-6 py-4 text-right"><button class="text-indigo-600 font-medium hover:text-indigo-800">View</button></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Screen 4: Chat Briefing -->
+            <div id="view-chat" class="view flex-1 flex flex-col h-screen max-h-screen">
+                <header class="h-14 border-b border-slate-200 px-6 flex items-center justify-between bg-white shrink-0">
+                    <div class="flex items-center gap-3">
+                        <h1 class="text-base font-semibold tracking-tight text-slate-900">Campaign Brief</h1>
+                        <span class="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md font-medium" id="chat-progress">Draft</span>
+                    </div>
+                    <button class="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Save Draft</button>
+                </header>
+                
+                <div class="flex-1 flex overflow-hidden">
+                    <!-- Chat Area -->
+                    <div class="flex-1 flex flex-col bg-[#FAFAFA] relative">
+                        <div id="chat-history" class="flex-1 overflow-y-auto chat-scroll p-6 space-y-6 pb-32">
+                            <!-- Messages injected here -->
+                        </div>
+                        
+                        <!-- Input Area -->
+                        <div class="absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-[#FAFAFA] via-[#FAFAFA] to-transparent pt-10">
+                            <div class="max-w-2xl mx-auto bg-white rounded-xl shadow-md border border-slate-200 p-2" id="chat-input-container">
+                                <!-- Dynamic inputs injected here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar Brief Summary -->
+                    <div class="w-72 bg-white border-l border-slate-200 p-5 overflow-y-auto shrink-0 hidden lg:block">
+                        <h3 class="text-sm font-semibold tracking-tight text-slate-900 mb-4 uppercase">Live Brief</h3>
+                        <div class="space-y-4" id="brief-summary">
+                            <!-- Populated via JS -->
+                            <div class="text-xs text-slate-400 italic">Starting new brief...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Screen 5: Simulation Results -->
+            <div id="view-results" class="view flex-1 overflow-auto p-6 md:p-8 bg-slate-50/50">
+                <div class="max-w-5xl mx-auto space-y-8 animate-fade-in" id="results-content">
+                    <!-- Header injected via JS -->
+                    <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-5 flex items-start gap-4">
+                        <div class="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white shrink-0 mt-0.5 shadow-sm">
+                            <iconify-icon icon="solar:magic-stick-3-linear" width="18"></iconify-icon>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-800 leading-relaxed">Here's what I'm predicting for <strong class="font-semibold text-indigo-900">Eid Collection 2026 Launch</strong> based on your 150K BDT budget over 14 days. Confidence level: <strong class="font-semibold text-indigo-900">Medium-High ⭐⭐⭐⭐</strong></p>
+                        </div>
+                    </div>
+
+                    <!-- Top Metrics Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                            <p class="text-xs font-medium text-slate-500 mb-2 uppercase tracking-wider">Estimated Reach</p>
+                            <p class="text-2xl font-semibold tracking-tight tabular-nums text-slate-900" data-val="215K - 280K">215K – 280K</p>
+                            <p class="text-xs font-medium text-emerald-600 mt-2 flex items-center gap-1"><iconify-icon icon="solar:arrow-up-linear"></iconify-icon> 18% above avg</p>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                            <p class="text-xs font-medium text-slate-500 mb-2 uppercase tracking-wider">Engagement (CTR)</p>
+                            <p class="text-2xl font-semibold tracking-tight tabular-nums text-slate-900">3.4% – 4.6%</p>
+                            <p class="text-xs font-medium text-emerald-600 mt-2 flex items-center gap-1"><iconify-icon icon="solar:arrow-up-linear"></iconify-icon> Above last campaign</p>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                            <p class="text-xs font-medium text-slate-500 mb-2 uppercase tracking-wider">Predicted Orders</p>
+                            <p class="text-2xl font-semibold tracking-tight tabular-nums text-slate-900" id="res-orders">145 – 210</p>
+                            <p class="text-xs text-slate-500 mt-2">AOV: 1,850 BDT</p>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-[0_0_0_2px_rgba(79,70,229,0.1)] flex flex-col justify-between relative overflow-hidden">
+                            <div class="absolute top-0 right-0 w-16 h-16 bg-indigo-50 rounded-bl-full -z-10"></div>
+                            <p class="text-xs font-medium text-indigo-600 mb-2 uppercase tracking-wider">Predicted ROAS</p>
+                            <p class="text-3xl font-semibold tracking-tight tabular-nums text-indigo-600" id="res-roas">2.4x – 3.6x</p>
+                            <p class="text-xs text-slate-500 mt-2">Rev: 270K – 460K</p>
+                        </div>
+                    </div>
+
+                    <!-- Pros / Cons -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="space-y-4">
+                            <h3 class="text-sm font-semibold text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                                <iconify-icon icon="solar:check-circle-linear" class="text-emerald-500"></iconify-icon> Working in your favor
+                            </h3>
+                            <div class="space-y-3">
+                                <div class="bg-emerald-50/50 border border-emerald-100 p-3 rounded-lg flex gap-3 text-sm">
+                                    <div class="text-emerald-600 mt-0.5"><iconify-icon icon="solar:users-group-rounded-linear"></iconify-icon></div>
+                                    <div><strong class="font-medium text-slate-900">Audience fit: 9/10.</strong> Highly active on Meta during Eid.</div>
+                                </div>
+                                <div class="bg-emerald-50/50 border border-emerald-100 p-3 rounded-lg flex gap-3 text-sm">
+                                    <div class="text-emerald-600 mt-0.5"><iconify-icon icon="solar:calendar-date-linear"></iconify-icon></div>
+                                    <div><strong class="font-medium text-slate-900">Timing:</strong> Eid lifts conversion intent by 35% here.</div>
+                                </div>
+                                <div class="bg-emerald-50/50 border border-emerald-100 p-3 rounded-lg flex gap-3 text-sm">
+                                    <div class="text-emerald-600 mt-0.5"><iconify-icon icon="solar:history-linear"></iconify-icon></div>
+                                    <div><strong class="font-medium text-slate-900">Past anchor:</strong> Eid '25 hit 3.2x ROAS. High confidence.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-4">
+                            <h3 class="text-sm font-semibold text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                                <iconify-icon icon="solar:danger-triangle-linear" class="text-amber-500"></iconify-icon> Holding you back
+                            </h3>
+                            <div class="space-y-3">
+                                <div class="bg-amber-50/50 border border-amber-100 p-3 rounded-lg flex gap-3 text-sm">
+                                    <div class="text-amber-600 mt-0.5"><iconify-icon icon="solar:graph-up-linear"></iconify-icon></div>
+                                    <div><strong class="font-medium text-slate-900">Costs:</strong> Eid CPMs are 40% higher (+15K BDT cost).</div>
+                                </div>
+                                <div class="bg-amber-50/50 border border-amber-100 p-3 rounded-lg flex gap-3 text-sm">
+                                    <div class="text-amber-600 mt-0.5"><iconify-icon icon="solar:tag-price-linear"></iconify-icon></div>
+                                    <div><strong class="font-medium text-slate-900">Offer strength:</strong> 15% is okay, but leaders offer 20-25%.</div>
+                                </div>
+                                <div class="bg-amber-50/50 border border-amber-100 p-3 rounded-lg flex gap-3 text-sm">
+                                    <div class="text-amber-600 mt-0.5"><iconify-icon icon="solar:pie-chart-2-linear"></iconify-icon></div>
+                                    <div><strong class="font-medium text-slate-900">Allocation:</strong> WhatsApp is underbudgeted at 15%.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CSS Funnel Chart -->
+                    <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                        <h3 class="text-sm font-semibold text-slate-900 uppercase tracking-tight mb-6">Predicted Funnel</h3>
+                        <div class="space-y-4 relative">
+                            <!-- Grid lines -->
+                            <div class="absolute inset-y-0 left-[100px] right-0 flex justify-between pointer-events-none px-2">
+                                <div class="w-px bg-slate-100 h-full"></div><div class="w-px bg-slate-100 h-full"></div><div class="w-px bg-slate-100 h-full"></div><div class="w-px bg-slate-100 h-full"></div>
+                            </div>
+                            
+                            <div class="flex items-center gap-4 relative z-10">
+                                <div class="w-24 text-right text-sm font-medium text-slate-600 shrink-0">Reach</div>
+                                <div class="flex-1 bg-indigo-50 rounded-r-sm h-8 relative group">
+                                    <div class="absolute inset-y-0 left-0 bg-indigo-200 rounded-r-sm funnel-bar" style="width: 100%"></div>
+                                    <span class="absolute right-3 inset-y-0 flex items-center text-xs font-semibold text-indigo-900 tabular-nums">215,000</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-4 relative z-10">
+                                <div class="w-24 text-right text-sm font-medium text-slate-600 shrink-0">Clicks</div>
+                                <div class="flex-1 bg-indigo-50 rounded-r-sm h-8 relative group">
+                                    <div class="absolute inset-y-0 left-0 bg-indigo-300 rounded-r-sm funnel-bar" style="width: 25%"></div>
+                                    <span class="absolute left-0 pl-3 inset-y-0 flex items-center text-xs font-semibold text-indigo-900 tabular-nums z-10">7,310 (3.4%)</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-4 relative z-10">
+                                <div class="w-24 text-right text-sm font-medium text-slate-600 shrink-0">Add to Cart</div>
+                                <div class="flex-1 bg-indigo-50 rounded-r-sm h-8 relative group">
+                                    <div class="absolute inset-y-0 left-0 bg-indigo-400 rounded-r-sm funnel-bar" style="width: 8%"></div>
+                                    <span class="absolute left-0 pl-3 inset-y-0 flex items-center text-xs font-semibold text-indigo-900 tabular-nums z-10">1,200</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-4 relative z-10">
+                                <div class="w-24 text-right text-sm font-medium text-slate-600 shrink-0">Orders</div>
+                                <div class="flex-1 bg-indigo-50 rounded-r-sm h-8 relative group">
+                                    <div class="absolute inset-y-0 left-0 bg-indigo-600 rounded-r-sm funnel-bar shadow-sm" style="width: 3%"></div>
+                                    <span class="absolute left-[3%] pl-3 inset-y-0 flex items-center text-xs font-semibold text-indigo-900 tabular-nums z-10">145</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-4 pt-4">
+                        <button onclick="app.navigate('launch')" class="px-5 py-2.5 rounded-md text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors shadow-sm">Looks Good - Launch Plan</button>
+                        <button onclick="app.navigate('recommendations')" class="bg-indigo-600 text-white px-5 py-2.5 rounded-md text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm flex items-center gap-2">
+                            <iconify-icon icon="solar:lightbulb-bolt-linear"></iconify-icon> See Recommendations
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Screen 6: Recommendations -->
+            <div id="view-recommendations" class="view flex-1 overflow-auto p-6 md:p-8">
+                <div class="max-w-4xl mx-auto space-y-6 animate-fade-in">
+                    <div class="bg-white border border-slate-200 rounded-xl p-5 flex items-start gap-4 shadow-sm mb-8">
+                        <div class="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white shrink-0 mt-0.5 shadow-sm">
+                            <iconify-icon icon="solar:lightbulb-bolt-linear" width="18"></iconify-icon>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-800 leading-relaxed">Here are 4 changes I'd suggest, ranked by impact. Pick the ones you want to apply, and I'll rerun the simulation.</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4" id="rec-list">
+                        <!-- Rec 1 -->
+                        <label class="flex items-start gap-4 p-5 bg-white border border-slate-200 rounded-xl shadow-sm cursor-pointer hover:border-indigo-300 transition-colors group">
+                            <div class="mt-0.5">
+                                <input type="checkbox" checked class="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600">
+                            </div>
+                            <div class="flex-1">
+                                <h4 class="text-base font-semibold tracking-tight text-slate-900 group-hover:text-indigo-700 transition-colors">Strengthen your offer</h4>
+                                <p class="text-sm text-slate-600 mt-1">Move from 15% off to 20% off + free delivery on orders above 2000 BDT.</p>
+                                <div class="mt-3 flex items-center gap-3">
+                                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                        <iconify-icon icon="solar:graph-up-linear"></iconify-icon> ROAS +0.6x to +0.9x
+                                    </span>
+                                    <span class="text-xs text-slate-500">Est. orders: +45</span>
+                                </div>
+                            </div>
+                        </label>
+                        <!-- Rec 2 -->
+                        <label class="flex items-start gap-4 p-5 bg-white border border-slate-200 rounded-xl shadow-sm cursor-pointer hover:border-indigo-300 transition-colors group">
+                            <div class="mt-0.5">
+                                <input type="checkbox" checked class="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600">
+                            </div>
+                            <div class="flex-1">
+                                <h4 class="text-base font-semibold tracking-tight text-slate-900 group-hover:text-indigo-700 transition-colors">Rebalance toward WhatsApp</h4>
+                                <p class="text-sm text-slate-600 mt-1">Shift budget allocation from 15% to 25% on WhatsApp — your highest-converting channel.</p>
+                                <div class="mt-3 flex items-center gap-3">
+                                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                        <iconify-icon icon="solar:graph-up-linear"></iconify-icon> ROAS +0.4x
+                                    </span>
+                                </div>
+                            </div>
+                        </label>
+                         <!-- Rec 3 -->
+                         <label class="flex items-start gap-4 p-5 bg-white border border-slate-200 rounded-xl shadow-sm cursor-pointer hover:border-indigo-300 transition-colors group">
+                            <div class="mt-0.5">
+                                <input type="checkbox" class="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600">
+                            </div>
+                            <div class="flex-1">
+                                <h4 class="text-base font-semibold tracking-tight text-slate-900 group-hover:text-indigo-700 transition-colors">Add Instagram Stories format</h4>
+                                <p class="text-sm text-slate-600 mt-1">Allocate 30% of IG budget to Stories — they outperform Feed during Eid by 1.8x.</p>
+                                <div class="mt-3 flex items-center gap-3">
+                                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                        Reach +35K
+                                    </span>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="pt-6 border-t border-slate-200 flex justify-end">
+                        <button onclick="app.applyRecs()" id="btn-apply-recs" class="bg-slate-900 text-white px-6 py-3 rounded-md text-sm font-medium hover:bg-slate-800 transition-all shadow-sm flex items-center gap-2">
+                            <iconify-icon icon="solar:refresh-circle-linear" class="text-lg"></iconify-icon> Apply Selected & Rerun
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Screen 7: Launch Plan -->
+            <div id="view-launch" class="view flex-1 overflow-auto p-6 md:p-8 bg-slate-50/30">
+                 <div class="max-w-4xl mx-auto space-y-6 animate-fade-in">
+                    <div class="flex items-center justify-between mb-8">
+                        <div>
+                            <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Your Launch Plan</h1>
+                            <p class="text-sm text-slate-500 mt-1">Eid Collection 2026 Launch</p>
+                        </div>
+                        <button class="px-4 py-2 bg-white border border-slate-300 rounded-md text-sm font-medium shadow-sm hover:bg-slate-50 flex items-center gap-2">
+                            <iconify-icon icon="solar:document-download-linear"></iconify-icon> PDF
+                        </button>
+                    </div>
+
+                    <div class="space-y-4">
+                        <!-- Accordion Items -->
+                        <details class="bg-white rounded-xl border border-slate-200 shadow-sm group" open>
+                            <summary class="p-5 font-semibold tracking-tight text-slate-900 cursor-pointer list-none flex justify-between items-center select-none">
+                                1. Campaign Setup Checklist
+                                <iconify-icon icon="solar:alt-arrow-down-linear" class="text-slate-400 group-open:rotate-180 transition-transform"></iconify-icon>
+                            </summary>
+                            <div class="p-5 pt-0 text-sm text-slate-600 border-t border-slate-100 mt-2 space-y-3 leading-relaxed">
+                                <ul class="list-disc pl-5 space-y-2">
+                                    <li>Create Facebook campaign with Sales objective. Set conversion event to Purchase.</li>
+                                    <li><strong>Bidding strategy:</strong> 'Maximize Conversions' for first 7 days, then 'Target CPA' after 50+ conversions.</li>
+                                    <li><strong>Daily budget pacing:</strong> 10,700 BDT/day.</li>
+                                    <li><strong>Frequency cap:</strong> 3 per user per 7 days.</li>
+                                </ul>
+                            </div>
+                        </details>
+
+                        <details class="bg-white rounded-xl border border-slate-200 shadow-sm group">
+                            <summary class="p-5 font-semibold tracking-tight text-slate-900 cursor-pointer list-none flex justify-between items-center select-none">
+                                2. Creative Brief
+                                <iconify-icon icon="solar:alt-arrow-down-linear" class="text-slate-400 group-open:rotate-180 transition-transform"></iconify-icon>
+                            </summary>
+                            <div class="p-5 pt-0 text-sm text-slate-600 border-t border-slate-100 mt-2 space-y-4 leading-relaxed">
+                                <p><strong>Note:</strong> Put CTA at 0:08 instead of 0:18 — most viewers scroll before 0:18.</p>
+                                <div>
+                                    <strong class="text-slate-900 block mb-2">Headline variants to test:</strong>
+                                    <div class="space-y-2 pl-3 border-l-2 border-indigo-200">
+                                        <p>"Your Eid Wardrobe Awaits — 20% Off This Week"</p>
+                                        <p>"Soft Kaftans, Soft Prices — Eid Collection Live Now"</p>
+                                        <p>"Eid Ready in 3 Steps — Shop the New Drop"</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="bg-white rounded-xl border border-slate-200 shadow-sm group">
+                            <summary class="p-5 font-semibold tracking-tight text-slate-900 cursor-pointer list-none flex justify-between items-center select-none">
+                                5. Optimization Calendar
+                                <iconify-icon icon="solar:alt-arrow-down-linear" class="text-slate-400 group-open:rotate-180 transition-transform"></iconify-icon>
+                            </summary>
+                            <div class="p-5 pt-0 text-sm text-slate-600 border-t border-slate-100 mt-2 space-y-3 leading-relaxed">
+                                <div class="grid grid-cols-[80px_1fr] gap-2">
+                                    <span class="font-medium text-slate-900">Days 1-3</span> <span>Don't touch anything — let algorithms learn.</span>
+                                    <span class="font-medium text-slate-900">Day 4</span> <span>First creative review — kill any variant with CTR < 1.5%.</span>
+                                    <span class="font-medium text-slate-900">Day 7</span> <span>Budget reallocation review based on channel CPA.</span>
+                                    <span class="font-medium text-slate-900">Day 14</span> <span>Final push — increase WhatsApp budget by 20%.</span>
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="bg-white rounded-xl border border-rose-100 shadow-sm group">
+                            <summary class="p-5 font-semibold tracking-tight text-rose-600 cursor-pointer list-none flex justify-between items-center select-none">
+                                6. Risk Flags & Alerts
+                                <iconify-icon icon="solar:alt-arrow-down-linear" class="text-rose-400 group-open:rotate-180 transition-transform"></iconify-icon>
+                            </summary>
+                            <div class="p-5 pt-0 text-sm text-slate-600 border-t border-rose-50 mt-2 space-y-3 leading-relaxed">
+                                <ul class="space-y-2">
+                                    <li class="flex gap-2 items-start"><iconify-icon icon="solar:danger-circle-linear" class="text-rose-500 mt-0.5"></iconify-icon> If CPA exceeds 1,000 BDT after 5 days → pause and consult.</li>
+                                    <li class="flex gap-2 items-start"><iconify-icon icon="solar:danger-circle-linear" class="text-rose-500 mt-0.5"></iconify-icon> If CTR drops below 1.5% → creative is fatiguing, switch variant.</li>
+                                </ul>
+                            </div>
+                        </details>
+                    </div>
+                    
+                    <div class="pt-8 flex justify-between">
+                        <button class="text-slate-500 text-sm font-medium hover:text-slate-900">Launch Externally</button>
+                        <button onclick="app.navigate('analysis')" class="bg-indigo-600 text-white px-6 py-3 rounded-md text-sm font-medium hover:bg-indigo-700 transition-all shadow-sm">Simulate Post-Launch →</button>
+                    </div>
+                 </div>
+            </div>
+
+            <!-- Screen 8: Post-Launch Analysis -->
+            <div id="view-analysis" class="view flex-1 overflow-auto p-6 md:p-8">
+                <div class="max-w-4xl mx-auto space-y-8 animate-fade-in">
+                    <div class="bg-white border border-slate-200 rounded-xl p-5 flex items-start gap-4 shadow-sm">
+                        <div class="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white shrink-0 mt-0.5 shadow-sm">
+                            <iconify-icon icon="solar:chart-square-linear" width="18"></iconify-icon>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-800 leading-relaxed">Welcome back! Your Eid campaign wrapped up 2 days ago. I've pulled the actual results to analyze what worked and improve future predictions.</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <table class="w-full text-sm text-left">
+                            <thead class="text-xs text-slate-500 bg-slate-50/50 uppercase font-medium border-b border-slate-200">
+                                <tr>
+                                    <th class="px-6 py-3">Metric</th>
+                                    <th class="px-6 py-3">Predicted</th>
+                                    <th class="px-6 py-3">Actual</th>
+                                    <th class="px-6 py-3">Variance</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr>
+                                    <td class="px-6 py-4 font-medium text-slate-900">Reach</td>
+                                    <td class="px-6 py-4 text-slate-500 tabular-nums">215K - 280K</td>
+                                    <td class="px-6 py-4 font-semibold text-slate-900 tabular-nums">235K</td>
+                                    <td class="px-6 py-4 text-emerald-600 text-xs font-medium flex items-center gap-1"><iconify-icon icon="solar:check-circle-linear"></iconify-icon> Within range</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-6 py-4 font-medium text-slate-900">Orders</td>
+                                    <td class="px-6 py-4 text-slate-500 tabular-nums">145 - 210</td>
+                                    <td class="px-6 py-4 font-semibold text-slate-900 tabular-nums">188</td>
+                                    <td class="px-6 py-4 text-emerald-600 text-xs font-medium flex items-center gap-1"><iconify-icon icon="solar:check-circle-linear"></iconify-icon> Within range</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-6 py-4 font-medium text-slate-900">ROAS</td>
+                                    <td class="px-6 py-4 text-slate-500 tabular-nums">3.4x - 4.5x</td>
+                                    <td class="px-6 py-4 font-semibold text-indigo-600 tabular-nums">3.8x</td>
+                                    <td class="px-6 py-4 text-emerald-600 text-xs font-medium flex items-center gap-1"><iconify-icon icon="solar:check-circle-linear"></iconify-icon> Beat mid-point</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="bg-indigo-50/50 border border-indigo-100 rounded-xl p-6 space-y-4 text-sm text-slate-800 leading-relaxed">
+                        <p><strong class="font-semibold text-slate-900">Strong campaign</strong> — you beat your predicted midpoint on every metric. Here's what stood out:</p>
+                        <p><strong class="font-semibold text-emerald-700">What worked:</strong> Your WhatsApp retargeting drove 42 of the 188 sales — 22% of revenue at a much lower CPA than Meta.</p>
+                        <p><strong class="font-semibold text-amber-600">What surprised me:</strong> Saturday performance was weaker than expected. A competitor ran a 30% flash sale that day — I've logged this for future predictions.</p>
+                        <p><strong class="font-semibold text-indigo-700">Learnings:</strong> Your Eid-week ROAS is consistently 3x+. I'll use this as a high-confidence anchor next time.</p>
+                    </div>
+
+                    <div class="flex justify-end pt-4">
+                        <button onclick="app.navigate('dashboard')" class="bg-slate-900 text-white px-6 py-2.5 rounded-md text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm">Finish & Return to Dashboard</button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Application Logic -->
+    <script>
+        const app = {
+            currentRoute: 'landing',
+            obStep: 1,
+            chatStep: 0,
+            brief: {},
+            
+            navigate: (route) => {
+                document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+                
+                if(['landing', 'onboarding'].includes(route)) {
+                    document.getElementById('app-layout').classList.add('hidden');
+                    document.getElementById('app-layout').classList.remove('md:flex');
+                    document.getElementById(`view-${route}`).classList.add('active');
+                } else {
+                    document.getElementById('app-layout').classList.remove('hidden');
+                    document.getElementById('app-layout').classList.add('md:flex');
+                    document.getElementById(`view-${route}`).classList.add('active');
+                    
+                    // Specific route initializations
+                    if(route === 'chat' && app.chatStep === 0) app.startChat();
+                }
+                window.scrollTo(0, 0);
+            },
+
+            // Onboarding Logic
+            onboardingNext: () => {
+                if(app.obStep < 3) {
+                    document.getElementById(`ob-step-${app.obStep}`).classList.add('hidden');
+                    app.obStep++;
+                    document.getElementById(`ob-step-${app.obStep}`).classList.remove('hidden');
+                    document.getElementById('ob-step-indicator').innerText = `Step ${app.obStep} of 3`;
+                    document.getElementById('ob-progress').style.width = `${(app.obStep/3)*100}%`;
+                    document.getElementById('ob-back').classList.remove('invisible');
+                    if(app.obStep === 3) document.getElementById('ob-next').innerText = "Finish Setup";
+                } else {
+                    app.navigate('dashboard');
+                }
+            },
+            onboardingPrev: () => {
+                if(app.obStep > 1) {
+                    document.getElementById(`ob-step-${app.obStep}`).classList.add('hidden');
+                    app.obStep--;
+                    document.getElementById(`ob-step-${app.obStep}`).classList.remove('hidden');
+                    document.getElementById('ob-step-indicator').innerText = `Step ${app.obStep} of 3`;
+                    document.getElementById('ob-progress').style.width = `${(app.obStep/3)*100}%`;
+                    if(app.obStep === 1) document.getElementById('ob-back').classList.add('invisible');
+                    document.getElementById('ob-next').innerText = "Continue";
+                }
+            },
+
+            // Chat Logic
+            chatScript: [
+                { ai: "Hey! Let's plan your next campaign. What would you like to call it?", type: 'text', key: 'Campaign Name' },
+                { ai: "Nice name. What's the main goal of this campaign?", type: 'cards', options: ['Awareness', 'Consideration', 'Conversion', 'Retention'], key: 'Goal' },
+                { ai: "Got it — driving sales. What kind of conversion?", type: 'chips', options: ['E-commerce Sales', 'App Installs', 'Other'], key: 'Type' },
+                { ai: "Where do you want to run this? Pick all that apply.", type: 'multi-chips', options: ['Facebook', 'Instagram', 'WhatsApp', 'Google Ads'], key: 'Channels' },
+                { ai: "Perfect mix. Have you run a WhatsApp campaign before? It changes my prediction calibration.", type: 'buttons', options: ['First time', 'Done it before'], key: 'WhatsApp Exp' },
+                { ai: "Great. Now, who are you targeting?", type: 'buttons', options: ['Same audience as last time', 'Define new audience'], key: 'Audience' },
+                { ai: "Locked in. Do you have the creative ready?", type: 'buttons', options: ['Upload creative', 'Describe it'], key: 'Creative Setup' },
+                { ai: "Describe what the creative looks like.", type: 'textarea', key: 'Creative Details' },
+                { ai: "Strong direction. What's your total budget for this campaign?", type: 'slider', min: 10000, max: 500000, default: 150000, suffix: ' BDT', key: 'Budget' },
+                { ai: "And when are you planning to run it?", type: 'date', key: 'Duration' },
+                { ai: "I have everything I need. Want me to run the simulation now?", type: 'action', label: 'Run Simulation', action: () => app.navigate('results') }
+            ],
+
+            startChat: async () => {
+                document.getElementById('chat-history').innerHTML = '';
+                app.brief = {};
+                app.updateBrief();
+                app.chatStep = 0;
+                await app.processChatStep();
+            },
+
+            processChatStep: async () => {
+                const step = app.chatScript[app.chatStep];
+                if(!step) return;
+
+                // Add AI msg
+                await app.sleep(400);
+                app.appendMsg('ai', step.ai);
+                
+                // Render Input
+                const container = document.getElementById('chat-input-container');
+                container.innerHTML = '';
+                container.classList.remove('hidden');
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'flex items-center gap-2 animate-fade-in';
+
+                if(step.type === 'text') {
+                    wrapper.innerHTML = `
+                        <input type="text" id="ci-text" class="flex-1 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-slate-400" placeholder="Type here..." value="Eid Collection 2026 Launch" autofocus>
+                        <button onclick="app.handleChatInput(document.getElementById('ci-text').value)" class="w-8 h-8 bg-indigo-600 rounded-md text-white flex items-center justify-center shrink-0 hover:bg-indigo-700 transition-colors"><iconify-icon icon="solar:plain-2-linear"></iconify-icon></button>
+                    `;
+                } else if(step.type === 'textarea') {
+                    wrapper.innerHTML = `
+                        <textarea id="ci-area" rows="2" class="flex-1 bg-transparent px-3 py-2 text-sm outline-none resize-none placeholder:text-slate-400">A short video showing pastel kaftans with traditional music. CTA: 'Shop Eid Collection - 15% off'</textarea>
+                        <button onclick="app.handleChatInput(document.getElementById('ci-area').value)" class="w-8 h-8 bg-indigo-600 rounded-md text-white flex items-center justify-center shrink-0 self-end mb-1 hover:bg-indigo-700 transition-colors"><iconify-icon icon="solar:plain-2-linear"></iconify-icon></button>
+                    `;
+                } else if(step.type === 'cards' || step.type === 'chips' || step.type === 'buttons') {
+                    wrapper.className = 'flex flex-wrap gap-2 p-1 animate-fade-in';
+                    step.options.forEach(opt => {
+                        const btn = document.createElement('button');
+                        btn.className = `px-4 py-2 rounded-md text-sm font-medium border border-slate-200 hover:border-indigo-600 hover:bg-indigo-50 transition-colors ${opt==='Conversion'?'border-indigo-600 bg-indigo-50 text-indigo-700':'bg-white text-slate-700'}`;
+                        btn.innerText = opt;
+                        btn.onclick = () => app.handleChatInput(opt);
+                        wrapper.appendChild(btn);
+                    });
+                } else if(step.type === 'multi-chips') {
+                    wrapper.className = 'flex flex-wrap gap-2 p-1 w-full animate-fade-in';
+                    wrapper.innerHTML = `
+                        <div class="flex-1 flex gap-2 flex-wrap">
+                            <button class="ci-mbtn px-3 py-1.5 rounded-md text-sm border border-indigo-600 bg-indigo-50 text-indigo-700" data-val="Facebook">Facebook</button>
+                            <button class="ci-mbtn px-3 py-1.5 rounded-md text-sm border border-indigo-600 bg-indigo-50 text-indigo-700" data-val="Instagram">Instagram</button>
+                            <button class="ci-mbtn px-3 py-1.5 rounded-md text-sm border border-indigo-600 bg-indigo-50 text-indigo-700" data-val="WhatsApp">WhatsApp</button>
+                            <button class="ci-mbtn px-3 py-1.5 rounded-md text-sm border border-slate-200 bg-white text-slate-600" data-val="Google Ads">Google Ads</button>
+                        </div>
+                        <button onclick="app.handleChatInput('FB, IG, WhatsApp')" class="px-4 py-1.5 bg-slate-900 text-white rounded-md text-sm font-medium shrink-0">Confirm</button>
+                    `;
+                } else if(step.type === 'slider') {
+                    wrapper.className = 'flex flex-col gap-3 w-full p-2 animate-fade-in';
+                    wrapper.innerHTML = `
+                        <div class="flex justify-between text-sm font-medium"><span class="text-slate-500">Budget</span><span id="slider-val" class="text-indigo-600">150,000 BDT</span></div>
+                        <input type="range" min="10000" max="500000" step="5000" value="150000" oninput="document.getElementById('slider-val').innerText = parseInt(this.value).toLocaleString() + ' BDT'">
+                        <button onclick="app.handleChatInput('150,000 BDT')" class="w-full py-2 bg-slate-900 text-white rounded-md text-sm font-medium mt-2">Confirm Budget</button>
+                    `;
+                } else if(step.type === 'date') {
+                     wrapper.className = 'flex flex-col gap-2 w-full p-2 animate-fade-in';
+                     wrapper.innerHTML = `
+                        <div class="flex gap-2">
+                            <input type="text" value="Mar 15, 2026" class="w-1/2 border border-slate-200 rounded-md px-3 py-2 text-sm text-center bg-slate-50" readonly>
+                            <input type="text" value="Mar 28, 2026" class="w-1/2 border border-slate-200 rounded-md px-3 py-2 text-sm text-center bg-slate-50" readonly>
+                        </div>
+                        <button onclick="app.handleChatInput('Mar 15 - Mar 28 (14 days)')" class="w-full py-2 bg-slate-900 text-white rounded-md text-sm font-medium mt-1">Set Dates</button>
+                     `;
+                } else if(step.type === 'action') {
+                    wrapper.className = 'w-full p-1 animate-fade-in';
+                    wrapper.innerHTML = `
+                        <button onclick="app.handleChatInput(null, true)" class="w-full py-3 bg-indigo-600 text-white rounded-md text-sm font-medium shadow-md hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2">
+                            <iconify-icon icon="solar:magic-stick-3-linear" class="text-lg"></iconify-icon> ${step.label}
+                        </button>
+                    `;
+                }
+                
+                container.appendChild(wrapper);
+            },
+
+            handleChatInput: async (val, isAction = false) => {
+                document.getElementById('chat-input-container').classList.add('hidden'); // hide input
+                const step = app.chatScript[app.chatStep];
+                
+                if(!isAction && val) {
+                    app.appendMsg('user', val);
+                    if(step.key) {
+                        app.brief[step.key] = val;
+                        app.updateBrief();
+                    }
+                }
+                
+                if(isAction) {
+                    step.action();
+                    return;
+                }
+
+                app.chatStep++;
+                document.getElementById('chat-progress').innerText = `${Math.round((app.chatStep/app.chatScript.length)*100)}% Complete`;
+                await app.processChatStep();
+            },
+
+            appendMsg: (type, text) => {
+                const hist = document.getElementById('chat-history');
+                const div = document.createElement('div');
+                div.className = `flex gap-3 max-w-[85%] animate-fade-up ${type === 'user' ? 'ml-auto flex-row-reverse' : ''}`;
+                
+                let iconHtml = '';
+                if(type === 'ai') {
+                    iconHtml = `<div class="w-7 h-7 rounded-[6px] bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5"><iconify-icon icon="solar:magic-stick-3-linear" width="14"></iconify-icon></div>`;
+                }
+
+                div.innerHTML = `
+                    ${iconHtml}
+                    <div class="${type === 'user' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-800 shadow-sm'} px-4 py-2.5 rounded-2xl text-sm leading-relaxed chat-msg">
+                        ${text}
+                    </div>
+                `;
+                hist.appendChild(div);
+                hist.scrollTop = hist.scrollHeight;
+            },
+
+            updateBrief: () => {
+                const container = document.getElementById('brief-summary');
+                if(Object.keys(app.brief).length === 0) return;
+                
+                container.innerHTML = '';
+                for (const [k, v] of Object.entries(app.brief)) {
+                    container.innerHTML += `
+                        <div class="animate-fade-in border-b border-slate-100 pb-2 last:border-0">
+                            <p class="text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">${k}</p>
+                            <p class="text-sm font-medium text-slate-900 truncate" title="${v}">${v}</p>
+                        </div>
+                    `;
+                }
+            },
+
+            applyRecs: async () => {
+                const btn = document.getElementById('btn-apply-recs');
+                btn.innerHTML = `<iconify-icon icon="solar:spinner-linear" class="animate-spin"></iconify-icon> Simulating...`;
+                btn.classList.add('opacity-80', 'pointer-events-none');
+                
+                await app.sleep(1200);
+                
+                app.navigate('results');
+                
+                // Update results DOM directly to simulate "After" state
+                setTimeout(() => {
+                    document.getElementById('res-roas').innerHTML = `3.4x – 4.5x <span class="text-xs font-medium text-emerald-600 ml-2 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100"><iconify-icon icon="solar:arrow-up-linear" class="align-middle"></iconify-icon> Improved</span>`;
+                    document.getElementById('res-orders').innerHTML = `190 – 265`;
+                    // Animate funnel bar
+                    document.querySelectorAll('.funnel-bar')[3].style.width = '4.5%';
+                }, 100);
+            },
+
+            sleep: (ms) => new Promise(resolve => setTimeout(resolve, ms))
+        };
+    </script>
+</body>
+</html>

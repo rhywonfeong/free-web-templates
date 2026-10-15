@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BeautyBook - Sistema de Agendamento</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+body { font-family: 'Inter', sans-serif; }
+</style></head>
+<body class="bg-gradient-to-br from-pink-50 via-purple-50 to-white min-h-screen">
+    <div id="app"></div>
+    
+    <script type="module">
+        // ============================================
+        // CONFIGURAÇÃO E ESTADO GLOBAL
+        // ============================================
+        
+        const API_URL = 'http://localhost:3000';
+        
+        const state = {
+            user: JSON.parse(localStorage.getItem('user')) || null,
+            token: localStorage.getItem('token') || null,
+            currentPage: 'login',
+            agendamentos: [],
+            servicos: [],
+            profissionais: [],
+            configuracoes: null,
+            selectedDate: new Date(),
+            stats: {}
+        };
+
+        // ============================================
+        // API SERVICE
+        // ============================================
+        
+        const api = {
+            async request(endpoint, options = {}) {
+                const headers = {
+                    'Content-Type': 'application/json',
+                    ...(state.token && { 'Authorization': `Bearer ${state.token}` })
+                };
+                
+                const response = await fetch(`${API_URL}${endpoint}`, {
+                    ...options,
+                    headers: { ...headers, ...options.headers }
+                });
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        logout();
+                    }
+                    throw new Error(await response.text());
+                }
+                
+                return response.json();
+            },
+            
+            auth: {
+                login: (email, senha) => api.request('/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ email, senha })
+                }),
+                register: (data) => api.request('/auth/register', {
+                    method: 'POST',
+                    body: JSON.stringify(data)
+                })
+            },
+            
+            agendamentos: {
+                list: () => api.request('/agendamentos'),
+                listByDate: (data) => api.request(`/agendamentos/${data}`),
+                create: (data) => api.request('/agendamentos', {
+                    method: 'POST',
+                    body: JSON.stringify(data)
+                }),
+                update: (id, data) => api.request(`/agendamentos/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                }),
+                delete: (id) => api.request(`/agendamentos/${id}`, {
+                    method: 'DELETE'
+                })
+            },
+            
+            servicos: {
+                list: () => api.request('/servicos'),
+                create: (data) => api.request('/servicos', {
+                    method: 'POST',
+                    body: JSON.stringify(data)
+                }),
+                update: (id, data) => api.request(`/servicos/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                }),
+                delete: (id) => api.request(`/servicos/${id}`, {
+                    method: 'DELETE'
+                })
+            },
+            
+            profissionais: {
+                list: () => api.request('/profissionais'),
+                create: (data) => api.request('/profissionais', {
+                    method: 'POST',
+                    body: JSON.stringify(data)
+                }),
+                update: (id, data) => api.request(`/profissionais/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                }),
+                delete: (id) => api.request(`/profissionais/${id}`, {
+                    method: 'DELETE'
+                })
+            },
+            
+            configuracoes: {
+                get: () => api.request('/configuracoes'),
+                update: (data) => api.request('/configuracoes', {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                })
+            }
+        };
+
+        // ============================================
+        // AUTH FUNCTIONS
+        // ============================================
+        
+        async function login(email, senha) {
+            try {
+                const response = await api.auth.login(email, senha);
+                state.user = response.user;
+                state.token = response.token;
+                localStorage.setItem('user', JSON.stringify(response.user));
+                localStorage.setItem('token', response.token);
+                navigateTo('dashboard');
+            } catch (error) {
+                alert('Erro ao fazer login: ' + error.message);
+            }
+        }
+        
+        function logout() {
+            state.user = null;
+            state.token = null;
+            localStorage.removeItem('user');
+            localStorage.removeItem('token');
+            navigateTo('login');
+        }
+
+        // ============================================
+        // NAVIGATION
+        // ============================================
+        
+        function navigateTo(page) {
+            state.currentPage = page;
+            render();
+            
+            if (page !== 'login' && state.token) {
+                loadData();
+            }
+        }
+
+        // ============================================
+        // DATA LOADING
+        // ============================================
+        
+        async function loadData() {
+            try {
+                const [agendamentos, servicos, profissionais, configuracoes] = await Promise.all([
+                    api.agendamentos.list(),
+                    api.servicos.list(),
+                    api.profissionais.list(),
+                    api.configuracoes.get()
+                ]);
+                
+                state.agendamentos = agendamentos;
+                state.servicos = servicos;
+                state.profissionais = profissionais;
+                state.configuracoes = configuracoes;
+                
+                calculateStats();
+                render();
+            } catch (error) {
+                console.error('Erro ao carregar dados:', error);
+            }
+        }
+        
+        function calculateStats() {
+            const now = new Date();
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
+            
+            const agendamentosDoMes = state.agendamentos.filter(a => {
+                const date = new Date(a.data);
+                return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+            });
+            
+            const servicoCount = {};
+            const profissionalCount = {};
+            
+            agendamentosDoMes.forEach(a => {
+                servicoCount[a.servico_id] = (servicoCount[a.servico_id] || 0) + 1;
+                profissionalCount[a.profissional_id] = (profissionalCount[a.profissional_id] || 0) + 1;
+            });
+            
+            const servicoMaisPedido = Object.entries(servicoCount).sort((a, b) => b[1] - a[1])[0];
+            const profissionalMaisRequisitado = Object.entries(profissionalCount).sort((a, b) => b[1] - a[1])[0];
+            
+            state.stats = {
+                totalMes: agendamentosDoMes.length,
+                servicoMaisPedido: servicoMaisPedido ? state.servicos.find(s => s.id == servicoMaisPedido[0])?.nome : 'N/A',
+                profissionalMaisRequisitado: profissionalMaisRequisitado ? state.profissionais.find(p => p.id == profissionalMaisRequisitado[0])?.nome : 'N/A',
+                agendamentosHoje: state.agendamentos.filter(a => a.data === formatDate(new Date()))
+            };
+        }
+
+        // ============================================
+        // UTILITY FUNCTIONS
+        // ============================================
+        
+        function formatDate(date) {
+            return date.toISOString().split('T')[0];
+        }
+        
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+        }
+        
+        function formatTime(time) {
+            return time.substring(0, 5);
+        }
+
+        // ============================================
+        // COMPONENTS
+        // ============================================
+        
+        function LoginPage() {
+            return `
+                <div class="min-h-screen flex items-center justify-center px-4">
+                    <div class="w-full max-w-md">
+                        <div class="text-center mb-8">
+                            <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-pink-400 to-purple-400 rounded-2xl mb-4">
+                                <i data-lucide="sparkles" class="w-8 h-8 text-white"></i>
+                            </div>
+                            <h1 class="text-3xl font-semibold tracking-tight text-gray-900 mb-2">BeautyBook</h1>
+                            <p class="text-sm text-gray-500">Sistema de agendamento profissional</p>
+                        </div>
+                        
+                        <div class="bg-white rounded-2xl shadow-lg shadow-pink-100/50 p-8">
+                            <form onsubmit="handleLogin(event)" class="space-y-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                                    <input 
+                                        type="email" 
+                                        id="login-email" 
+                                        required
+                                        class="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm"
+                                        placeholder="seu@email.com"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Senha</label>
+                                    <input 
+                                        type="password" 
+                                        id="login-senha" 
+                                        required
+                                        class="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm"
+                                        placeholder="••••••••"
+                                    />
+                                </div>
+                                
+                                <button 
+                                    type="submit"
+                                    class="w-full bg-gradient-to-r from-pink-400 to-purple-400 text-white py-3 rounded-lg font-medium hover:from-pink-500 hover:to-purple-500 transition shadow-lg shadow-pink-200/50 text-sm"
+                                >
+                                    Entrar
+                                </button>
+                            </form>
+                            
+                            <div class="mt-6 text-center">
+                                <p class="text-xs text-gray-500">Conta demo: admin@beautybook.com / admin123</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function Sidebar() {
+            const menuItems = [
+                { id: 'dashboard', icon: 'layout-dashboard', label: 'Dashboard' },
+                { id: 'agenda', icon: 'calendar', label: 'Agenda' },
+                { id: 'servicos', icon: 'scissors', label: 'Serviços' },
+                { id: 'profissionais', icon: 'users', label: 'Profissionais' },
+                { id: 'configuracoes', icon: 'settings', label: 'Configurações' }
+            ];
+            
+            return `
+                <aside class="w-64 bg-white border-r border-gray-100 min-h-screen fixed left-0 top-0 hidden lg:block">
+                    <div class="p-6">
+                        <div class="flex items-center gap-3 mb-8">
+                            <div class="w-10 h-10 bg-gradient-to-br from-pink-400 to-purple-400 rounded-xl flex items-center justify-center">
+                                <i data-lucide="sparkles" class="w-5 h-5 text-white"></i>
+                            </div>
+                            <span class="text-lg font-semibold tracking-tight text-gray-900">BeautyBook</span>
+                        </div>
+                        
+                        <nav class="space-y-1">
+                            ${menuItems.map(item => `
+                                <a 
+                                    onclick="navigateTo('${item.id}')"
+                                    class="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition ${
+                                        state.currentPage === item.id 
+                                            ? 'bg-pink-50 text-pink-600' 
+                                            : 'text-gray-600 hover:bg-gray-50'
+                                    }"
+                                >
+                                    <i data-lucide="${item.icon}" class="w-5 h-5"></i>
+                                    <span class="text-sm font-medium">${item.label}</span>
+                                </a>
+                            `).join('')}
+                        </nav>
+                    </div>
+                    
+                    <div class="absolute bottom-0 left-0 right-0 p-6 border-t border-gray-100">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="w-10 h-10 bg-gradient-to-br from-pink-200 to-purple-200 rounded-full flex items-center justify-center">
+                                <span class="text-sm font-medium text-pink-700">${state.user?.nome?.[0] || 'A'}</span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-900 truncate">${state.user?.nome || 'Administrador'}</p>
+                                <p class="text-xs text-gray-500 truncate">${state.user?.email || ''}</p>
+                            </div>
+                        </div>
+                        <button 
+                            onclick="logout()"
+                            class="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition"
+                        >
+                            <i data-lucide="log-out" class="w-4 h-4"></i>
+                            Sair
+                        </button>
+                    </div>
+                </aside>
+            `;
+        }
+        
+        function DashboardPage() {
+            return `
+                <div class="space-y-6">
+                    <div>
+                        <h1 class="text-2xl font-semibold tracking-tight text-gray-900">Dashboard</h1>
+                        <p class="text-sm text-gray-500 mt-1">Visão geral do seu negócio</p>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-10 h-10 bg-pink-100 rounded-lg flex items-center justify-center">
+                                    <i data-lucide="calendar-check" class="w-5 h-5 text-pink-600"></i>
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-600 mb-1">Agendamentos do Mês</p>
+                            <p class="text-3xl font-semibold text-gray-900">${state.stats.totalMes || 0}</p>
+                        </div>
+                        
+                        <div class="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                                    <i data-lucide="scissors" class="w-5 h-5 text-purple-600"></i>
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-600 mb-1">Serviço Mais Pedido</p>
+                            <p class="text-lg font-medium text-gray-900">${state.stats.servicoMaisPedido || 'N/A'}</p>
+                        </div>
+                        
+                        <div class="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-10 h-10 bg-pink-100 rounded-lg flex items-center justify-center">
+                                    <i data-lucide="star" class="w-5 h-5 text-pink-600"></i>
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-600 mb-1">Profissional Destaque</p>
+                            <p class="text-lg font-medium text-gray-900">${state.stats.profissionalMaisRequisitado || 'N/A'}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+                        <div class="flex items-center justify-between mb-6">
+                            <h2 class="text-lg font-semibold text-gray-900">Agendamentos de Hoje</h2>
+                            <span class="px-3 py-1 bg-pink-100 text-pink-700 text-xs font-medium rounded-full">
+                                ${state.stats.agendamentosHoje?.length || 0} agendamentos
+                            </span>
+                        </div>
+                        
+                        <div class="space-y-3">
+                            ${state.stats.agendamentosHoje?.length ? state.stats.agendamentosHoje.map(ag => {
+                                const servico = state.servicos.find(s => s.id === ag.servico_id);
+                                const profissional = state.profissionais.find(p => p.id === ag.profissional_id);
+                                return `
+                                    <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                                        <div class="w-12 h-12 bg-gradient-to-br from-pink-200 to-purple-200 rounded-full flex items-center justify-center flex-shrink-0">
+                                            <span class="text-base font-medium text-pink-700">${ag.nome_cliente[0]}</span>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-sm font-medium text-gray-900">${ag.nome_cliente}</p>
+                                            <p class="text-xs text-gray-500">${servico?.nome || 'Serviço'} • ${profissional?.nome || 'Profissional'}</p>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="text-sm font-medium text-gray-900">${formatTime(ag.hora)}</p>
+                                            <p class="text-xs text-gray-500">${ag.telefone}</p>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('') : '<p class="text-sm text-gray-500 text-center py-8">Nenhum agendamento para hoje</p>'}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function AgendaPage() {
+            const today = new Date();
+            const currentMonth = today.getMonth();
+            const currentYear = today.getFullYear();
+            const firstDay = new Date(currentYear, currentMonth, 1);
+            const lastDay = new Date(currentYear, currentMonth + 1, 0);
+            const daysInMonth = lastDay.getDate();
+            const startingDayOfWeek = firstDay.getDay();
+            
+            const agendamentosPorDia = {};
+            state.agendamentos.forEach(ag => {
+                const date = new Date(ag.data);
+                if (date.getMonth() === currentMonth && date.getFullYear() === currentYear) {
+                    const day = date.getDate();
+                    if (!agendamentosPorDia[day]) agendamentosPorDia[day] = [];
+                    agendamentosPorDia[day].push(ag);
+                }
+            });
+            
+            let calendarHTML = '';
+            let day = 1;
+            
+            for (let i = 0; i < 6; i++) {
+                let weekHTML = '<div class="grid grid-cols-7 gap-2">';
+                
+                for (let j = 0; j < 7; j++) {
+                    if (i === 0 && j < startingDayOfWeek) {
+                        weekHTML += '<div class="aspect-square"></div>';
+                    } else if (day > daysInMonth) {
+                        weekHTML += '<div class="aspect-square"></div>';
+                    } else {
+                        const isToday = day === today.getDate();
+                        const hasAgendamentos = agendamentosPorDia[day];
+                        const count = hasAgendamentos?.length || 0;
+                        
+                        weekHTML += `
+                            <button
+                                onclick="showDayAgendamentos(${day})"
+                                class="aspect-square p-2 rounded-lg border transition ${
+                                    isToday 
+                                        ? 'bg-pink-50 border-pink-300 text-pink-700' 
+                                        : hasAgendamentos 
+                                            ? 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100' 
+                                            : 'bg-white border-gray-100 text-gray-700 hover:bg-gray-50'
+                                }"
+                            >
+                                <div class="text-sm font-medium">${day}</div>
+                                ${count > 0 ? `<div class="text-xs mt-1">${count}</div>` : ''}
+                            </button>
+                        `;
+                        day++;
+                    }
+                }
+                
+                weekHTML += '</div>';
+                calendarHTML += weekHTML;
+                
+                if (day > daysInMonth) break;
+            }
+            
+            return `
+                <div class="space-y-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h1 class="text-2xl font-semibold tracking-tight text-gray-900">Agenda</h1>
+                            <p class="text-sm text-gray-500 mt-1">${new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(today)}</p>
+                        </div>
+                        <button 
+                            onclick="showNovoAgendamento()"
+                            class="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-pink-400 to-purple-400 text-white rounded-lg text-sm font-medium hover:from-pink-500 hover:to-purple-500 transition shadow-lg shadow-pink-200/50"
+                        >
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            Novo Agendamento
+                        </button>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+                        <div class="grid grid-cols-7 gap-2 mb-4">
+                            ${['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => 
+                                `<div class="text-center text-xs font-medium text-gray-500">${day}</div>`
+                            ).join('')}
+                        </div>
+                        ${calendarHTML}
+                    </div>
+                    
+                    <div id="day-details" class="hidden bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+                        <!-- Detalhes do dia serão inseridos aqui -->
+                    </div>
+                </div>
+            `;
+        }
+        
+        function ServicosPage() {
+            return `
+                <div class="space-y-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h1 class="text-2xl font-semibold tracking-tight text-gray-900">Serviços</h1>
+                            <p class="text-sm text-gray-500 mt-1">Gerencie os serviços oferecidos</p>
+                        </div>
+                        <button 
+                            onclick="showNovoServico()"
+                            class="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-pink-400 to-purple-400 text-white rounded-lg text-sm font-medium hover:from-pink-500 hover:to-purple-500 transition shadow-lg shadow-pink-200/50"
+                        >
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            Novo Serviço
+                        </button>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        ${state.servicos.map(servico => `
+                            <div class="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+                                <div class="flex items-start justify-between mb-4">
+                                    <div class="w-12 h-12 bg-gradient-to-br from-pink-100 to-purple-100 rounded-lg flex items-center justify-center">
+                                        <i data-lucide="scissors" class="w-6 h-6 text-pink-600"></i>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <button 
+                                            onclick="editServico(${servico.id})"
+                                            class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition"
+                                        >
+                                            <i data-lucide="pencil" class="w-4 h-4"></i>
+                                        </button>
+                                        <button 
+                                            onclick="deleteServico(${servico.id})"
+                                            class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                                        >
+                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <h3 class="text-base font-semibold text-gray-900 mb-2">${servico.nome}</h3>
+                                <div class="flex items-center justify-between text-sm">
+                                    <span class="text-gray-500">${servico.duracao_minutos} min</span>
+                                    <span class="font-medium text-pink-600">${formatCurrency(servico.preco)}</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        function ProfissionaisPage() {
+            return `
+                <div class="space-y-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h1 class="text-2xl font-semibold tracking-tight text-gray-900">Profissionais</h1>
+                            <p class="text-sm text-gray-500 mt-1">Gerencie sua equipe</p>
+                        </div>
+                        <button 
+                            onclick="showNovoProfissional()"
+                            class="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-pink-400 to-purple-400 text-white rounded-lg text-sm font-medium hover:from-pink-500 hover:to-purple-500 transition shadow-lg shadow-pink-200/50"
+                        >
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            Novo Profissional
+                        </button>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        ${state.profissionais.map(prof => `
+                            <div class="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+                                <div class="flex items-start gap-4">
+                                    <div class="w-16 h-16 bg-gradient-to-br from-pink-200 to-purple-200 rounded-full flex items-center justify-center flex-shrink-0">
+                                        <span class="text-xl font-medium text-pink-700">${prof.nome[0]}</span>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <h3 class="text-base font-semibold text-gray-900 mb-2">${prof.nome}</h3>
+                                        <div class="flex flex-wrap gap-1 mb-3">
+                                            ${(prof.especialidades || []).map(esp => 
+                                                `<span class="px-2 py-1 bg-pink-50 text-pink-700 text-xs rounded-full">${esp}</span>`
+                                            ).join('')}
+                                        </div>
+                                        <p class="text-sm text-gray-500">
+                                            <i data-lucide="clock" class="w-4 h-4 inline"></i>
+                                            ${formatTime(prof.horario_inicio)} - ${formatTime(prof.horario_fim)}
+                                        </p>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <button 
+                                            onclick="editProfissional(${prof.id})"
+                                            class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition"
+                                        >
+                                            <i data-lucide="pencil" class="w-4 h-4"></i>
+                                        </button>
+                                        <button 
+                                            onclick="deleteProfissional(${prof.id})"
+                                            class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                                        >
+                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        function ConfiguracoesPage() {
+            const config = state.configuracoes || {};
+            return `
+                <div class="space-y-6">
+                    <div>
+                        <h1 class="text-2xl font-semibold tracking-tight text-gray-900">Configurações</h1>
+                        <p class="text-sm text-gray-500 mt-1">Configure seu estabelecimento</p>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+                        <form onsubmit="saveConfiguracoes(event)" class="space-y-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Nome do Estabelecimento</label>
+                                <input 
+                                    type="text" 
+                                    id="config-nome"
+                                    value="${config.nome_estabelecimento || ''}"
+                                    class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm"
+                                />
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Telefone</label>
+                                <input 
+                                    type="tel" 
+                                    id="config-telefone"
+                                    value="${config.telefone || ''}"
+                                    class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm"
+                                />
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Horário de Abertura</label>
+                                    <input 
+                                        type="time" 
+                                        id="config-abertura"
+                                        value="${config.horario_abertura || '09:00'}"
+                                        class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Horário de Fechamento</label>
+                                    <input 
+                                        type="time" 
+                                        id="config-fechamento"
+                                        value="${config.horario_fechamento || '18:00'}"
+                                        class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm"
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Dias Fechados</label>
+                                <div class="grid grid-cols-7 gap-2">
+                                    ${['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((dia, index) => {
+                                        const checked = (config.dias_fechados || []).includes(index);
+                                        return `
+                                            <label class="flex items-center justify-center p-3 rounded-lg border cursor-pointer transition ${
+                                                checked ? 'bg-pink-50 border-pink-300 text-pink-700' : 'bg-white border-gray-200 text-gray-700'
+                                            }">
+                                                <input 
+                                                    type="checkbox" 
+                                                    name="dias-fechados"
+                                                    value="${index}"
+                                                    ${checked ? 'checked' : ''}
+                                                    class="hidden"
+                                                    onchange="this.parentElement.classList.toggle('bg-pink-50'); this.parentElement.classList.toggle('border-pink-300'); this.parentElement.classList.toggle('text-pink-700');"
+                                                />
+                                                <span class="text-xs font-medium">${dia}</span>
+                                            </label>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            </div>
+                            
+                            <button 
+                                type="submit"
+                                class="w-full bg-gradient-to-r from-pink-400 to-purple-400 text-white py-3 rounded-lg font-medium hover:from-pink-500 hover:to-purple-500 transition shadow-lg shadow-pink-200/50 text-sm"
+                            >
+                                Salvar Configurações
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        // ============================================
+        // EVENT HANDLERS
+        // ============================================
+        
+        window.handleLogin = async function(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const senha = document.getElementById('login-senha').value;
+            await login(email, senha);
+        };
+        
+        window.showNovoAgendamento = function() {
+            const modal = `
+                <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onclick="if(event.target === this) this.remove()">
+                    <div class="bg-white rounded-2xl p-6 w-full max-w-md">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Novo Agendamento</h3>
+                        <form onsubmit="createAgendamento(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Nome do Cliente</label>
+                                <input type="text" id="ag-nome" required class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Telefone</label>
+                                <input type="tel" id="ag-telefone" required class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Serviço</label>
+                                <select id="ag-servico" required class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm">
+                                    ${state.servicos.map(s => `<option value="${s.id}">${s.nome}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Profissional</label>
+                                <select id="ag-profissional" required class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm">
+                                    ${state.profissionais.map(p => `<option value="${p.id}">${p.nome}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Data</label>
+                                    <input type="date" id="ag-data" required class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Hora</label>
+                                    <input type="time" id="ag-hora" required class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm" />
+                                </div>
+                            </div>
+                            <button type="submit" class="w-full bg-gradient-to-r from-pink-400 to-purple-400 text-white py-3 rounded-lg font-medium hover:from-pink-500 hover:to-purple-500 transition text-sm">
+                                Criar Agendamento
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modal);
+            lucide.createIcons();
+        };
+        
+        window.createAgendamento = async function(e) {
+            e.preventDefault();
+            try {
+                await api.agendamentos.create({
+                    nome_cliente: document.getElementById('ag-nome').value,
+                    telefone: document.getElementById('ag-telefone').value,
+                    servico_id: document.getElementById('ag-servico').value,
+                    profissional_id: document.getElementById('ag-profissional').value,
+                    data: document.getElementById('ag-data').value,
+                    hora: document.getElementById('ag-hora').value
+                });
+                document.querySelector('.fixed').remove();
+                await loadData();
+            } catch (error) {
+                alert('Erro ao criar agendamento: ' + error.message);
+            }
+        };
+        
+        window.showDayAgendamentos = function(day) {
+            const date = new Date(new Date().getFullYear(), new Date().getMonth(), day);
+            const dateStr = formatDate(date);
+            const agendamentos = state.agendamentos.filter(a => a.data === dateStr);
+            
+            const container = document.getElementById('day-details');
+            container.classList.remove('hidden');
+            container.innerHTML = `
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Agendamentos - ${day}/${new Date().getMonth() + 1}</h3>
+                <div class="space-y-3">
+                    ${agendamentos.length ? agendamentos.map(ag => {
+                        const servico = state.servicos.find(s => s.id === ag.servico_id);
+                        const profissional = state.profissionais.find(p => p.id === ag.profissional_id);
+                        return `
+                            <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                                <div class="w-12 h-12 bg-gradient-to-br from-pink-200 to-purple-200 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <span class="text-base font-medium text-pink-700">${ag.nome_cliente[0]}</span>
+                                </div>
+                                <div class="flex-1">
+                                    <p class="text-sm font-medium text-gray-900">${ag.nome_cliente}</p>
+                                    <p class="text-xs text-gray-500">${servico?.nome || ''} • ${profissional?.nome || ''}</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-sm font-medium text-gray-900">${formatTime(ag.hora)}</p>
+                                    <button onclick="deleteAgendamento(${ag.id})" class="text-xs text-red-600 hover:text-red-700">Cancelar</button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('') : '<p class="text-sm text-gray-500 text-center py-8">Nenhum agendamento neste dia</p>'}
+                </div>
+            `;
+        };
+        
+        window.deleteAgendamento = async function(id) {
+            if (confirm('Deseja cancelar este agendamento?')) {
+                try {
+                    await api.agendamentos.delete(id);
+                    await loadData();
+                } catch (error) {
+                    alert('Erro ao cancelar agendamento: ' + error.message);
+                }
+            }
+        };
+        
+        window.showNovoServico = function() {
+            const modal = `
+                <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onclick="if(event.target === this) this.remove()">
+                    <div class="bg-white rounded-2xl p-6 w-full max-w-md">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Novo Serviço</h3>
+                        <form onsubmit="createServico(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Nome</label>
+                                <input type="text" id="serv-nome" required class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Duração (minutos)</label>
+                                <input type="number" id="serv-duracao" required class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Preço (R$)</label>
+                                <input type="number" step="0.01" id="serv-preco" required class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm" />
+                            </div>
+                            <button type="submit" class="w-full bg-gradient-to-r from-pink-400 to-purple-400 text-white py-3 rounded-lg font-medium hover:from-pink-500 hover:to-purple-500 transition text-sm">
+                                Criar Serviço
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modal);
+        };
+        
+        window.createServico = async function(e) {
+            e.preventDefault();
+            try {
+                await api.servicos.create({
+                    nome: document.getElementById('serv-nome').value,
+                    duracao_minutos: parseInt(document.getElementById('serv-duracao').value),
+                    preco: parseFloat(document.getElementById('serv-preco').value)
+                });
+                document.querySelector('.fixed').remove();
+                await loadData();
+            } catch (error) {
+                alert('Erro ao criar serviço: ' + error.message);
+            }
+        };
+        
+        window.deleteServico = async function(id) {
+            if (confirm('Deseja excluir este serviço?')) {
+                try {
+                    await api.servicos.delete(id);
+                    await loadData();
+                } catch (error) {
+                    alert('Erro ao excluir serviço: ' + error.message);
+                }
+            }
+        };
+        
+        window.showNovoProfissional = function() {
+            const modal = `
+                <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onclick="if(event.target === this) this.remove()">
+                    <div class="bg-white rounded-2xl p-6 w-full max-w-md">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Novo Profissional</h3>
+                        <form onsubmit="createProfissional(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Nome</label>
+                                <input type="text" id="prof-nome" required class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Especialidades (separadas por vírgula)</label>
+                                <input type="text" id="prof-especialidades" placeholder="Manicure, Pedicure, Design de Sobrancelhas" class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm" />
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Início</label>
+                                    <input type="time" id="prof-inicio" required class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Fim</label>
+                                    <input type="time" id="prof-fim" required class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-pink-300 focus:ring-4 focus:ring-pink-100 outline-none transition text-sm" />
+                                </div>
+                            </div>
+                            <button type="submit" class="w-full bg-gradient-to-r from-pink-400 to-purple-400 text-white py-3 rounded-lg font-medium hover:from-pink-500 hover:to-purple-500 transition text-sm">
+                                Criar Profissional
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modal);
+        };
+        
+        window.createProfissional = async function(e) {
+            e.preventDefault();
+            try {
+                const especialidades = document.getElementById('prof-especialidades').value
+                    .split(',')
+                    .map(e => e.trim())
+                    .filter(e => e);
+                    
+                await api.profissionais.create({
+                    nome: document.getElementById('prof-nome').value,
+                    especialidades,
+                    horario_inicio: document.getElementById('prof-inicio').value,
+                    horario_fim: document.getElementById('prof-fim').value
+                });
+                document.querySelector('.fixed').remove();
+                await loadData();
+            } catch (error) {
+                alert('Erro ao criar profissional: ' + error.message);
+            }
+        };
+        
+        window.deleteProfissional = async function(id) {
+            if (confirm('Deseja excluir este profissional?')) {
+                try {
+                    await api.profissionais.delete(id);
+                    await loadData();
+                } catch (error) {
+                    alert('Erro ao excluir profissional: ' + error.message);
+                }
+            }
+        };
+        
+        window.saveConfiguracoes = async function(e) {
+            e.preventDefault();
+            try {
+                const diasFechados = Array.from(document.querySelectorAll('input[name="dias-fechados"]:checked'))
+                    .map(input => parseInt(input.value));
+                    
+                await api.configuracoes.update({
+                    nome_estabelecimento: document.getElementById('config-nome').value,
+                    telefone: document.getElementById('config-telefone').value,
+                    horario_abertura: document.getElementById('config-abertura').value,
+                    horario_fechamento: document.getElementById('config-fechamento').value,
+                    dias_fechados: diasFechados
+                });
+                
+                alert('Configurações salvas com sucesso!');
+                await loadData();
+            } catch (error) {
+                alert('Erro ao salvar configurações: ' + error.message);
+            }
+        };
+
+        // ============================================
+        // RENDER
+        // ============================================
+        
+        function render() {
+            const app = document.getElementById('app');
+            
+            if (!state.token) {
+                app.innerHTML = LoginPage();
+            } else {
+                let content = '';
+                
+                switch (state.currentPage) {
+                    case 'dashboard':
+                        content = DashboardPage();
+                        break;
+                    case 'agenda':
+                        content = AgendaPage();
+                        break;
+                    case 'servicos':
+                        content = ServicosPage();
+                        break;
+                    case 'profissionais':
+                        content = ProfissionaisPage();
+                        break;
+                    case 'configuracoes':
+                        content = ConfiguracoesPage();
+                        break;
+                }
+                
+                app.innerHTML = `
+                    ${Sidebar()}
+                    <main class="lg:ml-64 p-6 lg:p-8">
+                        ${content}
+                    </main>
+                `;
+            }
+            
+            lucide.createIcons();
+        }
+
+        // ============================================
+        // INIT
+        // ============================================
+        
+        window.navigateTo = navigateTo;
+        window.logout = logout;
+        
+        if (state.token) {
+            navigateTo('dashboard');
+        } else {
+            render();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,1538 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<script id="aura-supabase-token-firewall">(function () {
+if (window.__AURA_SUPABASE_FIREWALL__) return;
+window.__AURA_SUPABASE_FIREWALL__ = true;
+var SUPABASE_HOST = "hoirqrkdgbmvpwutwuwj.supabase.co";
+var BLOCKED_KEY_PATTERNS = [
+/^sb-[a-z0-9-]+-auth-token$/i,
+/^supabase\.auth\.token$/i
+];
+function isBlockedStorageKey(key) {
+if (typeof key !== "string") return false;
+for (var i = 0; i < BLOCKED_KEY_PATTERNS.length; i++) {
+if (BLOCKED_KEY_PATTERNS[i].test(key)) return true;
+}
+return false;
+}
+function toAbsoluteUrl(input) {
+try {
+return new URL(input, window.location.href);
+} catch {
+return null;
+}
+}
+function isSupabaseDestination(input) {
+var parsed = toAbsoluteUrl(input);
+if (!parsed) return false;
+if (SUPABASE_HOST && parsed.host === SUPABASE_HOST) return true;
+return parsed.host.endsWith(".supabase.co");
+}
+function pathLooksSensitive(input) {
+var parsed = toAbsoluteUrl(input);
+if (!parsed) return false;
+return /^\/(auth|rest|functions)\/v1\//.test(parsed.pathname || "");
+}
+function headersContainAuth(headersLike) {
+if (!headersLike) return false;
+try {
+if (typeof Headers !== "undefined" && headersLike instanceof Headers) {
+return !!(headersLike.get("authorization") || headersLike.get("apikey"));
+}
+} catch {}
+if (Array.isArray(headersLike)) {
+for (var i = 0; i < headersLike.length; i++) {
+var pair = headersLike[i] || [];
+var name = String(pair[0] || "").toLowerCase();
+if (name === "authorization" || name === "apikey") return true;
+}
+return false;
+}
+if (typeof headersLike === "object") {
+var keys = Object.keys(headersLike);
+for (var j = 0; j < keys.length; j++) {
+var k = keys[j].toLowerCase();
+if (k === "authorization" || k === "apikey") return true;
+}
+}
+return false;
+}
+function requestLooksSensitive(input, init, extraHeaders) {
+var url = "";
+try {
+if (typeof input === "string") {
+url = input;
+} else if (input && typeof input.url === "string") {
+url = input.url;
+}
+} catch {}
+var headers =
+(init && init.headers) ||
+(input && input.headers) ||
+extraHeaders ||
+null;
+var hasAuthHeaders = headersContainAuth(headers);
+if (hasAuthHeaders) return true;
+if (!url) return false;
+if (isSupabaseDestination(url) && pathLooksSensitive(url)) return true;
+return false;
+}
+function patchStorage(storage, storageName) {
+if (!storage) return;
+var proto = Object.getPrototypeOf(storage);
+if (!proto || proto.__auraSupabaseFirewallPatched) return;
+var rawGetItem = proto.getItem;
+var rawSetItem = proto.setItem;
+var rawRemoveItem = proto.removeItem;
+var rawKey = proto.key;
+var rawLengthDescriptor = Object.getOwnPropertyDescriptor(proto, "length");
+var rawLengthGet = rawLengthDescriptor && rawLengthDescriptor.get;
+function getRawLength(instance) {
+try {
+if (rawLengthGet) return Number(rawLengthGet.call(instance) || 0);
+} catch {}
+try {
+return Number(instance.length || 0);
+} catch {}
+return 0;
+}
+function getVisibleKeys(instance) {
+var visible = [];
+var total = getRawLength(instance);
+for (var i = 0; i < total; i++) {
+var currentKey = rawKey.call(instance, i);
+if (currentKey && !isBlockedStorageKey(currentKey)) {
+visible.push(currentKey);
+}
+}
+return visible;
+}
+function maskBlockedKeyProperty(instance, keyName) {
+if (!keyName || !isBlockedStorageKey(keyName)) return;
+try {
+Object.defineProperty(instance, keyName, {
+configurable: true,
+enumerable: false,
+get: function () {
+return null;
+},
+set: function () {
+return true;
+}
+});
+} catch {}
+}
+function syncBlockedKeyProperties(instance) {
+var total = getRawLength(instance);
+for (var i = 0; i < total; i++) {
+var k = rawKey.call(instance, i);
+if (k) maskBlockedKeyProperty(instance, k);
+}
+}
+proto.getItem = function (key) {
+syncBlockedKeyProperties(this);
+if (isBlockedStorageKey(String(key))) return null;
+return rawGetItem.call(this, key);
+};
+proto.setItem = function (key, value) {
+if (isBlockedStorageKey(String(key))) return;
+return rawSetItem.call(this, key, value);
+};
+proto.removeItem = function (key) {
+if (isBlockedStorageKey(String(key))) return;
+return rawRemoveItem.call(this, key);
+};
+proto.key = function (index) {
+syncBlockedKeyProperties(this);
+var visible = getVisibleKeys(this);
+return visible[index] || null;
+};
+try {
+Object.defineProperty(proto, "length", {
+configurable: true,
+enumerable: false,
+get: function () {
+syncBlockedKeyProperties(this);
+return getVisibleKeys(this).length;
+}
+});
+} catch {}
+var proxyStorage = null;
+try {
+proxyStorage = new Proxy(storage, {
+get: function (target, prop) {
+if (typeof prop === "string" && isBlockedStorageKey(prop)) return null;
+if (prop === "length") return getVisibleKeys(target).length;
+if (prop === "key") {
+return function (index) {
+var visible = getVisibleKeys(target);
+return visible[index] || null;
+};
+}
+var value = target[prop];
+if (typeof value === "function") return value.bind(target);
+return value;
+},
+set: function (target, prop, value) {
+if (typeof prop === "string" && isBlockedStorageKey(prop)) return true;
+target[prop] = value;
+return true;
+},
+has: function (target, prop) {
+if (typeof prop === "string" && isBlockedStorageKey(prop)) return false;
+return prop in target;
+},
+ownKeys: function (target) {
+return getVisibleKeys(target);
+},
+getOwnPropertyDescriptor: function (target, prop) {
+if (typeof prop === "string" && isBlockedStorageKey(prop)) {
+return undefined;
+}
+if (prop === "length") {
+return {
+configurable: true,
+enumerable: false,
+value: getVisibleKeys(target).length,
+writable: false
+};
+}
+return Object.getOwnPropertyDescriptor(target, prop);
+}
+});
+} catch {}
+try {
+if (proxyStorage) {
+Object.defineProperty(window, storageName, {
+configurable: true,
+enumerable: true,
+get: function () {
+return proxyStorage;
+}
+});
+}
+} catch {}
+syncBlockedKeyProperties(storage);
+proto.__auraSupabaseFirewallPatched = true;
+}
+function patchCookieAccess() {
+try {
+var cookieDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, "cookie");
+if (!cookieDescriptor || !cookieDescriptor.configurable) return;
+Object.defineProperty(document, "cookie", {
+configurable: true,
+enumerable: false,
+get: function () {
+return "";
+},
+set: function () {
+return true;
+}
+});
+} catch {}
+}
+function patchFetch() {
+if (typeof window.fetch !== "function") return;
+var rawFetch = window.fetch.bind(window);
+window.fetch = function (input, init) {
+if (requestLooksSensitive(input, init, null)) {
+return Promise.reject(new Error("Blocked by Aura security policy"));
+}
+return rawFetch(input, init);
+};
+}
+function patchXHR() {
+if (typeof XMLHttpRequest === "undefined") return;
+var rawOpen = XMLHttpRequest.prototype.open;
+var rawSetHeader = XMLHttpRequest.prototype.setRequestHeader;
+var rawSend = XMLHttpRequest.prototype.send;
+XMLHttpRequest.prototype.open = function (method, url) {
+this.__auraRequestUrl = String(url || "");
+this.__auraHeaders = {};
+return rawOpen.apply(this, arguments);
+};
+XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+if (!this.__auraHeaders) this.__auraHeaders = {};
+this.__auraHeaders[String(name || "").toLowerCase()] = String(value || "");
+return rawSetHeader.apply(this, arguments);
+};
+XMLHttpRequest.prototype.send = function () {
+if (requestLooksSensitive(this.__auraRequestUrl || "", null, this.__auraHeaders || null)) {
+throw new Error("Blocked by Aura security policy");
+}
+return rawSend.apply(this, arguments);
+};
+}
+function patchBeacon() {
+if (typeof navigator.sendBeacon !== "function") return;
+var rawBeacon = navigator.sendBeacon.bind(navigator);
+navigator.sendBeacon = function (url, data) {
+if (requestLooksSensitive(url, null, null)) return false;
+return rawBeacon(url, data);
+};
+}
+function patchWebSocket() {
+if (typeof WebSocket === "undefined") return;
+var RawWebSocket = WebSocket;
+window.WebSocket = function (url, protocols) {
+if (requestLooksSensitive(String(url || ""), null, null)) {
+throw new Error("Blocked by Aura security policy");
+}
+return new RawWebSocket(url, protocols);
+};
+window.WebSocket.prototype = RawWebSocket.prototype;
+}
+patchStorage(window.localStorage, "localStorage");
+patchStorage(window.sessionStorage, "sessionStorage");
+patchCookieAccess();
+patchFetch();
+patchXHR();
+patchBeacon();
+patchWebSocket();
+})();</script><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ad Dev Onboarding Vault</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Inter', sans-serif; }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.fade-in { animation: fadeIn 0.3s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+</style><style>*, ::before, ::after{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }/* ! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com */*,::after,::before{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb}::after,::before{--tw-content:''}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;tab-size:4;font-family:ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0;padding:0}legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.absolute{position:absolute}.relative{position:relative}.inset-0{inset:0px}.left-4{left:1rem}.top-1\/2{top:50%}.top-4{top:1rem}.z-10{z-index:10}.mx-auto{margin-left:auto;margin-right:auto}.mb-10{margin-bottom:2.5rem}.mb-4{margin-bottom:1rem}.mb-6{margin-bottom:1.5rem}.mb-8{margin-bottom:2rem}.mt-1{margin-top:0.25rem}.mt-20{margin-top:5rem}.mt-4{margin-top:1rem}.mt-auto{margin-top:auto}.mb-12{margin-bottom:3rem}.mb-2{margin-bottom:0.5rem}.mt-0\.5{margin-top:0.125rem}.mt-3{margin-top:0.75rem}.mt-6{margin-top:1.5rem}.flex{display:flex}.inline-flex{display:inline-flex}.grid{display:grid}.hidden{display:none}.h-3{height:0.75rem}.h-4{height:1rem}.h-40{height:10rem}.h-5{height:1.25rem}.h-6{height:1.5rem}.h-full{height:100%}.h-screen{height:100vh}.h-7{height:1.75rem}.w-3{width:0.75rem}.w-4{width:1rem}.w-5{width:1.25rem}.w-6{width:1.5rem}.w-72{width:18rem}.w-full{width:100%}.w-7{width:1.75rem}.max-w-7xl{max-width:80rem}.max-w-lg{max-width:32rem}.max-w-3xl{max-width:48rem}.flex-1{flex:1 1 0%}.flex-shrink-0{flex-shrink:0}.-translate-y-1\/2{--tw-translate-y:-50%;transform:translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.translate-x-32{--tw-translate-x:8rem;transform:translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.rotate-3{--tw-rotate:3deg;transform:translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.cursor-pointer{cursor:pointer}.select-none{-webkit-user-select:none;user-select:none}.grid-cols-1{grid-template-columns:repeat(1, minmax(0, 1fr))}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}.items-start{align-items:flex-start}.items-center{align-items:center}.justify-center{justify-content:center}.justify-between{justify-content:space-between}.gap-1{gap:0.25rem}.gap-2{gap:0.5rem}.gap-3{gap:0.75rem}.gap-6{gap:1.5rem}.gap-4{gap:1rem}.space-y-1 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.25rem * var(--tw-space-y-reverse))}.space-y-3 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.75rem * var(--tw-space-y-reverse))}.space-y-5 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1.25rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1.25rem * var(--tw-space-y-reverse))}.overflow-hidden{overflow:hidden}.overflow-x-auto{overflow-x:auto}.overflow-y-auto{overflow-y:auto}.whitespace-pre{white-space:pre}.rounded-full{border-radius:9999px}.rounded-lg{border-radius:0.5rem}.rounded-md{border-radius:0.375rem}.rounded-xl{border-radius:0.75rem}.border{border-width:1px}.border-b{border-bottom-width:1px}.border-r{border-right-width:1px}.border-t{border-top-width:1px}.border-none{border-style:none}.border-blue-100{--tw-border-opacity:1;border-color:rgb(219 234 254 / var(--tw-border-opacity, 1))}.border-green-100{--tw-border-opacity:1;border-color:rgb(220 252 231 / var(--tw-border-opacity, 1))}.border-neutral-200{--tw-border-opacity:1;border-color:rgb(229 229 229 / var(--tw-border-opacity, 1))}.border-yellow-100{--tw-border-opacity:1;border-color:rgb(254 249 195 / var(--tw-border-opacity, 1))}.border-zinc-100{--tw-border-opacity:1;border-color:rgb(244 244 245 / var(--tw-border-opacity, 1))}.border-zinc-200{--tw-border-opacity:1;border-color:rgb(228 228 231 / var(--tw-border-opacity, 1))}.border-zinc-50{--tw-border-opacity:1;border-color:rgb(250 250 250 / var(--tw-border-opacity, 1))}.border-amber-100{--tw-border-opacity:1;border-color:rgb(254 243 199 / var(--tw-border-opacity, 1))}.bg-blue-50{--tw-bg-opacity:1;background-color:rgb(239 246 255 / var(--tw-bg-opacity, 1))}.bg-green-50{--tw-bg-opacity:1;background-color:rgb(240 253 244 / var(--tw-bg-opacity, 1))}.bg-neutral-100{--tw-bg-opacity:1;background-color:rgb(245 245 245 / var(--tw-bg-opacity, 1))}.bg-neutral-200\/60{background-color:rgb(229 229 229 / 0.6)}.bg-neutral-50{--tw-bg-opacity:1;background-color:rgb(250 250 250 / var(--tw-bg-opacity, 1))}.bg-neutral-900{--tw-bg-opacity:1;background-color:rgb(23 23 23 / var(--tw-bg-opacity, 1))}.bg-white{--tw-bg-opacity:1;background-color:rgb(255 255 255 / var(--tw-bg-opacity, 1))}.bg-yellow-50{--tw-bg-opacity:1;background-color:rgb(254 252 232 / var(--tw-bg-opacity, 1))}.bg-zinc-100{--tw-bg-opacity:1;background-color:rgb(244 244 245 / var(--tw-bg-opacity, 1))}.bg-zinc-200\/60{background-color:rgb(228 228 231 / 0.6)}.bg-zinc-50\/50{background-color:rgb(250 250 250 / 0.5)}.bg-amber-50{--tw-bg-opacity:1;background-color:rgb(255 251 235 / var(--tw-bg-opacity, 1))}.bg-zinc-50{--tw-bg-opacity:1;background-color:rgb(250 250 250 / var(--tw-bg-opacity, 1))}.bg-zinc-900{--tw-bg-opacity:1;background-color:rgb(24 24 27 / var(--tw-bg-opacity, 1))}.bg-gradient-to-br{background-image:linear-gradient(to bottom right, var(--tw-gradient-stops))}.from-cyan-50{--tw-gradient-from:#ecfeff var(--tw-gradient-from-position);--tw-gradient-to:rgb(236 254 255 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-gray-50{--tw-gradient-from:#f9fafb var(--tw-gradient-from-position);--tw-gradient-to:rgb(249 250 251 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-purple-50{--tw-gradient-from:#faf5ff var(--tw-gradient-from-position);--tw-gradient-to:rgb(250 245 255 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-red-50{--tw-gradient-from:#fef2f2 var(--tw-gradient-from-position);--tw-gradient-to:rgb(254 242 242 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-zinc-50{--tw-gradient-from:#fafafa var(--tw-gradient-from-position);--tw-gradient-to:rgb(250 250 250 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.to-blue-50{--tw-gradient-to:#eff6ff var(--tw-gradient-to-position)}.to-fuchsia-50{--tw-gradient-to:#fdf4ff var(--tw-gradient-to-position)}.to-orange-50{--tw-gradient-to:#fff7ed var(--tw-gradient-to-position)}.to-zinc-100{--tw-gradient-to:#f4f4f5 var(--tw-gradient-to-position)}.p-5{padding:1.25rem}.p-6{padding:1.5rem}.px-2{padding-left:0.5rem;padding-right:0.5rem}.px-3{padding-left:0.75rem;padding-right:0.75rem}.px-4{padding-left:1rem;padding-right:1rem}.px-6{padding-left:1.5rem;padding-right:1.5rem}.py-1{padding-top:0.25rem;padding-bottom:0.25rem}.py-1\.5{padding-top:0.375rem;padding-bottom:0.375rem}.py-2{padding-top:0.5rem;padding-bottom:0.5rem}.py-3{padding-top:0.75rem;padding-bottom:0.75rem}.py-4{padding-top:1rem;padding-bottom:1rem}.px-2\.5{padding-left:0.625rem;padding-right:0.625rem}.px-8{padding-left:2rem;padding-right:2rem}.pb-12{padding-bottom:3rem}.pb-2{padding-bottom:0.5rem}.pb-20{padding-bottom:5rem}.pl-12{padding-left:3rem}.pl-8{padding-left:2rem}.pr-4{padding-right:1rem}.pr-8{padding-right:2rem}.pt-16{padding-top:4rem}.pt-6{padding-top:1.5rem}.pb-24{padding-bottom:6rem}.pt-0\.5{padding-top:0.125rem}.pt-12{padding-top:3rem}.pt-8{padding-top:2rem}.text-center{text-align:center}.font-mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}.font-serif{font-family:ui-serif, Georgia, Cambria, "Times New Roman", Times, serif}.text-5xl{font-size:3rem;line-height:1}.text-7xl{font-size:4.5rem;line-height:1}.text-base{font-size:1rem;line-height:1.5rem}.text-lg{font-size:1.125rem;line-height:1.75rem}.text-sm{font-size:0.875rem;line-height:1.25rem}.text-xs{font-size:0.75rem;line-height:1rem}.text-4xl{font-size:2.25rem;line-height:2.5rem}.font-medium{font-weight:500}.font-semibold{font-weight:600}.uppercase{text-transform:uppercase}.italic{font-style:italic}.leading-relaxed{line-height:1.625}.tracking-tight{letter-spacing:-0.025em}.tracking-tighter{letter-spacing:-0.05em}.tracking-wider{letter-spacing:0.05em}.text-blue-700{--tw-text-opacity:1;color:rgb(29 78 216 / var(--tw-text-opacity, 1))}.text-cyan-100{--tw-text-opacity:1;color:rgb(207 250 254 / var(--tw-text-opacity, 1))}.text-gray-300{--tw-text-opacity:1;color:rgb(209 213 219 / var(--tw-text-opacity, 1))}.text-green-700{--tw-text-opacity:1;color:rgb(21 128 61 / var(--tw-text-opacity, 1))}.text-neutral-300{--tw-text-opacity:1;color:rgb(212 212 212 / var(--tw-text-opacity, 1))}.text-neutral-400{--tw-text-opacity:1;color:rgb(163 163 163 / var(--tw-text-opacity, 1))}.text-neutral-500{--tw-text-opacity:1;color:rgb(115 115 115 / var(--tw-text-opacity, 1))}.text-neutral-600{--tw-text-opacity:1;color:rgb(82 82 82 / var(--tw-text-opacity, 1))}.text-neutral-800{--tw-text-opacity:1;color:rgb(38 38 38 / var(--tw-text-opacity, 1))}.text-neutral-900{--tw-text-opacity:1;color:rgb(23 23 23 / var(--tw-text-opacity, 1))}.text-purple-200{--tw-text-opacity:1;color:rgb(233 213 255 / var(--tw-text-opacity, 1))}.text-red-100{--tw-text-opacity:1;color:rgb(254 226 226 / var(--tw-text-opacity, 1))}.text-white{--tw-text-opacity:1;color:rgb(255 255 255 / var(--tw-text-opacity, 1))}.text-yellow-700{--tw-text-opacity:1;color:rgb(161 98 7 / var(--tw-text-opacity, 1))}.text-zinc-200{--tw-text-opacity:1;color:rgb(228 228 231 / var(--tw-text-opacity, 1))}.text-zinc-400{--tw-text-opacity:1;color:rgb(161 161 170 / var(--tw-text-opacity, 1))}.text-zinc-500{--tw-text-opacity:1;color:rgb(113 113 122 / var(--tw-text-opacity, 1))}.text-zinc-700{--tw-text-opacity:1;color:rgb(63 63 70 / var(--tw-text-opacity, 1))}.text-zinc-900{--tw-text-opacity:1;color:rgb(24 24 27 / var(--tw-text-opacity, 1))}.text-amber-500{--tw-text-opacity:1;color:rgb(245 158 11 / var(--tw-text-opacity, 1))}.text-amber-800{--tw-text-opacity:1;color:rgb(146 64 14 / var(--tw-text-opacity, 1))}.text-green-400{--tw-text-opacity:1;color:rgb(74 222 128 / var(--tw-text-opacity, 1))}.text-zinc-300{--tw-text-opacity:1;color:rgb(212 212 216 / var(--tw-text-opacity, 1))}.opacity-0{opacity:0}.opacity-80{opacity:0.8}.shadow-sm{--tw-shadow:0 1px 2px 0 rgb(0 0 0 / 0.05);--tw-shadow-colored:0 1px 2px 0 var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.outline-none{outline:2px solid transparent;outline-offset:2px}.backdrop-blur-sm{--tw-backdrop-blur:blur(4px);-webkit-backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia)}.transition-all{transition-property:all;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms}.transition-colors{transition-property:color, background-color, border-color, fill, stroke, -webkit-text-decoration-color;transition-property:color, background-color, border-color, text-decoration-color, fill, stroke;transition-property:color, background-color, border-color, text-decoration-color, fill, stroke, -webkit-text-decoration-color;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms}.transition-opacity{transition-property:opacity;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms}.transition-transform{transition-property:transform;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms}.duration-300{transition-duration:300ms}.selection\:bg-zinc-100 *::selection{--tw-bg-opacity:1;background-color:rgb(244 244 245 / var(--tw-bg-opacity, 1))}.selection\:text-zinc-900 *::selection{--tw-text-opacity:1;color:rgb(24 24 27 / var(--tw-text-opacity, 1))}.selection\:bg-zinc-100::selection{--tw-bg-opacity:1;background-color:rgb(244 244 245 / var(--tw-bg-opacity, 1))}.selection\:text-zinc-900::selection{--tw-text-opacity:1;color:rgb(24 24 27 / var(--tw-text-opacity, 1))}.placeholder\:text-neutral-400::placeholder{--tw-text-opacity:1;color:rgb(163 163 163 / var(--tw-text-opacity, 1))}.hover\:border-zinc-300:hover{--tw-border-opacity:1;border-color:rgb(212 212 216 / var(--tw-border-opacity, 1))}.hover\:bg-neutral-100:hover{--tw-bg-opacity:1;background-color:rgb(245 245 245 / var(--tw-bg-opacity, 1))}.hover\:bg-neutral-50:hover{--tw-bg-opacity:1;background-color:rgb(250 250 250 / var(--tw-bg-opacity, 1))}.hover\:bg-neutral-800:hover{--tw-bg-opacity:1;background-color:rgb(38 38 38 / var(--tw-bg-opacity, 1))}.hover\:bg-zinc-100:hover{--tw-bg-opacity:1;background-color:rgb(244 244 245 / var(--tw-bg-opacity, 1))}.hover\:text-neutral-600:hover{--tw-text-opacity:1;color:rgb(82 82 82 / var(--tw-text-opacity, 1))}.hover\:text-neutral-900:hover{--tw-text-opacity:1;color:rgb(23 23 23 / var(--tw-text-opacity, 1))}.hover\:text-zinc-700:hover{--tw-text-opacity:1;color:rgb(63 63 70 / var(--tw-text-opacity, 1))}.hover\:text-zinc-900:hover{--tw-text-opacity:1;color:rgb(24 24 27 / var(--tw-text-opacity, 1))}.hover\:shadow-lg:hover{--tw-shadow:0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);--tw-shadow-colored:0 10px 15px -3px var(--tw-shadow-color), 0 4px 6px -4px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.focus\:bg-white:focus{--tw-bg-opacity:1;background-color:rgb(255 255 255 / var(--tw-bg-opacity, 1))}.focus\:ring-2:focus{--tw-ring-offset-shadow:var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);--tw-ring-shadow:var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);box-shadow:var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000)}.focus\:ring-neutral-200:focus{--tw-ring-opacity:1;--tw-ring-color:rgb(229 229 229 / var(--tw-ring-opacity, 1))}.group:hover .group-hover\:-translate-x-0\.5{--tw-translate-x:-0.125rem;transform:translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.group:hover .group-hover\:text-cyan-200{--tw-text-opacity:1;color:rgb(165 243 252 / var(--tw-text-opacity, 1))}.group:hover .group-hover\:text-gray-400{--tw-text-opacity:1;color:rgb(156 163 175 / var(--tw-text-opacity, 1))}.group:hover .group-hover\:text-neutral-500{--tw-text-opacity:1;color:rgb(115 115 115 / var(--tw-text-opacity, 1))}.group:hover .group-hover\:text-neutral-600{--tw-text-opacity:1;color:rgb(82 82 82 / var(--tw-text-opacity, 1))}.group:hover .group-hover\:text-purple-300{--tw-text-opacity:1;color:rgb(216 180 254 / var(--tw-text-opacity, 1))}.group:hover .group-hover\:text-red-200{--tw-text-opacity:1;color:rgb(254 202 202 / var(--tw-text-opacity, 1))}.group:hover .group-hover\:text-zinc-300{--tw-text-opacity:1;color:rgb(212 212 216 / var(--tw-text-opacity, 1))}.group:hover .group-hover\:opacity-100{opacity:1}@media (min-width: 640px){.sm\:grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}.sm\:grid-cols-3{grid-template-columns:repeat(3, minmax(0, 1fr))}}@media (min-width: 768px){.md\:block{display:block}.md\:grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}.md\:px-12{padding-left:3rem;padding-right:3rem}.md\:px-16{padding-left:4rem;padding-right:4rem}.md\:text-6xl{font-size:3.75rem;line-height:1}.md\:text-5xl{font-size:3rem;line-height:1}}@media (min-width: 1024px){.lg\:flex{display:flex}.lg\:grid-cols-3{grid-template-columns:repeat(3, minmax(0, 1fr))}}@media (min-width: 1280px){.xl\:grid-cols-4{grid-template-columns:repeat(4, minmax(0, 1fr))}}</style><meta name="disabled-font-classes" content="font-roboto,font-montserrat,font-poppins,font-playfair,font-instrument-serif,font-merriweather,font-bricolage,font-manrope,font-space-grotesk,font-work-sans,font-pt-serif,font-geist-mono,font-space-mono,font-quicksand,font-nunito,font-newsreader,font-google-sans-flex,font-oswald,font-dm-sans,font-cormorant"><link id="all-fonts-link-font-geist" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-geist">.font-geist { font-family: 'Geist', sans-serif !important; }</style><link id="all-fonts-link-font-jakarta" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-jakarta">.font-jakarta { font-family: 'Plus Jakarta Sans', sans-serif !important; }</style></head>
+<body class="bg-white text-zinc-900 overflow-hidden h-screen flex selection:bg-zinc-100 selection:text-zinc-900">
+
+    <!-- Sidebar -->
+    <aside class="w-72 bg-neutral-50 border-r border-neutral-200 flex-col justify-between hidden lg:flex flex-shrink-0" style="">
+        <div class="p-6">
+            <a href="#" onclick="showGallery(); return false;" class="flex items-center gap-2 mb-8 text-neutral-800 hover:text-neutral-600 transition-colors" style="">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="layers" aria-hidden="true" class="lucide lucide-layers w-6 h-6"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"></path><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"></path><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"></path></svg>
+                <span class="font-medium text-lg tracking-tight font-geist">DevVault</span>
+            </a>
+
+            <nav class="space-y-1">
+                <a href="#" onclick="showGallery(); return false;" id="nav-gallery" class="flex items-center gap-3 px-3 py-2 bg-neutral-200/60 rounded-lg text-neutral-900 text-base transition-colors bg-zinc-200/60 text-zinc-900 font-medium font-geist" style="">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="layout-grid" aria-hidden="true" class="lucide lucide-layout-grid w-5 h-5 text-neutral-500"><rect width="7" height="7" x="3" y="3" rx="1"></rect><rect width="7" height="7" x="14" y="3" rx="1"></rect><rect width="7" height="7" x="14" y="14" rx="1"></rect><rect width="7" height="7" x="3" y="14" rx="1"></rect></svg>
+                    Onboarding Gallery
+                </a>
+                
+                <div class="pt-6 pb-2">
+                    <p class="px-3 text-xs font-medium text-neutral-400 uppercase tracking-wider font-geist" style="">Resources</p>
+                </div>
+                
+                <a href="#" class="flex items-center justify-between px-3 py-2 rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 transition-all group" style="">
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs font-mono text-neutral-400 w-4 group-hover:text-neutral-500 font-geist" style="">01</span>
+                        <span class="text-base font-geist">UTM Guidelines</span>
+                    </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="lock" aria-hidden="true" class="lucide lucide-lock w-3 h-3 text-neutral-300"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                </a>
+                <a href="#" class="flex items-center justify-between px-3 py-2 rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 transition-all group" style="">
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs font-mono text-neutral-400 w-4 group-hover:text-neutral-500 font-geist" style="">02</span>
+                        <span class="text-base font-geist">GTM Snippets</span>
+                    </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="lock" aria-hidden="true" class="lucide lucide-lock w-3 h-3 text-neutral-300"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                </a>
+                <a href="#" class="flex items-center justify-between px-3 py-2 rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 transition-all group" style="">
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs font-mono text-neutral-400 w-4 group-hover:text-neutral-500 font-geist" style="">03</span>
+                        <span class="text-base font-geist">Pixel Helpers</span>
+                    </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="lock" aria-hidden="true" class="lucide lucide-lock w-3 h-3 text-neutral-300"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                </a>
+
+                <div class="pt-6 pb-2">
+                    <p class="px-3 text-xs font-medium text-neutral-400 uppercase tracking-wider font-geist" style="">PMS Data</p>
+                </div>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 transition-all" style="">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="folder" aria-hidden="true" class="lucide lucide-folder w-4 h-4 text-neutral-400"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+                    <span class="text-base font-geist">Yardi</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 transition-all" style="">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="folder" aria-hidden="true" class="lucide lucide-folder w-4 h-4 text-neutral-400"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+                    <span class="text-base font-geist">Entrata</span>
+                </a>
+                 <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 transition-all" style="">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="folder" aria-hidden="true" class="lucide lucide-folder w-4 h-4 text-neutral-400"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+                    <span class="text-base font-geist">Appfolio</span>
+                </a>
+            </nav>
+        </div>
+
+        <div class="p-6 border-t border-neutral-200" style="">
+             <button class="w-full bg-neutral-900 hover:bg-neutral-800 text-white py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm" style="">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="unlock" aria-hidden="true" class="lucide lucide-unlock w-4 h-4"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
+                <span class="text-sm font-medium font-geist">Access Full Vault</span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col h-full relative">
+
+        <!-- GALLERY VIEW -->
+        <div id="gallery-view" class="flex-col h-full flex">
+            <!-- Header / Search -->
+            <div class="md:px-16 flex flex-col bg-white z-10 pt-16 pr-8 pb-12 pl-8 items-center justify-center">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="text-sm text-neutral-500 font-medium font-geist" style="">Team Resources</span>
+                    <span class="text-lg font-geist">👋</span>
+                </div>
+                <h1 class="font-medium text-neutral-900 tracking-tighter font-jakarta text-center mb-8" style="font-size: clamp(5rem, 12vw, 10rem); line-height: 0.9">
+                    Onboarding<br>Configurations
+                </h1>
+                
+                <div class="relative w-full max-w-lg group">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="search" aria-hidden="true" class="lucide lucide-search absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 group-hover:text-neutral-600 transition-colors"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg>
+                    <input id="search-input" type="text" placeholder="Search by PMS, Website, or ID..." class="w-full bg-neutral-100 border-none rounded-xl py-4 pl-12 pr-4 text-base text-neutral-800 placeholder:text-neutral-400 focus:ring-2 focus:ring-neutral-200 focus:bg-white transition-all outline-none" style="">
+                </div>
+                <p class="mt-4 text-neutral-400 text-sm italic font-serif opacity-80 rotate-3 translate-x-32 hidden md:block font-geist" style="">~ Updated for Q3</p>
+            </div>
+
+            <!-- Scrollable Gallery -->
+            <div class="flex-1 overflow-y-auto md:px-12 hide-scrollbar pr-6 pb-20 pl-6">
+                
+                <!-- Filter Tabs -->
+                <div class="flex items-center justify-center gap-2 mb-10 flex-wrap" id="filter-tabs">
+                    <button onclick="filterCards('all')" class="filter-btn px-4 py-1.5 rounded-full bg-neutral-900 text-white text-sm font-medium font-geist" data-filter="all" style="">All</button>
+                    <button onclick="filterCards('yardi')" class="filter-btn px-4 py-1.5 rounded-full bg-white border border-neutral-200 text-neutral-600 text-sm font-medium hover:bg-neutral-50 transition-colors font-geist" data-filter="yardi" style="">Yardi</button>
+                    <button onclick="filterCards('entrata')" class="filter-btn px-4 py-1.5 rounded-full bg-white border border-neutral-200 text-neutral-600 text-sm font-medium hover:bg-neutral-50 transition-colors font-geist" data-filter="entrata" style="">Entrata</button>
+                    <button onclick="filterCards('appfolio')" class="filter-btn px-4 py-1.5 rounded-full bg-white border border-neutral-200 text-neutral-600 text-sm font-medium hover:bg-neutral-50 transition-colors font-geist" data-filter="appfolio" style="">Appfolio</button>
+                    <button onclick="filterCards('other')" class="filter-btn px-4 py-1.5 rounded-full bg-white border border-neutral-200 text-neutral-600 text-sm font-medium hover:bg-neutral-50 transition-colors font-geist" data-filter="other" style="">Other</button>
+                </div>
+
+                <!-- Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mx-auto max-w-7xl" id="card-grid">
+                <div onclick="showDetail('y1-standard-yardi')" class="group relative flex flex-col bg-white border border-zinc-200 rounded-xl overflow-hidden hover:border-zinc-300 hover:shadow-lg transition-all duration-300 cursor-pointer h-full">
+                    <div class="h-40 bg-gradient-to-br from-zinc-50 to-zinc-100 flex items-center justify-center relative p-6">
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-50/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                            <span class="bg-white px-4 py-2 rounded-full text-xs font-medium shadow-sm border border-zinc-100">View Specs</span>
+                        </div>
+                        <h3 class="text-7xl font-semibold tracking-tighter text-zinc-200 group-hover:text-zinc-300 transition-colors select-none">Y1</h3>
+                        <div class="absolute top-4 left-4">
+                            <span class="px-2 py-1 bg-white border border-zinc-200 rounded-md text-xs font-medium text-zinc-500">Yardi</span>
+                        </div>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="text-lg font-medium tracking-tight text-zinc-900">Standard Yardi</h4>
+                                <p class="text-sm text-zinc-500 mt-1">Yardi CRM + Site Manager</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3 mb-6 flex-1">
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">Website</span>
+                                <span class="text-zinc-700 font-medium">Yardi</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">UTM Source</span>
+                                <span class="text-zinc-700">Client / Support</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-auto flex-wrap"><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-green-50 text-green-700 border-green-100 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3"><path d="M20 6 9 17l-5-5"></path></svg> GA4
+                    </span></div>
+                    </div>
+                </div>
+                <div onclick="showDetail('y2-jonah-stack')" class="group relative flex flex-col bg-white border border-zinc-200 rounded-xl overflow-hidden hover:border-zinc-300 hover:shadow-lg transition-all duration-300 cursor-pointer h-full">
+                    <div class="h-40 bg-gradient-to-br from-zinc-50 to-zinc-100 flex items-center justify-center relative p-6">
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-50/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                            <span class="bg-white px-4 py-2 rounded-full text-xs font-medium shadow-sm border border-zinc-100">View Specs</span>
+                        </div>
+                        <h3 class="text-7xl font-semibold tracking-tighter text-zinc-200 group-hover:text-zinc-300 transition-colors select-none">Y2</h3>
+                        <div class="absolute top-4 left-4">
+                            <span class="px-2 py-1 bg-white border border-zinc-200 rounded-md text-xs font-medium text-zinc-500">Yardi</span>
+                        </div>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="text-lg font-medium tracking-tight text-zinc-900">Jonah Stack</h4>
+                                <p class="text-sm text-zinc-500 mt-1">Yardi CRM + Site Manager</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3 mb-6 flex-1">
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">Website</span>
+                                <span class="text-zinc-700 font-medium">Jonah</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">UTM Source</span>
+                                <span class="text-zinc-700">Client / Support</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-auto flex-wrap"><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-green-50 text-green-700 border-green-100 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3"><path d="M20 6 9 17l-5-5"></path></svg> GA4
+                    </span><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-50 text-blue-700 border-blue-100 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="tag" aria-hidden="true" class="lucide lucide-tag w-3 h-3"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle></svg> GTM
+                    </span></div>
+                    </div>
+                </div>
+                <div onclick="showDetail('y3-lease-leads')" class="group relative flex flex-col bg-white border border-zinc-200 rounded-xl overflow-hidden hover:border-zinc-300 hover:shadow-lg transition-all duration-300 cursor-pointer h-full">
+                    <div class="h-40 bg-gradient-to-br from-zinc-50 to-zinc-100 flex items-center justify-center relative p-6">
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-50/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                            <span class="bg-white px-4 py-2 rounded-full text-xs font-medium shadow-sm border border-zinc-100">View Specs</span>
+                        </div>
+                        <h3 class="text-7xl font-semibold tracking-tighter text-zinc-200 group-hover:text-zinc-300 transition-colors select-none">Y3</h3>
+                        <div class="absolute top-4 left-4">
+                            <span class="px-2 py-1 bg-white border border-zinc-200 rounded-md text-xs font-medium text-zinc-500">Yardi</span>
+                        </div>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="text-lg font-medium tracking-tight text-zinc-900">Lease Leads</h4>
+                                <p class="text-sm text-zinc-500 mt-1">Yardi CRM + Site Manager</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3 mb-6 flex-1">
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">Website</span>
+                                <span class="text-zinc-700 font-medium">Lease Leads</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">UTM Source</span>
+                                <span class="text-zinc-700">Client / Support</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-auto flex-wrap"><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-green-50 text-green-700 border-green-100 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3"><path d="M20 6 9 17l-5-5"></path></svg> GA4
+                    </span></div>
+                    </div>
+                </div>
+                <div onclick="showDetail('e1-entrata-native')" class="group relative flex flex-col bg-white border border-zinc-200 rounded-xl overflow-hidden hover:border-zinc-300 hover:shadow-lg transition-all duration-300 cursor-pointer h-full">
+                    <div class="h-40 bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center relative p-6">
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-50/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                            <span class="bg-white px-4 py-2 rounded-full text-xs font-medium shadow-sm border border-zinc-100">View Specs</span>
+                        </div>
+                        <h3 class="text-7xl font-semibold tracking-tighter text-red-100 group-hover:text-red-200 transition-colors select-none">E1</h3>
+                        <div class="absolute top-4 left-4">
+                            <span class="px-2 py-1 bg-white border border-zinc-200 rounded-md text-xs font-medium text-zinc-500">Entrata</span>
+                        </div>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="text-lg font-medium tracking-tight text-zinc-900">Entrata Native</h4>
+                                <p class="text-sm text-zinc-500 mt-1">Full CRM Access Needed</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3 mb-6 flex-1">
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">Website</span>
+                                <span class="text-zinc-700 font-medium">Entrata</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">UTM Source</span>
+                                <span class="text-zinc-700">Self Generated</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-auto flex-wrap"><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-green-50 text-green-700 border-green-100 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3"><path d="M20 6 9 17l-5-5"></path></svg> GA4
+                    </span></div>
+                    </div>
+                </div>
+                <div onclick="showDetail('e2-lease-leads')" class="group relative flex flex-col bg-white border border-zinc-200 rounded-xl overflow-hidden hover:border-zinc-300 hover:shadow-lg transition-all duration-300 cursor-pointer h-full">
+                    <div class="h-40 bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center relative p-6">
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-50/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                            <span class="bg-white px-4 py-2 rounded-full text-xs font-medium shadow-sm border border-zinc-100">View Specs</span>
+                        </div>
+                        <h3 class="text-7xl font-semibold tracking-tighter text-red-100 group-hover:text-red-200 transition-colors select-none">E2</h3>
+                        <div class="absolute top-4 left-4">
+                            <span class="px-2 py-1 bg-white border border-zinc-200 rounded-md text-xs font-medium text-zinc-500">Entrata</span>
+                        </div>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="text-lg font-medium tracking-tight text-zinc-900">Lease Leads</h4>
+                                <p class="text-sm text-zinc-500 mt-1">Full CRM Access Needed</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3 mb-6 flex-1">
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">Website</span>
+                                <span class="text-zinc-700 font-medium">Lease Leads</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">UTM Source</span>
+                                <span class="text-zinc-700">Self Generated</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-auto flex-wrap"><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-green-50 text-green-700 border-green-100 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3"><path d="M20 6 9 17l-5-5"></path></svg> GA4
+                    </span><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-50 text-blue-700 border-blue-100 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="tag" aria-hidden="true" class="lucide lucide-tag w-3 h-3"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle></svg> GTM
+                    </span></div>
+                    </div>
+                </div>
+                <div onclick="showDetail('e3-jonah-stack')" class="group relative flex flex-col bg-white border border-zinc-200 rounded-xl overflow-hidden hover:border-zinc-300 hover:shadow-lg transition-all duration-300 cursor-pointer h-full">
+                    <div class="h-40 bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center relative p-6">
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-50/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                            <span class="bg-white px-4 py-2 rounded-full text-xs font-medium shadow-sm border border-zinc-100">View Specs</span>
+                        </div>
+                        <h3 class="text-7xl font-semibold tracking-tighter text-red-100 group-hover:text-red-200 transition-colors select-none">E3</h3>
+                        <div class="absolute top-4 left-4">
+                            <span class="px-2 py-1 bg-white border border-zinc-200 rounded-md text-xs font-medium text-zinc-500">Entrata</span>
+                        </div>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="text-lg font-medium tracking-tight text-zinc-900">Jonah Stack</h4>
+                                <p class="text-sm text-zinc-500 mt-1">Full CRM Access Needed</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3 mb-6 flex-1">
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">Website</span>
+                                <span class="text-zinc-700 font-medium">Jonah</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">UTM Source</span>
+                                <span class="text-zinc-700">Self Generated</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-auto flex-wrap"><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-green-50 text-green-700 border-green-100 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3"><path d="M20 6 9 17l-5-5"></path></svg> GA4
+                    </span><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-50 text-blue-700 border-blue-100 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="tag" aria-hidden="true" class="lucide lucide-tag w-3 h-3"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle></svg> GTM
+                    </span></div>
+                    </div>
+                </div>
+                <div onclick="showDetail('a1-ill-integration')" class="group relative flex flex-col bg-white border border-zinc-200 rounded-xl overflow-hidden hover:border-zinc-300 hover:shadow-lg transition-all duration-300 cursor-pointer h-full">
+                    <div class="h-40 bg-gradient-to-br from-cyan-50 to-blue-50 flex items-center justify-center relative p-6">
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-50/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                            <span class="bg-white px-4 py-2 rounded-full text-xs font-medium shadow-sm border border-zinc-100">View Specs</span>
+                        </div>
+                        <h3 class="text-7xl font-semibold tracking-tighter text-cyan-100 group-hover:text-cyan-200 transition-colors select-none">A1</h3>
+                        <div class="absolute top-4 left-4">
+                            <span class="px-2 py-1 bg-white border border-zinc-200 rounded-md text-xs font-medium text-zinc-500">Appfolio</span>
+                        </div>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="text-lg font-medium tracking-tight text-zinc-900">ILL Integration</h4>
+                                <p class="text-sm text-zinc-500 mt-1">ILL Seat Needed</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3 mb-6 flex-1">
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">Website</span>
+                                <span class="text-zinc-700 font-medium">Appfolio</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">UTM Source</span>
+                                <span class="text-zinc-700">Sadie via Email</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-auto flex-wrap"><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-100 text-zinc-500 border-zinc-200 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="user" aria-hidden="true" class="lucide lucide-user w-3 h-3"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg> UTM: Us
+                    </span></div>
+                    </div>
+                </div>
+                <div onclick="showDetail('a2-appfolio-standard')" class="group relative flex flex-col bg-white border border-zinc-200 rounded-xl overflow-hidden hover:border-zinc-300 hover:shadow-lg transition-all duration-300 cursor-pointer h-full">
+                    <div class="h-40 bg-gradient-to-br from-cyan-50 to-blue-50 flex items-center justify-center relative p-6">
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-50/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                            <span class="bg-white px-4 py-2 rounded-full text-xs font-medium shadow-sm border border-zinc-100">View Specs</span>
+                        </div>
+                        <h3 class="text-7xl font-semibold tracking-tighter text-cyan-100 group-hover:text-cyan-200 transition-colors select-none">A2</h3>
+                        <div class="absolute top-4 left-4">
+                            <span class="px-2 py-1 bg-white border border-zinc-200 rounded-md text-xs font-medium text-zinc-500">Appfolio</span>
+                        </div>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="text-lg font-medium tracking-tight text-zinc-900">Appfolio Standard</h4>
+                                <p class="text-sm text-zinc-500 mt-1">Appfolio Seat Needed</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3 mb-6 flex-1">
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">Website</span>
+                                <span class="text-zinc-700 font-medium">Appfolio</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">UTM Source</span>
+                                <span class="text-zinc-400">--</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-auto flex-wrap"><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-50 text-blue-700 border-blue-100 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="tag" aria-hidden="true" class="lucide lucide-tag w-3 h-3"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle></svg> GTM
+                    </span><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-100 text-zinc-500 border-zinc-200 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="user" aria-hidden="true" class="lucide lucide-user w-3 h-3"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg> UTM: Us
+                    </span></div>
+                    </div>
+                </div>
+                <div onclick="showDetail('a3-jonah-ill')" class="group relative flex flex-col bg-white border border-zinc-200 rounded-xl overflow-hidden hover:border-zinc-300 hover:shadow-lg transition-all duration-300 cursor-pointer h-full">
+                    <div class="h-40 bg-gradient-to-br from-cyan-50 to-blue-50 flex items-center justify-center relative p-6">
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-50/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                            <span class="bg-white px-4 py-2 rounded-full text-xs font-medium shadow-sm border border-zinc-100">View Specs</span>
+                        </div>
+                        <h3 class="text-7xl font-semibold tracking-tighter text-cyan-100 group-hover:text-cyan-200 transition-colors select-none">A3</h3>
+                        <div class="absolute top-4 left-4">
+                            <span class="px-2 py-1 bg-white border border-zinc-200 rounded-md text-xs font-medium text-zinc-500">Appfolio</span>
+                        </div>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="text-lg font-medium tracking-tight text-zinc-900">Jonah + ILL</h4>
+                                <p class="text-sm text-zinc-500 mt-1">ILL Seat Needed</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3 mb-6 flex-1">
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">Website</span>
+                                <span class="text-zinc-700 font-medium">Jonah</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">UTM Source</span>
+                                <span class="text-zinc-700">Sadie via Email</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-auto flex-wrap"><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-50 text-blue-700 border-blue-100 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="tag" aria-hidden="true" class="lucide lucide-tag w-3 h-3"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle></svg> GTM
+                    </span></div>
+                    </div>
+                </div>
+                <div onclick="showDetail('a4-jonah-native')" class="group relative flex flex-col bg-white border border-zinc-200 rounded-xl overflow-hidden hover:border-zinc-300 hover:shadow-lg transition-all duration-300 cursor-pointer h-full">
+                    <div class="h-40 bg-gradient-to-br from-cyan-50 to-blue-50 flex items-center justify-center relative p-6">
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-50/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                            <span class="bg-white px-4 py-2 rounded-full text-xs font-medium shadow-sm border border-zinc-100">View Specs</span>
+                        </div>
+                        <h3 class="text-7xl font-semibold tracking-tighter text-cyan-100 group-hover:text-cyan-200 transition-colors select-none">A4</h3>
+                        <div class="absolute top-4 left-4">
+                            <span class="px-2 py-1 bg-white border border-zinc-200 rounded-md text-xs font-medium text-zinc-500">Appfolio</span>
+                        </div>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="text-lg font-medium tracking-tight text-zinc-900">Jonah Native</h4>
+                                <p class="text-sm text-zinc-500 mt-1">Appfolio Seat Needed</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3 mb-6 flex-1">
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">Website</span>
+                                <span class="text-zinc-700 font-medium">Jonah</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">UTM Source</span>
+                                <span class="text-zinc-400">--</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-auto flex-wrap"><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-100 text-zinc-500 border-zinc-200 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="user" aria-hidden="true" class="lucide lucide-user w-3 h-3"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg> UTM: Us
+                    </span></div>
+                    </div>
+                </div>
+                <div onclick="showDetail('r1-lease-leads')" class="group relative flex flex-col bg-white border border-zinc-200 rounded-xl overflow-hidden hover:border-zinc-300 hover:shadow-lg transition-all duration-300 cursor-pointer h-full">
+                    <div class="h-40 bg-gradient-to-br from-purple-50 to-fuchsia-50 flex items-center justify-center relative p-6">
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-50/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                            <span class="bg-white px-4 py-2 rounded-full text-xs font-medium shadow-sm border border-zinc-100">View Specs</span>
+                        </div>
+                        <h3 class="text-7xl font-semibold tracking-tighter text-purple-200 group-hover:text-purple-300 transition-colors select-none">R1</h3>
+                        <div class="absolute top-4 left-4">
+                            <span class="px-2 py-1 bg-white border border-zinc-200 rounded-md text-xs font-medium text-zinc-500">Rent Manager</span>
+                        </div>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="text-lg font-medium tracking-tight text-zinc-900">Lease Leads</h4>
+                                <p class="text-sm text-zinc-500 mt-1">ILL Seat Needed</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3 mb-6 flex-1">
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">Website</span>
+                                <span class="text-zinc-700 font-medium">Lease Leads</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">UTM Source</span>
+                                <span class="text-zinc-700">Sadie via Email</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-auto flex-wrap"><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-green-50 text-green-700 border-green-100 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3"><path d="M20 6 9 17l-5-5"></path></svg> GA4
+                    </span></div>
+                    </div>
+                </div>
+                <div onclick="showDetail('r2-jonah-stack')" class="group relative flex flex-col bg-white border border-zinc-200 rounded-xl overflow-hidden hover:border-zinc-300 hover:shadow-lg transition-all duration-300 cursor-pointer h-full">
+                    <div class="h-40 bg-gradient-to-br from-purple-50 to-fuchsia-50 flex items-center justify-center relative p-6">
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-50/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                            <span class="bg-white px-4 py-2 rounded-full text-xs font-medium shadow-sm border border-zinc-100">View Specs</span>
+                        </div>
+                        <h3 class="text-7xl font-semibold tracking-tighter text-purple-200 group-hover:text-purple-300 transition-colors select-none">R2</h3>
+                        <div class="absolute top-4 left-4">
+                            <span class="px-2 py-1 bg-white border border-zinc-200 rounded-md text-xs font-medium text-zinc-500">Rent Manager</span>
+                        </div>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="text-lg font-medium tracking-tight text-zinc-900">Jonah Stack</h4>
+                                <p class="text-sm text-zinc-500 mt-1">ILL Seat Needed</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3 mb-6 flex-1">
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">Website</span>
+                                <span class="text-zinc-700 font-medium">Jonah</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">UTM Source</span>
+                                <span class="text-zinc-700">Sadie via Email</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-auto flex-wrap"><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-green-50 text-green-700 border-green-100 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3"><path d="M20 6 9 17l-5-5"></path></svg> GA4
+                    </span><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-50 text-blue-700 border-blue-100 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="tag" aria-hidden="true" class="lucide lucide-tag w-3 h-3"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle></svg> GTM
+                    </span></div>
+                    </div>
+                </div>
+                <div onclick="showDetail('m1-perq-knock')" class="group relative flex flex-col bg-white border border-zinc-200 rounded-xl overflow-hidden hover:border-zinc-300 hover:shadow-lg transition-all duration-300 cursor-pointer h-full">
+                    <div class="h-40 bg-gradient-to-br from-gray-50 to-zinc-100 flex items-center justify-center relative p-6">
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-50/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                            <span class="bg-white px-4 py-2 rounded-full text-xs font-medium shadow-sm border border-zinc-100">View Specs</span>
+                        </div>
+                        <h3 class="text-7xl font-semibold tracking-tighter text-gray-300 group-hover:text-gray-400 transition-colors select-none">M1</h3>
+                        <div class="absolute top-4 left-4">
+                            <span class="px-2 py-1 bg-white border border-zinc-200 rounded-md text-xs font-medium text-zinc-500">MRI</span>
+                        </div>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="text-lg font-medium tracking-tight text-zinc-900">Perq / Knock</h4>
+                                <p class="text-sm text-zinc-500 mt-1">Custom Seat Config</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3 mb-6 flex-1">
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">Website</span>
+                                <span class="text-zinc-700 font-medium">Perq</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">UTM Source</span>
+                                <span class="text-zinc-400">--</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-auto flex-wrap"><span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-yellow-50 text-yellow-700 border-yellow-100 border text-xs font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="help-circle" aria-hidden="true" class="lucide lucide-help-circle w-3 h-3"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><path d="M12 17h.01"></path></svg> GA4: ?
+                    </span></div>
+                    </div>
+                </div></div>
+
+                 <div class="mt-20 flex justify-center pb-12">
+                    <p class="text-neutral-400 text-sm font-geist" style="">End of configuration list</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- DETAIL SUBPAGE VIEW -->
+        <div id="detail-view" class="flex-col h-full hidden">
+            <div class="flex-1 overflow-y-auto hide-scrollbar">
+                <div class="fade-in" id="detail-content">
+                <div class="max-w-3xl mx-auto px-8 md:px-16 pt-12 pb-24 fade-in">
+                    
+                    <!-- Back button -->
+                    <button onclick="showGallery()" class="flex items-center gap-2 text-zinc-400 hover:text-zinc-700 transition-colors mb-10 group">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="arrow-left" aria-hidden="true" class="lucide lucide-arrow-left w-4 h-4 group-hover:-translate-x-0.5 transition-transform"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
+                        <span class="text-sm font-medium font-geist">Back to Gallery</span>
+                    </button>
+
+                    <!-- Header -->
+                    <div class="flex items-start justify-between mb-2">
+                        <div>
+                            <div class="flex items-center gap-3 mb-4">
+                                <span class="px-2.5 py-1 bg-zinc-100 border border-zinc-200 rounded-md text-xs font-medium text-zinc-500 font-geist">Rent Manager</span>
+                                <span class="text-zinc-300 font-geist">·</span>
+                                <span class="text-sm text-zinc-400 font-geist">r2-jonah-stack</span>
+                            </div>
+                            <h1 class="text-4xl md:text-5xl tracking-tighter text-zinc-900 font-jakarta font-medium">R2 — Jonah Stack</h1>
+                            <p class="text-lg text-zinc-500 mt-3 font-geist">ILL Seat Needed</p>
+                        </div>
+                    </div>
+
+                    <!-- Badges -->
+                    <div class="flex gap-2 mt-6 mb-12 flex-wrap"><span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-green-50 text-green-700 border-green-100 border text-xs font-medium font-geist">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3"><path d="M20 6 9 17l-5-5"></path></svg> GA4
+                </span><span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 border-blue-100 border text-xs font-medium font-geist">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="tag" aria-hidden="true" class="lucide lucide-tag w-3 h-3"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle></svg> GTM
+                </span></div>
+
+                    <!-- Divider -->
+                    <div class="border-t border-zinc-100 mb-12"></div>
+
+                    <!-- Overview -->
+                    <div class="mb-12">
+                        <h2 class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-4 font-geist">Overview</h2>
+                        <p class="text-base text-zinc-700 leading-relaxed font-geist">Rent Manager CRM with Jonah website. Full GTM and GA4 implementation required. ILL seat needed for lead routing.</p>
+                    </div>
+
+                    <!-- Quick Info Grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
+                        <div class="p-5 bg-zinc-50 rounded-xl border border-zinc-100">
+                            <p class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-2 font-geist">Website</p>
+                            <p class="text-lg font-medium tracking-tight text-zinc-900 font-geist">Jonah</p>
+                        </div>
+                        <div class="p-5 bg-zinc-50 rounded-xl border border-zinc-100">
+                            <p class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-2 font-geist">UTM Source</p>
+                            <p class="text-lg font-medium tracking-tight text-zinc-900 font-geist">Sadie via Email</p>
+                        </div>
+                        <div class="p-5 bg-zinc-50 rounded-xl border border-zinc-100">
+                            <p class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-2 font-geist">PMS</p>
+                            <p class="text-lg font-medium tracking-tight text-zinc-900 font-geist">Rent Manager</p>
+                        </div>
+                    </div>
+
+                    <!-- UTM Format -->
+                    <div class="mb-12">
+                        <h2 class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-4 font-geist">UTM Format</h2>
+                        <div class="bg-zinc-900 rounded-xl p-5 overflow-x-auto">
+                            <code class="text-sm text-green-400 font-mono whitespace-pre font-geist">?utm_source={assigned_by_sadie}&amp;utm_medium=cpc&amp;utm_campaign={campaign_name}</code>
+                        </div>
+                    </div>
+
+                    <!-- Setup Steps -->
+                    <div class="mb-12">
+                        <h2 class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-6 font-geist">Setup Steps</h2>
+                        <div class="space-y-5"><div class="flex gap-4 items-start group/step">
+                    <div class="flex-shrink-0 w-7 h-7 rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center mt-0.5">
+                        <span class="text-xs font-medium text-zinc-500 font-geist">1</span>
+                    </div>
+                    <p class="text-base text-zinc-700 leading-relaxed pt-0.5 font-geist">Request ILL seat for Rent Manager</p>
+                </div><div class="flex gap-4 items-start group/step">
+                    <div class="flex-shrink-0 w-7 h-7 rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center mt-0.5">
+                        <span class="text-xs font-medium text-zinc-500 font-geist">2</span>
+                    </div>
+                    <p class="text-base text-zinc-700 leading-relaxed pt-0.5 font-geist">Get Jonah admin and GTM container access</p>
+                </div><div class="flex gap-4 items-start group/step">
+                    <div class="flex-shrink-0 w-7 h-7 rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center mt-0.5">
+                        <span class="text-xs font-medium text-zinc-500 font-geist">3</span>
+                    </div>
+                    <p class="text-base text-zinc-700 leading-relaxed pt-0.5 font-geist">Email Sadie for UTM source parameters</p>
+                </div><div class="flex gap-4 items-start group/step">
+                    <div class="flex-shrink-0 w-7 h-7 rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center mt-0.5">
+                        <span class="text-xs font-medium text-zinc-500 font-geist">4</span>
+                    </div>
+                    <p class="text-base text-zinc-700 leading-relaxed pt-0.5 font-geist">Deploy GTM container on Jonah site</p>
+                </div><div class="flex gap-4 items-start group/step">
+                    <div class="flex-shrink-0 w-7 h-7 rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center mt-0.5">
+                        <span class="text-xs font-medium text-zinc-500 font-geist">5</span>
+                    </div>
+                    <p class="text-base text-zinc-700 leading-relaxed pt-0.5 font-geist">Configure GA4 and ad pixels via GTM</p>
+                </div><div class="flex gap-4 items-start group/step">
+                    <div class="flex-shrink-0 w-7 h-7 rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center mt-0.5">
+                        <span class="text-xs font-medium text-zinc-500 font-geist">6</span>
+                    </div>
+                    <p class="text-base text-zinc-700 leading-relaxed pt-0.5 font-geist">Set up ILL lead routing to Rent Manager</p>
+                </div><div class="flex gap-4 items-start group/step">
+                    <div class="flex-shrink-0 w-7 h-7 rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center mt-0.5">
+                        <span class="text-xs font-medium text-zinc-500 font-geist">7</span>
+                    </div>
+                    <p class="text-base text-zinc-700 leading-relaxed pt-0.5 font-geist">Map Jonah form submissions to CRM</p>
+                </div><div class="flex gap-4 items-start group/step">
+                    <div class="flex-shrink-0 w-7 h-7 rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center mt-0.5">
+                        <span class="text-xs font-medium text-zinc-500 font-geist">8</span>
+                    </div>
+                    <p class="text-base text-zinc-700 leading-relaxed pt-0.5 font-geist">QA full funnel from click to CRM entry</p>
+                </div></div>
+                    </div>
+
+                    <!-- Access Needed -->
+                    <div class="mb-12">
+                        <h2 class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-4 font-geist">Access Needed</h2>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3"><div class="flex items-center gap-3 px-4 py-3 bg-zinc-50 rounded-lg border border-zinc-100">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="key" aria-hidden="true" class="lucide lucide-key w-4 h-4 text-zinc-400 flex-shrink-0"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"></path><path d="m21 2-9.6 9.6"></path><circle cx="7.5" cy="15.5" r="5.5"></circle></svg>
+                    <span class="text-sm text-zinc-700 font-geist">Rent Manager ILL Seat</span>
+                </div><div class="flex items-center gap-3 px-4 py-3 bg-zinc-50 rounded-lg border border-zinc-100">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="key" aria-hidden="true" class="lucide lucide-key w-4 h-4 text-zinc-400 flex-shrink-0"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"></path><path d="m21 2-9.6 9.6"></path><circle cx="7.5" cy="15.5" r="5.5"></circle></svg>
+                    <span class="text-sm text-zinc-700 font-geist">GA4 Editor Access</span>
+                </div><div class="flex items-center gap-3 px-4 py-3 bg-zinc-50 rounded-lg border border-zinc-100">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="key" aria-hidden="true" class="lucide lucide-key w-4 h-4 text-zinc-400 flex-shrink-0"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"></path><path d="m21 2-9.6 9.6"></path><circle cx="7.5" cy="15.5" r="5.5"></circle></svg>
+                    <span class="text-sm text-zinc-700 font-geist">GTM Container Access</span>
+                </div><div class="flex items-center gap-3 px-4 py-3 bg-zinc-50 rounded-lg border border-zinc-100">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="key" aria-hidden="true" class="lucide lucide-key w-4 h-4 text-zinc-400 flex-shrink-0"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"></path><path d="m21 2-9.6 9.6"></path><circle cx="7.5" cy="15.5" r="5.5"></circle></svg>
+                    <span class="text-sm text-zinc-700 font-geist">Jonah Admin Panel</span>
+                </div></div>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="mb-12">
+                        <h2 class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-4 font-geist">Notes</h2>
+                        <div class="flex gap-3 p-5 bg-amber-50 border border-amber-100 rounded-xl">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="info" aria-hidden="true" class="lucide lucide-info w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
+                            <p class="text-sm text-amber-800 leading-relaxed font-geist">Complex three-system setup. Recommend scheduling a kickoff call with all stakeholders before beginning implementation.</p>
+                        </div>
+                    </div>
+
+                    <!-- Back to gallery bottom -->
+                    <div class="border-t border-zinc-100 pt-8 flex justify-between items-center">
+                        <button onclick="showGallery()" class="flex items-center gap-2 text-zinc-400 hover:text-zinc-700 transition-colors group">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="arrow-left" aria-hidden="true" class="lucide lucide-arrow-left w-4 h-4 group-hover:-translate-x-0.5 transition-transform"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
+                            <span class="text-sm font-medium font-geist">Back to Gallery</span>
+                        </button>
+                        <span class="text-xs text-zinc-300 font-geist">r2-jonah-stack</span>
+                    </div>
+                </div>
+            </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // Card data
+        const cards = [
+            {
+                id: 'Y1', slug: 'y1-standard-yardi', pms: 'Yardi', title: 'Standard Yardi', subtitle: 'Yardi CRM + Site Manager',
+                website: 'Yardi', utmSource: 'Client / Support', gradient: 'from-zinc-50 to-zinc-100',
+                textColor: 'text-zinc-200', hoverColor: 'text-zinc-300',
+                badges: [{label: 'GA4', type: 'green', icon: 'check'}],
+                filter: 'yardi',
+                details: {
+                    overview: 'Standard Yardi configuration using native CRM and Site Manager. This is the most common setup for properties managed through Yardi Voyager.',
+                    steps: [
+                        'Confirm client has active Yardi CRM + Site Manager license',
+                        'Request GA4 property access from client or support team',
+                        'Configure UTM parameters — source provided by client or support',
+                        'Set up conversion tracking in GA4 for key events (tour, apply, contact)',
+                        'Verify lead attribution is flowing correctly in Yardi CRM',
+                        'QA all landing pages and form submissions'
+                    ],
+                    utmFormat: '?utm_source={source}&utm_medium=cpc&utm_campaign={campaign_name}',
+                    accessNeeded: ['Yardi CRM Seat', 'GA4 Editor Access', 'Site Manager Admin'],
+                    notes: 'UTM source is typically provided by the client or their support team. Always confirm before launching campaigns.'
+                }
+            },
+            {
+                id: 'Y2', slug: 'y2-jonah-stack', pms: 'Yardi', title: 'Jonah Stack', subtitle: 'Yardi CRM + Site Manager',
+                website: 'Jonah', utmSource: 'Client / Support', gradient: 'from-zinc-50 to-zinc-100',
+                textColor: 'text-zinc-200', hoverColor: 'text-zinc-300',
+                badges: [{label: 'GA4', type: 'green', icon: 'check'}, {label: 'GTM', type: 'blue', icon: 'tag'}],
+                filter: 'yardi',
+                details: {
+                    overview: 'Yardi CRM paired with Jonah-built website. Requires GTM container access for pixel and event management on the Jonah site.',
+                    steps: [
+                        'Confirm client has active Yardi CRM license',
+                        'Request Jonah website admin access and GTM container ID',
+                        'Implement GTM container on Jonah site if not already present',
+                        'Configure GA4 via GTM — set up pageview, event, and conversion tags',
+                        'Set up UTM parameters — source provided by client or support',
+                        'Deploy ad platform pixels (Meta, Google) via GTM',
+                        'QA all conversion events and lead flow into Yardi CRM'
+                    ],
+                    utmFormat: '?utm_source={source}&utm_medium=cpc&utm_campaign={campaign_name}',
+                    accessNeeded: ['Yardi CRM Seat', 'GA4 Editor Access', 'GTM Container Access', 'Jonah Admin Panel'],
+                    notes: 'GTM is required for this configuration since Jonah websites need container-based tag management. Coordinate with Jonah support for any site-level changes.'
+                }
+            },
+            {
+                id: 'Y3', slug: 'y3-lease-leads', pms: 'Yardi', title: 'Lease Leads', subtitle: 'Yardi CRM + Site Manager',
+                website: 'Lease Leads', utmSource: 'Client / Support', gradient: 'from-zinc-50 to-zinc-100',
+                textColor: 'text-zinc-200', hoverColor: 'text-zinc-300',
+                badges: [{label: 'GA4', type: 'green', icon: 'check'}],
+                filter: 'yardi',
+                details: {
+                    overview: 'Yardi CRM with a Lease Leads website. GA4 is available directly on the Lease Leads platform.',
+                    steps: [
+                        'Confirm client has active Yardi CRM + Lease Leads website',
+                        'Request GA4 property access from client or support',
+                        'Configure UTM parameters — source provided by client or support',
+                        'Set up conversion tracking for tour requests, applications, and contact forms',
+                        'Verify lead attribution flowing into Yardi CRM',
+                        'QA landing pages and all form submissions on Lease Leads site'
+                    ],
+                    utmFormat: '?utm_source={source}&utm_medium=cpc&utm_campaign={campaign_name}',
+                    accessNeeded: ['Yardi CRM Seat', 'GA4 Editor Access', 'Lease Leads Dashboard'],
+                    notes: 'Lease Leads sites typically have GA4 pre-installed. Confirm the measurement ID before adding any additional tracking.'
+                }
+            },
+            {
+                id: 'E1', slug: 'e1-entrata-native', pms: 'Entrata', title: 'Entrata Native', subtitle: 'Full CRM Access Needed',
+                website: 'Entrata', utmSource: 'Self Generated', gradient: 'from-red-50 to-orange-50',
+                textColor: 'text-red-100', hoverColor: 'text-red-200',
+                badges: [{label: 'GA4', type: 'green', icon: 'check'}],
+                filter: 'entrata',
+                details: {
+                    overview: 'Entrata native website with full CRM integration. UTM sources are self-generated within the Entrata platform.',
+                    steps: [
+                        'Request full Entrata CRM access from property management company',
+                        'Log into Entrata and locate the property website settings',
+                        'Generate UTM source codes within Entrata\'s marketing module',
+                        'Configure GA4 property and connect to Entrata website',
+                        'Set up conversion events for applications, tours, and contact submissions',
+                        'Test lead flow end-to-end from ad click to CRM entry'
+                    ],
+                    utmFormat: '?utm_source={entrata_generated}&utm_medium=cpc&utm_campaign={campaign_name}',
+                    accessNeeded: ['Entrata CRM Full Access', 'GA4 Editor Access'],
+                    notes: 'Entrata generates its own UTM source codes. Do not use external UTM sources — they will not attribute correctly in the CRM.'
+                }
+            },
+            {
+                id: 'E2', slug: 'e2-lease-leads', pms: 'Entrata', title: 'Lease Leads', subtitle: 'Full CRM Access Needed',
+                website: 'Lease Leads', utmSource: 'Self Generated', gradient: 'from-red-50 to-orange-50',
+                textColor: 'text-red-100', hoverColor: 'text-red-200',
+                badges: [{label: 'GA4', type: 'green', icon: 'check'}, {label: 'GTM', type: 'blue', icon: 'tag'}],
+                filter: 'entrata',
+                details: {
+                    overview: 'Entrata CRM paired with a Lease Leads website. Requires both GTM and GA4 for full tracking coverage.',
+                    steps: [
+                        'Request full Entrata CRM access',
+                        'Get Lease Leads admin access and GTM container ID',
+                        'Generate UTM source codes within Entrata marketing module',
+                        'Implement GA4 and ad pixels via GTM on Lease Leads site',
+                        'Configure conversion events for all lead types',
+                        'Verify Entrata CRM is receiving leads with correct source attribution',
+                        'QA cross-domain tracking if applicable'
+                    ],
+                    utmFormat: '?utm_source={entrata_generated}&utm_medium=cpc&utm_campaign={campaign_name}',
+                    accessNeeded: ['Entrata CRM Full Access', 'GA4 Editor Access', 'GTM Container Access', 'Lease Leads Dashboard'],
+                    notes: 'Even though the website is Lease Leads, UTM sources must still be generated through Entrata for proper CRM attribution.'
+                }
+            },
+            {
+                id: 'E3', slug: 'e3-jonah-stack', pms: 'Entrata', title: 'Jonah Stack', subtitle: 'Full CRM Access Needed',
+                website: 'Jonah', utmSource: 'Self Generated', gradient: 'from-red-50 to-orange-50',
+                textColor: 'text-red-100', hoverColor: 'text-red-200',
+                badges: [{label: 'GA4', type: 'green', icon: 'check'}, {label: 'GTM', type: 'blue', icon: 'tag'}],
+                filter: 'entrata',
+                details: {
+                    overview: 'Entrata CRM with a Jonah-built website. Full GTM implementation required for tracking and pixel management.',
+                    steps: [
+                        'Request full Entrata CRM access',
+                        'Get Jonah website admin and GTM container access',
+                        'Generate UTM source codes within Entrata marketing module',
+                        'Deploy GTM container on Jonah site',
+                        'Configure GA4, ad pixels, and conversion events via GTM',
+                        'Map lead flow from Jonah forms into Entrata CRM',
+                        'QA all events and verify source attribution'
+                    ],
+                    utmFormat: '?utm_source={entrata_generated}&utm_medium=cpc&utm_campaign={campaign_name}',
+                    accessNeeded: ['Entrata CRM Full Access', 'GA4 Editor Access', 'GTM Container Access', 'Jonah Admin Panel'],
+                    notes: 'Coordinate with both Jonah support and Entrata support during setup. Form submission mapping may require custom configuration.'
+                }
+            },
+            {
+                id: 'A1', slug: 'a1-ill-integration', pms: 'Appfolio', title: 'ILL Integration', subtitle: 'ILL Seat Needed',
+                website: 'Appfolio', utmSource: 'Sadie via Email', gradient: 'from-cyan-50 to-blue-50',
+                textColor: 'text-cyan-100', hoverColor: 'text-cyan-200',
+                badges: [{label: 'UTM: Us', type: 'gray', icon: 'user'}],
+                filter: 'appfolio',
+                details: {
+                    overview: 'Appfolio website with ILL (Internet Listing Lead) integration. UTM sources are managed internally and coordinated through Sadie.',
+                    steps: [
+                        'Request ILL seat from Appfolio — coordinate with account manager',
+                        'Email Sadie to obtain UTM source parameters',
+                        'Configure Appfolio website with proper tracking URLs',
+                        'Set up ILL lead routing to correct property contacts',
+                        'Verify leads are flowing through ILL integration correctly',
+                        'QA UTM parameter persistence through the conversion funnel'
+                    ],
+                    utmFormat: '?utm_source={assigned_by_sadie}&utm_medium=cpc&utm_campaign={campaign_name}',
+                    accessNeeded: ['Appfolio ILL Seat', 'Appfolio Admin Access'],
+                    notes: 'ILL seat must be active before any campaigns launch. Email Sadie at least 3 business days before target launch date for UTM source assignment.'
+                }
+            },
+            {
+                id: 'A2', slug: 'a2-appfolio-standard', pms: 'Appfolio', title: 'Appfolio Standard', subtitle: 'Appfolio Seat Needed',
+                website: 'Appfolio', utmSource: '--', gradient: 'from-cyan-50 to-blue-50',
+                textColor: 'text-cyan-100', hoverColor: 'text-cyan-200',
+                badges: [{label: 'GTM', type: 'blue', icon: 'tag'}, {label: 'UTM: Us', type: 'gray', icon: 'user'}],
+                filter: 'appfolio',
+                details: {
+                    overview: 'Standard Appfolio configuration with GTM for tag management. UTM sources are managed by our team directly.',
+                    steps: [
+                        'Request Appfolio admin seat from property management company',
+                        'Set up GTM container and deploy on Appfolio website',
+                        'Configure GA4 measurement via GTM',
+                        'Deploy ad platform pixels through GTM',
+                        'Create UTM parameters internally (we manage source values)',
+                        'Set up conversion tracking for all lead events',
+                        'QA full tracking implementation'
+                    ],
+                    utmFormat: '?utm_source={our_source}&utm_medium=cpc&utm_campaign={campaign_name}',
+                    accessNeeded: ['Appfolio Admin Seat', 'GTM Container Access', 'GA4 Editor Access'],
+                    notes: 'We control UTM source values for this configuration. Document all source values in the campaign tracker sheet.'
+                }
+            },
+            {
+                id: 'A3', slug: 'a3-jonah-ill', pms: 'Appfolio', title: 'Jonah + ILL', subtitle: 'ILL Seat Needed',
+                website: 'Jonah', utmSource: 'Sadie via Email', gradient: 'from-cyan-50 to-blue-50',
+                textColor: 'text-cyan-100', hoverColor: 'text-cyan-200',
+                badges: [{label: 'GTM', type: 'blue', icon: 'tag'}],
+                filter: 'appfolio',
+                details: {
+                    overview: 'Appfolio CRM with Jonah website and ILL integration. GTM is required on the Jonah site for tracking.',
+                    steps: [
+                        'Request ILL seat from Appfolio',
+                        'Get Jonah website admin and GTM container access',
+                        'Email Sadie for UTM source parameter assignment',
+                        'Deploy GTM container on Jonah site with GA4 and ad pixels',
+                        'Configure ILL lead routing',
+                        'Map Jonah form submissions to Appfolio CRM',
+                        'QA end-to-end lead flow and attribution'
+                    ],
+                    utmFormat: '?utm_source={assigned_by_sadie}&utm_medium=cpc&utm_campaign={campaign_name}',
+                    accessNeeded: ['Appfolio ILL Seat', 'GTM Container Access', 'Jonah Admin Panel'],
+                    notes: 'This is a three-system configuration. Allow extra QA time. Coordinate Sadie UTM assignment with Jonah form setup simultaneously.'
+                }
+            },
+            {
+                id: 'A4', slug: 'a4-jonah-native', pms: 'Appfolio', title: 'Jonah Native', subtitle: 'Appfolio Seat Needed',
+                website: 'Jonah', utmSource: '--', gradient: 'from-cyan-50 to-blue-50',
+                textColor: 'text-cyan-100', hoverColor: 'text-cyan-200',
+                badges: [{label: 'UTM: Us', type: 'gray', icon: 'user'}],
+                filter: 'appfolio',
+                details: {
+                    overview: 'Appfolio CRM with a Jonah-built website, no ILL integration. UTM sources are managed by our team.',
+                    steps: [
+                        'Request Appfolio admin seat',
+                        'Get Jonah website admin access',
+                        'Create UTM source parameters internally',
+                        'Configure tracking on Jonah site (GTM if available, or direct)',
+                        'Set up conversion events for lead actions',
+                        'Verify lead attribution in Appfolio CRM',
+                        'QA all landing pages and form flows'
+                    ],
+                    utmFormat: '?utm_source={our_source}&utm_medium=cpc&utm_campaign={campaign_name}',
+                    accessNeeded: ['Appfolio Admin Seat', 'Jonah Admin Panel'],
+                    notes: 'Simpler configuration without ILL. We own the UTM source values — document them in the campaign tracker.'
+                }
+            },
+            {
+                id: 'R1', slug: 'r1-lease-leads', pms: 'Rent Manager', title: 'Lease Leads', subtitle: 'ILL Seat Needed',
+                website: 'Lease Leads', utmSource: 'Sadie via Email', gradient: 'from-purple-50 to-fuchsia-50',
+                textColor: 'text-purple-200', hoverColor: 'text-purple-300',
+                badges: [{label: 'GA4', type: 'green', icon: 'check'}],
+                filter: 'other',
+                details: {
+                    overview: 'Rent Manager CRM with Lease Leads website. ILL seat required for lead integration. UTM coordinated through Sadie.',
+                    steps: [
+                        'Request ILL seat for Rent Manager integration',
+                        'Email Sadie for UTM source assignment',
+                        'Get Lease Leads dashboard access',
+                        'Configure GA4 on Lease Leads property site',
+                        'Set up conversion tracking for tours, applications, contacts',
+                        'Verify lead flow from Lease Leads into Rent Manager',
+                        'QA attribution and UTM persistence'
+                    ],
+                    utmFormat: '?utm_source={assigned_by_sadie}&utm_medium=cpc&utm_campaign={campaign_name}',
+                    accessNeeded: ['Rent Manager ILL Seat', 'GA4 Editor Access', 'Lease Leads Dashboard'],
+                    notes: 'Rent Manager integrations can have longer setup times. Start the ILL seat request process early.'
+                }
+            },
+            {
+                id: 'R2', slug: 'r2-jonah-stack', pms: 'Rent Manager', title: 'Jonah Stack', subtitle: 'ILL Seat Needed',
+                website: 'Jonah', utmSource: 'Sadie via Email', gradient: 'from-purple-50 to-fuchsia-50',
+                textColor: 'text-purple-200', hoverColor: 'text-purple-300',
+                badges: [{label: 'GA4', type: 'green', icon: 'check'}, {label: 'GTM', type: 'blue', icon: 'tag'}],
+                filter: 'other',
+                details: {
+                    overview: 'Rent Manager CRM with Jonah website. Full GTM and GA4 implementation required. ILL seat needed for lead routing.',
+                    steps: [
+                        'Request ILL seat for Rent Manager',
+                        'Get Jonah admin and GTM container access',
+                        'Email Sadie for UTM source parameters',
+                        'Deploy GTM container on Jonah site',
+                        'Configure GA4 and ad pixels via GTM',
+                        'Set up ILL lead routing to Rent Manager',
+                        'Map Jonah form submissions to CRM',
+                        'QA full funnel from click to CRM entry'
+                    ],
+                    utmFormat: '?utm_source={assigned_by_sadie}&utm_medium=cpc&utm_campaign={campaign_name}',
+                    accessNeeded: ['Rent Manager ILL Seat', 'GA4 Editor Access', 'GTM Container Access', 'Jonah Admin Panel'],
+                    notes: 'Complex three-system setup. Recommend scheduling a kickoff call with all stakeholders before beginning implementation.'
+                }
+            },
+            {
+                id: 'M1', slug: 'm1-perq-knock', pms: 'MRI', title: 'Perq / Knock', subtitle: 'Custom Seat Config',
+                website: 'Perq', utmSource: '--', gradient: 'from-gray-50 to-zinc-100',
+                textColor: 'text-gray-300', hoverColor: 'text-gray-400',
+                badges: [{label: 'GA4: ?', type: 'yellow', icon: 'help-circle'}],
+                filter: 'other',
+                details: {
+                    overview: 'MRI CRM with Perq/Knock website platform. This is a custom configuration that varies by property. GA4 availability needs to be confirmed on a case-by-case basis.',
+                    steps: [
+                        'Confirm which platform is active: Perq, Knock, or both',
+                        'Request custom seat configuration from MRI admin',
+                        'Determine GA4 availability — check with property IT team',
+                        'If GA4 available: configure measurement and conversion tracking',
+                        'If GA4 unavailable: document alternative tracking method',
+                        'Set up UTM parameters (varies by configuration)',
+                        'Coordinate with Perq/Knock support for any platform-specific requirements',
+                        'Extensive QA required due to custom nature of setup'
+                    ],
+                    utmFormat: 'Varies — confirm with property management team',
+                    accessNeeded: ['MRI Custom Seat', 'Perq/Knock Admin (varies)', 'GA4 Editor Access (if available)'],
+                    notes: 'This is the most variable configuration. Every MRI + Perq/Knock setup can be different. Always start with a discovery call to understand the specific tech stack.'
+                }
+            }
+        ];
+
+        // Badge type mappings
+        const badgeStyles = {
+            green: 'bg-green-50 text-green-700 border-green-100',
+            blue: 'bg-blue-50 text-blue-700 border-blue-100',
+            gray: 'bg-zinc-100 text-zinc-500 border-zinc-200',
+            yellow: 'bg-yellow-50 text-yellow-700 border-yellow-100'
+        };
+
+        // Render gallery cards
+        function renderCards(filter = 'all', search = '') {
+            const grid = document.getElementById('card-grid');
+            grid.innerHTML = '';
+            
+            const filtered = cards.filter(c => {
+                const matchFilter = filter === 'all' || c.filter === filter;
+                const matchSearch = search === '' || 
+                    c.title.toLowerCase().includes(search.toLowerCase()) ||
+                    c.pms.toLowerCase().includes(search.toLowerCase()) ||
+                    c.id.toLowerCase().includes(search.toLowerCase()) ||
+                    c.website.toLowerCase().includes(search.toLowerCase());
+                return matchFilter && matchSearch;
+            });
+
+            filtered.forEach(card => {
+                const badgesHtml = card.badges.map(b => 
+                    `<span class="inline-flex items-center gap-1 px-2 py-1 rounded-md ${badgeStyles[b.type]} border text-xs font-medium">
+                        <i data-lucide="${b.icon}" class="w-3 h-3"></i> ${b.label}
+                    </span>`
+                ).join('');
+
+                grid.innerHTML += `
+                <div onclick="showDetail('${card.slug}')" class="group relative flex flex-col bg-white border border-zinc-200 rounded-xl overflow-hidden hover:border-zinc-300 hover:shadow-lg transition-all duration-300 cursor-pointer h-full">
+                    <div class="h-40 bg-gradient-to-br ${card.gradient} flex items-center justify-center relative p-6">
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-50/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                            <span class="bg-white px-4 py-2 rounded-full text-xs font-medium shadow-sm border border-zinc-100">View Specs</span>
+                        </div>
+                        <h3 class="text-7xl font-semibold tracking-tighter ${card.textColor} group-hover:${card.hoverColor} transition-colors select-none">${card.id}</h3>
+                        <div class="absolute top-4 left-4">
+                            <span class="px-2 py-1 bg-white border border-zinc-200 rounded-md text-xs font-medium text-zinc-500">${card.pms}</span>
+                        </div>
+                    </div>
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="text-lg font-medium tracking-tight text-zinc-900">${card.title}</h4>
+                                <p class="text-sm text-zinc-500 mt-1">${card.subtitle}</p>
+                            </div>
+                        </div>
+                        <div class="space-y-3 mb-6 flex-1">
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">Website</span>
+                                <span class="text-zinc-700 font-medium">${card.website}</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-b border-zinc-50 pb-2">
+                                <span class="text-zinc-400">UTM Source</span>
+                                <span class="${card.utmSource === '--' ? 'text-zinc-400' : 'text-zinc-700'}">${card.utmSource}</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-auto flex-wrap">${badgesHtml}</div>
+                    </div>
+                </div>`;
+            });
+
+            lucide.createIcons();
+        }
+
+        // Filter cards
+        function filterCards(filter) {
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                if (btn.dataset.filter === filter) {
+                    btn.className = 'filter-btn px-4 py-1.5 rounded-full bg-zinc-900 text-white text-sm font-medium';
+                } else {
+                    btn.className = 'filter-btn px-4 py-1.5 rounded-full bg-white border border-zinc-200 text-zinc-600 text-sm font-medium hover:bg-zinc-50 transition-colors';
+                }
+            });
+            renderCards(filter, document.getElementById('search-input').value);
+        }
+
+        // Show detail page
+        function showDetail(slug) {
+            const card = cards.find(c => c.slug === slug);
+            if (!card) return;
+
+            // Update URL hash
+            window.location.hash = slug;
+
+            document.getElementById('gallery-view').classList.add('hidden');
+            document.getElementById('gallery-view').classList.remove('flex');
+            document.getElementById('detail-view').classList.remove('hidden');
+            document.getElementById('detail-view').classList.add('flex');
+
+            // Update sidebar active state
+            document.getElementById('nav-gallery').classList.remove('bg-zinc-200/60', 'text-zinc-900', 'font-medium');
+            document.getElementById('nav-gallery').classList.add('text-zinc-500', 'hover:bg-zinc-100', 'hover:text-zinc-900');
+
+            const badgesHtml = card.badges.map(b => 
+                `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md ${badgeStyles[b.type]} border text-xs font-medium">
+                    <i data-lucide="${b.icon}" class="w-3 h-3"></i> ${b.label}
+                </span>`
+            ).join('');
+
+            const stepsHtml = card.details.steps.map((step, i) => 
+                `<div class="flex gap-4 items-start group/step">
+                    <div class="flex-shrink-0 w-7 h-7 rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center mt-0.5">
+                        <span class="text-xs font-medium text-zinc-500">${i + 1}</span>
+                    </div>
+                    <p class="text-base text-zinc-700 leading-relaxed pt-0.5">${step}</p>
+                </div>`
+            ).join('');
+
+            const accessHtml = card.details.accessNeeded.map(a => 
+                `<div class="flex items-center gap-3 px-4 py-3 bg-zinc-50 rounded-lg border border-zinc-100">
+                    <i data-lucide="key" class="w-4 h-4 text-zinc-400 flex-shrink-0"></i>
+                    <span class="text-sm text-zinc-700">${a}</span>
+                </div>`
+            ).join('');
+
+            document.getElementById('detail-content').innerHTML = `
+                <div class="max-w-3xl mx-auto px-8 md:px-16 pt-12 pb-24 fade-in">
+                    
+                    <!-- Back button -->
+                    <button onclick="showGallery()" class="flex items-center gap-2 text-zinc-400 hover:text-zinc-700 transition-colors mb-10 group">
+                        <i data-lucide="arrow-left" class="w-4 h-4 group-hover:-translate-x-0.5 transition-transform"></i>
+                        <span class="text-sm font-medium">Back to Gallery</span>
+                    </button>
+
+                    <!-- Header -->
+                    <div class="flex items-start justify-between mb-2">
+                        <div>
+                            <div class="flex items-center gap-3 mb-4">
+                                <span class="px-2.5 py-1 bg-zinc-100 border border-zinc-200 rounded-md text-xs font-medium text-zinc-500">${card.pms}</span>
+                                <span class="text-zinc-300">·</span>
+                                <span class="text-sm text-zinc-400">${card.slug}</span>
+                            </div>
+                            <h1 class="text-4xl md:text-5xl font-medium tracking-tighter text-zinc-900">${card.id} — ${card.title}</h1>
+                            <p class="text-lg text-zinc-500 mt-3">${card.subtitle}</p>
+                        </div>
+                    </div>
+
+                    <!-- Badges -->
+                    <div class="flex gap-2 mt-6 mb-12 flex-wrap">${badgesHtml}</div>
+
+                    <!-- Divider -->
+                    <div class="border-t border-zinc-100 mb-12"></div>
+
+                    <!-- Overview -->
+                    <div class="mb-12">
+                        <h2 class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-4">Overview</h2>
+                        <p class="text-base text-zinc-700 leading-relaxed">${card.details.overview}</p>
+                    </div>
+
+                    <!-- Quick Info Grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
+                        <div class="p-5 bg-zinc-50 rounded-xl border border-zinc-100">
+                            <p class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-2">Website</p>
+                            <p class="text-lg font-medium tracking-tight text-zinc-900">${card.website}</p>
+                        </div>
+                        <div class="p-5 bg-zinc-50 rounded-xl border border-zinc-100">
+                            <p class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-2">UTM Source</p>
+                            <p class="text-lg font-medium tracking-tight ${card.utmSource === '--' ? 'text-zinc-400' : 'text-zinc-900'}">${card.utmSource}</p>
+                        </div>
+                        <div class="p-5 bg-zinc-50 rounded-xl border border-zinc-100">
+                            <p class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-2">PMS</p>
+                            <p class="text-lg font-medium tracking-tight text-zinc-900">${card.pms}</p>
+                        </div>
+                    </div>
+
+                    <!-- UTM Format -->
+                    <div class="mb-12">
+                        <h2 class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-4">UTM Format</h2>
+                        <div class="bg-zinc-900 rounded-xl p-5 overflow-x-auto">
+                            <code class="text-sm text-green-400 font-mono whitespace-pre">${card.details.utmFormat}</code>
+                        </div>
+                    </div>
+
+                    <!-- Setup Steps -->
+                    <div class="mb-12">
+                        <h2 class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-6">Setup Steps</h2>
+                        <div class="space-y-5">${stepsHtml}</div>
+                    </div>
+
+                    <!-- Access Needed -->
+                    <div class="mb-12">
+                        <h2 class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-4">Access Needed</h2>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${accessHtml}</div>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="mb-12">
+                        <h2 class="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-4">Notes</h2>
+                        <div class="flex gap-3 p-5 bg-amber-50 border border-amber-100 rounded-xl">
+                            <i data-lucide="info" class="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5"></i>
+                            <p class="text-sm text-amber-800 leading-relaxed">${card.details.notes}</p>
+                        </div>
+                    </div>
+
+                    <!-- Back to gallery bottom -->
+                    <div class="border-t border-zinc-100 pt-8 flex justify-between items-center">
+                        <button onclick="showGallery()" class="flex items-center gap-2 text-zinc-400 hover:text-zinc-700 transition-colors group">
+                            <i data-lucide="arrow-left" class="w-4 h-4 group-hover:-translate-x-0.5 transition-transform"></i>
+                            <span class="text-sm font-medium">Back to Gallery</span>
+                        </button>
+                        <span class="text-xs text-zinc-300">${card.slug}</span>
+                    </div>
+                </div>
+            `;
+
+            lucide.createIcons();
+        }
+
+        // Show gallery
+        function showGallery() {
+            window.location.hash = '';
+            document.getElementById('gallery-view').classList.remove('hidden');
+            document.getElementById('gallery-view').classList.add('flex');
+            document.getElementById('detail-view').classList.add('hidden');
+            document.getElementById('detail-view').classList.remove('flex');
+
+            // Reset sidebar active state
+            document.getElementById('nav-gallery').classList.add('bg-zinc-200/60', 'text-zinc-900', 'font-medium');
+            document.getElementById('nav-gallery').classList.remove('text-zinc-500', 'hover:bg-zinc-100', 'hover:text-zinc-900');
+        }
+
+        // Search functionality
+        document.getElementById('search-input').addEventListener('input', function() {
+            const activeFilter = document.querySelector('.filter-btn.bg-zinc-900')?.dataset.filter || 'all';
+            renderCards(activeFilter, this.value);
+        });
+
+        // Handle hash navigation
+        function handleHash() {
+            const hash = window.location.hash.replace('#', '');
+            if (hash) {
+                const card = cards.find(c => c.slug === hash);
+                if (card) {
+                    showDetail(card.slug);
+                    return;
+                }
+            }
+            showGallery();
+        }
+
+        window.addEventListener('hashchange', handleHash);
+
+        // Initial render
+        renderCards();
+        handleHash();
+    </script>
+
+</body></html>

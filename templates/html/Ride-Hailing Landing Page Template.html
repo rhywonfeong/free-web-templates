@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth"><head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<script id="aura-supabase-token-firewall">
+(function () {
+if (window.__AURA_SUPABASE_FIREWALL__) return;
+window.__AURA_SUPABASE_FIREWALL__ = true;
+var SUPABASE_HOST = "hoirqrkdgbmvpwutwuwj.supabase.co";
+var BLOCKED_KEY_PATTERNS = [
+/^sb-[a-z0-9-]+-auth-token$/i,
+/^supabase\.auth\.token$/i
+];
+function isBlockedStorageKey(key) {
+if (typeof key !== "string") return false;
+for (var i = 0; i < BLOCKED_KEY_PATTERNS.length; i++) {
+if (BLOCKED_KEY_PATTERNS[i].test(key)) return true;
+}
+return false;
+}
+function toAbsoluteUrl(input) {
+try {
+return new URL(input, window.location.href);
+} catch {
+return null;
+}
+}
+function isSupabaseDestination(input) {
+var parsed = toAbsoluteUrl(input);
+if (!parsed) return false;
+if (SUPABASE_HOST && parsed.host === SUPABASE_HOST) return true;
+return parsed.host.endsWith(".supabase.co");
+}
+function pathLooksSensitive(input) {
+var parsed = toAbsoluteUrl(input);
+if (!parsed) return false;
+return /^\/(auth|rest|functions)\/v1\//.test(parsed.pathname || "");
+}
+function headersContainAuth(headersLike) {
+if (!headersLike) return false;
+try {
+if (typeof Headers !== "undefined" && headersLike instanceof Headers) {
+return !!(headersLike.get("authorization") || headersLike.get("apikey"));
+}
+} catch {}
+if (Array.isArray(headersLike)) {
+for (var i = 0; i < headersLike.length; i++) {
+var pair = headersLike[i] || [];
+var name = String(pair[0] || "").toLowerCase();
+if (name === "authorization" || name === "apikey") return true;
+}
+return false;
+}
+if (typeof headersLike === "object") {
+var keys = Object.keys(headersLike);
+for (var j = 0; j < keys.length; j++) {
+var k = keys[j].toLowerCase();
+if (k === "authorization" || k === "apikey") return true;
+}
+}
+return false;
+}
+function requestLooksSensitive(input, init, extraHeaders) {
+var url = "";
+try {
+if (typeof input === "string") {
+url = input;
+} else if (input && typeof input.url === "string") {
+url = input.url;
+}
+} catch {}
+var headers =
+(init && init.headers) ||
+(input && input.headers) ||
+extraHeaders ||
+null;
+var hasAuthHeaders = headersContainAuth(headers);
+if (hasAuthHeaders) return true;
+if (!url) return false;
+if (isSupabaseDestination(url) && pathLooksSensitive(url)) return true;
+return false;
+}
+function patchStorage(storage, storageName) {
+if (!storage) return;
+var proto = Object.getPrototypeOf(storage);
+if (!proto || proto.__auraSupabaseFirewallPatched) return;
+var rawGetItem = proto.getItem;
+var rawSetItem = proto.setItem;
+var rawRemoveItem = proto.removeItem;
+var rawKey = proto.key;
+var rawLengthDescriptor = Object.getOwnPropertyDescriptor(proto, "length");
+var rawLengthGet = rawLengthDescriptor && rawLengthDescriptor.get;
+function getRawLength(instance) {
+try {
+if (rawLengthGet) return Number(rawLengthGet.call(instance) || 0);
+} catch {}
+try {
+return Number(instance.length || 0);
+} catch {}
+return 0;
+}
+function getVisibleKeys(instance) {
+var visible = [];
+var total = getRawLength(instance);
+for (var i = 0; i < total; i++) {
+var currentKey = rawKey.call(instance, i);
+if (currentKey && !isBlockedStorageKey(currentKey)) {
+visible.push(currentKey);
+}
+}
+return visible;
+}
+function maskBlockedKeyProperty(instance, keyName) {
+if (!keyName || !isBlockedStorageKey(keyName)) return;
+try {
+Object.defineProperty(instance, keyName, {
+configurable: true,
+enumerable: false,
+get: function () {
+return null;
+},
+set: function () {
+return true;
+}
+});
+} catch {}
+}
+function syncBlockedKeyProperties(instance) {
+var total = getRawLength(instance);
+for (var i = 0; i < total; i++) {
+var k = rawKey.call(instance, i);
+if (k) maskBlockedKeyProperty(instance, k);
+}
+}
+proto.getItem = function (key) {
+syncBlockedKeyProperties(this);
+if (isBlockedStorageKey(String(key))) return null;
+return rawGetItem.call(this, key);
+};
+proto.setItem = function (key, value) {
+if (isBlockedStorageKey(String(key))) return;
+return rawSetItem.call(this, key, value);
+};
+proto.removeItem = function (key) {
+if (isBlockedStorageKey(String(key))) return;
+return rawRemoveItem.call(this, key);
+};
+proto.key = function (index) {
+syncBlockedKeyProperties(this);
+var visible = getVisibleKeys(this);
+return visible[index] || null;
+};
+try {
+Object.defineProperty(proto, "length", {
+configurable: true,
+enumerable: false,
+get: function () {
+syncBlockedKeyProperties(this);
+return getVisibleKeys(this).length;
+}
+});
+} catch {}
+var proxyStorage = null;
+try {
+proxyStorage = new Proxy(storage, {
+get: function (target, prop) {
+if (typeof prop === "string" && isBlockedStorageKey(prop)) return null;
+if (prop === "length") return getVisibleKeys(target).length;
+if (prop === "key") {
+return function (index) {
+var visible = getVisibleKeys(target);
+return visible[index] || null;
+};
+}
+var value = target[prop];
+if (typeof value === "function") return value.bind(target);
+return value;
+},
+set: function (target, prop, value) {
+if (typeof prop === "string" && isBlockedStorageKey(prop)) return true;
+target[prop] = value;
+return true;
+},
+has: function (target, prop) {
+if (typeof prop === "string" && isBlockedStorageKey(prop)) return false;
+return prop in target;
+},
+ownKeys: function (target) {
+return getVisibleKeys(target);
+},
+getOwnPropertyDescriptor: function (target, prop) {
+if (typeof prop === "string" && isBlockedStorageKey(prop)) {
+return undefined;
+}
+if (prop === "length") {
+return {
+configurable: true,
+enumerable: false,
+value: getVisibleKeys(target).length,
+writable: false
+};
+}
+return Object.getOwnPropertyDescriptor(target, prop);
+}
+});
+} catch {}
+try {
+if (proxyStorage) {
+Object.defineProperty(window, storageName, {
+configurable: true,
+enumerable: true,
+get: function () {
+return proxyStorage;
+}
+});
+}
+} catch {}
+syncBlockedKeyProperties(storage);
+proto.__auraSupabaseFirewallPatched = true;
+}
+function patchCookieAccess() {
+try {
+var cookieDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, "cookie");
+if (!cookieDescriptor || !cookieDescriptor.configurable) return;
+Object.defineProperty(document, "cookie", {
+configurable: true,
+enumerable: false,
+get: function () {
+return "";
+},
+set: function () {
+return true;
+}
+});
+} catch {}
+}
+function patchFetch() {
+if (typeof window.fetch !== "function") return;
+var rawFetch = window.fetch.bind(window);
+window.fetch = function (input, init) {
+if (requestLooksSensitive(input, init, null)) {
+return Promise.reject(new Error("Blocked by Aura security policy"));
+}
+return rawFetch(input, init);
+};
+}
+function patchXHR() {
+if (typeof XMLHttpRequest === "undefined") return;
+var rawOpen = XMLHttpRequest.prototype.open;
+var rawSetHeader = XMLHttpRequest.prototype.setRequestHeader;
+var rawSend = XMLHttpRequest.prototype.send;
+XMLHttpRequest.prototype.open = function (method, url) {
+this.__auraRequestUrl = String(url || "");
+this.__auraHeaders = {};
+return rawOpen.apply(this, arguments);
+};
+XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+if (!this.__auraHeaders) this.__auraHeaders = {};
+this.__auraHeaders[String(name || "").toLowerCase()] = String(value || "");
+return rawSetHeader.apply(this, arguments);
+};
+XMLHttpRequest.prototype.send = function () {
+if (requestLooksSensitive(this.__auraRequestUrl || "", null, this.__auraHeaders || null)) {
+throw new Error("Blocked by Aura security policy");
+}
+return rawSend.apply(this, arguments);
+};
+}
+function patchBeacon() {
+if (typeof navigator.sendBeacon !== "function") return;
+var rawBeacon = navigator.sendBeacon.bind(navigator);
+navigator.sendBeacon = function (url, data) {
+if (requestLooksSensitive(url, null, null)) return false;
+return rawBeacon(url, data);
+};
+}
+function patchWebSocket() {
+if (typeof WebSocket === "undefined") return;
+var RawWebSocket = WebSocket;
+window.WebSocket = function (url, protocols) {
+if (requestLooksSensitive(String(url || ""), null, null)) {
+throw new Error("Blocked by Aura security policy");
+}
+return new RawWebSocket(url, protocols);
+};
+window.WebSocket.prototype = RawWebSocket.prototype;
+}
+patchStorage(window.localStorage, "localStorage");
+patchStorage(window.sessionStorage, "sessionStorage");
+patchCookieAccess();
+patchFetch();
+patchXHR();
+patchBeacon();
+patchWebSocket();
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EazziRide | Move Smarter. Earn Better.</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Inter', sans-serif; }
+.tracking-tight { letter-spacing: -0.02em; }
+.tracking-tighter { letter-spacing: -0.04em; }
+</style>
+<meta name="disabled-font-classes" content="font-geist">
+<style>
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+<link id="all-fonts-link-font-roboto" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-roboto">
+.font-roboto { font-family: 'Roboto', sans-serif !important; }
+</style><link id="all-fonts-link-font-montserrat" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-montserrat">
+.font-montserrat { font-family: 'Montserrat', sans-serif !important; }
+</style><link id="all-fonts-link-font-poppins" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-poppins">
+.font-poppins { font-family: 'Poppins', sans-serif !important; }
+</style><link id="all-fonts-link-font-playfair" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;900&display=swap"><style id="all-fonts-style-font-playfair">
+.font-playfair { font-family: 'Playfair Display', serif !important; }
+</style><link id="all-fonts-link-font-instrument-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:wght@400;500;600;700&display=swap"><style id="all-fonts-style-font-instrument-serif">
+.font-instrument-serif { font-family: 'Instrument Serif', serif !important; }
+</style><link id="all-fonts-link-font-merriweather" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700;900&display=swap"><style id="all-fonts-style-font-merriweather">
+.font-merriweather { font-family: 'Merriweather', serif !important; }
+</style><link id="all-fonts-link-font-bricolage" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-bricolage">
+.font-bricolage { font-family: 'Bricolage Grotesque', sans-serif !important; }
+</style><link id="all-fonts-link-font-jakarta" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-jakarta">
+.font-jakarta { font-family: 'Plus Jakarta Sans', sans-serif !important; }
+</style><link id="all-fonts-link-font-manrope" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-manrope">
+.font-manrope { font-family: 'Manrope', sans-serif !important; }
+</style><link id="all-fonts-link-font-space-grotesk" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-space-grotesk">
+.font-space-grotesk { font-family: 'Space Grotesk', sans-serif !important; }
+</style><link id="all-fonts-link-font-work-sans" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-work-sans">
+.font-work-sans { font-family: 'Work Sans', sans-serif !important; }
+</style><link id="all-fonts-link-font-pt-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Serif:wght@400;700&display=swap"><style id="all-fonts-style-font-pt-serif">
+.font-pt-serif { font-family: 'PT Serif', serif !important; }
+</style><link id="all-fonts-link-font-geist-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-geist-mono">
+.font-geist-mono { font-family: 'Geist Mono', monospace !important; }
+</style><link id="all-fonts-link-font-space-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap"><style id="all-fonts-style-font-space-mono">
+.font-space-mono { font-family: 'Space Mono', monospace !important; }
+</style><link id="all-fonts-link-font-quicksand" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-quicksand">
+.font-quicksand { font-family: 'Quicksand', sans-serif !important; }
+</style><link id="all-fonts-link-font-nunito" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-nunito">
+.font-nunito { font-family: 'Nunito', sans-serif !important; }
+</style><link id="all-fonts-link-font-newsreader" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400..800&display=swap"><style id="all-fonts-style-font-newsreader">
+.font-newsreader { font-family: 'Newsreader', serif !important; }
+</style><link id="all-fonts-link-font-google-sans-flex" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600;700&display=swap"><style id="all-fonts-style-font-google-sans-flex">
+.font-google-sans-flex { font-family: 'Google Sans Flex', sans-serif !important; }
+</style><link id="all-fonts-link-font-oswald" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-oswald">
+.font-oswald { font-family: 'Oswald', sans-serif !important; }
+</style><link id="all-fonts-link-font-dm-sans" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-dm-sans">
+.font-dm-sans { font-family: 'DM Sans', sans-serif !important; }
+</style><link id="all-fonts-link-font-cormorant" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-cormorant">
+.font-cormorant { font-family: 'Cormorant Garamond', serif !important; }
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body class="antialiased bg-white text-[#1A1A1A] font-sans selection:bg-[#F55A29] selection:text-white">
+
+<!-- Background (video) added by Aura -->
+<div class="video-background-container fixed top-0 w-full h-screen -z-10" data-alpha-mask="80" style="; mask-image: linear-gradient(to bottom, transparent, black 0%, black 80%, transparent); -webkit-mask-image: linear-gradient(to bottom, transparent, black 0%, black 80%, transparent)"><video src="https://res.cloudinary.com/dyiiai9aj/video/upload/v1770895403/Eazziride_Loop_Video_okaza0.mp4" autoplay="" loop="" muted="" playsinline="" class="w-full h-full object-cover"></video></div>
+
+
+
+
+
+
+
+
+
+
+
+
+    <!-- Navbar -->
+    <nav class="fixed transition-all duration-300 bg-white w-full z-50 border-gray-100 border-b top-0 left-0">
+      <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+        <div class="flex items-center">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/bebcafcb-bc39-48d8-9100-d4b31c89fa37_320w.png" alt="EazziRide" class="w-auto h-8 object-contain">
+        </div>
+        <div class="hidden md:flex items-center gap-10 text-sm font-medium text-[#1A1A1A]">
+          <a href="#shift" class="hover:text-[#F55A29] transition-colors font-jakarta tracking-tight">
+            Why EazziRide
+          </a>
+          <a href="#drivers" class="hover:text-[#F55A29] transition-colors font-jakarta tracking-tight">
+            Drivers
+          </a>
+          <a href="#safety" class="hover:text-[#F55A29] transition-colors font-jakarta tracking-tight">
+            Safety
+          </a>
+          <a href="#download" class="bg-[#F55A29] text-white px-5 py-2 rounded-full hover:bg-[#d64518] transition-colors font-jakarta font-semibold text-xs tracking-wide uppercase">
+            Get App
+          </a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- 1. Hero Section -->
+    <section class="relative w-full h-screen min-h-[700px] flex flex-col md:flex-row bg-white overflow-hidden pt-20">
+      <div class="w-full md:w-1/2 flex items-center justify-center p-6 md:p-12 lg:p-20 order-2 md:order-1">
+        <div class="max-w-xl w-full">
+          <h1 class="text-5xl md:text-7xl lg:text-8xl font-bold font-jakarta text-[#1A1A1A] tracking-tighter leading-[0.95] mb-8">
+            Your City,
+            <br>
+            Your Way.
+          </h1>
+          <p class="leading-relaxed md:text-xl text-lg font-medium text-[#6B6B6B] font-jakarta max-w-md mb-12">
+            Move freely across Lagos with a ride experience built around you —
+            simple, safe, transparent.
+          </p>
+          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-8">
+            <a href="#download" class="bg-[#F55A29] text-white px-8 py-4 rounded-full font-semibold text-base hover:bg-[#d64518] transition-colors font-jakarta">
+              Get the App
+            </a>
+            <a href="#drivers" class="group flex items-center gap-2 text-[#1A1A1A] font-semibold hover:text-[#F55A29] transition-colors font-jakarta">
+              Drive with EazziRide
+              <span class="group-hover:translate-x-1 transition-transform">
+                →
+              </span>
+            </a>
+          </div>
+        </div>
+      </div>
+      <div class="w-full md:w-1/2 h-[50vh] md:h-full order-1 md:order-2">
+        <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/6d1d5dbc-be76-4efc-8e94-a4be89e0f327_3840w.jpg" alt="Lifestyle" class="w-full h-full object-cover">
+      </div>
+    </section>
+
+    <!-- 2. Problem -> Shift Section -->
+    <section class="bg-white pt-40 pb-40" id="shift">
+      <div class="text-center max-w-5xl mr-auto ml-auto pt-12 pr-6 pb-12 pl-6">
+  <h2 class="text-4xl md:text-6xl font-semibold text-[#1A1A1A] tracking-tighter font-jakarta mb-6 leading-none">
+    Mobility should feel human.
+  </h2>
+  
+  <div class="flex flex-wrap justify-center items-center gap-x-3 gap-y-2 mb-6">
+    <p class="text-lg md:text-xl text-[#6B6B6B] font-jakarta font-medium tracking-tight opacity-0 animate-[fadeIn_1s_ease-out_forwards]">
+      No hidden deductions.
+    </p>
+    <p class="text-lg md:text-xl text-[#6B6B6B] font-jakarta font-medium tracking-tight opacity-0 animate-[fadeIn_1s_ease-out_0.2s_forwards]">
+      No confusing pricing.
+    </p>
+    <p class="text-lg md:text-xl text-[#6B6B6B] font-jakarta font-medium tracking-tight opacity-0 animate-[fadeIn_1s_ease-out_0.4s_forwards]">
+      No complicated systems.
+    </p>
+  </div>
+
+  <p class="text-xl md:text-2xl text-[#1A1A1A] font-jakarta font-semibold tracking-tight opacity-0 animate-[fadeIn_1s_ease-out_0.6s_forwards]">
+    EazziRide keeps it clear.
+  </p>
+</div>
+    </section>
+    <section class="py-32 bg-white">
+      <div class="max-w-7xl mx-auto px-6">
+        <div class="grid md:grid-cols-2 gap-16 items-center">
+          <div class="relative aspect-[4/3] md:aspect-[16/10] overflow-hidden bg-gray-100">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2cc39af9-dcf5-4690-b625-7677a2a80f82_1600w.jpg" alt="Driver opening door" class="grayscale-[10%] hover:grayscale-0 transition-all duration-700 w-full h-full object-cover">
+          </div>
+          <div class="flex flex-col justify-center max-w-lg">
+            <h2 class="text-4xl md:text-6xl font-bold font-jakarta text-[#1A1A1A] tracking-tighter leading-tight mb-8">
+              Designed around
+              <br>
+              people.
+            </h2>
+            <p class="text-lg text-[#6B6B6B] font-jakarta leading-relaxed">
+              We believe in technology that serves connection, not complicates
+              it. Every feature we build starts with a simple question: does
+              this make the day better for our drivers and riders?
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. What Makes EazziRide Different -->
+
+    <!-- 4. Driver vs Rider Split -->
+    <section class="py-32 bg-white">
+      <div class="max-w-7xl mx-auto px-6">
+        <div class="grid md:grid-cols-12 gap-12 lg:gap-24 items-start">
+          <div class="md:col-span-5 lg:col-span-4">
+            <span class="block text-xs font-semibold font-jakarta tracking-widest text-[#6B6B6B] uppercase mb-6">
+              The Difference
+            </span>
+            <h2 class="text-5xl md:text-6xl font-semibold font-jakarta text-[#1A1A1A] tracking-tight leading-none mb-8">
+              Built for
+              <br>
+              clarity.
+            </h2>
+            <p class="text-lg text-[#6B6B6B] font-jakarta leading-relaxed">
+              We removed the noise. No hidden deductions. No unpredictable
+              pricing. Just transparent rides and fair opportunities.
+            </p>
+          </div>
+          <div class="md:col-span-7 lg:col-span-8">
+            <div class="divide-y divide-gray-100 border-t border-gray-100 border-b">
+              <div class="group py-12 hover:pl-6 transition-all duration-300 cursor-default">
+                <h3 class="text-2xl font-semibold font-jakarta text-[#1A1A1A] mb-3 group-hover:text-[#F55A29] transition-colors tracking-tight">
+                  Transparent earnings
+                </h3>
+                <p class="text-[#6B6B6B] font-jakarta text-lg leading-relaxed max-w-lg">
+                  Drivers see what they earn before and after every trip.
+                </p>
+              </div>
+              <div class="group py-12 hover:pl-6 transition-all duration-300 cursor-default">
+                <h3 class="text-2xl font-semibold font-jakarta text-[#1A1A1A] mb-3 group-hover:text-[#F55A29] transition-colors tracking-tight">
+                  Open fare negotiation
+                </h3>
+                <p class="text-[#6B6B6B] font-jakarta text-lg leading-relaxed max-w-lg">
+                  Riders and drivers agree — not dictated by an algorithm.
+                </p>
+              </div>
+              <div class="group py-12 hover:pl-6 transition-all duration-300 cursor-default">
+                <h3 class="text-2xl font-semibold font-jakarta text-[#1A1A1A] mb-3 group-hover:text-[#F55A29] transition-colors tracking-tight">
+                  Human-centered safety
+                </h3>
+                <p class="text-[#6B6B6B] font-jakarta text-lg leading-relaxed max-w-lg">
+                  Live tracking, verified drivers, trusted contacts.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="drivers" class="bg-[#1A1A1A] py-32 md:py-40 relative overflow-visible">
+      <div class="max-w-7xl mx-auto px-6 relative z-10">
+        <div class="grid md:grid-cols-2 gap-20 items-center">
+          <div class="order-2 md:order-1">
+            <h2 class="text-5xl md:text-6xl font-bold font-jakarta text-white tracking-tighter leading-none mb-12">
+              Your hustle
+              <br>
+              deserves clarity.
+            </h2>
+            <ul class="space-y-6 mb-12">
+              <li class="text-[#F5F5F7] text-xl font-jakarta font-medium border-l-2 border-[#F55A29] pl-6">
+                Transparent commissions
+              </li>
+              <li class="text-[#F5F5F7] text-xl font-jakarta font-medium border-l-2 border-[#F55A29] pl-6">
+                Weekly settlements
+              </li>
+              <li class="text-[#F5F5F7] text-xl font-jakarta font-medium border-l-2 border-[#F55A29] pl-6">
+                Real demand insights
+              </li>
+            </ul>
+            <a href="#signup" class="bg-[#F55A29] text-white px-8 py-4 rounded-full font-semibold text-base hover:bg-[#d64518] transition-colors font-jakarta inline-block">
+              Start driving
+            </a>
+          </div>
+          <div class="order-1 md:order-2 relative">
+            <div class="aspect-[4/3] md:aspect-[16/10] bg-gray-800 md:-mb-24 shadow-2xl relative z-20">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2a09ea9c-f4ca-4dcf-8096-e10827e858c1_1600w.jpg" alt="Driver at dusk" class="opacity-90 w-full h-full object-cover">
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="md:pt-48 md:pb-32 bg-white pt-32 pb-32">
+      <div class="max-w-7xl mx-auto px-6">
+        <div class="grid md:grid-cols-2 gap-20 items-center">
+          <div class="space-y-10 order-2 md:order-1">
+            <h2 class="md:text-6xl leading-none text-5xl font-bold text-[#1A1A1A] tracking-tighter font-jakarta">
+              Comfortable rides.
+              <br>
+              Trusted safety.
+            </h2>
+            <p class="text-lg text-[#6B6B6B] font-jakarta leading-relaxed max-w-md">
+              Whether you're heading to a meeting on the Island or catching a
+              flight, step into a car that feels like an upgrade.
+            </p>
+            <ul class="space-y-4">
+              <li class="text-[#1A1A1A] font-jakarta font-medium text-lg flex items-center gap-3">
+                <span class="w-1.5 h-1.5 bg-[#F55A29] rounded-full"></span>
+                Live trip sharing
+              </li>
+              <li class="text-[#1A1A1A] font-jakarta font-medium text-lg flex items-center gap-3">
+                <span class="w-1.5 h-1.5 bg-[#F55A29] rounded-full"></span>
+                Verified drivers
+              </li>
+            </ul>
+          </div>
+          <div class="aspect-[16/10] overflow-hidden bg-gray-100 order-1 md:order-2">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/632a8af1-b18d-45ed-bf49-d45ae2d0c1f1_1600w.jpg" alt="Rider stepping out" class="w-full h-full object-cover">
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="md:py-16 bg-white w-full pt-12 pb-12">
+      <div class="w-full">
+  <div class="aspect-video overflow-hidden bg-gray-900 w-full relative shadow-sm group">
+    <div class="absolute top-0 right-0 bottom-0 left-0 z-[25] h-full w-full">
+  <video src="https://res.cloudinary.com/dyiiai9aj/video/upload/v1770895403/Eazziride_Loop_Video_okaza0.mp4" autoplay="" loop="" muted="" playsinline="" class="h-full w-full object-cover" id="video-aura-emljn1ke2b090hrh"></video>
+  <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#1A1A1A]/80 via-[#1A1A1A]/20 to-transparent"></div>
+  <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+    <p class="px-4 text-center font-jakarta text-4xl font-semibold tracking-tight text-white drop-shadow-sm md:text-5xl">Safety that moves with you.</p>
+  </div>
+</div>
+    <div class="pointer-events-none bg-gradient-to-t from-[#1A1A1A]/80 via-[#1A1A1A]/20 to-transparent absolute top-0 right-0 bottom-0 left-0 z-10"></div>
+    
+    <!-- Play/Pause Control -->
+    <div class="absolute top-6 right-6 z-30">
+      <button onclick="const v = document.getElementById('video-aura-emljn1ke2b090hrh'); const p = this.querySelector('.play-icon'); const s = this.querySelector('.pause-icon'); if(v.paused){v.play();p.classList.add('hidden');s.classList.remove('hidden')}else{v.pause();p.classList.remove('hidden');s.classList.add('hidden')}" class="flex items-center justify-center w-12 h-12 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-white hover:bg-white/20 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-white/30 group-hover:scale-105" aria-label="Toggle playback">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0" stroke-linecap="round" stroke-linejoin="round" class="pause-icon lucide lucide-pause"><rect width="4" height="16" x="6" y="4" rx="1"></rect><rect width="4" height="16" x="14" y="4" rx="1"></rect></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0" stroke-linecap="round" stroke-linejoin="round" class="play-icon hidden lucide lucide-play pl-1"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
+      </button>
+    </div>
+
+    <div class="absolute bottom-12 left-0 w-full flex justify-center z-20 px-4">
+      <p class="text-white/95 font-jakarta text-2xl md:text-3xl font-semibold tracking-tight opacity-0 animate-[fadeIn_2s_ease-out_1s_forwards] drop-shadow-sm text-center">
+        Safety that moves with you.
+      </p>
+    </div>
+  </div>
+</div>
+    </section>
+
+    <!-- 5. Safety Section -->
+    <section class="-mt-12 md:-mt-16 bg-[#F5F5F7] z-10 pt-32 pb-32 relative" id="safety">
+  <div class="max-w-7xl mx-auto px-6">
+    <!-- Header -->
+    <div class="text-center mb-24 max-w-2xl mx-auto">
+      <h2 class="text-4xl font-bold text-[#1A1A1A] tracking-tight font-jakarta mb-6 md:text-6xl">
+        Built-in safety.
+      </h2>
+      <p class="leading-relaxed text-2xl font-medium text-[#6B6B6B] font-jakarta">
+        Technology that looks out for you quietly.
+      </p>
+    </div>
+
+    <!-- Cards Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      
+      <!-- Card 1: Trusted Contacts -->
+      <div class="group bg-white rounded-[20px] overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-2 transition-all duration-300 flex flex-col h-full border border-black/5">
+        <!-- Image Placeholder -->
+        <div class="aspect-[3/4] flex overflow-hidden group-hover:bg-gray-100/50 transition-colors bg-gray-50 w-full border-gray-100 border-b pt-8 pr-8 pb-8 pl-8 relative items-center justify-center">
+  <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/78570211-2be5-4ff7-ae4c-19470d4c8102_800w.png" alt="Trusted Contact App Screen" class="transition-transform duration-500 ease-out group-hover:scale-[1.02] w-full h-full object-cover rounded-2xl shadow-[rgba(50,_50,_93,_0.25)_0px_30px_60px_-12px_inset,_rgba(0,_0,_0,_0.3)_0px_18px_36px_-18px_inset]">
+</div>
+        <!-- Content -->
+        <div class="p-8 flex flex-col flex-grow">
+          <h3 class="text-2xl font-semibold font-jakarta text-[#1A1A1A] mb-3 tracking-tight">
+            Trusted Contacts
+          </h3>
+          <p class="leading-relaxed flex-grow text-base text-[#6B6B6B] font-jakarta mb-8">Automatically share your trip with the people who matter most, so they can follow along in real time</p>
+          <a href="#" class="inline-flex items-center hover:gap-2 transition-all group-hover:translate-x-1 text-sm font-medium text-[#F55A29] font-jakarta">
+            
+          </a>
+        </div>
+      </div>
+
+      <!-- Card 2: Live Tracking -->
+      <div class="group bg-[#1A1A1A] rounded-[20px] overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-2 transition-all duration-300 flex flex-col h-full border border-white/5">
+        <!-- Image Placeholder -->
+        <div class="aspect-[3/4] flex overflow-hidden group-hover:bg-[#252525] transition-colors bg-[#222] w-full border-white/5 border-b pt-8 pr-8 pb-8 pl-8 relative items-center justify-center">
+          <div class="border-dashed flex bg-center w-full h-full bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/5768520c-6941-414b-959e-189677949634_800w.png)] bg-cover border-0 rounded-2xl scale-100 items-center justify-center">
+            
+          </div>
+        </div>
+        <!-- Content -->
+        <div class="flex flex-col flex-grow pt-8 pr-8 pb-8 pl-8">
+          <h3 class="text-2xl font-semibold text-white tracking-tight font-jakarta mb-3">Verified Drivers</h3>
+          <p class="leading-relaxed flex-grow text-base text-slate-50 font-jakarta mb-8">Digitally and physically vetted drivers, with profiles, ratings, and reviews clearly visible to riders.</p>
+          <a href="#" class="hidden inline-flex items-center hover:gap-2 transition-all group-hover:translate-x-1 text-sm font-medium text-[#F55A29] font-jakarta">
+            See how it works 
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right ml-1.5"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+          </a>
+        </div>
+      </div>
+
+      <!-- Card 3: Verified Drivers -->
+      <div class="group bg-white rounded-[20px] overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-2 transition-all duration-300 flex flex-col h-full border border-black/5">
+        <!-- Image Placeholder -->
+        <div class="aspect-[3/4] flex overflow-hidden group-hover:bg-gray-100/50 transition-colors bg-gray-50 w-full border-gray-100 border-b pt-8 pr-8 pb-8 pl-8 relative items-center justify-center">
+          <div class="border-dashed flex w-full h-full bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/edbc6dfe-db5f-43dc-9cb8-9c9dbd2baa72_800w.png)] bg-cover bg-center border-gray-200 border-0 rounded-2xl items-center justify-center">
+            
+          </div>
+        </div>
+        <!-- Content -->
+        <div class="p-8 flex flex-col flex-grow">
+          <h3 class="text-2xl font-semibold text-[#1A1A1A] tracking-tight font-jakarta mb-3">Live-Tracking</h3>
+          <p class="leading-relaxed flex-grow text-base text-[#6B6B6B] font-jakarta mb-8">Real-time monitoring for every ride, so you and your loved ones always know where you are.</p>
+          <a href="#" class="inline-flex items-center hover:gap-2 transition-all group-hover:translate-x-1 text-sm font-medium text-[#F55A29] font-jakarta">
+            
+          </a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+    <!-- 6. How it Works -->
+    <section class="py-40 bg-white">
+      <div class="max-w-fit mr-auto ml-auto pr-6 pl-6">
+        <div class="max-w-4xl">
+          <h2 class="text-5xl md:text-7xl font-semibold font-jakarta tracking-tighter leading-[1.1] text-[#1A1A1A] text-center mx-auto">
+            Transparent pricing.
+            <br class="">
+            <span class="text-[#1A1A1A]/40">Human-first design.</span>
+            <br>
+            <span class="text-[#1A1A1A]/40">Built for African cities.</span>
+          </h2>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. Driver Hustle Section -->
+
+    <!-- 8. Download Section -->
+    <section id="download" class="py-40 bg-[#1A1A1A]">
+      <div class="max-w-4xl mx-auto px-6 text-center">
+        <h2 class="md:text-7xl text-5xl font-bold text-white tracking-tighter font-jakarta mb-16">Ready to move your way?</h2>
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-6">
+          <button class="w-full sm:w-auto px-10 py-5 bg-[#F55A29] text-white font-semibold rounded-full hover:bg-[#d64518] transition-all font-jakarta text-lg">
+            Download EazziRide
+          </button>
+          <button class="w-full sm:w-auto px-10 py-5 bg-transparent border border-white/20 text-white font-medium rounded-full hover:bg-white/10 transition-all font-jakarta text-lg">
+            Become a driver
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9. Footer -->
+    <footer class="bg-white pt-24 pb-12 border-t border-gray-100">
+      <div class="max-w-7xl mx-auto px-6">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-y-12 gap-x-8 mb-24">
+          <div>
+            <h4 class="font-bold text-[#1A1A1A] mb-6 font-jakarta text-xs uppercase tracking-widest">
+              Company
+            </h4>
+            <ul class="space-y-4 text-[#6B6B6B] text-sm font-jakarta font-medium">
+              <li>
+                <a href="#" class="hover:text-[#F55A29] transition-colors">
+                  About
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-[#F55A29] transition-colors">
+                  Careers
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-[#F55A29] transition-colors">
+                  Press
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-bold text-[#1A1A1A] mb-6 font-jakarta text-xs uppercase tracking-widest">
+              Drivers
+            </h4>
+            <ul class="space-y-4 text-[#6B6B6B] text-sm font-jakarta font-medium">
+              <li>
+                <a href="#" class="hover:text-[#F55A29] transition-colors">
+                  Apply to Drive
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-[#F55A29] transition-colors">
+                  Requirements
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-[#F55A29] transition-colors">
+                  Earnings
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div class="">
+            <h4 class="font-bold text-[#1A1A1A] mb-6 font-jakarta text-xs uppercase tracking-widest">
+              Legal
+            </h4>
+            <ul class="space-y-4 text-[#6B6B6B] text-sm font-jakarta font-medium">
+              <li>
+                <a href="#" class="hover:text-[#F55A29] transition-colors">
+                  Terms
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-[#F55A29] transition-colors">
+                  Privacy
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-[#F55A29] transition-colors">
+                  Safety Policy
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-bold text-[#1A1A1A] mb-6 font-jakarta text-xs uppercase tracking-widest">
+              Support
+            </h4>
+            <div class="flex gap-6 text-[#6B6B6B]">
+              <a href="#" class="hover:text-[#1A1A1A] transition-colors">
+                <iconify-icon icon="brandico:twitter-bird" width="20"></iconify-icon>
+              </a>
+              <a href="#" class="hover:text-[#1A1A1A] transition-colors">
+                <iconify-icon icon="brandico:linkedin" width="20"></iconify-icon>
+              </a>
+              <a href="#" class="hover:text-[#1A1A1A] transition-colors">
+                <iconify-icon icon="brandico:instagram" width="20"></iconify-icon>
+              </a>
+            </div>
+          </div>
+        </div>
+        <div class="flex flex-col md:flex-row justify-between items-center gap-6 pt-8 border-t border-gray-100">
+          <p class="text-[#6B6B6B] text-xs font-jakarta">
+            © 2026 EazziRide Technologies.
+          </p>
+        </div>
+      </div>
+    </footer>
+  
+</body></html>

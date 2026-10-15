@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+
+  <meta charset="UTF-8">
+  <title>Pixel Drawing App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const gridSize = 32;
+      const grid = document.getElementById('pixel-grid');
+      const colorPicker = document.getElementById('color-picker');
+      const clearBtn = document.getElementById('clear-btn');
+      const bucketBtn = document.getElementById('bucket-btn');
+      const eraseBtn = document.getElementById('erase-btn');
+      const drawBtn = document.getElementById('draw-btn');
+      const undoBtn = document.getElementById('undo-btn');
+      const redoBtn = document.getElementById('redo-btn');
+      let isDrawing = false;
+      let currentColor = colorPicker.value;
+      let mode = 'draw'; // draw | erase | bucket
+
+      // Undo/Redo Stacks
+      let undoStack = [];
+      let redoStack = [];
+
+      // Create grid
+      for(let i = 0; i < gridSize * gridSize; i++) {
+        const pixel = document.createElement('div');
+        pixel.className = 'cursor-pointer transition-colors duration-100';
+        pixel.style.backgroundColor = '#fff';
+        pixel.dataset.idx = i;
+        grid.appendChild(pixel);
+      }
+
+      // Helper to get all pixel colors as an array
+      function getGridState() {
+        return Array.from(grid.children).map(pixel =>
+          rgb2hex(pixel.style.backgroundColor || '#fff')
+        );
+      }
+
+      function setGridState(state) {
+        Array.from(grid.children).forEach((pixel, i) => {
+          pixel.style.backgroundColor = state[i];
+        });
+      }
+
+      // Save current state to undo stack, clear redo stack
+      function pushUndoState() {
+        undoStack.push(getGridState());
+        if (undoStack.length > 50) undoStack.shift();
+        redoStack = [];
+        updateUndoRedoButtons();
+      }
+
+      function updateUndoRedoButtons() {
+        undoBtn.disabled = undoStack.length === 0;
+        undoBtn.classList.toggle('opacity-50', undoBtn.disabled);
+        undoBtn.classList.toggle('cursor-not-allowed', undoBtn.disabled);
+        redoBtn.disabled = redoStack.length === 0;
+        redoBtn.classList.toggle('opacity-50', redoBtn.disabled);
+        redoBtn.classList.toggle('cursor-not-allowed', redoBtn.disabled);
+      }
+
+      undoBtn.addEventListener('click', () => {
+        if (undoStack.length === 0) return;
+        redoStack.push(getGridState());
+        const prevState = undoStack.pop();
+        setGridState(prevState);
+        updateUndoRedoButtons();
+      });
+
+      redoBtn.addEventListener('click', () => {
+        if (redoStack.length === 0) return;
+        undoStack.push(getGridState());
+        const nextState = redoStack.pop();
+        setGridState(nextState);
+        updateUndoRedoButtons();
+      });
+
+      // Tool button handlers
+      function setMode(newMode) {
+        mode = newMode;
+        drawBtn.classList.toggle('bg-blue-500', mode === 'draw');
+        drawBtn.classList.toggle('bg-gray-200', mode !== 'draw');
+        drawBtn.classList.toggle('text-white', mode === 'draw');
+        drawBtn.classList.toggle('text-gray-800', mode !== 'draw');
+
+        eraseBtn.classList.toggle('bg-blue-500', mode === 'erase');
+        eraseBtn.classList.toggle('bg-gray-200', mode !== 'erase');
+        eraseBtn.classList.toggle('text-white', mode === 'erase');
+        eraseBtn.classList.toggle('text-gray-800', mode !== 'erase');
+
+        bucketBtn.classList.toggle('bg-blue-500', mode === 'bucket');
+        bucketBtn.classList.toggle('bg-gray-200', mode !== 'bucket');
+        bucketBtn.classList.toggle('text-white', mode === 'bucket');
+        bucketBtn.classList.toggle('text-gray-800', mode !== 'bucket');
+
+        colorPicker.disabled = (mode === 'erase');
+        colorPicker.classList.toggle('opacity-50', mode === 'erase');
+        colorPicker.classList.toggle('cursor-not-allowed', mode === 'erase');
+      }
+
+      drawBtn.addEventListener('click', () => setMode('draw'));
+      eraseBtn.addEventListener('click', () => setMode('erase'));
+      bucketBtn.addEventListener('click', () => setMode('bucket'));
+
+      colorPicker.addEventListener('input', (e) => {
+        currentColor = e.target.value;
+      });
+
+      function colorPixel(pixel) {
+        if(pixel) {
+          if(mode === 'draw') {
+            if(pixel.style.backgroundColor !== currentColor)
+              pixel.style.backgroundColor = currentColor;
+          } else if(mode === 'erase') {
+            if(pixel.style.backgroundColor !== '#fff')
+              pixel.style.backgroundColor = '#fff';
+          }
+        }
+      }
+
+      // For tracking if the drag changes anything
+      let dragChanged = false;
+
+      grid.addEventListener('mousedown', e => {
+        if(e.target !== grid) {
+          pushUndoState();
+          dragChanged = false;
+          if(mode === 'bucket') {
+            fillBucket(e.target);
+            dragChanged = true;
+            pushUndoState();
+          } else {
+            isDrawing = true;
+            colorPixel(e.target);
+            dragChanged = true;
+          }
+        }
+      });
+
+      grid.addEventListener('mouseover', e => {
+        if((mode === 'draw' || mode === 'erase') && isDrawing && e.target !== grid) {
+          colorPixel(e.target);
+          dragChanged = true;
+        }
+      });
+
+      document.addEventListener('mouseup', () => {
+        if(isDrawing && dragChanged) pushUndoState();
+        isDrawing = false;
+        dragChanged = false;
+      });
+
+      clearBtn.addEventListener('click', () => {
+        pushUndoState();
+        Array.from(grid.children).forEach(pixel => {
+          pixel.style.backgroundColor = '#fff';
+        });
+        pushUndoState();
+      });
+
+      // Flood Fill (Bucket Tool)
+      function fillBucket(startPixel) {
+        const pixels = Array.from(grid.children);
+        const idx = parseInt(startPixel.dataset.idx);
+        let fillColor = (mode === 'erase') ? '#fff' : currentColor;
+        const targetColor = rgb2hex(startPixel.style.backgroundColor || '#fff');
+        if (targetColor === fillColor) return;
+
+        const stack = [idx];
+        const visited = new Set();
+
+        while (stack.length) {
+          const current = stack.pop();
+          if (visited.has(current)) continue;
+          visited.add(current);
+
+          const px = pixels[current];
+          if (!px) continue;
+          if (rgb2hex(px.style.backgroundColor || '#fff') !== targetColor) continue;
+
+          px.style.backgroundColor = fillColor;
+
+          // neighbors: left, right, up, down
+          const row = Math.floor(current / gridSize);
+          const col = current % gridSize;
+          if (col > 0) stack.push(current - 1);           // left
+          if (col < gridSize - 1) stack.push(current + 1); // right
+          if (row > 0) stack.push(current - gridSize);     // up
+          if (row < gridSize - 1) stack.push(current + gridSize); // down
+        }
+      }
+
+      // Helper to convert rgb to hex
+      function rgb2hex(rgb) {
+        if(!rgb) return '#ffffff';
+        if(rgb[0] === '#') return rgb.toLowerCase();
+        const nums = rgb.match(/\d+/g);
+        if (!nums) return '#ffffff';
+        return '#' + nums.map(x => (+x).toString(16).padStart(2, '0')).join('');
+      }
+
+      // Set initial tool and update undo/redo
+      setMode('draw');
+      updateUndoRedoButtons();
+    });
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center pt-10">
+  <div class="mb-6 flex items-center gap-4">
+    <label class="font-bold text-gray-700">Color:</label>
+    <input type="color" id="color-picker" class="w-10 h-10 p-0 border-2 border-gray-300 rounded cursor-pointer">
+    <button id="draw-btn" class="px-4 py-2 bg-blue-500 text-white rounded font-bold shadow transition">
+      Draw
+    </button>
+    <button id="erase-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded font-bold shadow hover:bg-blue-400 hover:text-white transition">
+      Eraser
+    </button>
+    <button id="bucket-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded font-bold shadow hover:bg-blue-400 hover:text-white transition">
+      Bucket
+    </button>
+    <button id="undo-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded font-bold shadow transition">
+      Undo
+    </button>
+    <button id="redo-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded font-bold shadow transition">
+      Redo
+    </button>
+    <button id="clear-btn" class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 font-bold shadow">
+      Clear
+    </button>
+  </div>
+  <div id="pixel-grid"
+    class="bg-gray-300 p-2 rounded shadow-lg"
+    style="
+      display: grid;
+      grid-template-columns: repeat(32, 1fr);
+      grid-template-rows: repeat(32, 1fr);
+      width: 42rem;
+      height: 42rem;
+      gap: 0;
+      touch-action: none;
+      border: 4px solid #e5e7eb;
+    ">
+    <!-- Pixels will be generated here -->
+  </div>
+  <p class="mt-6 text-gray-500 text-sm">Draw, erase, fill, undo, and redo! Drag to draw or erase. Use the bucket to fill areas.</p>
+</body>
+</html>

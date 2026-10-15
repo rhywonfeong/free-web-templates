@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mitosis Simulation 3D</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background: #000; }
+    body { width: 100vw; height: 100vh; }
+    canvas { display: block; }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Serif:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <script>
+    // Scene setup
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#000');
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth/window.innerHeight, 0.1, 10000);
+    camera.position.set(0, 0, 60);
+
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({antialias: true, alpha: false});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Controls
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.09;
+
+    // Color palette (creative use)
+    const keyCol1 = new THREE.Color('#BBC2FF'); // Soft blue-lavender
+    const keyCol2 = new THREE.Color('#B9EFF1'); // Cyan-mint
+    const accentCol = new THREE.Color('#fff');   // White accent
+
+    // Glow material helper
+    function makeGlowMaterial(color, size, opacity=0.18, power=2.1) {
+      return new THREE.PointsMaterial({
+        color: color,
+        size: size,
+        sizeAttenuation: true,
+        transparent: true,
+        opacity: opacity,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: null
+      });
+    }
+
+    // Cell parameters
+    const CELL_RADIUS = 10;
+    const NUCLEUS_RADIUS = 3.7;
+    const POINTS_COUNT = 2400;
+    const NUCLEUS_POINTS = 480;
+    const DAUGHTER_OFFSET = 17;
+    let divisionProgress = 0; // 0 = parent cell; 1 = fully divided
+
+    // Helper: random point in sphere
+    function randomInSphere(radius) {
+      const u = Math.random();
+      const v = Math.random();
+      const theta = u * 2.0 * Math.PI;
+      const phi = Math.acos(2.0 * v - 1.0);
+      const r = Math.cbrt(Math.random()) * radius;
+      return [
+        r * Math.sin(phi) * Math.cos(theta),
+        r * Math.sin(phi) * Math.sin(theta),
+        r * Math.cos(phi)
+      ];
+    }
+
+    // Create point cloud for a cell
+    function createCellCloud(radius, pointsCount, nucleusRadius, nucleusPoints, c1, c2) {
+      // Cytoplasm
+      const positions = new Float32Array(pointsCount * 3);
+      const colors = new Float32Array(pointsCount * 3);
+      for (let i = 0; i < pointsCount; ++i) {
+        const [x, y, z] = randomInSphere(radius);
+        positions[3*i] = x;
+        positions[3*i+1] = y;
+        positions[3*i+2] = z;
+        // Color gradient: blend from c1 (core) to c2 (edge)
+        const d = Math.sqrt(x*x + y*y + z*z)/radius;
+        const col = c1.clone().lerp(c2, Math.pow(d,1.6));
+        colors[3*i] = col.r;
+        colors[3*i+1] = col.g;
+        colors[3*i+2] = col.b;
+      }
+      // Nucleus
+      const nPositions = new Float32Array(nucleusPoints * 3);
+      const nColors = new Float32Array(nucleusPoints * 3);
+      for (let i = 0; i < nucleusPoints; ++i) {
+        const [x, y, z] = randomInSphere(nucleusRadius);
+        nPositions[3*i] = x;
+        nPositions[3*i+1] = y;
+        nPositions[3*i+2] = z;
+        // Nucleus color: blend white <-> c2
+        const d = Math.sqrt(x*x + y*y + z*z)/nucleusRadius;
+        const col = accentCol.clone().lerp(c2, d*0.9);
+        nColors[3*i] = col.r;
+        nColors[3*i+1] = col.g;
+        nColors[3*i+2] = col.b;
+      }
+      return {
+        cytoplasm: {positions, colors},
+        nucleus: {positions: nPositions, colors: nColors}
+      };
+    }
+
+    // Create parent and daughter cells
+    const parentCell = createCellCloud(CELL_RADIUS, POINTS_COUNT, NUCLEUS_RADIUS, NUCLEUS_POINTS, keyCol1, keyCol2);
+    const daughterCellL = createCellCloud(CELL_RADIUS, POINTS_COUNT, NUCLEUS_RADIUS, NUCLEUS_POINTS, keyCol1, keyCol2);
+    const daughterCellR = createCellCloud(CELL_RADIUS, POINTS_COUNT, NUCLEUS_RADIUS, NUCLEUS_POINTS, keyCol1, keyCol2);
+
+    // Cytoplasm
+    const cytoplasmGeo = new THREE.BufferGeometry();
+    cytoplasmGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(POINTS_COUNT * 3), 3));
+    cytoplasmGeo.setAttribute('color', new THREE.BufferAttribute(parentCell.cytoplasm.colors, 3));
+    const cytoplasmMat = new THREE.PointsMaterial({
+      size: 0.57,
+      sizeAttenuation: true,
+      vertexColors: true,
+      opacity: 0.92,
+      transparent: true,
+      blending: THREE.AdditiveBlending
+    });
+    const cytoplasmPoints = new THREE.Points(cytoplasmGeo, cytoplasmMat);
+
+    // Cytoplasm glow
+    const cytoplasmGlowMat = makeGlowMaterial(keyCol2, 3.2, 0.08, 2.7);
+    const cytoplasmGlow = new THREE.Points(cytoplasmGeo, cytoplasmGlowMat);
+
+    // Nucleus
+    const nucleusGeo = new THREE.BufferGeometry();
+    nucleusGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(NUCLEUS_POINTS * 3), 3));
+    nucleusGeo.setAttribute('color', new THREE.BufferAttribute(parentCell.nucleus.colors, 3));
+    const nucleusMat = new THREE.PointsMaterial({
+      size: 1.18,
+      sizeAttenuation: true,
+      vertexColors: true,
+      opacity: 0.97,
+      transparent: true,
+      blending: THREE.AdditiveBlending
+    });
+    const nucleusPoints = new THREE.Points(nucleusGeo, nucleusMat);
+
+    // Nucleus glow
+    const nucleusGlowMat = makeGlowMaterial(keyCol1, 2.1, 0.13, 2.2);
+    const nucleusGlow = new THREE.Points(nucleusGeo, nucleusGlowMat);
+
+    scene.add(cytoplasmPoints, cytoplasmGlow, nucleusPoints, nucleusGlow);
+
+    // Animate mitosis
+    function updateDivision(progress) {
+      // Cytoplasm
+      const posArray = cytoplasmGeo.attributes.position.array;
+      for (let i = 0; i < POINTS_COUNT; ++i) {
+        // Parent
+        const px = parentCell.cytoplasm.positions[3*i];
+        const py = parentCell.cytoplasm.positions[3*i+1];
+        const pz = parentCell.cytoplasm.positions[3*i+2];
+        // L
+        const lx = daughterCellL.cytoplasm.positions[3*i] - DAUGHTER_OFFSET;
+        const ly = daughterCellL.cytoplasm.positions[3*i+1];
+        const lz = daughterCellL.cytoplasm.positions[3*i+2];
+        // R
+        const rx = daughterCellR.cytoplasm.positions[3*i] + DAUGHTER_OFFSET;
+        const ry = daughterCellR.cytoplasm.positions[3*i+1];
+        const rz = daughterCellR.cytoplasm.positions[3*i+2];
+        // Interpolation: parent -> split into two
+        let x, y, z;
+        if (progress < 0.5) {
+          // 0.0-0.5: cell elongates, stretches out
+          const t = progress*2;
+          x = px * (1-t) + (px<0?lx:rx)*t*0.7;
+          y = py * (1-t) + (py<0?ly:ry)*t*0.7;
+          z = pz * (1-t) + (pz<0?lz:rz)*t*0.7;
+        } else {
+          // 0.5-1.0: two separate cells
+          const t = (progress-0.5)*2;
+          if (i%2===0) {
+            x = lx*(t) + px*(1-t);
+            y = ly*(t) + py*(1-t);
+            z = lz*(t) + pz*(1-t);
+          } else {
+            x = rx*(t) + px*(1-t);
+            y = ry*(t) + py*(1-t);
+            z = rz*(t) + pz*(1-t);
+          }
+        }
+        posArray[3*i] = x;
+        posArray[3*i+1] = y;
+        posArray[3*i+2] = z;
+      }
+      cytoplasmGeo.attributes.position.needsUpdate = true;
+
+      // Nucleus
+      const nPosArray = nucleusGeo.attributes.position.array;
+      for (let i = 0; i < NUCLEUS_POINTS; ++i) {
+        // Parent
+        const px = parentCell.nucleus.positions[3*i];
+        const py = parentCell.nucleus.positions[3*i+1];
+        const pz = parentCell.nucleus.positions[3*i+2];
+        // L
+        const lx = daughterCellL.nucleus.positions[3*i] - DAUGHTER_OFFSET;
+        const ly = daughterCellL.nucleus.positions[3*i+1];
+        const lz = daughterCellL.nucleus.positions[3*i+2];
+        // R
+        const rx = daughterCellR.nucleus.positions[3*i] + DAUGHTER_OFFSET;
+        const ry = daughterCellR.nucleus.positions[3*i+1];
+        const rz = daughterCellR.nucleus.positions[3*i+2];
+        let x, y, z;
+        if (progress < 0.5) {
+          const t = progress*2;
+          x = px * (1-t) + (px<0?lx:rx)*t*0.7;
+          y = py * (1-t) + (py<0?ly:ry)*t*0.7;
+          z = pz * (1-t) + (pz<0?lz:rz)*t*0.7;
+        } else {
+          const t = (progress-0.5)*2;
+          if (i%2===0) {
+            x = lx*(t) + px*(1-t);
+            y = ly*(t) + py*(1-t);
+            z = lz*(t) + pz*(1-t);
+          } else {
+            x = rx*(t) + px*(1-t);
+            y = ry*(t) + py*(1-t);
+            z = rz*(t) + pz*(1-t);
+          }
+        }
+        nPosArray[3*i] = x;
+        nPosArray[3*i+1] = y;
+        nPosArray[3*i+2] = z;
+      }
+      nucleusGeo.attributes.position.needsUpdate = true;
+    }
+
+    // Creative background: twinkling particles with color sweep
+    const BG_COUNT = 3200;
+    const bgGeo = new THREE.BufferGeometry();
+    const bgPositions = new Float32Array(BG_COUNT*3);
+    const bgColors = new Float32Array(BG_COUNT*3);
+    for (let i=0; i<BG_COUNT; ++i) {
+      const r = 80 + Math.random()*220;
+      const theta = Math.random()*2*Math.PI;
+      const phi = Math.acos(2*Math.random()-1);
+      bgPositions[3*i] = r*Math.sin(phi)*Math.cos(theta);
+      bgPositions[3*i+1] = r*Math.sin(phi)*Math.sin(theta);
+      bgPositions[3*i+2] = r*Math.cos(phi);
+      // Creative color sweep: angle-based blend
+      const blend = 0.5+0.5*Math.sin(theta*2 + phi*1.7);
+      const c = keyCol1.clone().lerp(keyCol2, blend);
+      bgColors[3*i]=c.r; bgColors[3*i+1]=c.g; bgColors[3*i+2]=c.b;
+    }
+    bgGeo.setAttribute('position', new THREE.BufferAttribute(bgPositions,3));
+    bgGeo.setAttribute('color', new THREE.BufferAttribute(bgColors,3));
+    const bgMat = new THREE.PointsMaterial({
+      size:0.38, vertexColors:true, opacity:0.18, transparent:true,
+      blending:THREE.AdditiveBlending, depthWrite:false
+    });
+    const bgPoints = new THREE.Points(bgGeo, bgMat);
+    scene.add(bgPoints);
+
+    // Animate mitosis
+    let t0 = null;
+    function animate(ts) {
+      if (!t0) t0 = ts;
+      const dt = (ts-t0)/1000.0;
+      const cycle = 7.2;
+      divisionProgress = Math.abs(Math.sin(dt/cycle * Math.PI));
+      updateDivision(divisionProgress);
+
+      cytoplasmPoints.rotation.y += 0.002;
+      cytoplasmPoints.rotation.x += 0.0012;
+      cytoplasmGlow.rotation.y += 0.0017;
+      cytoplasmGlow.rotation.x += 0.0008;
+      nucleusPoints.rotation.y += 0.0013;
+      nucleusPoints.rotation.x += 0.0011;
+      nucleusGlow.rotation.y += 0.0008;
+      bgPoints.rotation.y += 0.00025;
+      bgPoints.rotation.x += 0.00007;
+
+      // Animate bg color sweep
+      for (let i=0; i<BG_COUNT; ++i) {
+        const theta = Math.atan2(bgPositions[3*i+1], bgPositions[3*i]);
+        const phi = Math.acos(bgPositions[3*i+2] /
+          Math.sqrt(bgPositions[3*i]**2+bgPositions[3*i+1]**2+bgPositions[3*i+2]**2));
+        let blend = 0.5+0.5*Math.sin(theta*2 + phi*1.7 + dt*0.27);
+        // Subtle "twinkling" pulse
+        const tw = 0.35+0.65*Math.abs(Math.sin(dt*0.26+theta+phi));
+        blend = blend*tw + (1-tw)*blend*0.5;
+        const c = keyCol1.clone().lerp(keyCol2, blend);
+        bgColors[3*i]=c.r; bgColors[3*i+1]=c.g; bgColors[3*i+2]=c.b;
+      }
+      bgGeo.attributes.color.needsUpdate = true;
+
+      controls.update();
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
+    animate();
+
+    // Responsive
+    window.addEventListener('resize', ()=>{
+      camera.aspect = window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>

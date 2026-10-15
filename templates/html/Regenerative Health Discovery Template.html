@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CPRT Redesign — Discovery Audit</title>
+<script src="https://cdn.tailwindcss.com"></script></head>
+  <body class="min-h-screen bg-slate-950 font-sans text-slate-100 antialiased">
+    <main class="mx-auto max-w-5xl px-5 py-10 sm:px-8 sm:py-14 lg:px-10">
+      <div class="mb-10 flex items-center gap-3">
+        <div class="flex size-10 items-center justify-center rounded-xl bg-cyan-400 text-slate-950">
+          <i data-lucide="clipboard-check" class="size-5"></i>
+        </div>
+        <div>
+          <p class="text-xs font-medium uppercase tracking-[0.18em] text-cyan-300">
+            Step 1 of 4
+          </p>
+          <h1 class="text-xl font-semibold tracking-tight text-white">
+            Redesign discovery audit
+          </h1>
+        </div>
+      </div>
+
+      <section aria-labelledby="source-status" class="mb-8 rounded-2xl border border-amber-300/25 bg-amber-300/10 p-5 sm:p-6">
+        <div class="flex gap-4">
+          <i data-lucide="triangle-alert" class="mt-0.5 size-5 shrink-0 text-amber-300"></i>
+          <div class="">
+            <h2 id="source-status" class="text-lg font-semibold text-amber-100">
+              Source visibility limitation
+            </h2>
+            <p class="mt-2 text-base leading-7 text-amber-50/85">
+              The supplied source file contains the application shell, metadata,
+              and links to compiled external assets only. It does not contain
+              the rendered page markup, visible navigation, section copy,
+              footer, forms, or destination URLs. A public link to the Team page
+              has now been supplied, but rendered markup or a complete page
+              capture is still needed to audit and preserve its visible content
+              accurately.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <div class="space-y-8">
+        <section aria-labelledby="inventory-heading" class="rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-7">
+          <div class="flex items-center gap-3">
+            <i data-lucide="layers-3" class="size-5 text-cyan-300"></i>
+            <h2 id="inventory-heading" class="text-xl font-semibold tracking-tight text-white">
+              Page and section inventory
+            </h2>
+          </div>
+
+          <div class="mt-6 overflow-hidden rounded-xl border border-white/10">
+            <div class="grid grid-cols-1 border-b border-white/10 bg-white/[0.03] px-4 py-3 text-xs font-medium uppercase tracking-[0.14em] text-slate-400 sm:grid-cols-[0.9fr_1.2fr_2fr] sm:gap-4">
+              <span>Page / section</span>
+              <span class="hidden sm:block">Evidence</span>
+              <span class="hidden sm:block">Purpose</span>
+            </div>
+
+            <div class="grid grid-cols-1 gap-2 border-b border-white/10 px-4 py-5 text-base leading-6 sm:grid-cols-[0.9fr_1.2fr_2fr] sm:gap-4">
+              <p class="font-medium text-white">Homepage</p>
+              <p class="text-slate-400">
+                Canonical URL shown: therapy-health-care-1.deploypad.app/
+              </p>
+              <p class="text-slate-300">
+                Primary marketing page for Core Precision Regenerative Therapy.
+              </p>
+            </div>
+
+            <div class="grid grid-cols-1 gap-2 border-b border-white/10 px-4 py-5 text-base leading-6 sm:grid-cols-[0.9fr_1.2fr_2fr] sm:gap-4">
+              <p class="font-medium text-white">Hero</p>
+              <p class="text-slate-400">Visible in supplied change image.</p>
+              <p class="text-slate-300">
+                Communicates regenerative therapy offer and provides contact
+                conversion actions.
+              </p>
+            </div>
+
+            <div class="grid grid-cols-1 gap-2 px-4 py-5 text-base leading-6 sm:grid-cols-[0.9fr_1.2fr_2fr] sm:gap-4">
+              <p class="font-medium text-white">Remaining page sections</p>
+              <p class="text-slate-400">
+                Not available in supplied source shell.
+              </p>
+              <p class="text-slate-300">
+                Cannot be inventoried or redesigned responsibly until rendered
+                source, compiled application output, or screenshots are
+                supplied.
+              </p>
+            </div>
+            <div class="grid grid-cols-1 gap-2 border-t border-white/10 px-4 py-5 text-base leading-6 sm:grid-cols-[0.9fr_1.2fr_2fr] sm:gap-4">
+              <p class="font-medium text-white">Team page</p>
+              <p class="text-slate-400">
+                <a href="https://therapy-health-care-1.deploypad.app/team" class="text-cyan-300 underline underline-offset-2">
+                  therapy-health-care-1.deploypad.app/team
+                </a>
+              </p>
+              <p class="text-slate-300">
+                Public reference supplied for the existing Team page; its
+                rendered content still requires review before redesign.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="content-heading" class="rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-7">
+          <div class="flex items-center gap-3">
+            <i data-lucide="file-text" class="size-5 text-cyan-300"></i>
+            <h2 id="content-heading" class="text-xl font-semibold tracking-tight text-white">
+              Content map
+            </h2>
+          </div>
+
+          <div class="mt-6 space-y-4">
+            <article class="rounded-xl border border-white/10 bg-slate-900/60 p-5">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <h3 class="text-lg font-semibold text-white">Page metadata</h3>
+                <span class="rounded-full bg-slate-700 px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-slate-200">
+                  Keep
+                </span>
+              </div>
+              <dl class="mt-4 grid gap-3 text-base leading-6 text-slate-300">
+                <div>
+                  <dt class="font-medium text-slate-100">Title</dt>
+                  <dd class="mt-1">
+                    CPRT | Core Precision Regenerative Therapy: MSC, Exosome
+                    &amp; Muse Stem Cell Therapy
+                  </dd>
+                </div>
+                <div>
+                  <dt class="font-medium text-slate-100">Description</dt>
+                  <dd class="mt-1">
+                    Core Precision Regenerative Therapy delivers MSC, Exosome
+                    and Muse stem cell protocols in a licensed hospital, with
+                    lab, physicians, physical therapy and recovery suites under
+                    one roof. Contact a CPRT advisor.
+                  </dd>
+                </div>
+                <div>
+                  <dt class="font-medium text-slate-100">Status</dt>
+                  <dd class="mt-1">
+                    Keep unless the client confirms the first-page terminology
+                    change should also update SEO metadata.
+                  </dd>
+                </div>
+              </dl>
+            </article>
+
+            <article class="rounded-xl border border-cyan-300/25 bg-cyan-300/5 p-5">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <h3 class="text-lg font-semibold text-white">Hero headline</h3>
+                <span class="rounded-full bg-cyan-300 px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-slate-950">
+                  Replace
+                </span>
+              </div>
+              <p class="mt-4 text-base leading-7 text-slate-300">
+                Existing visible headline in change image: “Precision
+                regenerative medicine, without the impossible price tag.”
+              </p>
+              <p class="mt-3 text-base font-medium leading-7 text-cyan-100">
+                Required replacement: “Precision regenerative medicine with Stem
+                Cell and Exosome Therapy”
+              </p>
+              <p class="mt-3 text-sm leading-6 text-slate-400">
+                Instruction source: first-page change image, labeled “Change”
+                and “To.”
+              </p>
+            </article>
+
+            <article class="rounded-xl border border-cyan-300/25 bg-cyan-300/5 p-5">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <h3 class="text-lg font-semibold text-white">
+                  Hero tissue-sourcing note
+                </h3>
+                <span class="rounded-full bg-cyan-300 px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-slate-950">
+                  Replace
+                </span>
+              </div>
+              <p class="mt-4 text-base leading-7 text-slate-300">
+                Existing visible note in change image: “Tissue sourced through
+                Dyna-Cord”
+              </p>
+              <p class="mt-3 text-base font-medium leading-7 text-cyan-100">
+                Required replacement: “Tissue sourced through a USA certified
+                lab”
+              </p>
+              <p class="mt-3 text-sm leading-6 text-slate-400">
+                Instruction source: first-page change image, labeled “Add.”
+              </p>
+            </article>
+
+            <article class="rounded-xl border border-white/10 bg-slate-900/60 p-5">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <h3 class="text-lg font-semibold text-white">
+                  Hero body copy, contact CTA, phone CTA
+                </h3>
+                <span class="rounded-full bg-slate-700 px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-slate-200">
+                  Keep
+                </span>
+              </div>
+              <p class="mt-4 text-base leading-7 text-slate-300">
+                Preserve substantially intact based on the visible reference,
+                pending confirmation from the rendered source. The phone shown
+                is +1 (619) 848-3514. The CTA shown is “Contact a CPRT Expert.”
+              </p>
+            </article>
+
+            <article class="rounded-xl border border-dashed border-white/20 bg-white/[0.02] p-5">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <h3 class="text-lg font-semibold text-white">
+                  All other sections, links, forms, proof points, and footer
+                  content
+                </h3>
+                <span class="rounded-full bg-amber-300/15 px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-amber-200">
+                  Unverified
+                </span>
+              </div>
+              <p class="mt-4 text-base leading-7 text-slate-300">
+                No determination can be made because these items are not present
+                in the supplied HTML document. They require the production page
+                output, original project files, or a complete page capture.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section aria-labelledby="directives-heading" class="rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-7">
+          <div class="flex items-center gap-3">
+            <i data-lucide="quote" class="size-5 text-cyan-300"></i>
+            <h2 id="directives-heading" class="text-xl font-semibold tracking-tight text-white">
+              Recorded change directives
+            </h2>
+          </div>
+
+          <ol class="mt-6 space-y-3 text-base leading-7 text-slate-300">
+            <li class="flex gap-3">
+              <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-cyan-300 text-xs font-semibold text-slate-950">
+                1
+              </span>
+              <span>
+                Change: “Precision regenerative medicine, without the impossible
+                price tag.”
+              </span>
+            </li>
+            <li class="flex gap-3">
+              <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-cyan-300 text-xs font-semibold text-slate-950">
+                2
+              </span>
+              <span>
+                To: “Precision regenerative medicine with Stem Cell and Exosome
+                Therapy”
+              </span>
+            </li>
+            <li class="flex gap-3">
+              <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-cyan-300 text-xs font-semibold text-slate-950">
+                3
+              </span>
+              <span>Add: “Tissue sourced through a USA certified lab”</span>
+            </li>
+          </ol>
+
+          <p class="mt-6 rounded-lg border-l-2 border-cyan-300 bg-cyan-300/5 px-4 py-3 text-base leading-7 text-cyan-50">
+            No explicit visual design direction, full Word-document copy, or
+            approved brand constraints were included beyond the supplied
+            first-page change image.
+          </p>
+        </section>
+
+        <section aria-labelledby="questions-heading" class="rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-7">
+          <div class="flex items-center gap-3">
+            <i data-lucide="circle-help" class="size-5 text-cyan-300"></i>
+            <h2 id="questions-heading" class="text-xl font-semibold tracking-tight text-white">
+              Open questions requiring confirmation
+            </h2>
+          </div>
+
+          <ul class="mt-6 space-y-4 text-base leading-7 text-slate-300">
+            <li class="flex gap-3">
+              <i data-lucide="arrow-right" class="mt-1.5 size-4 shrink-0 text-cyan-300"></i>
+              <span class="">
+                Please provide the actual Word document or its complete text.
+                The provided material shows only a cropped first-page change
+                image.
+              </span>
+            </li>
+            <li class="flex gap-3">
+              <i data-lucide="arrow-right" class="mt-1.5 size-4 shrink-0 text-cyan-300"></i>
+              <span>
+                Please provide the rendered production HTML, application export,
+                or complete screenshots for every page and section beyond the
+                supplied Team page link so all existing content can be
+                preserved.
+              </span>
+            </li>
+            <li class="flex gap-3">
+              <i data-lucide="arrow-right" class="mt-1.5 size-4 shrink-0 text-cyan-300"></i>
+              <span class="">
+                Should “Stem Cell and Exosome Therapy” replace MSC, Exosome, and
+                Muse terminology only in the hero, or throughout the page
+                metadata and all future site copy?
+              </span>
+            </li>
+            <li class="flex gap-3">
+              <i data-lucide="arrow-right" class="mt-1.5 size-4 shrink-0 text-cyan-300"></i>
+              <span class="">
+                Does “USA certified lab” have a required legal or
+                compliance-approved phrasing, certification name, or supporting
+                disclosure?
+              </span>
+            </li>
+            <li class="flex gap-3">
+              <i data-lucide="arrow-right" class="mt-1.5 size-4 shrink-0 text-cyan-300"></i>
+              <span class="">
+                Are there existing brand requirements that must survive,
+                including logo files, approved colors, typography, imagery,
+                regulatory language, form destinations, analytics, and page
+                URLs?
+              </span>
+            </li>
+            <li class="flex gap-3">
+              <i data-lucide="arrow-right" class="mt-1.5 size-4 shrink-0 text-cyan-300"></i>
+              <span class="">
+                Please confirm the desired aesthetic direction, since no
+                completed style-direction brief was included.
+              </span>
+            </li>
+          </ul>
+        </section>
+
+        <section aria-labelledby="next-heading" class="rounded-2xl bg-cyan-300 p-6 text-slate-950 sm:p-8">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div class="max-w-2xl">
+              <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-700">
+                Confirmation required
+              </p>
+              <h2 class="mt-2 text-2xl font-semibold tracking-tight" id="next-heading">
+                Ready for the design-system stage after source confirmation.
+              </h2>
+              <p class="mt-3 text-base leading-7 text-slate-800">
+                Confirm this audit and provide the missing materials above. The
+                next stage will document a complete new visual system before any
+                page implementation begins.
+              </p>
+            </div>
+            <i data-lucide="arrow-up-right" class="size-7 shrink-0"></i>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+      lucide.createIcons({
+        attrs: {
+          "stroke-width": 1.5
+        }
+      });
+    </script>
+  
+</body></html>

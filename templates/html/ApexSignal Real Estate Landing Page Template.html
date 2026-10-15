@@ -1,0 +1,1707 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ApexSignal — Real-Time Decision Intelligence</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link
+href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap"
+rel="stylesheet"
+/>
+<style>
+body { font-family: 'Inter Tight', sans-serif; }
+.mono { font-family: 'IBM Plex Mono', monospace; }
+@keyframes heroDrift { 0% { transform: scale(1.02) translateX(0); } 100% { transform: scale(1.1) translateX(-1.5%); } }
+.hero-drift { animation: heroDrift 24s ease-out forwards; }
+@keyframes clipUp { from { clip-path: inset(100% 0 0 0); transform: translateY(24px); } to { clip-path: inset(0 0 0 0); transform: translateY(0); } }
+.clip-reveal { animation: clipUp 0.9s cubic-bezier(0.16,1,0.3,1) forwards; opacity: 1; }
+.clip-reveal.d1 { animation-delay: 0.1s; clip-path: inset(100% 0 0 0); }
+.clip-reveal.d2 { animation-delay: 0.25s; clip-path: inset(100% 0 0 0); }
+.clip-reveal.d3 { animation-delay: 0.4s; clip-path: inset(100% 0 0 0); }
+.reveal { opacity: 0; transform: translateY(28px); transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1); }
+.reveal.in { opacity: 1; transform: translateY(0); }
+@keyframes pulseDot { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+.pulse-dot { animation: pulseDot 1.4s ease-in-out infinite; }
+@keyframes streamIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+.panel-img { transition: transform 8s ease-out; }
+.panel:hover .panel-img { transform: scale(1.06); }
+@media (prefers-reduced-motion: reduce) {
+.hero-drift, .clip-reveal, .pulse-dot { animation: none !important; clip-path: none !important; transform: none !important; }
+.reveal { transform: none; transition: opacity 0.4s ease; }
+.panel-img { transition: none; }
+}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<style>
+.gsap-on .reveal{transition:none;}#scrollProgress{transform-origin:left;}.panel{will-change:clip-path;}@media (prefers-reduced-motion: reduce){#scrollProgress{display:none;}}
+</style>
+<link
+href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@100..900&amp;display=swap"
+rel="stylesheet"
+/>
+<style>
+.beam-v{overflow:visible}.beam-v::after{content:'';position:absolute;left:-1px;width:3px;height:22%;top:-25%;background:linear-gradient(to bottom,transparent,rgba(217,47,36,0.9),transparent);animation:beamV 6s linear infinite;filter:drop-shadow(0 0 4px rgba(217,47,36,0.6))}.beam-h::after{content:'';position:absolute;top:-1px;height:3px;width:14%;left:-15%;background:linear-gradient(to right,transparent,rgba(217,47,36,0.9),transparent);animation:beamH 6s linear infinite;filter:drop-shadow(0 0 4px rgba(217,47,36,0.6))}@keyframes beamV{0%{top:-25%}100%{top:125%}}@keyframes beamH{0%{left:-15%}100%{left:115%}}.beam-d1::after{animation-delay:2s}.beam-d2::after{animation-delay:4s}.wchar{display:inline-block;transition:font-weight 0.15s linear}@media (prefers-reduced-motion: reduce){.beam-v::after,.beam-h::after{display:none}.wchar{transition:none}}
+</style>
+<!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body class="bg-[#F7F6F3] text-[#1A1A1A] antialiased">
+    <div
+      id="scrollProgress"
+      class="fixed left-0 top-0 z-[60] h-[2px] w-full scale-x-0 bg-[#D92F24]"
+    ></div>
+    <!-- ================= HEADER ================= -->
+    <header
+      id="nav"
+      class="fixed top-0 inset-x-0 z-50 transition-colors duration-300 border-b border-transparent"
+    >
+      <div
+        class="mx-auto flex h-[72px] max-w-[1440px] items-center justify-between px-5 md:px-10"
+      >
+        <a href="#" class="flex items-center gap-2.5">
+          <span class="flex h-6 w-6 items-center justify-center bg-[#D92F24]">
+            <i
+              data-lucide="zap"
+              class="h-3.5 w-3.5 text-white"
+              stroke-width="1.5"
+            ></i>
+          </span>
+          <span class="text-sm font-semibold tracking-wide text-white">
+            VÍT KRÁČMAR
+          </span>
+        </a>
+        <nav class="hidden items-center gap-7 lg:flex">
+          <a
+            href="#"
+            class="text-xs font-medium text-white/90 hover:text-white transition-colors"
+          >
+            Domů
+          </a>
+          <a
+            href="#proc"
+            class="text-xs font-medium text-white/60 hover:text-white transition-colors"
+          >
+            Proč u mě
+          </a>
+          <a
+            href="#postup"
+            class="text-xs font-medium text-white/60 hover:text-white transition-colors"
+          >
+            Postup
+          </a>
+          <a
+            href="#klienti"
+            class="text-xs font-medium text-white/60 hover:text-white transition-colors"
+          >
+            Klienti
+          </a>
+          <a
+            href="#sluzby"
+            class="text-xs font-medium text-white/60 hover:text-white transition-colors"
+          >
+            Služby
+          </a>
+          <a
+            href="#faq"
+            class="text-xs font-medium text-white/60 hover:text-white transition-colors"
+          >
+            Časté otázky
+          </a>
+          <a href="#contact" class="group ml-3 flex items-stretch">
+            <span
+              class="flex items-center bg-white px-4 py-2.5 text-xs font-semibold text-black"
+            >
+              Odhad ceny
+            </span>
+            <span
+              class="flex w-9 items-center justify-center bg-[#D92F24] overflow-hidden"
+            >
+              <i
+                data-lucide="arrow-right"
+                class="h-4 w-4 text-white transition-transform duration-300 group-hover:translate-x-1"
+                stroke-width="1.5"
+              ></i>
+            </span>
+          </a>
+        </nav>
+        <button
+          id="menuBtn"
+          class="lg:hidden flex h-10 w-10 items-center justify-center border border-white/20 text-white"
+        >
+          <i data-lucide="menu" class="h-5 w-5" stroke-width="1.5"></i>
+        </button>
+      </div>
+      <div
+        id="mobileMenu"
+        class="hidden border-t border-white/10 bg-[#050505] px-5 py-6 lg:hidden"
+      >
+        <div class="flex flex-col gap-4">
+          <a href="#" class="text-sm font-medium text-white">Domů</a>
+          <a href="#platform" class="text-sm font-medium text-white/60">
+            Proč u mě
+          </a>
+          <a href="#usecases" class="text-sm font-medium text-white/60">
+            Postup
+          </a>
+          <a href="#pricing" class="text-sm font-medium text-white/60">
+            Klienti
+          </a>
+          <a href="#notes" class="text-sm font-medium text-white/60">Služby</a>
+          <a href="#contact" class="mt-2 flex w-fit items-stretch">
+            <span
+              class="flex items-center bg-white px-4 py-2.5 text-xs font-semibold text-black"
+            >
+              Odhad ceny
+            </span>
+            <span class="flex w-9 items-center justify-center bg-[#D92F24]">
+              <i
+                data-lucide="arrow-right"
+                class="h-4 w-4 text-white"
+                stroke-width="1.5"
+              ></i>
+            </span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- ================= HERO ================= -->
+    <section
+      class="relative h-screen min-h-[640px] w-full overflow-hidden"
+      id="hero"
+    >
+      <div class="absolute inset-0">
+        <img
+          src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg"
+          alt="Machine in motion"
+          class="hero-drift h-full w-full object-cover grayscale-[35%] contrast-125 brightness-[0.65]"
+        />
+      </div>
+      <!-- overlays -->
+      <div
+        class="absolute inset-0 bg-gradient-to-tr from-black via-black/55 to-black/10"
+      ></div>
+      <div
+        class="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/40"
+      ></div>
+      <canvas
+        id="particleCanvas"
+        class="pointer-events-none absolute inset-0 h-full w-full"
+      ></canvas>
+      <!-- guide lines -->
+      <div class="pointer-events-none absolute inset-0">
+        <div
+          class="absolute left-1/2 top-0 h-full w-px bg-white/10 beam-v"
+        ></div>
+        <div
+          class="absolute left-0 top-[72px] h-px w-full bg-white/10 beam-h"
+        ></div>
+        <div
+          class="absolute bottom-[18%] left-0 h-px w-full bg-white/[0.07] beam-h beam-d2"
+        ></div>
+        <div
+          class="absolute left-5 md:left-10 top-0 h-full w-px bg-white/[0.07] beam-v beam-d1"
+        ></div>
+        <div
+          class="absolute right-5 md:right-10 top-0 h-full w-px bg-white/[0.07] beam-v beam-d2"
+        ></div>
+        <!-- telemetry ticks -->
+        <div
+          class="mono absolute left-1/2 top-24 -translate-x-1/2 text-xs text-white/30 hidden md:block"
+        >
+          — 00 —
+        </div>
+      </div>
+
+      <!-- headline block: lower left -->
+      <div
+        class="absolute inset-x-0 bottom-0 z-10 mx-auto max-w-[1440px] px-5 pb-16 md:px-10 md:pb-24"
+      >
+        <div class="max-w-3xl">
+          <div class="clip-reveal d1 mb-5 flex items-center gap-3">
+            <span class="h-2 w-2 bg-[#D92F24] pulse-dot"></span>
+            <span class="mono text-xs tracking-[0.25em] text-white/70">
+              VÍT KRÁČMAR — REALITNÍ SPECIALISTA
+            </span>
+          </div>
+          <h1
+            class="clip-reveal d2 text-4xl font-semibold leading-tight tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl"
+          >
+            Prodej vašeho domu nebo chaty — za nejvyšší možnou cenu, bez stresu
+            a bez makléřských triků.
+          </h1>
+          <p
+            class="clip-reveal d3 mt-6 max-w-md text-base leading-relaxed text-white/70"
+          >
+            Postarám se o celý prodej od fotek po podpis. Získám pro vás cenu,
+            kterou byste sami netrefili. A provedu vás vším tak, abyste se
+            nemuseli bát jediného papíru.
+          </p>
+          <div class="clip-reveal d3 mt-8 flex flex-col items-start gap-4">
+            <a href="#contact" class="group flex items-stretch">
+              <span
+                class="flex items-center bg-white px-6 py-4 text-sm font-semibold text-black"
+              >
+                Domluvit nezávazný odhad ceny
+              </span>
+              <span
+                class="flex w-12 items-center justify-center bg-[#D92F24] overflow-hidden"
+              >
+                <i
+                  data-lucide="arrow-right"
+                  class="h-5 w-5 text-white transition-transform duration-300 group-hover:translate-x-1.5"
+                  stroke-width="1.5"
+                ></i>
+              </span>
+            </a>
+            <span class="text-sm font-medium text-white/80">
+              Ozvu se do 24 hodin. Bez tlaku, bez závazku. Osobně u vás doma
+              nebo online.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- bottom right status -->
+      <div
+        class="mono absolute bottom-6 right-5 z-10 hidden items-center gap-4 text-xs text-white/60 md:right-10 md:flex"
+      >
+        <span>13 let na realitním trhu</span>
+        <span class="text-white/25">|</span>
+        <span>Přes 200 prodaných nemovitostí</span>
+        <span class="text-white/25">|</span>
+        <span>Nezávazná konzultace a odhad ceny zdarma</span>
+      </div>
+    </section>
+
+    <!-- ================= SIGNAL PROOF ================= -->
+    <section class="relative border-y border-black/10 bg-white">
+      <div
+        class="pointer-events-none absolute left-1/2 top-0 h-full w-px bg-black/[0.05] beam-v beam-d1"
+      ></div>
+      <div class="mx-auto max-w-[1440px] px-5 md:px-10">
+        <div class="border-b border-black/10 py-8">
+          <h2
+            class="text-3xl font-semibold tracking-tight text-[#111] md:text-4xl"
+          >
+            Znáte to taky?
+          </h2>
+        </div>
+        <div
+          class="grid grid-cols-1 divide-y divide-black/10 md:grid-cols-3 md:divide-x md:divide-y-0"
+        >
+          <div class="reveal py-10 md:py-12 md:pr-10">
+            <p class="text-base leading-relaxed text-black/75">
+              "Rozhodli jste se prodat dům po rodičích. Soused vám řekl, že
+              podobný se prodal za 6 milionů. Realitka, co jste oslovili, mluví
+              o 5,2. Známý tvrdí, že byste měli chtít aspoň 6,5.
+              <br />
+              <br />
+              Komu věřit? Každý říká jiné číslo. A vy víte jedno — když dáte
+              cenu špatně, buď proděláte statisíce, nebo bude dům viset na
+              inzerátu půl roku a zlevníte stejně.
+              <br />
+              <br />
+              Jak poznáte, za kolik se ten dům doopravdy prodá?"
+            </p>
+          </div>
+          <div class="reveal py-10 md:px-10 md:py-12">
+            <p class="text-base leading-relaxed text-black/75">
+              "Zavoláte do realitky. Příjemný hlas, rychlá schůzka. Pak vám
+              podstrčí smlouvu na výhradní zastoupení na rok, provizi 5 % a
+              pokutu, když to zrušíte.
+              <br />
+              <br />
+              Slyšeli jste o sousedce, které makléř prodal byt pod cenou
+              kamarádovi — a inkasoval provizi z obou stran. O bratranci,
+              kterému makléř slíbil hory doly a pak se měsíc neozval.
+              <br />
+              <br />
+              Chcete někoho prodat dům. Ne podepsat past. Ale jak poznáte
+              slušného makléře od toho, co vám jde jen po provizi?"
+            </p>
+          </div>
+          <div class="reveal py-10 md:py-12 md:pl-10">
+            <p class="text-base leading-relaxed text-black/75">
+              "Kupec se našel. A teď přijde to, čeho jste se báli. Kupní
+              smlouva. Úschova peněz. Katastr. Daň z prodeje. Co když je v tom
+              někde chyba?
+              <br />
+              <br />
+              Slyšeli jste příběhy — převedl nemovitost, peníze nepřišly.
+              Podepsal něco, čemu nerozuměl, a teď to řeší u soudu.
+              <br />
+              <br />
+              Tohle je možná největší obchod vašeho života. A vy v tom máte
+              plavat sami? Kdo vás ohlídá, aby vás nikdo nenapálil?"
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= PLATFORM ================= -->
+    <section id="proc" class="relative bg-[#F7F6F3] py-24 md:py-32">
+      <div
+        class="pointer-events-none absolute left-1/2 top-0 h-full w-px bg-black/[0.05] beam-v"
+      ></div>
+      <div
+        class="mx-auto grid max-w-[1440px] grid-cols-1 gap-16 px-5 md:px-10 lg:grid-cols-2 lg:gap-20"
+      >
+        <div class="reveal">
+          <div class="mono mb-6 text-xs tracking-[0.25em] text-[#D92F24]">
+            01 / PLATFORM
+          </div>
+          <h2
+            class="text-4xl font-semibold leading-[1.02] tracking-tight text-[#111] sm:text-5xl md:text-6xl lg:text-7xl"
+          >
+            Built for teams moving too fast for stale dashboards.
+          </h2>
+          <p class="mt-6 max-w-md text-base leading-relaxed text-black/55">
+            Dashboards report the past. ApexSignal runs the present — a
+            continuous lane of live events, classified by urgency and routed to
+            the person who can act.
+          </p>
+          <div class="mt-12 divide-y divide-black/10 border-y border-black/10">
+            <div class="group flex items-center gap-5 py-5">
+              <span class="mono text-xs text-black/40">A1</span>
+              <i
+                data-lucide="activity"
+                class="h-4 w-4 text-[#D92F24]"
+                stroke-width="1.5"
+              ></i>
+              <div class="flex-1">
+                <div class="text-sm font-semibold text-[#111]">Live events</div>
+                <div class="text-sm text-black/55">
+                  Every operational signal, streamed as it happens.
+                </div>
+              </div>
+              <i
+                data-lucide="arrow-right"
+                class="h-4 w-4 text-black/30 transition-transform duration-300 group-hover:translate-x-1 group-hover:text-black"
+                stroke-width="1.5"
+              ></i>
+            </div>
+            <div class="group flex items-center gap-5 py-5">
+              <span class="mono text-xs text-black/40">A2</span>
+              <i
+                data-lucide="git-branch"
+                class="h-4 w-4 text-[#D92F24]"
+                stroke-width="1.5"
+              ></i>
+              <div class="flex-1">
+                <div class="text-sm font-semibold text-[#111]">
+                  Alert routing
+                </div>
+                <div class="text-sm text-black/55">
+                  Urgency-classified, sent to the right owner in milliseconds.
+                </div>
+              </div>
+              <i
+                data-lucide="arrow-right"
+                class="h-4 w-4 text-black/30 transition-transform duration-300 group-hover:translate-x-1 group-hover:text-black"
+                stroke-width="1.5"
+              ></i>
+            </div>
+            <div class="group flex items-center gap-5 py-5">
+              <span class="mono text-xs text-black/40">A3</span>
+              <i
+                data-lucide="history"
+                class="h-4 w-4 text-[#D92F24]"
+                stroke-width="1.5"
+              ></i>
+              <div class="flex-1">
+                <div class="text-sm font-semibold text-[#111]">
+                  Decision history
+                </div>
+                <div class="text-sm text-black/55">
+                  Every call logged with context. Review any lap later.
+                </div>
+              </div>
+              <i
+                data-lucide="arrow-right"
+                class="h-4 w-4 text-black/30 transition-transform duration-300 group-hover:translate-x-1 group-hover:text-black"
+                stroke-width="1.5"
+              ></i>
+            </div>
+            <div class="group flex items-center gap-5 py-5">
+              <span class="mono text-xs text-black/40">A4</span>
+              <i
+                data-lucide="users"
+                class="h-4 w-4 text-[#D92F24]"
+                stroke-width="1.5"
+              ></i>
+              <div class="flex-1">
+                <div class="text-sm font-semibold text-[#111]">
+                  Team handoff
+                </div>
+                <div class="text-sm text-black/55">
+                  Shift changes without dropped signals or lost context.
+                </div>
+              </div>
+              <i
+                data-lucide="arrow-right"
+                class="h-4 w-4 text-black/30 transition-transform duration-300 group-hover:translate-x-1 group-hover:text-black"
+                stroke-width="1.5"
+              ></i>
+            </div>
+          </div>
+        </div>
+        <div class="reveal lg:sticky lg:top-24 lg:self-start">
+          <div
+            class="border border-black/10 bg-[#171717] shadow-xl"
+            id="commandPanel"
+          >
+            <div
+              class="flex items-center justify-between border-b border-white/10 px-5 py-3"
+            >
+              <div class="mono text-xs text-white/60">APEXSIGNAL / COMMAND</div>
+              <div class="mono flex items-center gap-2 text-xs text-[#4ADE80]">
+                <span class="h-1.5 w-1.5 bg-[#4ADE80] pulse-dot"></span>
+                LIVE
+              </div>
+            </div>
+            <div class="border-b border-white/10 px-5 py-4">
+              <div class="mono mb-3 text-xs text-white/40">EVENT STREAM</div>
+              <div class="space-y-2">
+                <div
+                  class="flex items-center gap-3 border-l-2 border-[#D92F24] bg-white/[0.03] px-3 py-2"
+                >
+                  <span class="mono text-xs text-white/40">14:02:11</span>
+                  <span class="text-xs font-medium text-white">
+                    Fulfilment queue breach — Hub East
+                  </span>
+                  <span
+                    class="mono ml-auto bg-[#D92F24]/15 px-1.5 py-0.5 text-xs text-[#D92F24]"
+                  >
+                    CRIT
+                  </span>
+                </div>
+                <div
+                  class="flex items-center gap-3 border-l-2 border-[#E8D45A] bg-white/[0.03] px-3 py-2"
+                >
+                  <span class="mono text-xs text-white/40">14:02:04</span>
+                  <span class="text-xs font-medium text-white">
+                    Payment retries climbing +12%
+                  </span>
+                  <span
+                    class="mono ml-auto bg-[#E8D45A]/15 px-1.5 py-0.5 text-xs text-[#E8D45A]"
+                  >
+                    WARN
+                  </span>
+                </div>
+                <div
+                  class="flex items-center gap-3 border-l-2 border-white/20 bg-white/[0.03] px-3 py-2"
+                >
+                  <span class="mono text-xs text-white/40">14:01:47</span>
+                  <span class="text-xs font-medium text-white/70">
+                    Carrier ETA sync complete
+                  </span>
+                  <span
+                    class="mono ml-auto bg-white/10 px-1.5 py-0.5 text-xs text-white/50"
+                  >
+                    INFO
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div
+              class="grid grid-cols-2 divide-x divide-white/10 border-b border-white/10"
+            >
+              <div class="px-5 py-4">
+                <div class="mono mb-3 text-xs text-white/40">ALERT LANE</div>
+                <div class="flex items-center gap-3">
+                  <span
+                    class="flex h-8 w-8 items-center justify-center bg-[#D92F24]"
+                  >
+                    <i
+                      data-lucide="siren"
+                      class="h-4 w-4 text-white"
+                      stroke-width="1.5"
+                    ></i>
+                  </span>
+                  <div>
+                    <div class="text-xs font-semibold text-white">
+                      Routed → M. Okafor
+                    </div>
+                    <div class="mono text-xs text-white/40">
+                      ACK IN 00:00:41
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="px-5 py-4">
+                <div class="mono mb-3 text-xs text-white/40">DECISION LOG</div>
+                <div class="text-xs font-semibold text-white">
+                  Reroute 3 lanes to Hub North
+                </div>
+                <div class="mono mt-1 text-xs text-white/40">
+                  LOGGED 14:02:56 · REVIEW T+2H
+                </div>
+              </div>
+            </div>
+            <div class="px-5 py-4">
+              <div class="mono mb-2 flex justify-between text-xs text-white/40">
+                <span>PIPELINE LATENCY</span>
+                <span class="text-[#4ADE80]">38MS</span>
+              </div>
+              <div class="flex h-1.5 gap-0.5">
+                <div class="w-[38%] bg-[#4ADE80]"></div>
+                <div class="w-[10%] bg-[#E8D45A]"></div>
+                <div class="flex-1 bg-white/10"></div>
+              </div>
+            </div>
+          </div>
+          <div class="mono mt-3 flex justify-between text-xs text-black/35">
+            <span>FIG. 01 — COMMAND VIEW</span>
+            <span>SCALE 1:1</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= USE-CASE PANELS ================= -->
+    <section class="relative border-t border-black/10 bg-white py-24 md:py-32">
+      <div class="mx-auto max-w-[1440px] px-5 md:px-10">
+        <div class="mb-14 max-w-3xl reveal">
+          <div class="mono mb-4 text-xs tracking-[0.25em] text-[#D92F24]">
+            02 / TRH V ČÍSLECH
+          </div>
+          <h2
+            class="text-3xl font-semibold leading-tight tracking-tight text-[#111] md:text-4xl lg:text-5xl"
+          >
+            Co byste o prodeji nemovitosti měli vědět
+          </h2>
+          <p class="mt-6 text-base leading-relaxed text-black/60">
+            Tady je 5 čísel, která vám většina realitek neřekne. Ale měli byste
+            je znát, než dům nabídnete — nebo než někde podepíšete výhradní
+            smlouvu.
+          </p>
+        </div>
+        <div
+          class="grid grid-cols-1 gap-10 md:grid-cols-5 md:divide-x md:divide-black/10"
+        >
+          <div class="reveal md:pr-4">
+            <div class="text-5xl font-semibold tracking-tight text-[#111]">
+              15
+              <span class="text-3xl">%</span>
+            </div>
+            <div class="mt-4 text-sm font-semibold text-[#111]">
+              rozdíl mezi špatně a dobře nastavenou cenou.
+            </div>
+            <p class="mt-2 text-sm text-black/60">
+              U domu za 6 milionů je to 900 000 Kč. Příliš vysoká cena dům
+              „zazdí", příliš nízká vás připraví o peníze.
+            </p>
+          </div>
+          <div class="reveal md:px-6">
+            <div class="text-5xl font-semibold tracking-tight text-[#111]">
+              3
+              <span class="text-3xl">×</span>
+            </div>
+            <div class="mt-4 text-sm font-semibold text-[#111]">
+              déle se prodává nemovitost s první špatnou cenou.
+            </div>
+            <p class="mt-2 text-sm text-black/60">
+              Dům, který visí měsíce a zlevňuje, působí podezřele. Správná cena
+              od začátku prodává rychleji i dráž.
+            </p>
+          </div>
+          <div class="reveal md:px-6">
+            <div class="text-5xl font-semibold tracking-tight text-[#111]">
+              70
+              <span class="text-3xl">%</span>
+            </div>
+            <div class="mt-4 text-sm font-semibold text-[#111]">
+              kupců se rozhoduje podle prvních fotek.
+            </div>
+            <p class="mt-2 text-sm text-black/60">
+              Profesionální focení a home staging dokáže zvednout zájem i
+              finální cenu o desítky procent.
+            </p>
+          </div>
+          <div class="reveal md:px-6">
+            <div class="text-5xl font-semibold tracking-tight text-[#111]">
+              5
+              <span class="text-3xl">%</span>
+            </div>
+            <div class="mt-4 text-sm font-semibold text-[#111]">
+              běžná provize realitky.
+            </div>
+            <p class="mt-2 text-sm text-black/60">
+              Za tyto peníze máte právo na profi marketing, tvrdé vyjednávání a
+              kompletní právní ohlídání. Ne jen inzerát.
+            </p>
+          </div>
+          <div class="reveal md:pl-6">
+            <div class="text-5xl font-semibold tracking-tight text-[#111]">
+              0
+              <span class="text-3xl">Kč</span>
+            </div>
+            <div class="mt-4 text-sm font-semibold text-[#111]">
+              by vás měla stát chyba ve smlouvě.
+            </div>
+            <p class="mt-2 text-sm text-black/60">
+              Špatně ošetřená úschova může stát celou hodnotu nemovitosti.
+              Právní jistota není luxus, je to nutnost.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="grid grid-cols-1 lg:grid-cols-2" id="postup">
+      <div
+        class="relative flex flex-col justify-between bg-white px-5 py-20 md:px-10 md:py-28"
+      >
+        <div>
+          <div class="mono mb-6 text-xs tracking-[0.25em] text-[#D92F24]">
+            03 / POSTUP
+          </div>
+          <h2
+            class="reveal text-4xl font-semibold leading-[1.02] tracking-tight text-[#111] md:text-5xl lg:text-6xl"
+          >
+            Jak prodej krok
+            <br />
+            za krokem probíhá
+          </h2>
+          <p
+            class="reveal mt-6 max-w-sm text-base leading-relaxed text-black/55"
+          >
+            Žádná zákeřnost, žádné překvapení. Tady je přesný postup od prvního
+            telefonu k tomu, že máte peníze na účtu a dům prodaný.
+          </p>
+        </div>
+      </div>
+      <div class="bg-[#F4F3EF] px-5 py-20 text-[#050505] md:px-10 md:py-28">
+        <div class="divide-y divide-black/10 border-y border-black/10">
+          <div class="reveal flex items-start gap-6 py-6">
+            <span class="mono pt-1 text-sm font-medium text-[#D92F24]">01</span>
+            <div class="flex-1">
+              <div class="text-base font-semibold tracking-tight">
+                První kontakt a odhad ceny (zdarma)
+              </div>
+              <div class="mt-1 text-sm text-black/55">
+                Zavoláte nebo napíšete. Přijedu se na nemovitost podívat,
+                projdeme ji společně a já vám řeknu poctivý odhad ceny — podle
+                reálných prodejů v okolí. Bez závazku.
+              </div>
+            </div>
+          </div>
+          <div class="reveal flex items-start gap-6 py-6">
+            <span class="mono pt-1 text-sm font-medium text-[#D92F24]">02</span>
+            <div class="flex-1">
+              <div class="text-base font-semibold tracking-tight">
+                Příprava nemovitosti k prodeji (3–7 dnů)
+              </div>
+              <div class="mt-1 text-sm text-black/55">
+                Domluvíme se na ceně a strategii. Zajistím profesionální fotky,
+                případně home staging a video. Připravím inzerci tak, aby váš
+                dům vynikl.
+              </div>
+            </div>
+          </div>
+          <div class="reveal flex items-start gap-6 py-6">
+            <span class="mono pt-1 text-sm font-medium text-[#D92F24]">03</span>
+            <div class="flex-1">
+              <div class="text-base font-semibold tracking-tight">
+                Inzerce a prohlídky
+              </div>
+              <div class="mt-1 text-sm text-black/55">
+                Vystavím nemovitost na všech portálech a ve své síti kupců.
+                Prohlídky vedu já — vy u nich být nemusíte. Každý týden vám dám
+                zprávu.
+              </div>
+            </div>
+          </div>
+          <div class="reveal flex items-start gap-6 py-6">
+            <span class="mono pt-1 text-sm font-medium text-[#D92F24]">04</span>
+            <div class="flex-1">
+              <div class="text-base font-semibold tracking-tight">
+                Vyjednávání a rezervace
+              </div>
+              <div class="mt-1 text-sm text-black/55">
+                Když přijde nabídka, vyjednávám za vás o nejlepší cenu. Prověřím
+                kupce a financování. Teprve když je vše jisté, podepisuje se
+                rezervace.
+              </div>
+            </div>
+          </div>
+          <div class="reveal flex items-start gap-6 py-6">
+            <span class="mono pt-1 text-sm font-medium text-[#D92F24]">05</span>
+            <div class="flex-1">
+              <div class="text-base font-semibold tracking-tight">
+                Smlouvy, úschova a předání
+              </div>
+              <div class="mt-1 text-sm text-black/55">
+                Ohlídám kupní smlouvu, bezpečnou úschovu peněz, vklad na katastr
+                i daně. Vy podepisujete až ve chvíli, kdy je vše právně jisté.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="klienti">
+      <div class="mx-auto max-w-[1440px] px-5 py-16 md:px-10 md:py-20">
+        <div class="mono mb-4 text-xs tracking-[0.25em] text-[#D92F24]">
+          02 / USE CASES
+        </div>
+        <h2
+          class="reveal max-w-2xl text-4xl font-semibold leading-[1.02] tracking-tight text-[#111] md:text-5xl lg:text-6xl"
+        >
+          Three tracks. One command system.
+        </h2>
+      </div>
+
+      <!-- Panel 1 -->
+      <div
+        class="panel group relative h-[70vh] min-h-[440px] overflow-hidden border-y border-black/10"
+      >
+        <img
+          src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b8b8e531-19ee-4acb-a3d9-861a80d43887_3840w.png"
+          alt="Logistics"
+          class="panel-img absolute inset-0 h-full w-full object-cover grayscale-[45%] contrast-125 brightness-[0.55]"
+        />
+        <div
+          class="absolute inset-0 bg-gradient-to-r from-black/85 via-black/40 to-transparent"
+        ></div>
+        <div
+          class="pointer-events-none absolute left-1/2 top-0 h-full w-px bg-white/10 beam-v beam-d1"
+        ></div>
+        <div
+          class="relative z-10 mx-auto flex h-full max-w-[1440px] flex-col justify-end px-5 pb-14 md:px-10"
+        >
+          <div class="reveal max-w-lg">
+            <div
+              class="mono mb-4 flex items-center gap-3 text-xs tracking-[0.25em] text-[#E8D45A]"
+            >
+              <span class="h-px w-8 bg-[#E8D45A]"></span>
+              LOGISTICS COMMAND
+            </div>
+            <h3
+              class="text-3xl font-semibold leading-tight tracking-tight text-white md:text-4xl"
+            >
+              Reroute before the delay becomes the story.
+            </h3>
+            <a
+              href="#contact"
+              class="group/btn mt-6 inline-flex items-stretch border border-white/40 hover:border-white transition-colors"
+            >
+              <span
+                class="flex items-center px-5 py-3 text-xs font-semibold text-white"
+              >
+                Learn More
+              </span>
+              <span
+                class="flex w-10 items-center justify-center border-l border-white/40"
+              >
+                <i
+                  data-lucide="arrow-right"
+                  class="h-4 w-4 text-white transition-transform duration-300 group-hover/btn:translate-x-1"
+                  stroke-width="1.5"
+                ></i>
+              </span>
+            </a>
+          </div>
+        </div>
+        <div
+          class="mono absolute bottom-6 right-5 z-10 hidden text-xs text-white/40 md:right-10 md:block"
+        >
+          TRACK 01 / 03
+        </div>
+      </div>
+
+      <!-- Panel 2 -->
+      <div
+        class="panel group relative h-[70vh] min-h-[440px] overflow-hidden border-b border-black/10"
+      >
+        <img
+          src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/ff1484f8-4fc4-4acb-bf52-978407b72472_3840w.webp"
+          alt="Incident response"
+          class="panel-img absolute inset-0 h-full w-full object-cover grayscale-[45%] contrast-125 brightness-[0.5]"
+        />
+        <div
+          class="absolute inset-0 bg-gradient-to-l from-black/85 via-black/40 to-transparent"
+        ></div>
+        <div
+          class="pointer-events-none absolute left-1/2 top-0 h-full w-px bg-white/10 beam-v beam-d2"
+        ></div>
+        <div
+          class="relative z-10 mx-auto flex h-full max-w-[1440px] flex-col items-end justify-end px-5 pb-14 md:px-10"
+        >
+          <div class="reveal max-w-lg text-left md:text-right">
+            <div
+              class="mono mb-4 flex items-center gap-3 text-xs tracking-[0.25em] text-[#D92F24] md:justify-end"
+            >
+              <span class="h-px w-8 bg-[#D92F24]"></span>
+              INCIDENT RESPONSE
+            </div>
+            <h3
+              class="text-3xl font-semibold leading-tight tracking-tight text-white md:text-4xl"
+            >
+              Triage in seconds, not standups.
+            </h3>
+            <a
+              href="#contact"
+              class="group/btn mt-6 inline-flex items-stretch border border-white/40 hover:border-white transition-colors"
+            >
+              <span
+                class="flex items-center px-5 py-3 text-xs font-semibold text-white"
+              >
+                Learn More
+              </span>
+              <span
+                class="flex w-10 items-center justify-center border-l border-white/40"
+              >
+                <i
+                  data-lucide="arrow-right"
+                  class="h-4 w-4 text-white transition-transform duration-300 group-hover/btn:translate-x-1"
+                  stroke-width="1.5"
+                ></i>
+              </span>
+            </a>
+          </div>
+        </div>
+        <div
+          class="mono absolute bottom-6 left-5 z-10 hidden text-xs text-white/40 md:left-10 md:block"
+        >
+          TRACK 02 / 03
+        </div>
+      </div>
+
+      <!-- Panel 3 -->
+      <div
+        class="panel group relative h-[70vh] min-h-[440px] overflow-hidden border-b border-black/10"
+      >
+        <img
+          src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/5654af35-b2f0-4ae9-98b5-b96329905ead_3840w.webp"
+          alt="Revenue operations"
+          class="panel-img absolute inset-0 h-full w-full object-cover grayscale-[45%] contrast-125 brightness-[0.5]"
+        />
+        <div
+          class="absolute inset-0 bg-gradient-to-r from-black/85 via-black/40 to-transparent"
+        ></div>
+        <div
+          class="pointer-events-none absolute left-1/2 top-0 h-full w-px bg-white/10 beam-v"
+        ></div>
+        <div
+          class="relative z-10 mx-auto flex h-full max-w-[1440px] flex-col justify-end px-5 pb-14 md:px-10"
+        >
+          <div class="reveal max-w-lg">
+            <div
+              class="mono mb-4 flex items-center gap-3 text-xs tracking-[0.25em] text-[#4ADE80]"
+            >
+              <span class="h-px w-8 bg-[#4ADE80]"></span>
+              REVENUE OPERATIONS
+            </div>
+            <h3
+              class="text-3xl font-semibold leading-tight tracking-tight text-white md:text-4xl"
+            >
+              Catch the leak while it's still a drip.
+            </h3>
+            <a
+              href="#contact"
+              class="group/btn mt-6 inline-flex items-stretch border border-white/40 hover:border-white transition-colors"
+            >
+              <span
+                class="flex items-center px-5 py-3 text-xs font-semibold text-white"
+              >
+                Learn More
+              </span>
+              <span
+                class="flex w-10 items-center justify-center border-l border-white/40"
+              >
+                <i
+                  data-lucide="arrow-right"
+                  class="h-4 w-4 text-white transition-transform duration-300 group-hover/btn:translate-x-1"
+                  stroke-width="1.5"
+                ></i>
+              </span>
+            </a>
+          </div>
+        </div>
+        <div
+          class="mono absolute bottom-6 right-5 z-10 hidden text-xs text-white/40 md:right-10 md:block"
+        >
+          TRACK 03 / 03
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= WORKFLOW ================= -->
+
+    <!-- ================= PRICING ================= -->
+    <section
+      id="sluzby"
+      class="relative border-t border-black/10 bg-white py-24 md:py-32"
+    >
+      <div
+        class="pointer-events-none absolute left-1/2 top-0 h-full w-px bg-black/[0.05] beam-v beam-d2"
+      ></div>
+      <div class="mx-auto max-w-[1440px] px-5 md:px-10">
+        <div class="mono mb-4 text-xs tracking-[0.25em] text-[#D92F24]">
+          04 / PRICING
+        </div>
+        <h2
+          class="reveal max-w-xl text-4xl font-semibold leading-[1.02] tracking-tight text-[#111] md:text-5xl lg:text-6xl"
+        >
+          Pick your grid position.
+        </h2>
+        <div
+          class="reveal mt-14 overflow-x-auto border border-black/15 bg-white"
+        >
+          <table class="w-full min-w-[720px] text-left">
+            <thead>
+              <tr class="border-b border-black/15 bg-black/[0.03]">
+                <th class="mono px-6 py-4 text-xs font-medium text-black/40">
+                  PLAN
+                </th>
+                <th class="px-6 py-4">
+                  <div class="text-sm font-semibold text-[#111]">Track</div>
+                  <div class="mono mt-1 text-xs text-black/40">
+                    FOR SMALL CREWS
+                  </div>
+                </th>
+                <th class="border-l border-black/10 px-6 py-4">
+                  <div
+                    class="flex items-center gap-2 text-sm font-semibold text-[#111]"
+                  >
+                    Grid
+                    <span
+                      class="mono bg-[#D92F24] px-1.5 py-0.5 text-xs text-white"
+                    >
+                      POPULAR
+                    </span>
+                  </div>
+                  <div class="mono mt-1 text-xs text-black/40">
+                    FOR SCALING TEAMS
+                  </div>
+                </th>
+                <th class="border-l border-black/10 px-6 py-4">
+                  <div class="text-sm font-semibold text-[#111]">Command</div>
+                  <div class="mono mt-1 text-xs text-black/40">
+                    FOR THE WHOLE OPERATION
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-black/10">
+              <tr>
+                <td class="mono px-6 py-4 text-xs text-black/40">PRICE / MO</td>
+                <td
+                  class="px-6 py-4 text-2xl font-semibold tracking-tight text-[#111]"
+                >
+                  $79
+                </td>
+                <td
+                  class="border-l border-black/10 px-6 py-4 text-2xl font-semibold tracking-tight text-[#111]"
+                >
+                  $249
+                </td>
+                <td
+                  class="border-l border-black/10 px-6 py-4 text-2xl font-semibold tracking-tight text-[#111]"
+                >
+                  Custom
+                </td>
+              </tr>
+              <tr>
+                <td class="mono px-6 py-4 text-xs text-black/40">SEATS</td>
+                <td class="px-6 py-4 text-sm text-black/70">Up to 5</td>
+                <td
+                  class="border-l border-black/10 px-6 py-4 text-sm text-black/70"
+                >
+                  Up to 25
+                </td>
+                <td
+                  class="border-l border-black/10 px-6 py-4 text-sm text-black/70"
+                >
+                  Unlimited
+                </td>
+              </tr>
+              <tr>
+                <td class="mono px-6 py-4 text-xs text-black/40">
+                  EVENT STREAMS
+                </td>
+                <td class="px-6 py-4 text-sm text-black/70">3 streams</td>
+                <td
+                  class="border-l border-black/10 px-6 py-4 text-sm text-black/70"
+                >
+                  20 streams
+                </td>
+                <td
+                  class="border-l border-black/10 px-6 py-4 text-sm text-black/70"
+                >
+                  Unlimited
+                </td>
+              </tr>
+              <tr>
+                <td class="mono px-6 py-4 text-xs text-black/40">
+                  ALERT ROUTING
+                </td>
+                <td class="px-6 py-4">
+                  <i
+                    data-lucide="check"
+                    class="h-4 w-4 text-[#16A34A]"
+                    stroke-width="1.5"
+                  ></i>
+                </td>
+                <td class="border-l border-black/10 px-6 py-4">
+                  <i
+                    data-lucide="check"
+                    class="h-4 w-4 text-[#16A34A]"
+                    stroke-width="1.5"
+                  ></i>
+                </td>
+                <td class="border-l border-black/10 px-6 py-4">
+                  <i
+                    data-lucide="check"
+                    class="h-4 w-4 text-[#16A34A]"
+                    stroke-width="1.5"
+                  ></i>
+                </td>
+              </tr>
+              <tr>
+                <td class="mono px-6 py-4 text-xs text-black/40">
+                  DECISION LOG
+                </td>
+                <td class="px-6 py-4 text-sm text-black/70">30-day history</td>
+                <td
+                  class="border-l border-black/10 px-6 py-4 text-sm text-black/70"
+                >
+                  1-year history
+                </td>
+                <td
+                  class="border-l border-black/10 px-6 py-4 text-sm text-black/70"
+                >
+                  Unlimited + export
+                </td>
+              </tr>
+              <tr>
+                <td class="mono px-6 py-4 text-xs text-black/40">SUPPORT</td>
+                <td class="px-6 py-4 text-sm text-black/70">Standard</td>
+                <td
+                  class="border-l border-black/10 px-6 py-4 text-sm text-black/70"
+                >
+                  Priority
+                </td>
+                <td
+                  class="border-l border-black/10 px-6 py-4 text-sm text-black/70"
+                >
+                  Dedicated race engineer
+                </td>
+              </tr>
+              <tr class="bg-black/[0.03]">
+                <td class="px-6 py-5"></td>
+                <td class="px-6 py-5">
+                  <a
+                    href="#contact"
+                    class="inline-flex items-center gap-2 border border-black/30 px-4 py-2.5 text-xs font-semibold text-[#111] hover:border-black transition-colors"
+                  >
+                    Start Track
+                    <i
+                      data-lucide="arrow-right"
+                      class="h-3.5 w-3.5"
+                      stroke-width="1.5"
+                    ></i>
+                  </a>
+                </td>
+                <td class="border-l border-black/10 px-6 py-5">
+                  <a href="#contact" class="group inline-flex items-stretch">
+                    <span
+                      class="flex items-center bg-[#111] px-4 py-2.5 text-xs font-semibold text-white"
+                    >
+                      Start Grid
+                    </span>
+                    <span
+                      class="flex w-9 items-center justify-center bg-[#D92F24]"
+                    >
+                      <i
+                        data-lucide="arrow-right"
+                        class="h-3.5 w-3.5 text-white transition-transform duration-300 group-hover:translate-x-1"
+                        stroke-width="1.5"
+                      ></i>
+                    </span>
+                  </a>
+                </td>
+                <td class="border-l border-black/10 px-6 py-5">
+                  <a
+                    href="#contact"
+                    class="inline-flex items-center gap-2 bg-[#D92F24] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#b5261d] transition-colors"
+                  >
+                    Talk to Us
+                    <i
+                      data-lucide="arrow-right"
+                      class="h-3.5 w-3.5"
+                      stroke-width="1.5"
+                    ></i>
+                  </a>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mono mt-3 text-xs text-black/35">
+          ALL PLANS INCLUDE 38MS-CLASS PIPELINE, SSO, AND 24/7 MONITORING.
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= TESTIMONIALS ================= -->
+    <section
+      class="relative border-t border-black/10 bg-[#F7F6F3] py-24 md:py-32"
+    >
+      <div class="mx-auto max-w-[1440px] px-5 md:px-10">
+        <div class="mb-14 max-w-2xl reveal">
+          <div class="mono mb-4 text-xs tracking-[0.25em] text-[#D92F24]">
+            06 / ZÁRUKY
+          </div>
+          <h2
+            class="text-3xl font-semibold leading-tight tracking-tight text-[#111] md:text-4xl"
+          >
+            Co když mi to nevyhovuje?
+          </h2>
+          <p class="mt-6 text-base leading-relaxed text-black/60">
+            Vím, že mi musíte ještě věřit. Proto jsem postavil spolupráci tak,
+            že riziko je na vaší straně nulové.
+          </p>
+        </div>
+        <div
+          class="grid grid-cols-1 gap-10 border-t border-black/10 pt-10 md:grid-cols-3 reveal"
+        >
+          <div>
+            <i
+              data-lucide="gift"
+              class="h-6 w-6 text-[#D92F24]"
+              stroke-width="1.5"
+            ></i>
+            <h3 class="mt-5 text-lg font-semibold text-[#111]">
+              Odhad ceny zdarma a bez závazku
+            </h3>
+            <p class="mt-3 text-sm leading-relaxed text-black/60">
+              První návštěva a odhad ceny jsou vždy zdarma. Pokud se rozhodnete
+              neprodávat nebo jít jinam, nic neplatíte a já vás nijak netlačím.
+            </p>
+          </div>
+          <div>
+            <i
+              data-lucide="unlock"
+              class="h-6 w-6 text-[#D92F24]"
+              stroke-width="1.5"
+            ></i>
+            <h3 class="mt-5 text-lg font-semibold text-[#111]">
+              Žádná smlouva na rok, žádné pokuty
+            </h3>
+            <p class="mt-3 text-sm leading-relaxed text-black/60">
+              Nepodepisujete závazek na rok ani pokutu za zrušení. Když nebudete
+              spokojení s mojí prací, rozejdeme se kdykoliv. Věřím, že si mě
+              udržíte výsledkem.
+            </p>
+          </div>
+          <div>
+            <i
+              data-lucide="handshake"
+              class="h-6 w-6 text-[#D92F24]"
+              stroke-width="1.5"
+            ></i>
+            <h3 class="mt-5 text-lg font-semibold text-[#111]">
+              Platíte, jen když prodám
+            </h3>
+            <p class="mt-3 text-sm leading-relaxed text-black/60">
+              Mojí odměnou je provize z úspěšného prodeje. Když dům neprodám,
+              neplatíte mi nic. Nemám důvod nasadit nízkou cenu pro rychlý
+              obchod — naopak, čím líp prodám, tím líp pro nás oba.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section
+      id="faq"
+      class="relative border-t border-black/10 bg-[#F7F6F3] py-24 md:py-32"
+    >
+      <div
+        class="pointer-events-none absolute left-1/2 top-0 h-full w-px bg-black/[0.05] beam-v beam-d1"
+      ></div>
+      <div class="mx-auto max-w-[1440px] px-5 md:px-10">
+        <div class="mono mb-4 text-xs tracking-[0.25em] text-[#D92F24]">
+          05 / FIELD NOTES
+        </div>
+        <h2
+          class="reveal max-w-xl text-4xl font-semibold leading-[1.02] tracking-tight text-[#111] md:text-5xl lg:text-6xl"
+        >
+          Reports from the operators.
+        </h2>
+        <div
+          class="mt-14 grid grid-cols-1 gap-px border border-black/10 bg-black/10 md:grid-cols-3"
+        >
+          <div class="reveal flex flex-col bg-white">
+            <div class="h-52 overflow-hidden">
+              <img
+                src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/fe67a71f-1c61-4c27-9457-cf72301e63e8_1600w.webp"
+                alt="Operator"
+                class="h-full w-full object-cover grayscale contrast-125 brightness-90"
+              />
+            </div>
+            <div class="flex flex-1 flex-col p-7">
+              <i
+                data-lucide="quote"
+                class="mb-4 h-5 w-5 text-[#D92F24]"
+                stroke-width="1.5"
+              ></i>
+              <p class="flex-1 text-base leading-relaxed text-black/70">
+                "Handoffs between shifts used to drop three or four signals a
+                night. Now the lane carries context forward. Zero dropped in six
+                weeks."
+              </p>
+              <div class="mt-6 border-t border-black/10 pt-4">
+                <div class="text-sm font-semibold text-[#111]">D. Vance</div>
+                <div class="mono mt-0.5 text-xs text-black/40">
+                  NETWORK OPS LEAD · FREIGHT
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="reveal flex flex-col bg-white">
+            <div class="h-52 overflow-hidden">
+              <img
+                src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/variants/0763b698-99fb-4360-baa0-ca5beea9f5a1/1600w.png"
+                alt="Operator"
+                class="h-full w-full object-cover grayscale contrast-125 brightness-90"
+              />
+            </div>
+            <div class="flex flex-1 flex-col p-7">
+              <i
+                data-lucide="quote"
+                class="mb-4 h-5 w-5 text-[#D92F24]"
+                stroke-width="1.5"
+              ></i>
+              <p class="flex-1 text-base leading-relaxed text-black/70">
+                "Triage went from a twenty-minute call to a forty-second routing
+                decision. The urgency classes remove the argument before it
+                starts."
+              </p>
+              <div class="mt-6 border-t border-black/10 pt-4">
+                <div class="text-sm font-semibold text-[#111]">R. Aldana</div>
+                <div class="mono mt-0.5 text-xs text-black/40">
+                  INCIDENT COMMANDER · FINTECH
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="reveal flex flex-col bg-white">
+            <div class="h-52 overflow-hidden">
+              <img
+                src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/166607fc-ca60-49cb-af5a-712ed23cc46c_1600w.webp"
+                alt="Machinery detail"
+                class="h-full w-full object-cover grayscale contrast-125 brightness-90"
+              />
+            </div>
+            <div class="flex flex-1 flex-col p-7">
+              <i
+                data-lucide="quote"
+                class="mb-4 h-5 w-5 text-[#D92F24]"
+                stroke-width="1.5"
+              ></i>
+              <p class="flex-1 text-base leading-relaxed text-black/70">
+                "The decision log alone paid for it. Every call is on record
+                with the data it was made on. Post-incident reviews are ten
+                minutes now."
+              </p>
+              <div class="mt-6 border-t border-black/10 pt-4">
+                <div class="text-sm font-semibold text-[#111]">K. Moreau</div>
+                <div class="mono mt-0.5 text-xs text-black/40">
+                  REVOPS DIRECTOR · MARKETPLACE
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= FOOTER ================= -->
+    <footer
+      id="contact"
+      class="relative overflow-hidden border-t border-black/10 bg-white"
+    >
+      <div
+        class="pointer-events-none absolute left-1/2 top-0 h-full w-px bg-black/[0.05] beam-v"
+      ></div>
+      <div
+        class="relative z-10 mx-auto max-w-[1440px] px-5 py-24 md:px-10 md:py-32"
+      >
+        <div class="grid grid-cols-1 gap-16 lg:grid-cols-2">
+          <div class="reveal">
+            <div
+              class="mono mb-6 flex items-center gap-3 text-xs tracking-[0.25em] text-black/50"
+            >
+              <span class="h-1.5 w-1.5 bg-[#D92F24] pulse-dot"></span>
+              ZÁVĚREČNÝ KROK
+            </div>
+            <h2
+              class="text-4xl font-semibold leading-[0.98] tracking-tight text-[#111] sm:text-5xl md:text-6xl lg:text-7xl"
+            >
+              Pojďme se potkat — zjistíte, za kolik se váš dům prodá
+            </h2>
+            <a href="#" class="group mt-10 inline-flex items-stretch">
+              <span
+                class="flex items-center bg-[#111] px-6 py-4 text-sm font-semibold text-white"
+              >
+                Domluvit nezávazný odhad ceny
+              </span>
+              <span class="flex w-12 items-center justify-center bg-[#D92F24]">
+                <i
+                  data-lucide="arrow-right"
+                  class="h-5 w-5 text-white transition-transform duration-300 group-hover:translate-x-1.5"
+                  stroke-width="1.5"
+                ></i>
+              </span>
+            </a>
+            <div class="mt-8 space-y-4 text-base text-black/60 max-w-md">
+              <p>
+                První návštěva a odhad ceny jsou zdarma a bez závazku. Projdeme
+                spolu nemovitost, řeknu vám reálnou cenu a navrhnu strategii
+                prodeje. Pak se sami rozhodnete, jestli chcete pokračovat.
+              </p>
+              <p>
+                Pokud zjistím, že pro vás nejsem ten správný, řeknu vám to a
+                doporučím někoho jiného.
+              </p>
+            </div>
+            <div class="mt-10 text-sm text-black/50">
+              Ozvu se do 24 hodin • Osobně u vás nebo online • Bez tlaku, bez
+              závazku
+              <br />
+              <br />
+              Nebo zavolejte přímo: +420 800 000 000
+            </div>
+          </div>
+          <div class="reveal">
+            <form class="border border-black/15 bg-[#F7F6F3] p-7">
+              <div class="mono mb-6 text-xs tracking-[0.25em] text-black/50">
+                KONTAKTNÍ FORMULÁŘ
+              </div>
+              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <input
+                  type="text"
+                  placeholder="Jméno a příjmení"
+                  class="border border-black/20 bg-white px-4 py-3 text-sm text-[#111] placeholder-black/40 focus:border-black focus:outline-none"
+                />
+                <input
+                  type="email"
+                  placeholder="Telefon nebo e-mail"
+                  class="border border-black/20 bg-white px-4 py-3 text-sm text-[#111] placeholder-black/40 focus:border-black focus:outline-none"
+                />
+              </div>
+              <textarea
+                rows="3"
+                placeholder="Co potřebujete vyřešit?"
+                class="mt-4 w-full border border-black/20 bg-white px-4 py-3 text-sm text-[#111] placeholder-black/40 focus:border-black focus:outline-none"
+              ></textarea>
+              <button
+                type="button"
+                class="group mt-5 flex w-full items-stretch"
+              >
+                <span
+                  class="flex flex-1 items-center justify-center bg-[#D92F24] px-5 py-3.5 text-sm font-semibold text-white transition-colors group-hover:bg-[#b5261d]"
+                >
+                  Odeslat
+                </span>
+                <span class="flex w-12 items-center justify-center bg-[#111]">
+                  <i
+                    data-lucide="arrow-right"
+                    class="h-4 w-4 text-white transition-transform duration-300 group-hover:translate-x-1"
+                    stroke-width="1.5"
+                  ></i>
+                </span>
+              </button>
+            </form>
+          </div>
+        </div>
+        <div
+          class="mt-20 grid grid-cols-2 gap-8 border-t border-black/10 pt-10 md:grid-cols-4"
+        >
+          <div>
+            <div class="flex items-center gap-2.5">
+              <span
+                class="flex h-5 w-5 items-center justify-center bg-[#D92F24]"
+              >
+                <i
+                  data-lucide="zap"
+                  class="h-3 w-3 text-white"
+                  stroke-width="1.5"
+                ></i>
+              </span>
+              <span class="text-xs font-semibold tracking-wide text-[#111]">
+                VÍT KRÁČMAR
+              </span>
+            </div>
+            <p class="mt-3 text-sm text-black/55">
+              Realitní specialista pro bezpečný a výnosný prodej vaší
+              nemovitosti.
+            </p>
+          </div>
+          <div>
+            <div class="mono mb-4 text-xs tracking-[0.25em] text-black/40">
+              SLUŽBY
+            </div>
+            <div class="flex flex-col gap-2.5 text-sm text-black/60">
+              <a href="#proc" class="hover:text-black transition-colors">
+                Proč u mě
+              </a>
+              <a href="#postup" class="hover:text-black transition-colors">
+                Postup
+              </a>
+              <a href="#klienti" class="hover:text-black transition-colors">
+                Klienti
+              </a>
+            </div>
+          </div>
+          <div>
+            <div class="mono mb-4 text-xs tracking-[0.25em] text-black/40">
+              KONTAKT
+            </div>
+            <div class="flex flex-col gap-2.5 text-sm text-black/60">
+              <a href="#sluzby" class="hover:text-black transition-colors">
+                Ceník
+              </a>
+              <a href="#faq" class="hover:text-black transition-colors">
+                Časté otázky
+              </a>
+            </div>
+          </div>
+          <div>
+            <div class="mono mb-4 text-xs tracking-[0.25em] text-black/40">
+              DOSTUPNOST
+            </div>
+            <div class="mono flex items-center gap-2 text-xs text-[#16A34A]">
+              <span class="h-1.5 w-1.5 bg-[#16A34A] pulse-dot"></span>
+              PŘIJÍMÁM NOVÉ KLIENTY
+            </div>
+          </div>
+        </div>
+        <div
+          class="mono mt-12 flex flex-col gap-2 border-t border-black/10 pt-6 text-xs text-black/40 sm:flex-row sm:justify-between"
+        >
+          <span>© 2025 VÍT KRÁČMAR</span>
+          <span>PRIVACY · TERMS · SLA</span>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      lucide.createIcons();
+
+      const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // Nav opacity on scroll
+      const nav = document.getElementById('nav');
+      window.addEventListener('scroll', () => {
+        if (window.scrollY > 40) {
+          nav.classList.add('bg-[#050505]/95', 'border-white/10');
+        } else {
+          nav.classList.remove('bg-[#050505]/95', 'border-white/10');
+        }
+      }, { passive: true });
+
+      // Mobile menu
+      document.getElementById('menuBtn').addEventListener('click', () => {
+        document.getElementById('mobileMenu').classList.toggle('hidden');
+        nav.classList.add('bg-[#050505]/95');
+      });
+
+      // Counters — fast and restrained
+      const counterObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          const el = entry.target;
+          counterObserver.unobserve(el);
+          const target = parseFloat(el.dataset.target);
+          const decimal = el.dataset.decimal === 'true';
+          if (prefersReduced) { el.textContent = decimal ? target.toFixed(1) : Math.round(target); return; }
+          const duration = 700;
+          const start = performance.now();
+          const tick = (now) => {
+            const p = Math.min((now - start) / duration, 1);
+            const eased = 1 - Math.pow(1 - p, 3);
+            const val = target * eased;
+            el.textContent = decimal ? val.toFixed(1) : Math.round(val);
+            if (p < 1) requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        });
+      }, { threshold: 0.5 });
+      document.querySelectorAll('.counter').forEach(el => counterObserver.observe(el));
+
+      // GSAP ScrollTrigger cinematic experience
+      if (window.gsap && window.ScrollTrigger && !prefersReduced) {
+        gsap.registerPlugin(ScrollTrigger);
+        document.body.classList.add('gsap-on');
+
+        // Scroll-synced progress bar
+        gsap.to('#scrollProgress', { scaleX: 1, ease: 'none', scrollTrigger: { start: 0, end: 'max', scrub: 0.4 } });
+
+        // Element-by-element reveals: fade + slide + blur
+        gsap.utils.toArray('.reveal').forEach((el) => {
+          gsap.fromTo(el,
+            { autoAlpha: 0, y: 56, filter: 'blur(14px)' },
+            { autoAlpha: 1, y: 0, filter: 'blur(0px)', duration: 1.2, ease: 'power3.out',
+              scrollTrigger: { trigger: el, start: 'top 88%', once: true } });
+        });
+
+        // Hero: parallax background + cinematic exit
+        gsap.fromTo('#hero img',
+          { objectPosition: '50% 35%' },
+          { objectPosition: '50% 65%', ease: 'none',
+            scrollTrigger: { trigger: '#hero', start: 'top top', end: 'bottom top', scrub: 0.6 } });
+        gsap.to('#hero .max-w-3xl', { yPercent: -18, autoAlpha: 0, filter: 'blur(10px)', ease: 'none',
+          scrollTrigger: { trigger: '#hero', start: 'top top', end: 'bottom 25%', scrub: 0.6 } });
+
+        // Platform: staggered feature rows + progressive command UI reveal
+        gsap.utils.toArray('#platform .border-y > div').forEach((row, i) => {
+          gsap.fromTo(row,
+            { autoAlpha: 0, x: -36, filter: 'blur(8px)' },
+            { autoAlpha: 1, x: 0, filter: 'blur(0px)', duration: 0.9, delay: i * 0.08, ease: 'power3.out',
+              scrollTrigger: { trigger: row, start: 'top 90%', once: true } });
+        });
+        gsap.fromTo('#commandPanel > div',
+          { autoAlpha: 0, y: 28 },
+          { autoAlpha: 1, y: 0, duration: 0.8, stagger: 0.18, ease: 'power3.out',
+            scrollTrigger: { trigger: '#commandPanel', start: 'top 80%', once: true } });
+
+        // Use-case panels: background parallax + immersive clip transitions
+        gsap.utils.toArray('.panel').forEach((panel) => {
+          const img = panel.querySelector('img');
+          if (img) {
+            gsap.fromTo(img,
+              { objectPosition: '50% 30%' },
+              { objectPosition: '50% 70%', ease: 'none',
+                scrollTrigger: { trigger: panel, start: 'top bottom', end: 'bottom top', scrub: 0.6 } });
+          }
+          gsap.fromTo(panel,
+            { clipPath: 'inset(8% 5% 8% 5%)' },
+            { clipPath: 'inset(0% 0% 0% 0%)', ease: 'none',
+              scrollTrigger: { trigger: panel, start: 'top 95%', end: 'top 35%', scrub: 0.6 } });
+        });
+
+        // Pricing rows: progressive reveal
+        gsap.utils.toArray('#pricing tbody tr').forEach((tr, i) => {
+          gsap.fromTo(tr,
+            { autoAlpha: 0, y: 20 },
+            { autoAlpha: 1, y: 0, duration: 0.6, delay: i * 0.06, ease: 'power2.out',
+              scrollTrigger: { trigger: tr, start: 'top 92%', once: true } });
+        });
+      } else {
+        // Fallback: reveal on scroll
+        const revealObserver = new IntersectionObserver((entries) => {
+          entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); revealObserver.unobserve(e.target); } });
+        }, { threshold: 0.15 });
+        document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+      }
+    </script>
+
+    <script>
+      (function(){var prefersReduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;var canvas=document.getElementById('particleCanvas');if(canvas&&!prefersReduced){var gl=canvas.getContext('webgl',{alpha:true,antialias:false});if(gl){var resize=function(){canvas.width=canvas.clientWidth;canvas.height=canvas.clientHeight;gl.viewport(0,0,canvas.width,canvas.height);};resize();window.addEventListener('resize',resize);var N=260;var data=new Float32Array(N*4);for(var i=0;i<N;i++){data[i*4]=Math.random()*2-1;data[i*4+1]=Math.random()*2-1;data[i*4+2]=Math.random()*0.8+0.2;data[i*4+3]=Math.random();}var vsSrc='attribute vec4 a;uniform float t;varying float vA;void main(){float y=mod(a.y+1.0+t*a.z*0.06,2.0)-1.0;float x=a.x+sin(t*0.4+a.w*6.283)*0.02;vA=a.z;gl_Position=vec4(x,y,0.0,1.0);gl_PointSize=a.z*3.0+1.0;}';var fsSrc='precision mediump float;varying float vA;void main(){float d=length(gl_PointCoord-vec2(0.5));if(d>0.5)discard;float al=(1.0-d*2.0)*0.5*vA;gl_FragColor=vec4(1.0,1.0,1.0,al);}';var sh=function(type,src){var s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s;};var p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_SHADER,vsSrc));gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fsSrc));gl.linkProgram(p);gl.useProgram(p);var buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,data,gl.STATIC_DRAW);var loc=gl.getAttribLocation(p,'a');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,4,gl.FLOAT,false,0,0);var tLoc=gl.getUniformLocation(p,'t');gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);gl.clearColor(0,0,0,0);var frame=function(now){gl.clear(gl.COLOR_BUFFER_BIT);gl.uniform1f(tLoc,now*0.001);gl.drawArrays(gl.POINTS,0,N);requestAnimationFrame(frame);};requestAnimationFrame(frame);}}document.querySelectorAll('h1,h2').forEach(function(h){(function walk(node){Array.prototype.slice.call(node.childNodes).forEach(function(child){if(child.nodeType===3){var frag=document.createDocumentFragment();child.textContent.split('').forEach(function(ch){if(ch.trim()===''){frag.appendChild(document.createTextNode(ch));return;}var s=document.createElement('span');s.textContent=ch;s.className='wchar';frag.appendChild(s);});node.replaceChild(frag,child);}else if(child.nodeType===1&&child.tagName!=='BR'){walk(child);}});})(h);if(prefersReduced)return;var spans=h.querySelectorAll('.wchar');var raf=null,mx=0,my=0;var update=function(){raf=null;spans.forEach(function(s){var r=s.getBoundingClientRect();var dx=mx-(r.left+r.width/2),dy=my-(r.top+r.height/2);var d=Math.sqrt(dx*dx+dy*dy);var w=Math.round(Math.max(600,Math.min(900,900-(d/220)*300)));s.style.fontWeight=w;});};h.addEventListener('pointermove',function(e){mx=e.clientX;my=e.clientY;if(!raf)raf=requestAnimationFrame(update);});h.addEventListener('pointerleave',function(){spans.forEach(function(s){s.style.fontWeight='';});});});})();
+    </script>
+  </body>
+</html>

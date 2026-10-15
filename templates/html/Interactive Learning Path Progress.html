@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Learning Path Setup | Learn Forward</title>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body, html {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #111;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+    h1, h2, h3, h4 {
+      font-family: 'Manrope', sans-serif !important;
+      font-weight: 200 !important;
+      letter-spacing: -0.03em !important;
+    }
+    #shader-canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      z-index: 0;
+      background: #111;
+    }
+    .glass-effect {
+      backdrop-filter: blur(14px) brightness(0.91);
+      -webkit-backdrop-filter: blur(14px) brightness(0.91);
+    }
+    .gradient-text {
+      background-clip: text;
+      -webkit-background-clip: text;
+      color: transparent;
+    }
+    .card-divider {
+      height: 1px;
+      background-image: linear-gradient(90deg,
+        transparent,
+        rgba(255,255,255,0.09) 20%,
+        rgba(255,255,255,0.22) 50%,
+        rgba(255,255,255,0.09) 80%,
+        transparent
+      );
+    }
+    .step-active {
+      background: rgba(59, 130, 246, 0.2);
+      border-color: rgba(59, 130, 246, 0.5);
+    }
+    .step-done {
+      background: rgba(52, 211, 153, 0.2);
+      border-color: rgba(52, 211, 153, 0.5);
+    }
+    .step-inactive {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+    .interest-tag input:checked + label {
+      background: rgba(59, 130, 246, 0.3);
+      border-color: rgba(59, 130, 246, 0.7);
+    }
+  </style>
+  <script>
+    window.onload = function() {
+      const canvas = document.getElementById('shader-canvas');
+      const gl = canvas.getContext('webgl');
+      function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+      }
+      resize();
+      window.addEventListener('resize', resize);
+
+      const vertexShaderSource = `
+        attribute vec2 aPosition;
+        void main() {
+          gl_Position = vec4(aPosition, 0.0, 1.0);
+        }
+      `;
+      const fragmentShaderSource = `
+        precision highp float;
+        uniform float iTime;
+        uniform vec2 iResolution;
+        mat2 rotate2d(float angle){
+          float c = cos(angle), s = sin(angle);
+          return mat2(c, -s, s, c);
+        }
+        float variation(vec2 v1, vec2 v2, float strength, float speed) {
+          return sin(
+              dot(normalize(v1), normalize(v2)) * strength + iTime * speed
+          ) / 100.0;
+        }
+        vec3 paintCircle (vec2 uv, vec2 center, float rad, float width) {
+          vec2 diff = center-uv;
+          float len = length(diff);
+          len += variation(diff, vec2(0.0, 1.0), 5.0, 2.0);
+          len -= variation(diff, vec2(1.0, 0.0), 5.0, 2.0);
+          float circle = smoothstep(rad-width, rad, len) - smoothstep(rad, rad+width, len);
+          return vec3(circle);
+        }
+        void main() {
+          vec2 uv = gl_FragCoord.xy / iResolution.xy;
+          uv.x *= 1.5;
+          uv.x -= 0.25;
+          vec3 color = vec3(0.0);
+          float radius = 0.35;
+          vec2 center = vec2(0.5);
+          color += paintCircle(uv, center, radius, 0.035);
+          color += paintCircle(uv, center, radius - 0.018, 0.01);
+          color += paintCircle(uv, center, radius + 0.018, 0.005);
+          vec2 v = rotate2d(iTime) * uv;
+          color *= vec3(0.2, 0.5, 0.9-v.y*v.x);
+          color += paintCircle(uv, center, radius, 0.003);
+          gl_FragColor = vec4(color, 1.0);
+        }
+      `;
+      function compileShader(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          throw new Error(gl.getShaderInfoLog(shader));
+        }
+        return shader;
+      }
+      const vertexShader = compileShader(gl.VERTEX_SHADER, vertexShaderSource);
+      const fragmentShader = compileShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+      const program = gl.createProgram();
+      gl.attachShader(program, vertexShader);
+      gl.attachShader(program, fragmentShader);
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(program));
+      }
+      gl.useProgram(program);
+      const buffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        -1, -1,
+         1, -1,
+        -1,  1,
+        -1,  1,
+         1, -1,
+         1,  1,
+      ]), gl.STATIC_DRAW);
+      const aPosition = gl.getAttribLocation(program, 'aPosition');
+      gl.enableVertexAttribArray(aPosition);
+      gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
+      const iTimeLoc = gl.getUniformLocation(program, 'iTime');
+      const iResLoc = gl.getUniformLocation(program, 'iResolution');
+      function render(time) {
+        gl.uniform1f(iTimeLoc, time * 0.001);
+        gl.uniform2f(iResLoc, canvas.width, canvas.height);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        requestAnimationFrame(render);
+      }
+      requestAnimationFrame(render);
+    };
+  </script>
+</head>
+<body>
+  <canvas id="shader-canvas"></canvas>
+  
+  <div class="relative z-10 w-full min-h-screen flex flex-col items-center justify-center px-4 py-12">
+    <!-- Header Section -->
+    <div class="w-full max-w-5xl mx-auto text-center mb-12">
+      <h1 class="text-[36px] md:text-[48px] lg:text-[56px] font-[200] leading-tight tracking-[-0.03em] gradient-text bg-gradient-to-r from-white via-blue-300 to-indigo-400">
+        Let's Set Up Your Learning Path
+      </h1>
+      <p class="mt-4 text-[16px] md:text-[18px] text-white/70 max-w-2xl mx-auto">
+        Complete these four steps to create a personalized learning experience tailored to your goals and interests.
+      </p>
+    </div>
+    
+    <!-- Progress Steps -->
+    <div class="flex justify-center items-center w-full max-w-3xl mb-12">
+      <div class="flex flex-col md:flex-row justify-between w-full gap-2 md:gap-4">
+        <!-- Step 1 -->
+        <div class="flex flex-1 items-center">
+          <div class="step-active w-10 h-10 rounded-full border flex items-center justify-center text-blue-400">
+            <i class="fas fa-star"></i>
+          </div>
+          <div class="h-1 flex-grow hidden md:block bg-gradient-to-r from-blue-500/50 to-white/10"></div>
+        </div>
+        
+        <!-- Step 2 -->
+        <div class="flex flex-1 items-center">
+          <div class="step-inactive w-10 h-10 rounded-full border flex items-center justify-center text-white/50">
+            <i class="fas fa-flag"></i>
+          </div>
+          <div class="h-1 flex-grow hidden md:block bg-white/10"></div>
+        </div>
+        
+        <!-- Step 3 -->
+        <div class="flex flex-1 items-center">
+          <div class="step-inactive w-10 h-10 rounded-full border flex items-center justify-center text-white/50">
+            <i class="fas fa-sliders"></i>
+          </div>
+          <div class="h-1 flex-grow hidden md:block bg-white/10"></div>
+        </div>
+        
+        <!-- Step 4 -->
+        <div class="flex items-center">
+          <div class="step-inactive w-10 h-10 rounded-full border flex items-center justify-center text-white/50">
+            <i class="fas fa-route"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Step Labels -->
+    <div class="flex flex-col md:flex-row justify-between w-full max-w-3xl mb-8 gap-2 md:gap-0">
+      <div class="text-center">
+        <p class="text-blue-400 font-medium">Step 1</p>
+        <p class="text-white text-sm">Choose Your Interests</p>
+      </div>
+      <div class="text-center">
+        <p class="text-white/50 font-medium">Step 2</p>
+        <p class="text-white/50 text-sm">Set Learning Goal</p>
+      </div>
+      <div class="text-center">
+        <p class="text-white/50 font-medium">Step 3</p>
+        <p class="text-white/50 text-sm">Customize Experience</p>
+      </div>
+      <div class="text-center">
+        <p class="text-white/50 font-medium">Step 4</p>
+        <p class="text-white/50 text-sm">Build First Path</p>
+      </div>
+    </div>
+    
+    <!-- Main Card -->
+    <div class="glass-effect bg-gradient-to-br from-white/15 to-white/5 border border-white/15 rounded-2xl shadow-xl p-8 w-full max-w-3xl">
+      <!-- Step 1 Content -->
+      <div class="step-content" id="step1">
+        <div class="flex items-center mb-6">
+          <div class="w-10 h-10 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center">
+            <i class="fas fa-star text-blue-400"></i>
+          </div>
+          <h3 class="ml-4 text-2xl text-white">Choose Your Interests</h3>
+        </div>
+        
+        <p class="text-white/70 mb-8">Select topics that interest you the most. We'll use these to recommend courses and learning paths that match your preferences.</p>
+        
+        <!-- Interest Tags -->
+        <div class="flex flex-wrap gap-3 mb-8">
+          <div class="interest-tag">
+            <input type="checkbox" id="programming" class="hidden">
+            <label for="programming" class="cursor-pointer px-4 py-2 rounded-full bg-white/10 border border-white/20 text-white text-sm hover:bg-white/15 transition-colors flex items-center">
+              <i class="fas fa-code mr-2"></i> Programming
+            </label>
+          </div>
+          
+          <div class="interest-tag">
+            <input type="checkbox" id="data-science" class="hidden">
+            <label for="data-science" class="cursor-pointer px-4 py-2 rounded-full bg-white/10 border border-white/20 text-white text-sm hover:bg-white/15 transition-colors flex items-center">
+              <i class="fas fa-chart-line mr-2"></i> Data Science
+            </label>
+          </div>
+          
+          <div class="interest-tag">
+            <input type="checkbox" id="ai" class="hidden">
+            <label for="ai" class="cursor-pointer px-4 py-2 rounded-full bg-white/10 border border-white/20 text-white text-sm hover:bg-white/15 transition-colors flex items-center">
+              <i class="fas fa-robot mr-2"></i> Artificial Intelligence
+            </label>
+          </div>
+          
+          <div class="interest-tag">
+            <input type="checkbox" id="design" class="hidden">
+            <label for="design" class="cursor-pointer px-4 py-2 rounded-full bg-white/10 border border-white/20 text-white text-sm hover:bg-white/15 transition-colors flex items-center">
+              <i class="fas fa-paint-brush mr-2"></i> Design
+            </label>
+          </div>
+          
+          <div class="interest-tag">
+            <input type="checkbox" id="business" class="hidden">
+            <label for="business" class="cursor-pointer px-4 py-2 rounded-full bg-white/10 border border-white/20 text-white text-sm hover:bg-white/15 transition-colors flex items-center">
+              <i class="fas fa-briefcase mr-2"></i> Business
+            </label>
+          </div>
+          
+          <div class="interest-tag">
+            <input type="checkbox" id="marketing" class="hidden">
+            <label for="marketing" class="cursor-pointer px-4 py-2 rounded-full bg-white/10 border border-white/20 text-white text-sm hover:bg-white/15 transition-colors flex items-center">
+              <i class="fas fa-bullhorn mr-2"></i> Marketing
+            </label>
+          </div>
+          
+          <div class="interest-tag">
+            <input type="checkbox" id="language" class="hidden">
+            <label for="language" class="cursor-pointer px-4 py-2 rounded-full bg-white/10 border border-white/20 text-white text-sm hover:bg-white/15 transition-colors flex items-center">
+              <i class="fas fa-language mr-2"></i> Languages
+            </label>
+          </div>
+          
+          <div class="interest-tag">
+            <input type="checkbox" id="science" class="hidden">
+            <label for="science" class="cursor-pointer px-4 py-2 rounded-full bg-white/10 border border-white/20 text-white text-sm hover:bg-white/15 transition-colors flex items-center">
+              <i class="fas fa-flask mr-2"></i> Science
+            </label>
+          </div>
+          
+          <div class="interest-tag">
+            <input type="checkbox" id="health" class="hidden">
+            <label for="health" class="cursor-pointer px-4 py-2 rounded-full bg-white/10 border border-white/20 text-white text-sm hover:bg-white/15 transition-colors flex items-center">
+              <i class="fas fa-heartbeat mr-2"></i> Health
+            </label>
+          </div>
+          
+          <div class="interest-tag">
+            <input type="checkbox" id="photography" class="hidden">
+            <label for="photography" class="cursor-pointer px-4 py-2 rounded-full bg-white/10 border border-white/20 text-white text-sm hover:bg-white/15 transition-colors flex items-center">
+              <i class="fas fa-camera mr-2"></i> Photography
+            </label>
+          </div>
+        </div>
+        
+        <!-- Suggested Categories -->
+        <div class="mb-8">
+          <h4 class="text-white/80 text-sm mb-3">Suggested for you based on your profile:</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div class="glass-effect p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+              <div class="flex items-center">
+                <i class="fas fa-laptop-code text-blue-400 mr-3"></i>
+                <div>
+                  <p class="text-white text-sm font-medium">Web Development</p>
+                  <p class="text-white/60 text-xs">Front-end, back-end, and full stack</p>
+                </div>
+              </div>
+            </div>
+            
+            <div class="glass-effect p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+              <div class="flex items-center">
+                <i class="fas fa-project-diagram text-blue-400 mr-3"></i>
+                <div>
+                  <p class="text-white text-sm font-medium">Project Management</p>
+                  <p class="text-white/60 text-xs">Agile, Scrum, and leadership</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="card-divider w-full my-8"></div>
+        
+        <!-- Navigation -->
+        <div class="flex justify-between">
+          <button class="px-6 py-2 rounded-lg bg-white/5 text-white/50 border border-white/10 hover:bg-white/10 transition-colors">
+            Skip
+          </button>
+          <button class="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors">
+            Continue <i class="fas fa-arrow-right ml-2"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Tips Section -->
+    <div class="mt-12 w-full max-w-3xl">
+      <div class="flex items-start gap-4 glass-effect bg-gradient-to-br from-white/10 to-white/5 border border-white/10 rounded-xl p-4">
+        <div class="mt-1">
+          <div class="w-8 h-8 rounded-full bg-blue-500/30 flex items-center justify-center">
+            <i class="fas fa-lightbulb text-yellow-300 text-sm"></i>
+          </div>
+        </div>
+        <div>
+          <h4 class="text-white text-lg mb-1">Pro Tip</h4>
+          <p class="text-white/70 text-sm">Choose at least 3-5 interests for the best learning recommendations. You can always update your interests later from your profile settings.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

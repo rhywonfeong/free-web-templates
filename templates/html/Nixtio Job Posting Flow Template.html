@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Job Posting Flow Prototype</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link
+href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap"
+rel="stylesheet"
+/>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<style>
+body { font-family: 'Inter', sans-serif; }
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
+/* Custom Range Slider */
+input[type=range] {
+-webkit-appearance: none;
+width: 100%;
+background: transparent;
+}
+input[type=range]::-webkit-slider-thumb {
+-webkit-appearance: none;
+height: 16px;
+width: 16px;
+border-radius: 50%;
+background: #111827;
+cursor: pointer;
+margin-top: -6px;
+box-shadow: 0 0 0 2px #fff, 0 0 0 3px #111827;
+}
+input[type=range]::-webkit-slider-runnable-track {
+width: 100%;
+height: 4px;
+cursor: pointer;
+background: #e5e7eb;
+border-radius: 2px;
+}
+input[type=range]:focus { outline: none; }
+/* Custom Radio */
+.custom-radio input[type="radio"] { display: none; }
+.custom-radio .radio-mark {
+width: 16px; height: 16px; border-radius: 50%;
+border: 1px solid #d1d5db; display: inline-flex;
+align-items: center; justify-content: center;
+transition: all 0.2s;
+}
+.custom-radio input[type="radio"]:checked + .radio-mark {
+border-color: #111827;
+}
+.custom-radio input[type="radio"]:checked + .radio-mark::after {
+content: ''; width: 8px; height: 8px; border-radius: 50%; background: #111827;
+}
+/* Chip Selection */
+.chip[data-selected="true"] {
+background-color: #111827;
+color: white;
+border-color: #111827;
+}
+/* Hide elements */
+.hidden-step { display: none; }
+.modal-active { overflow: hidden; }
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body
+    class="antialiased flex flex-col h-screen overflow-hidden selection:bg-gray-100 selection:text-gray-900 bg-white text-gray-900"
+  >
+    <!-- Top Header -->
+    <header
+      class="fixed top-0 w-full backdrop-blur-md border-b z-40 h-16 flex items-center px-4 md:px-8 justify-between bg-white/80 border-gray-100"
+    >
+      <div class="flex items-center gap-8 md:gap-12">
+        <div
+          class="font-semibold text-lg tracking-tighter uppercase cursor-pointer"
+        >
+          WRKFLW
+        </div>
+        <nav
+          class="hidden md:flex items-center gap-6 text-sm text-gray-500 font-medium"
+        >
+          <a href="#" class="transition-colors hover:text-gray-900">
+            Hire worker
+          </a>
+          <a href="#" class="transition-colors hover:text-gray-900">
+            Manage work
+          </a>
+          <a href="#" class="transition-colors hover:text-gray-900">Reports</a>
+        </nav>
+      </div>
+      <div class="flex items-center gap-5">
+        <button
+          class="transition-colors flex items-center text-gray-400 hover:text-gray-900"
+        >
+          <iconify-icon
+            icon="solar:bell-linear"
+            width="22"
+            stroke-width="1.5"
+          ></iconify-icon>
+        </button>
+        <button
+          class="hidden md:block px-4 py-2 rounded-md text-sm font-medium transition-colors bg-gray-900 text-white hover:bg-gray-800"
+        >
+          Post a job
+        </button>
+        <div
+          class="w-8 h-8 rounded-full border flex items-center justify-center cursor-pointer bg-gray-100 border-gray-200"
+        >
+          <iconify-icon
+            icon="solar:user-linear"
+            width="18"
+            class="text-gray-500"
+          ></iconify-icon>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 overflow-y-auto pt-24 pb-32">
+      <div class="max-w-xl mx-auto w-full px-4 md:px-0">
+        <!-- Dynamic Progress Indicator -->
+        <div
+          id="progress-indicator"
+          class="text-xs font-medium mb-3 tracking-wide uppercase text-gray-400"
+        >
+          Step
+          <span id="current-step-num">1</span>
+          of 6
+        </div>
+
+        <!-- Screen 1: Job Title & Platforms -->
+        <div id="step-1" class="step-container">
+          <h1
+            class="text-3xl md:text-4xl font-medium tracking-tight mb-2 text-gray-900"
+          >
+            Let’s start with a strong title
+          </h1>
+          <p class="text-sm text-gray-500 mb-10 leading-relaxed">
+            This helps your job post stand out to the right candidates. It’s the
+            first thing they see, make it count!
+          </p>
+
+          <div class="space-y-8">
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-gray-900">
+                Job Title
+              </label>
+              <input
+                type="text"
+                id="s1-title"
+                placeholder="e.g., Leave a positive review for my coffee shop"
+                class="w-full rounded-md border px-3.5 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 transition-shadow border-gray-200"
+              />
+            </div>
+
+            <div class="space-y-3">
+              <label class="block text-sm font-medium text-gray-900">
+                Select the platform(s) where the review(s) should be posted.
+                Choose one or more.
+              </label>
+              <div class="flex flex-wrap gap-2 gap-x-2 gap-y-2" id="s1-chips">
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  Google Maps
+                </button>
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="true"
+                >
+                  Booking
+                </button>
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  Airbnb
+                </button>
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  TripAdvisor
+                </button>
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  Yelp
+                </button>
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  Facebook
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-gray-900">
+                Other platform
+                <span class="font-normal text-gray-400">(Optional)</span>
+              </label>
+              <input
+                type="text"
+                class="w-full rounded-md border px-3.5 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 transition-shadow border-gray-200"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Screen 2: Type and Theme -->
+        <div id="step-2" class="step-container hidden-step">
+          <h1
+            class="text-3xl md:text-4xl font-medium tracking-tight mb-2 text-gray-900"
+          >
+            Type and theme
+          </h1>
+          <p class="text-sm text-gray-500 mb-10 leading-relaxed">
+            Specify the type and theme of the place/business/property (e.g.,
+            coffee shop, hotel, dental clinic, coworking space, etc.).
+          </p>
+
+          <div class="relative">
+            <div class="relative">
+              <input
+                type="text"
+                id="s2-dropdown"
+                placeholder="Choose the type from the list or type your own"
+                class="w-full rounded-md border px-3.5 py-2.5 pr-10 text-sm placeholder-gray-400 focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 transition-shadow cursor-text border-gray-200 bg-white"
+              />
+              <div
+                class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400"
+              >
+                <iconify-icon
+                  icon="solar:alt-arrow-down-linear"
+                  width="18"
+                ></iconify-icon>
+              </div>
+            </div>
+            <!-- Mock Dropdown List (Hidden initially, opens on focus conceptually, but for prototype we just validate input) -->
+          </div>
+        </div>
+
+        <!-- Screen 3: Scope of Work -->
+        <div id="step-3" class="step-container hidden-step">
+          <h1
+            class="text-3xl md:text-4xl font-medium tracking-tight mb-2 text-gray-900"
+          >
+            Next, estimate the scope of your work
+          </h1>
+          <p class="text-sm text-gray-500 mb-10 leading-relaxed">
+            Consider the size of your project.
+          </p>
+
+          <div class="space-y-10">
+            <div class="space-y-6">
+              <label class="block text-sm font-medium text-gray-900">
+                How many reviews do you need?
+              </label>
+              <input
+                type="range"
+                min="1"
+                max="100"
+                value="10"
+                id="s3-slider"
+                class="w-full"
+              />
+              <div class="flex items-center gap-3 w-32">
+                <input
+                  type="number"
+                  id="s3-number"
+                  value="10"
+                  min="1"
+                  max="100"
+                  class="w-full rounded-md border px-3 py-2 text-sm text-center focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 border-gray-200"
+                />
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-gray-900">
+                Are there any content requirements for the review?
+              </label>
+              <div class="relative">
+                <textarea
+                  id="s3-textarea"
+                  rows="5"
+                  placeholder="For example: specific keywords, topics to mention, tone of voice, length, etc."
+                  class="w-full rounded-md border px-3.5 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 transition-shadow resize-none border-gray-200"
+                ></textarea>
+                <div class="absolute bottom-3 right-3 text-xs text-gray-400">
+                  <span id="char-count">0</span>
+                  /10000
+                </div>
+              </div>
+            </div>
+            <div class="space-y-3">
+              <label class="block text-sm font-medium text-gray-900">
+                Preferred review length
+              </label>
+              <div class="grid grid-cols-3 gap-3 w-full">
+                <label class="relative cursor-pointer group">
+                  <input
+                    type="radio"
+                    name="review_length"
+                    value="short"
+                    class="peer sr-only"
+                    checked=""
+                  />
+                  <div
+                    class="flex flex-col items-center justify-center h-full py-3 px-2 border rounded-lg transition-all peer-checked:border-gray-900 peer-checked:ring-1 peer-checked:ring-gray-900 peer-checked:bg-gray-50 border-gray-200 hover:border-gray-300 bg-white"
+                  >
+                    <span class="text-sm font-medium text-gray-900">Short</span>
+                    <span
+                      class="text-xs font-normal text-gray-500 mt-1 text-center"
+                    >
+                      1-2 sentences
+                    </span>
+                  </div>
+                </label>
+                <label class="relative cursor-pointer group">
+                  <input
+                    type="radio"
+                    name="review_length"
+                    value="medium"
+                    class="peer sr-only"
+                  />
+                  <div
+                    class="flex flex-col items-center justify-center h-full py-3 px-2 border rounded-lg transition-all peer-checked:border-gray-900 peer-checked:ring-1 peer-checked:ring-gray-900 peer-checked:bg-gray-50 border-gray-200 hover:border-gray-300 bg-white"
+                  >
+                    <span class="text-sm font-medium text-gray-900">
+                      Medium
+                    </span>
+                    <span
+                      class="text-xs font-normal text-gray-500 mt-1 text-center"
+                    >
+                      3-4 sentences
+                    </span>
+                  </div>
+                </label>
+                <label class="relative cursor-pointer group">
+                  <input
+                    type="radio"
+                    name="review_length"
+                    value="long"
+                    class="peer sr-only"
+                  />
+                  <div
+                    class="flex flex-col items-center justify-center h-full py-3 px-2 border rounded-lg transition-all peer-checked:border-gray-900 peer-checked:ring-1 peer-checked:ring-gray-900 peer-checked:bg-gray-50 border-gray-200 hover:border-gray-300 bg-white"
+                  >
+                    <span class="text-sm font-medium text-gray-900">Long</span>
+                    <span
+                      class="text-xs font-normal text-gray-500 mt-1 text-center"
+                    >
+                      Detailed review
+                    </span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Screen 4: Location -->
+        <div id="step-4" class="step-container hidden-step">
+          <h1
+            class="text-3xl md:text-4xl font-medium tracking-tight mb-10 text-gray-900"
+          >
+            Location where the review should appear
+          </h1>
+
+          <div class="space-y-6">
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-gray-900">
+                Select a country
+              </label>
+              <div class="relative">
+                <select
+                  id="s4-country"
+                  class="w-full appearance-none rounded-md border px-3.5 py-2.5 pr-10 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 border-gray-200 text-gray-900 bg-white"
+                >
+                  <option value="" disabled="" selected="">
+                    Select country...
+                  </option>
+                  <option value="us">United States</option>
+                  <option value="ua">Ukraine</option>
+                  <option value="uk">United Kingdom</option>
+                </select>
+                <div
+                  class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400"
+                >
+                  <iconify-icon
+                    icon="solar:alt-arrow-down-linear"
+                    width="18"
+                  ></iconify-icon>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-gray-900">
+                Select a city
+              </label>
+              <div class="relative">
+                <select
+                  id="s4-city"
+                  disabled=""
+                  class="w-full appearance-none rounded-md border px-3.5 py-2.5 pr-10 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 disabled:text-gray-400 transition-colors border-gray-200 text-gray-900 bg-gray-50"
+                >
+                  <option value="" disabled="" selected="">
+                    Select city...
+                  </option>
+                  <option value="kyiv">Kyiv</option>
+                  <option value="ny">New York</option>
+                  <option value="lon">London</option>
+                </select>
+                <div
+                  class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400"
+                >
+                  <iconify-icon
+                    icon="solar:alt-arrow-down-linear"
+                    width="18"
+                  ></iconify-icon>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Screen 5: Language -->
+        <div id="step-5" class="step-container hidden-step">
+          <h1
+            class="text-3xl md:text-4xl font-medium tracking-tight mb-8 text-gray-900"
+          >
+            What language should the review be written in?
+          </h1>
+
+          <div class="space-y-8">
+            <div class="space-y-3">
+              <label class="block text-sm font-medium text-gray-900">
+                Choose one or more
+              </label>
+              <div class="flex flex-wrap gap-2" id="s5-chips">
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  English
+                </button>
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  Ukrainian
+                </button>
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  Russian
+                </button>
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  German
+                </button>
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  Spanish
+                </button>
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  French
+                </button>
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  Chinese
+                </button>
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  Arabic
+                </button>
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  Turkish
+                </button>
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  Hebrew
+                </button>
+                <button
+                  type="button"
+                  class="chip px-4 py-2 rounded-full border text-sm transition-all focus:outline-none border-gray-200 text-gray-600 hover:border-gray-300"
+                  data-selected="false"
+                >
+                  Italian
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <label class="block text-sm font-medium text-gray-900">
+                Other
+                <span class="font-normal text-gray-400">(Optional)</span>
+              </label>
+              <input
+                type="text"
+                class="w-full rounded-md border px-3.5 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 transition-shadow border-gray-200"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Screen 6: Budget -->
+        <div id="step-6" class="step-container hidden-step">
+          <h1
+            class="text-3xl md:text-4xl font-medium tracking-tight mb-2 text-gray-900"
+          >
+            Budget
+          </h1>
+          <p class="text-sm text-gray-500 mb-10 leading-relaxed">
+            The price per review is automatically generated based on the
+            selected platform. You may adjust if needed.
+          </p>
+
+          <div class="space-y-4">
+            <label
+              class="custom-radio flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors border-gray-200 hover:bg-gray-50"
+            >
+              <div class="flex items-center gap-3">
+                <input
+                  type="radio"
+                  name="budget_type"
+                  value="per_review"
+                  checked=""
+                  id="radio-per-review"
+                />
+                <div class="radio-mark"></div>
+                <span class="text-sm font-medium text-gray-900">
+                  Price per review:
+                </span>
+              </div>
+              <div class="relative w-32">
+                <span
+                  class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 text-sm"
+                >
+                  $
+                </span>
+                <input
+                  type="number"
+                  value="10.00"
+                  step="0.01"
+                  class="w-full rounded-md border py-2 pl-7 pr-3 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 border-gray-200"
+                />
+              </div>
+            </label>
+
+            <label
+              class="custom-radio flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors border-gray-200 hover:bg-gray-50"
+            >
+              <div class="flex items-center gap-3">
+                <input
+                  type="radio"
+                  name="budget_type"
+                  value="total"
+                  id="radio-total"
+                />
+                <div class="radio-mark"></div>
+                <span class="text-sm font-medium text-gray-900">
+                  Total budget:
+                </span>
+              </div>
+              <div class="relative w-32">
+                <span
+                  class="absolute inset-y-0 left-0 flex items-center pl-3 text-sm text-gray-400"
+                >
+                  $
+                </span>
+                <input
+                  type="number"
+                  placeholder="0.00"
+                  step="0.01"
+                  id="input-total"
+                  disabled=""
+                  class="w-full rounded-md border py-2 pl-7 pr-3 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 disabled:bg-gray-50 disabled:text-gray-400 border-gray-200"
+                />
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Screen 8: Billing Method Selection -->
+        <div id="step-8" class="step-container hidden-step mt-4">
+          <h1
+            class="text-3xl md:text-4xl font-medium tracking-tight mb-2 text-gray-900"
+          >
+            Choose a billing method to start hiring the best
+          </h1>
+          <p class="text-sm text-gray-500 mb-10 leading-relaxed">
+            Adding a billing method has increased client hiring speed by up to
+            3X faster.
+          </p>
+
+          <div class="space-y-3">
+            <label
+              class="custom-radio flex items-center p-4 border rounded-lg cursor-pointer transition-colors border-gray-200 hover:border-gray-300 bg-white"
+            >
+              <input
+                type="radio"
+                name="billing_method"
+                value="card"
+                id="billing-card"
+              />
+              <div class="radio-mark mr-3"></div>
+              <span class="text-sm font-medium text-gray-900">
+                Payment card
+              </span>
+            </label>
+            <label
+              class="custom-radio flex items-center p-4 border rounded-lg cursor-pointer transition-colors border-gray-200 hover:border-gray-300 bg-white"
+            >
+              <input type="radio" name="billing_method" value="paypal" />
+              <div class="radio-mark mr-3"></div>
+              <span class="text-sm font-medium text-gray-900">PayPal</span>
+            </label>
+            <label
+              class="custom-radio flex items-center p-4 border rounded-lg cursor-pointer transition-colors border-gray-200 hover:border-gray-300 bg-white"
+            >
+              <input type="radio" name="billing_method" value="wallet" />
+              <div class="radio-mark mr-3"></div>
+              <span class="text-sm font-medium text-gray-900">
+                Apple/Google Pay
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Screen 9: Payment Card Details -->
+        <div id="step-9" class="step-container hidden-step mt-4">
+          <div class="mb-8">
+            <label
+              class="custom-radio flex items-center p-4 border-2 rounded-lg cursor-pointer border-gray-900 bg-gray-50"
+            >
+              <input
+                type="radio"
+                name="billing_method_selected"
+                value="card"
+                checked=""
+              />
+              <div class="radio-mark mr-3"></div>
+              <span class="text-sm font-medium text-gray-900">
+                Payment card (Visa, Mastercard, American Express)
+              </span>
+            </label>
+          </div>
+
+          <div class="space-y-8">
+            <!-- Card Info -->
+            <div class="space-y-4">
+              <div class="space-y-1.5">
+                <label class="block text-xs font-medium text-gray-700">
+                  Card number
+                </label>
+                <input
+                  type="text"
+                  id="cc-num"
+                  placeholder="0000 0000 0000 0000"
+                  class="w-full rounded-md border px-3 py-2 text-sm placeholder-gray-400 focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 font-mono border-gray-200"
+                />
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div class="space-y-1.5">
+                  <label class="block text-xs font-medium text-gray-700">
+                    First name
+                  </label>
+                  <input
+                    type="text"
+                    id="cc-fn"
+                    class="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 border-gray-200"
+                  />
+                </div>
+                <div class="space-y-1.5">
+                  <label class="block text-xs font-medium text-gray-700">
+                    Last name
+                  </label>
+                  <input
+                    type="text"
+                    id="cc-ln"
+                    class="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 border-gray-200"
+                  />
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div class="space-y-1.5">
+                  <label class="block text-xs font-medium text-gray-700">
+                    Expiry Date (MM/YY)
+                  </label>
+                  <input
+                    type="text"
+                    id="cc-exp"
+                    placeholder="MM/YY"
+                    class="w-full rounded-md border px-3 py-2 text-sm placeholder-gray-400 focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 font-mono border-gray-200"
+                  />
+                </div>
+                <div class="space-y-1.5">
+                  <label class="block text-xs font-medium text-gray-700">
+                    Security Code (CVV)
+                  </label>
+                  <input
+                    type="text"
+                    id="cc-cvv"
+                    placeholder="123"
+                    class="w-full rounded-md border px-3 py-2 text-sm placeholder-gray-400 focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 font-mono border-gray-200"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="w-full h-px bg-gray-100"></div>
+
+            <!-- Billing Address -->
+            <div class="space-y-4">
+              <div class="space-y-1.5">
+                <label class="block text-xs font-medium text-gray-700">
+                  Country
+                </label>
+                <div class="relative">
+                  <select
+                    class="w-full appearance-none rounded-md border px-3 py-2 pr-10 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 border-gray-200 text-gray-900 bg-white"
+                  >
+                    <option>United States</option>
+                  </select>
+                  <div
+                    class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400"
+                  >
+                    <iconify-icon
+                      icon="solar:alt-arrow-down-linear"
+                      width="16"
+                    ></iconify-icon>
+                  </div>
+                </div>
+              </div>
+              <div class="space-y-1.5">
+                <label class="block text-xs font-medium text-gray-700">
+                  Address line 1
+                </label>
+                <input
+                  type="text"
+                  class="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 border-gray-200"
+                />
+              </div>
+              <div class="space-y-1.5">
+                <label class="block text-xs font-medium text-gray-700">
+                  Address line 2 (Optional)
+                </label>
+                <input
+                  type="text"
+                  class="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 border-gray-200"
+                />
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div class="space-y-1.5">
+                  <label class="block text-xs font-medium text-gray-700">
+                    City
+                  </label>
+                  <input
+                    type="text"
+                    class="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 border-gray-200"
+                  />
+                </div>
+                <div class="space-y-1.5">
+                  <label class="block text-xs font-medium text-gray-700">
+                    State/Province
+                  </label>
+                  <input
+                    type="text"
+                    class="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 border-gray-200"
+                  />
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div class="space-y-1.5">
+                  <label class="block text-xs font-medium text-gray-700">
+                    ZIP/Postal code
+                  </label>
+                  <input
+                    type="text"
+                    class="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 border-gray-200"
+                  />
+                </div>
+                <div class="space-y-1.5">
+                  <label class="block text-xs font-medium text-gray-700">
+                    Currency
+                  </label>
+                  <div class="relative">
+                    <select
+                      class="w-full appearance-none rounded-md border px-3 py-2 pr-10 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 border-gray-200 text-gray-900 bg-white"
+                    >
+                      <option>USD ($)</option>
+                    </select>
+                    <div
+                      class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400"
+                    >
+                      <iconify-icon
+                        icon="solar:alt-arrow-down-linear"
+                        width="16"
+                      ></iconify-icon>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer Action Bar -->
+    <footer
+      class="fixed bottom-0 w-full backdrop-blur-md border-t z-30 px-4 md:px-8 py-4 flex justify-between items-center transition-all bg-white/90 border-gray-100"
+    >
+      <button
+        id="btn-back"
+        class="opacity-0 pointer-events-none px-5 py-2.5 rounded-md text-sm font-medium border transition-colors text-gray-600 border-gray-200 hover:bg-gray-50"
+      >
+        Back
+      </button>
+      <button
+        id="btn-next"
+        disabled=""
+        class="px-6 py-2.5 rounded-md text-sm font-medium disabled:bg-gray-100 disabled:text-gray-400 disabled:border-transparent border transition-all shadow-sm disabled:shadow-none text-white bg-gray-900 hover:bg-gray-800 border-gray-900"
+      >
+        Next
+      </button>
+    </footer>
+
+    <!-- Confirmation Modal (Screen 7) -->
+    <div
+      id="modal-overlay"
+      class="fixed inset-0 backdrop-blur-sm z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300 bg-black/30"
+    >
+      <div
+        class="rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden transform scale-95 transition-transform duration-300 bg-white"
+        id="modal-content"
+      >
+        <div class="p-6 md:p-8 text-center">
+          <div
+            class="mx-auto w-12 h-12 rounded-full flex items-center justify-center border mb-5 bg-gray-50 border-gray-100"
+          >
+            <iconify-icon
+              icon="solar:check-circle-linear"
+              width="24"
+              class="text-gray-900"
+            ></iconify-icon>
+          </div>
+          <h2 class="text-xl font-medium mb-2 tracking-tight text-gray-900">
+            What happens after you post your job?
+          </h2>
+          <p class="text-sm text-gray-500 mb-8 leading-relaxed">
+            You'll receive proposals and you can invite talent to your job. No
+            charges until you hire.
+          </p>
+          <div class="flex flex-col-reverse md:flex-row gap-3">
+            <button
+              id="btn-modal-edit"
+              class="flex-1 px-4 py-2.5 rounded-md text-sm font-medium border transition-colors text-gray-700 border-gray-200 hover:bg-gray-50"
+            >
+              Edit job post
+            </button>
+            <button
+              id="btn-modal-post"
+              class="flex-1 px-4 py-2.5 rounded-md text-sm font-medium transition-colors text-white bg-gray-900 hover:bg-gray-800"
+            >
+              Continue to Billing
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      id="success-modal-overlay"
+      class="fixed inset-0 backdrop-blur-sm z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300 bg-black/30"
+    >
+      <div
+        class="rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden transform scale-95 transition-transform duration-300 bg-white"
+        id="success-modal-content"
+      >
+        <div class="p-6 md:p-8 text-center">
+          <div
+            class="mx-auto w-12 h-12 rounded-full flex items-center justify-center border mb-5 bg-green-50 border-green-100"
+          >
+            <iconify-icon
+              icon="solar:check-circle-bold"
+              width="28"
+              class="text-green-600"
+            ></iconify-icon>
+          </div>
+          <h2 class="text-xl font-medium mb-2 tracking-tight text-gray-900">
+            Job Posted Successfully!
+          </h2>
+          <p class="text-sm text-gray-500 mb-8 leading-relaxed">
+            Your payment method has been saved and your job is now live. You
+            will start receiving proposals soon.
+          </p>
+          <button
+            id="btn-success-view"
+            class="w-full px-4 py-2.5 rounded-md text-sm font-medium transition-colors text-white bg-gray-900 hover:bg-gray-800"
+          >
+            View Job Post
+          </button>
+          <button
+            id="btn-success-dashboard"
+            class="w-full px-4 py-2.5 mt-3 rounded-md text-sm font-medium transition-colors text-gray-500 hover:text-gray-900"
+          >
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+          let currentStep = 1;
+          const totalSteps = 9;
+
+          const btnNext = document.getElementById('btn-next');
+          const btnBack = document.getElementById('btn-back');
+          const progressIndicator = document.getElementById('progress-indicator');
+          const currentStepNum = document.getElementById('current-step-num');
+          const modalOverlay = document.getElementById('modal-overlay');
+          const modalContent = document.getElementById('modal-content');
+          const successModalOverlay = document.getElementById('success-modal-overlay');
+          const successModalContent = document.getElementById('success-modal-content');
+
+          const s1Title = document.getElementById('s1-title');
+          const s1Chips = document.querySelectorAll('#s1-chips .chip');
+          const s2Dropdown = document.getElementById('s2-dropdown');
+          const s3Slider = document.getElementById('s3-slider');
+          const s3Number = document.getElementById('s3-number');
+          const s3Textarea = document.getElementById('s3-textarea');
+          const charCount = document.getElementById('char-count');
+          const s4Country = document.getElementById('s4-country');
+          const s4City = document.getElementById('s4-city');
+          const s5Chips = document.querySelectorAll('#s5-chips .chip');
+          const radioPerReview = document.getElementById('radio-per-review');
+          const radioTotal = document.getElementById('radio-total');
+          const inputTotal = document.getElementById('input-total');
+          const billingRadios = document.getElementsByName('billing_method');
+
+          const ccNum = document.getElementById('cc-num');
+          const ccFn = document.getElementById('cc-fn');
+          const ccLn = document.getElementById('cc-ln');
+          const ccExp = document.getElementById('cc-exp');
+          const ccCvv = document.getElementById('cc-cvv');
+
+          function updateUI() {
+              document.querySelectorAll('.step-container').forEach(el => el.classList.add('hidden-step'));
+
+              let visibleStep = currentStep;
+              if (currentStep === 7) {
+                  showModal();
+                  return;
+              } else if (currentStep > 7) {
+                  progressIndicator.classList.add('hidden');
+              } else {
+                  progressIndicator.classList.remove('hidden');
+                  currentStepNum.textContent = currentStep;
+              }
+
+              const stepEl = document.getElementById(`step-${visibleStep}`);
+              if(stepEl) stepEl.classList.remove('hidden-step');
+
+              if (currentStep === 1) {
+                  btnBack.classList.add('opacity-0', 'pointer-events-none');
+                  btnBack.classList.remove('opacity-100');
+              } else {
+                  btnBack.classList.remove('opacity-0', 'pointer-events-none');
+                  btnBack.classList.add('opacity-100');
+              }
+
+              if (currentStep === 6) {
+                  btnNext.textContent = 'Continue';
+              } else if (currentStep === 8) {
+                  btnNext.textContent = 'Continue';
+              } else if (currentStep === 9) {
+                  btnNext.textContent = 'Save & Post Job';
+              } else {
+                  btnNext.textContent = 'Next';
+              }
+
+              validateStep();
+          }
+
+          function validateStep() {
+              let isValid = false;
+
+              switch(currentStep) {
+                  case 1:
+                      const hasTitle = s1Title.value.trim().length > 0;
+                      const hasPlatform = Array.from(s1Chips).some(chip => chip.dataset.selected === 'true');
+                      isValid = hasTitle && hasPlatform;
+                      break;
+                  case 2:
+                      isValid = s2Dropdown.value.trim().length > 0;
+                      break;
+                  case 3:
+                      isValid = s3Textarea.value.trim().length > 0;
+                      break;
+                  case 4:
+                      isValid = s4Country.value !== "" && s4City.value !== "";
+                      break;
+                  case 5:
+                      isValid = Array.from(s5Chips).some(chip => chip.dataset.selected === 'true');
+                      break;
+                  case 6:
+                      isValid = true;
+                      break;
+                  case 8:
+                      isValid = Array.from(billingRadios).some(r => r.checked);
+                      break;
+                  case 9:
+                      isValid = ccNum.value.length > 0 && ccFn.value.length > 0 && ccLn.value.length > 0 && ccExp.value.length > 0 && ccCvv.value.length > 0;
+                      break;
+              }
+
+              btnNext.disabled = !isValid;
+          }
+
+          s1Title.addEventListener('input', validateStep);
+          s1Chips.forEach(chip => {
+              chip.addEventListener('click', () => {
+                  const isSelected = chip.dataset.selected === 'true';
+                  chip.dataset.selected = !isSelected;
+                  validateStep();
+              });
+          });
+
+          s2Dropdown.addEventListener('input', validateStep);
+
+          s3Slider.addEventListener('input', (e) => { s3Number.value = e.target.value; });
+          s3Number.addEventListener('input', (e) => {
+              let val = e.target.value;
+              if(val > 100) val = 100;
+              if(val < 1) val = 1;
+              s3Slider.value = val;
+          });
+          s3Textarea.addEventListener('input', (e) => {
+              charCount.textContent = e.target.value.length;
+              validateStep();
+          });
+
+          s4Country.addEventListener('change', () => {
+              s4City.disabled = false;
+              s4City.classList.remove('bg-gray-50');
+              s4City.classList.add('bg-white');
+              validateStep();
+          });
+          s4City.addEventListener('change', validateStep);
+
+          s5Chips.forEach(chip => {
+              chip.addEventListener('click', () => {
+                  const isSelected = chip.dataset.selected === 'true';
+                  chip.dataset.selected = !isSelected;
+                  validateStep();
+              });
+          });
+
+          radioPerReview.addEventListener('change', () => {
+              inputTotal.disabled = true;
+              inputTotal.classList.add('bg-gray-50');
+          });
+          radioTotal.addEventListener('change', () => {
+              inputTotal.disabled = false;
+              inputTotal.classList.remove('bg-gray-50');
+              inputTotal.focus();
+          });
+
+          billingRadios.forEach(r => r.addEventListener('change', validateStep));
+
+          [ccNum, ccFn, ccLn, ccExp, ccCvv].forEach(input => {
+              input.addEventListener('input', validateStep);
+          });
+
+          btnNext.addEventListener('click', () => {
+              if (currentStep === 8) {
+                  const selectedBilling = document.querySelector('input[name="billing_method"]:checked').value;
+                  if (selectedBilling === 'card') {
+                      currentStep++;
+                      updateUI();
+                  } else {
+                      alert("Prototype only implements Payment Card flow.");
+                  }
+              } else if (currentStep === 9) {
+                  showSuccessModal();
+              } else if (currentStep < totalSteps) {
+                  currentStep++;
+                  updateUI();
+              }
+          });
+
+          btnBack.addEventListener('click', () => {
+              if (currentStep > 1) {
+                  if (currentStep === 8) {
+                      currentStep = 6;
+                  } else {
+                      currentStep--;
+                  }
+                  updateUI();
+              }
+          });
+
+          function showModal() {
+              modalOverlay.classList.remove('opacity-0', 'pointer-events-none');
+              modalContent.classList.remove('scale-95');
+              modalContent.classList.add('scale-100');
+              document.body.classList.add('modal-active');
+          }
+
+          function hideModal() {
+              modalOverlay.classList.add('opacity-0', 'pointer-events-none');
+              modalContent.classList.add('scale-95');
+              modalContent.classList.remove('scale-100');
+              document.body.classList.remove('modal-active');
+          }
+
+          document.getElementById('btn-modal-edit').addEventListener('click', () => {
+              hideModal();
+              currentStep = 6;
+              updateUI();
+          });
+
+          document.getElementById('btn-modal-post').addEventListener('click', () => {
+              hideModal();
+              currentStep = 8;
+              updateUI();
+          });
+
+          function showSuccessModal() {
+              successModalOverlay.classList.remove('opacity-0', 'pointer-events-none');
+              successModalContent.classList.remove('scale-95');
+              successModalContent.classList.add('scale-100');
+              document.body.classList.add('modal-active');
+          }
+
+          function hideSuccessModal() {
+              successModalOverlay.classList.add('opacity-0', 'pointer-events-none');
+              successModalContent.classList.add('scale-95');
+              successModalContent.classList.remove('scale-100');
+              document.body.classList.remove('modal-active');
+          }
+
+          document.getElementById('btn-success-dashboard').addEventListener('click', () => {
+              hideSuccessModal();
+              alert("Redirecting to dashboard...");
+          });
+
+          updateUI();
+      });
+    </script>
+  </body>
+</html>

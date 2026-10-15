@@ -1,0 +1,2441 @@
+<!DOCTYPE html>
+<html lang="he" class="scroll-smooth" dir="rtl">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>מנגנון | צ'אטבוטים ואוטומציה לעסקים</title>
+<meta
+name="description"
+content="בונים צ'אטבוטים חכמים ואוטומציות שמריצות את העבודה החוזרת במקומכם. מחברים בין וואטסאפ, CRM, יומן והנהלת חשבונות — בלי להחליף תוכנה. הקוד נשאר שלכם."
+/>
+<meta property="og:site_name" content="מנגנון" />
+<meta
+property="og:title"
+content="מנגנון — תפסיקו לבזבז שעות על עבודה ידנית"
+/>
+<meta
+property="og:description"
+content="צ'אטבוטים ואוטומציות שמריצות את התהליכים החוזרים בעסק שלכם. אוטומציה ראשונה שעובדת תוך 8 ימים, והקוד נשאר בבעלותכם."
+/>
+<meta property="og:type" content="website" />
+<meta property="og:locale" content="he_IL" />
+<!-- TODO: upload a 1200x630 image and replace OG_IMAGE_URL -->
+<meta property="og:image" content="OG_IMAGE_URL" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="מנגנון — צ'אטבוטים ואוטומציה לעסקים" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta
+name="twitter:title"
+content="מנגנון — תפסיקו לבזבז שעות על עבודה ידנית"
+/>
+<meta
+name="twitter:description"
+content="צ'אטבוטים ואוטומציות שמריצות את התהליכים החוזרים בעסק שלכם. אוטומציה ראשונה שעובדת תוך 8 ימים."
+/>
+<meta name="twitter:image" content="OG_IMAGE_URL" />
+<meta property="og:url" content="https://mangenon-sheket.aura.build" />
+<link rel="canonical" href="https://mangenon-sheket.aura.build" />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link
+href="https://fonts.googleapis.com/css2?family=Heebo:wght@100..900&family=Inter:wght@100..900&family=Instrument+Serif:ital@0;1&display=swap"
+rel="stylesheet"
+/>
+<style>
+h1,h2,h3{letter-spacing:-0.035em}
+.font-serif-accent{font-family:'Instrument Serif',Georgia,serif;font-weight:400;font-style:italic;letter-spacing:-0.01em}
+.wchar{display:inline-block;font-variation-settings:'wght' 600;transition:font-variation-settings .15s linear;will-change:font-variation-settings}
+dialog::backdrop{background:rgba(23,23,25,0.6)}
+</style>
+<!-- ANALYTICS --><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body
+    class="bg-[#ECEDEE] text-[#232427] antialiased"
+    style="font-family:'Heebo','Inter',sans-serif"
+  >
+    <!-- PAGE SHELL -->
+    <div class="max-w-[1440px] mx-auto px-2 sm:px-4 pt-2 sm:pt-4">
+      <!-- ================= HERO ================= -->
+      <section
+        class="relative overflow-hidden rounded-[28px] sm:rounded-[40px] bg-[#F4F5F5] shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_20px_60px_-30px_rgba(35,36,39,0.25)] min-h-[100svh] flex flex-col"
+      >
+        <canvas
+          id="meshGL"
+          class="pointer-events-none absolute inset-0 z-0 h-full w-full opacity-70"
+        ></canvas>
+
+        <!-- Atmosphere -->
+        <div
+          id="bloom"
+          class="pointer-events-none absolute -right-40 top-0 h-[720px] w-[720px] rounded-full opacity-70 blur-3xl transition-transform duration-700 ease-out"
+          style="background: radial-gradient(circle at 55% 45%, rgba(227,74,50,0.55), rgba(240,120,70,0.28) 40%, rgba(244,245,245,0) 70%)"
+        ></div>
+        <div
+          class="pointer-events-none absolute -left-52 top-24 h-[640px] w-[640px] rounded-full opacity-60 blur-3xl"
+          style="background: radial-gradient(circle at 50% 50%, rgba(46,48,52,0.35), rgba(120,124,130,0.15) 45%, rgba(244,245,245,0) 72%)"
+        ></div>
+        <div
+          class="pointer-events-none absolute right-1/4 -bottom-40 h-[420px] w-[560px] rounded-full opacity-40 blur-3xl"
+          style="background: radial-gradient(circle at 50% 50%, rgba(227,74,50,0.25), rgba(244,245,245,0) 70%)"
+        ></div>
+
+        <!-- FLOATING NAV -->
+        <div
+          class="sticky top-3 sm:top-5 z-50 flex justify-center px-3 pt-4 sm:pt-6"
+        >
+          <nav
+            id="nav"
+            class="flex w-full max-w-[880px] items-center justify-between rounded-full border border-white/70 bg-white/75 py-2.5 pr-5 pl-2.5 backdrop-blur-xl transition-shadow duration-500 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_10px_30px_-14px_rgba(35,36,39,0.25)]"
+          >
+            <a href="#" class="flex items-center gap-2.5">
+              <span class="relative flex h-6 w-9 items-center">
+                <span
+                  class="absolute left-0 h-6 w-6 rounded-full bg-[#171719]"
+                ></span>
+                <span
+                  class="absolute left-3.5 h-6 w-6 rounded-full bg-[#E34A32]"
+                ></span>
+              </span>
+              <span class="text-base font-semibold">מנגנון</span>
+            </a>
+            <div
+              class="hidden md:flex items-center gap-1 text-sm font-medium text-[#4b4d52]"
+            >
+              <a
+                href="#services"
+                class="rounded-full px-3.5 py-2 hover:bg-black/5 transition"
+              >
+                שירותים
+              </a>
+              <a
+                href="#work"
+                class="rounded-full px-3.5 py-2 hover:bg-black/5 transition"
+              >
+                דמו
+              </a>
+              <a
+                href="#packages"
+                class="rounded-full px-3.5 py-2 hover:bg-black/5 transition"
+              >
+                חבילות
+              </a>
+              <a
+                href="#faq"
+                class="rounded-full px-3.5 py-2 hover:bg-black/5 transition"
+              >
+                שאלות
+              </a>
+              <a
+                href="#contact"
+                class="rounded-full px-3.5 py-2 hover:bg-black/5 transition"
+              >
+                צור קשר
+              </a>
+            </div>
+            <div class="flex items-center gap-2">
+              <a
+                href="#contact"
+                class="group hidden sm:inline-flex items-center gap-1.5 rounded-full bg-[#171719] px-5 py-2.5 text-sm font-medium text-white transition-all duration-300 hover:-translate-y-0.5 shadow-[0_1px_0_rgba(255,255,255,0.25)_inset,0_10px_22px_-10px_rgba(23,23,25,0.7)] hover:shadow-[0_1px_0_rgba(255,255,255,0.3)_inset,0_16px_28px_-10px_rgba(23,23,25,0.8)]"
+              >
+                לשיחת אבחון
+                <i
+                  data-lucide="arrow-left"
+                  class="h-4 w-4 opacity-0 -mr-4 transition-all duration-300 group-hover:opacity-100 group-hover:mr-0"
+                  stroke-width="1.5"
+                ></i>
+              </a>
+              <button
+                id="menuBtn"
+                class="md:hidden flex h-10 w-10 items-center justify-center rounded-full border border-black/5 bg-white shadow-sm"
+                aria-label="תפריט"
+                aria-expanded="false"
+              >
+                <i data-lucide="menu" class="h-5 w-5" stroke-width="1.5"></i>
+              </button>
+            </div>
+          </nav>
+        </div>
+
+        <!-- Mobile sheet -->
+        <div
+          id="mobileMenu"
+          class="hidden md:hidden relative z-40 mx-4 mt-3 rounded-3xl border border-white/70 bg-white/90 p-4 backdrop-blur-xl shadow-lg"
+        >
+          <div class="flex flex-col text-base font-medium">
+            <a href="#services" class="rounded-xl px-4 py-3 hover:bg-black/5">
+              שירותים
+            </a>
+            <a href="#work" class="rounded-xl px-4 py-3 hover:bg-black/5">
+              דמו
+            </a>
+            <a href="#packages" class="rounded-xl px-4 py-3 hover:bg-black/5">
+              חבילות
+            </a>
+            <a href="#faq" class="rounded-xl px-4 py-3 hover:bg-black/5">
+              שאלות
+            </a>
+            <a href="#contact" class="rounded-xl px-4 py-3 hover:bg-black/5">
+              צור קשר
+            </a>
+            <a
+              href="#contact"
+              class="mt-2 rounded-full bg-[#171719] px-5 py-3 text-center text-white shadow-lg"
+            >
+              לשיחת אבחון
+            </a>
+          </div>
+        </div>
+
+        <!-- HERO CONTENT -->
+        <div
+          class="relative z-10 mx-auto flex max-w-5xl flex-col items-center px-6 pb-28 pt-16 text-center sm:pt-24 lg:pb-36 flex-1 justify-center"
+        >
+          <!-- Badge -->
+          <div
+            data-rise=""
+            class="transition-all duration-700 inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/80 px-4 py-2 text-sm font-medium text-[#E34A32] backdrop-blur shadow-[0_6px_16px_-8px_rgba(35,36,39,0.25)]"
+          >
+            <i data-lucide="zap" class="h-4 w-4" stroke-width="1.5"></i>
+            סוכנות צ'אטבוטים ואוטומציה לעסקים
+          </div>
+
+          <!-- Headline + tiles -->
+          <div class="relative mt-7">
+            <h1
+              data-rise=""
+              class="transition-all duration-700 delay-150 text-5xl font-semibold leading-[1.02] text-[#2E3034] sm:text-7xl lg:text-8xl"
+            >
+              תפסיקו לבזבז שעות
+              <br />
+              <span
+                class="relative inline-block font-serif-accent"
+                style="font-family: 'Heebo', sans-serif; font-weight: 300;"
+              >
+                על עבודה ידנית
+                <span
+                  class="absolute -right-6 top-1/2 hidden h-16 w-40 -translate-y-1/2 translate-x-full rounded-full bg-gradient-to-br from-[#F05A3C] to-[#C93A24] opacity-90 blur-[1px] lg:block shadow-[0_20px_40px_-14px_rgba(227,74,50,0.6)]"
+                ></span>
+              </span>
+            </h1>
+
+            <!-- Floating tiles -->
+            <div
+              data-drift=""
+              class="absolute -left-8 -top-10 hidden rotate-6 md:flex h-16 w-16 items-center justify-center rounded-2xl bg-white border border-black/5 shadow-[0_18px_35px_-14px_rgba(35,36,39,0.35)]"
+            >
+              <span
+                class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-white"
+              >
+                <i
+                  data-lucide="workflow"
+                  class="h-5 w-5"
+                  stroke-width="1.5"
+                ></i>
+              </span>
+            </div>
+            <div
+              data-drift=""
+              class="absolute -left-24 top-16 hidden -rotate-6 lg:flex h-16 w-16 items-center justify-center rounded-2xl bg-white border border-black/5 shadow-[0_18px_35px_-14px_rgba(35,36,39,0.35)]"
+              style="transition-delay:.2s"
+            >
+              <span
+                class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white"
+              >
+                <i data-lucide="bot" class="h-5 w-5" stroke-width="1.5"></i>
+              </span>
+            </div>
+            <div
+              data-drift=""
+              class="absolute -bottom-14 left-6 hidden rotate-3 md:flex h-16 w-16 items-center justify-center rounded-2xl bg-white border border-black/5 shadow-[0_18px_35px_-14px_rgba(35,36,39,0.35)]"
+              style="transition-delay:.4s"
+            >
+              <span
+                class="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F7F7F5] border border-black/10 text-[#E34A32]"
+              >
+                <i
+                  data-lucide="sparkles"
+                  class="h-5 w-5"
+                  stroke-width="1.5"
+                ></i>
+              </span>
+            </div>
+          </div>
+
+          <!-- Paragraph -->
+          <p
+            data-rise=""
+            class="transition-all duration-700 delay-300 mt-10 max-w-xl text-lg leading-relaxed text-[#55575c]"
+          >
+            אנחנו בונים צ'אטבוטים חכמים ואוטומציות שמחברות בין המערכות שכבר יש
+            לכם — ועושות את העבודה החוזרת במקומכם, בלי להחליף תוכנה ובלי כאב
+            ראש.
+          </p>
+
+          <!-- CTAs -->
+          <div
+            data-rise=""
+            class="transition-all duration-700 delay-500 mt-9 flex flex-col items-center gap-3 sm:flex-row"
+          >
+            <a
+              href="#contact"
+              class="group inline-flex items-center gap-2 rounded-full bg-[#171719] px-7 py-3.5 text-base font-medium text-white transition-all duration-300 hover:-translate-y-0.5 shadow-[0_1px_0_rgba(255,255,255,0.25)_inset,0_14px_28px_-12px_rgba(23,23,25,0.75)] hover:shadow-[0_1px_0_rgba(255,255,255,0.3)_inset,0_20px_34px_-12px_rgba(23,23,25,0.85)]"
+            >
+              לשיחת אבחון חינם
+              <i
+                data-lucide="arrow-left"
+                class="h-4 w-4 transition-transform duration-300 group-hover:-translate-x-0.5"
+                stroke-width="1.5"
+              ></i>
+            </a>
+            <a
+              href="#packages"
+              class="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white/90 px-7 py-3.5 text-base font-medium text-[#2E3034] transition-all duration-300 hover:-translate-y-0.5 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_10px_22px_-12px_rgba(35,36,39,0.3)] hover:shadow-[0_16px_30px_-12px_rgba(35,36,39,0.35)]"
+            >
+              לחבילות ומחירים
+            </a>
+          </div>
+          <div data-rise="" class="transition-all duration-700 delay-700 mt-14">
+            <p
+              class="text-xs font-medium uppercase tracking-widest text-[#8a8c91]"
+            >
+              המערכות שאנחנו מחברים
+            </p>
+            <div
+              class="mt-5 flex flex-wrap items-center justify-center gap-x-7 gap-y-4"
+            >
+              <img
+                src="https://cdn.simpleicons.org/whatsapp"
+                alt="WhatsApp Business"
+                title="WhatsApp Business"
+                loading="lazy"
+                class="h-7 w-7 shrink-0 opacity-80 transition-opacity duration-300 hover:opacity-100"
+              />
+              <img
+                src="https://cdn.simpleicons.org/make"
+                alt="Make"
+                title="Make"
+                loading="lazy"
+                class="h-7 w-7 shrink-0 opacity-80 transition-opacity duration-300 hover:opacity-100"
+              />
+              <img
+                src="https://cdn.simpleicons.org/n8n"
+                alt="n8n"
+                title="n8n"
+                loading="lazy"
+                class="h-7 w-7 shrink-0 opacity-80 transition-opacity duration-300 hover:opacity-100"
+              />
+              <img
+                src="https://cdn.simpleicons.org/hubspot"
+                alt="HubSpot"
+                title="HubSpot"
+                loading="lazy"
+                class="h-7 w-7 shrink-0 opacity-80 transition-opacity duration-300 hover:opacity-100"
+              />
+              <svg
+                viewBox="0 0 512 202"
+                role="img"
+                aria-label="monday.com"
+                class="h-7 w-auto shrink-0 opacity-80 transition-opacity duration-300 hover:opacity-100"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <title>monday.com</title>
+                <g stroke-linecap="round" stroke-width="66" fill="none">
+                  <path d="M33 168 L119 34" stroke="#FF3D57"></path>
+                  <path d="M203 168 L289 34" stroke="#FFCB00"></path>
+                  <path d="M373 168 L459 34" stroke="#00CA72"></path>
+                </g>
+              </svg>
+              <img
+                src="https://cdn.simpleicons.org/googlesheets"
+                alt="Google Sheets"
+                title="Google Sheets"
+                loading="lazy"
+                class="h-7 w-7 shrink-0 opacity-80 transition-opacity duration-300 hover:opacity-100"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Preview chip -->
+        <div
+          data-rise=""
+          class="transition-all duration-700 delay-700 absolute bottom-6 right-6 z-20 hidden items-center gap-3 rounded-2xl border border-white/70 bg-white/85 p-2.5 pl-4 backdrop-blur lg:flex shadow-[0_14px_30px_-14px_rgba(35,36,39,0.35)]"
+        >
+          <span
+            class="flex h-10 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-[#2E3034] to-[#55575c]"
+          >
+            <i
+              data-lucide="layout-grid"
+              class="h-4 w-4 text-white/80"
+              stroke-width="1.5"
+            ></i>
+          </span>
+          <div class="text-right">
+            <p class="text-sm font-semibold leading-tight">פנוי לפרויקט חדש</p>
+            <p class="text-xs text-[#8a8c91]">מקום אחד בחודש הקרוב</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= SERVICES ================= -->
+      <section id="services" class="px-4 py-24 sm:px-10 lg:px-16 lg:py-32">
+        <div class="max-w-2xl">
+          <p class="text-sm font-semibold text-[#E34A32]">שירותים</p>
+          <h2
+            class="mt-3 text-4xl font-semibold leading-tight text-[#2E3034] sm:text-5xl"
+          >
+            מה אנחנו בונים לכם
+          </h2>
+          <p class="mt-4 text-lg leading-relaxed text-[#55575c]">
+            שישה תחומי עבודה. כל אחד מהם מגיע כמערכת עובדת אצלכם בעסק — לא
+            כמצגת. הקוד נשאר שלכם.
+          </p>
+        </div>
+
+        <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <!-- Card 1 — flagship -->
+          <div
+            data-reveal=""
+            class="transition-all duration-700 group rounded-3xl border border-[#E34A32]/25 bg-white p-7 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]"
+          >
+            <span
+              class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]"
+            >
+              <i data-lucide="bot" class="h-5 w-5" stroke-width="1.5"></i>
+            </span>
+            <h3 class="mt-5 text-lg font-semibold">
+              צ'אטבוט שעונה ללקוחות 24/7
+            </h3>
+            <p class="mt-2 text-base leading-relaxed text-[#55575c]">
+              כל פנייה מוואטסאפ, מהאתר או ממודעה מקבלת מענה תוך שניות, נרשמת
+              ב-CRM, ומגיעה אליכם רק כשבאמת צריך אדם.
+            </p>
+            <p
+              class="mt-5 inline-flex items-center gap-1.5 rounded-full bg-[#E34A32] px-3 py-1.5 text-xs font-medium text-white"
+            >
+              <i data-lucide="star" class="h-3.5 w-3.5" stroke-width="1.5"></i>
+              מוצר הדגל שלנו
+            </p>
+          </div>
+          <!-- Card 2 -->
+          <div
+            data-reveal=""
+            class="transition-all duration-700 group rounded-3xl border border-black/5 bg-white p-7 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]"
+          >
+            <span
+              class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]"
+            >
+              <i
+                data-lucide="file-search"
+                class="h-5 w-5"
+                stroke-width="1.5"
+              ></i>
+            </span>
+            <h3 class="mt-5 text-lg font-semibold">תשובות מתוך המסמכים שלכם</h3>
+            <p class="mt-2 text-base leading-relaxed text-[#55575c]">
+              הצוות שואל בשפה חופשית ומקבל תשובה מתוך הנהלים, המחירונים והחוזים
+              שלכם — בלי לחפש בתיקיות.
+            </p>
+            <p
+              class="mt-5 inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]"
+            >
+              <i data-lucide="plug" class="h-3.5 w-3.5" stroke-width="1.5"></i>
+              <span dir="ltr">WhatsApp · Slack · Drive</span>
+            </p>
+          </div>
+          <!-- Card 3 -->
+          <div
+            data-reveal=""
+            class="transition-all duration-700 group rounded-3xl border border-black/5 bg-white p-7 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]"
+          >
+            <span
+              class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]"
+            >
+              <i
+                data-lucide="headphones"
+                class="h-5 w-5"
+                stroke-width="1.5"
+              ></i>
+            </span>
+            <h3 class="mt-5 text-lg font-semibold">שירות לקוחות אוטומטי</h3>
+            <p class="mt-2 text-base leading-relaxed text-[#55575c]">
+              מיון פניות, טיוטות תשובה ומעקב אחרי פתיחת קריאות — עם אישור אנושי
+              לפני שליחה.
+            </p>
+            <p
+              class="mt-5 inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]"
+            >
+              <i
+                data-lucide="shield-check"
+                class="h-3.5 w-3.5"
+                stroke-width="1.5"
+              ></i>
+              אישור אנושי לפני כל שליחה
+            </p>
+          </div>
+          <!-- Card 4 -->
+          <div
+            data-reveal=""
+            class="transition-all duration-700 group rounded-3xl border border-black/5 bg-white p-7 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]"
+          >
+            <span
+              class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]"
+            >
+              <i data-lucide="database" class="h-5 w-5" stroke-width="1.5"></i>
+            </span>
+            <h3 class="mt-5 text-lg font-semibold">הצעות מחיר וחשבוניות</h3>
+            <p class="mt-2 text-base leading-relaxed text-[#55575c]">
+              הצעת מחיר נשלחת, נחתמת ומגיעה להנהלת החשבונות בלי שאף אחד מקליד
+              כלום.
+            </p>
+            <p
+              class="mt-5 inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]"
+            >
+              <i
+                data-lucide="receipt"
+                class="h-3.5 w-3.5"
+                stroke-width="1.5"
+              ></i>
+              <span dir="ltr">iCount · חשבונית ירוקה · Priority</span>
+            </p>
+          </div>
+          <!-- Card 5 -->
+          <div
+            data-reveal=""
+            class="transition-all duration-700 group rounded-3xl border border-black/5 bg-white p-7 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]"
+          >
+            <span
+              class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]"
+            >
+              <i data-lucide="pen-line" class="h-5 w-5" stroke-width="1.5"></i>
+            </span>
+            <h3 class="mt-5 text-lg font-semibold">תזכורות ומעקב לקוחות</h3>
+            <p class="mt-2 text-base leading-relaxed text-[#55575c]">
+              תיאום פגישות, תזכורות אוטומטיות והחזרת לקוחות שנעלמו — בלי לזכור
+              אף אחד ידנית.
+            </p>
+            <p
+              class="mt-5 inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]"
+            >
+              <i
+                data-lucide="calendar-check"
+                class="h-3.5 w-3.5"
+                stroke-width="1.5"
+              ></i>
+              מסונכרן ליומן שלכם
+            </p>
+          </div>
+          <!-- Card 6 -->
+          <div
+            data-reveal=""
+            class="transition-all duration-700 group rounded-3xl border border-black/5 bg-white p-7 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]"
+          >
+            <span
+              class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]"
+            >
+              <i data-lucide="wrench" class="h-5 w-5" stroke-width="1.5"></i>
+            </span>
+            <h3 class="mt-5 text-lg font-semibold">הצלת אוטומציות שבורות</h3>
+            <p class="mt-2 text-base leading-relaxed text-[#55575c]">
+              קיבלתם אוטומציה שנפלה ואף אחד לא יודע למה? אנחנו נכנסים לקוד,
+              מתקנים, ומוסיפים ניטור שיתריע לפני שזה קורה שוב.
+            </p>
+            <p
+              class="mt-5 inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]"
+            >
+              <i data-lucide="clock" class="h-3.5 w-3.5" stroke-width="1.5"></i>
+              אבחון ראשוני תוך 48 שעות
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= AUDIENCE ================= -->
+      <section id="audience" class="px-4 pb-24 sm:px-10 lg:px-16 lg:pb-32">
+        <div class="max-w-2xl">
+          <p class="text-sm font-semibold text-[#E34A32]">למי זה מתאים</p>
+          <h2
+            class="mt-3 text-4xl font-semibold leading-tight text-[#2E3034] sm:text-5xl"
+          >
+            אם יש לכם תהליך שחוזר על עצמו
+          </h2>
+          <p class="mt-4 text-lg leading-relaxed text-[#55575c]">
+            לא משנה הענף — כל תהליך שחוזר על עצמו אפשר להריץ אוטומטית. אלה
+            התחומים שאנחנו פוגשים הכי הרבה.
+          </p>
+        </div>
+        <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            data-reveal=""
+            class="transition-all duration-700 group rounded-3xl border border-black/5 bg-white p-6 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]"
+          >
+            <span
+              class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]"
+            >
+              <i
+                data-lucide="stethoscope"
+                class="h-5 w-5"
+                stroke-width="1.5"
+              ></i>
+            </span>
+            <h3 class="mt-5 text-base font-semibold">מרפאות וקליניקות</h3>
+            <p class="mt-2 text-sm leading-relaxed text-[#55575c]">
+              תיאום תורים, תזכורות והפחתת ביטולים של הרגע האחרון.
+            </p>
+          </div>
+          <div
+            data-reveal=""
+            class="transition-all duration-700 delay-150 group rounded-3xl border border-black/5 bg-white p-6 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]"
+          >
+            <span
+              class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]"
+            >
+              <i data-lucide="scale" class="h-5 w-5" stroke-width="1.5"></i>
+            </span>
+            <h3 class="mt-5 text-base font-semibold">משרדי עו"ד ורו"ח</h3>
+            <p class="mt-2 text-sm leading-relaxed text-[#55575c]">
+              מענה לפניות, איסוף מסמכים מלקוחות ומעקב אחרי מועדים.
+            </p>
+          </div>
+          <div
+            data-reveal=""
+            class="transition-all duration-700 delay-300 group rounded-3xl border border-black/5 bg-white p-6 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]"
+          >
+            <span
+              class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]"
+            >
+              <i
+                data-lucide="shopping-cart"
+                class="h-5 w-5"
+                stroke-width="1.5"
+              ></i>
+            </span>
+            <h3 class="mt-5 text-base font-semibold">מסחר ואיקומרס</h3>
+            <p class="mt-2 text-sm leading-relaxed text-[#55575c]">
+              סנכרון מלאי, עדכוני הזמנות ומענה אוטומטי ללקוחות.
+            </p>
+          </div>
+          <div
+            data-reveal=""
+            class="transition-all duration-700 group rounded-3xl border border-black/5 bg-white p-6 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]"
+          >
+            <span
+              class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]"
+            >
+              <i
+                data-lucide="building-2"
+                class="h-5 w-5"
+                stroke-width="1.5"
+              ></i>
+            </span>
+            <h3 class="mt-5 text-base font-semibold">נדל"ן וסוכנויות מכירות</h3>
+            <p class="mt-2 text-sm leading-relaxed text-[#55575c]">
+              ניתוב לידים, חלוקה לסוכנים וחישוב עמלות.
+            </p>
+          </div>
+          <div
+            data-reveal=""
+            class="transition-all duration-700 delay-150 group rounded-3xl border border-black/5 bg-white p-6 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]"
+          >
+            <span
+              class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]"
+            >
+              <i data-lucide="truck" class="h-5 w-5" stroke-width="1.5"></i>
+            </span>
+            <h3 class="mt-5 text-base font-semibold">ייבוא, סחר ולוגיסטיקה</h3>
+            <p class="mt-2 text-sm leading-relaxed text-[#55575c]">
+              פניות מקבילות לספקים, מעקב הצעות וחיבור למערכת ההנהלה.
+            </p>
+          </div>
+          <div
+            data-reveal=""
+            class="transition-all duration-700 delay-300 group rounded-3xl border border-black/5 bg-white p-6 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]"
+          >
+            <span
+              class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]"
+            >
+              <i data-lucide="layers" class="h-5 w-5" stroke-width="1.5"></i>
+            </span>
+            <h3 class="mt-5 text-base font-semibold">סוכנויות ובתי תוכנה</h3>
+            <p class="mt-2 text-sm leading-relaxed text-[#55575c]">
+              אנחנו הזרוע הטכנית שלכם, בעבודת white-label מול הלקוח שלכם.
+            </p>
+          </div>
+        </div>
+        <p class="mt-8 text-center text-sm text-[#8a8c91]">
+          לא מצאתם את הענף שלכם? אנחנו עובדים עם עסקים מכל סוג —
+          <a href="#contact" class="font-medium text-[#E34A32] hover:underline">
+            דברו איתנו.
+          </a>
+        </p>
+      </section>
+
+      <!-- ================= CAPABILITIES ================= -->
+      <section id="capabilities" class="px-4 pb-24 sm:px-10 lg:px-16 lg:pb-32">
+        <div class="max-w-2xl">
+          <p class="text-sm font-semibold text-[#E34A32]">איך זה עובד</p>
+          <h2
+            class="mt-3 text-4xl font-semibold leading-tight text-[#2E3034] sm:text-5xl"
+          >
+            תהליך אחד. בלי הפתעות.
+          </h2>
+          <p class="mt-4 text-lg leading-relaxed text-[#55575c]">
+            אחרי שיחת האבחון תקבלו הצעה מפורטת תוך 48 שעות, האוטומציה הראשונה
+            עולה לאוויר תוך שמונה ימי עבודה, ואחריה חודש שלם של ליווי, שיפורים
+            ותמיכה. הכול בלוח זמנים שסוכם מראש.
+          </p>
+        </div>
+        <div
+          class="mt-14 rounded-[36px] bg-[#171719] p-4 sm:p-5 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset,0_30px_60px_-30px_rgba(23,23,25,0.8)]"
+        >
+          <div class="grid gap-4 lg:grid-cols-3">
+            <div
+              data-reveal=""
+              class="transition-all duration-700 relative overflow-hidden rounded-[28px] border border-white/5 bg-[#202024] p-8 sm:p-10 lg:col-span-2"
+            >
+              <h3 class="text-2xl font-semibold text-white sm:text-3xl">
+                צ'אטבוט שעובד
+                <span class="text-white/50">מהיום הראשון</span>
+              </h3>
+              <p class="mt-3 max-w-md text-base leading-relaxed text-white/55">
+                מוצר הדגל שלנו. בוט שמדבר בשם העסק בעברית, עונה ללקוחות תוך
+                שניות בכל שעה, קובע פגישות ביומן, ומעביר אליכם רק את מה שדורש
+                שיקול דעת אנושי. אתם רואים אותו רץ עוד לפני שהחלטתם.
+              </p>
+              <div class="mt-10 flex items-center justify-center">
+                <div class="flex items-center">
+                  <div
+                    class="h-24 w-16 -rotate-6 rounded-2xl border border-white/5 bg-[#26262b]"
+                  ></div>
+                  <div
+                    class="-mr-8 h-28 w-20 -rotate-3 rounded-2xl border border-white/10 bg-[#2c2c31]"
+                  ></div>
+                  <div
+                    class="relative z-10 -mr-8 flex h-32 w-24 items-center justify-center rounded-2xl border border-white/15 bg-gradient-to-b from-[#34343a] to-[#232327] shadow-[0_20px_40px_-14px_rgba(0,0,0,0.7)]"
+                  >
+                    <i
+                      data-lucide="bot"
+                      class="h-8 w-8 text-[#F05A3C]"
+                      stroke-width="1.5"
+                    ></i>
+                    <span
+                      class="absolute -bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#F05A3C] px-3 py-1 text-xs font-medium text-white shadow-lg"
+                    >
+                      מוכן לשימוש
+                    </span>
+                  </div>
+                  <span
+                    class="z-10 mx-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#F05A3C]/50 bg-[#171719] text-[#F05A3C]"
+                  >
+                    <i
+                      data-lucide="arrow-left"
+                      class="h-4 w-4"
+                      stroke-width="1.5"
+                    ></i>
+                  </span>
+                  <div
+                    class="flex h-28 w-20 rotate-3 items-center justify-center rounded-2xl border border-white/10 bg-[#2c2c31]"
+                  >
+                    <span class="h-7 w-7 rounded-lg bg-[#E34A32]"></span>
+                  </div>
+                  <div
+                    class="-mr-8 h-24 w-16 rotate-6 rounded-2xl border border-white/5 bg-[#26262b]"
+                  ></div>
+                </div>
+              </div>
+            </div>
+            <div
+              data-reveal=""
+              class="transition-all duration-700 delay-150 flex flex-col items-center justify-center rounded-[28px] border border-white/5 bg-[#202024] p-8"
+            >
+              <span
+                class="rounded-full bg-[#E34A32] px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_12px_24px_-8px_rgba(227,74,50,0.8)]"
+              >
+                ימים, לא חודשים
+              </span>
+              <div class="mt-6 flex w-full flex-col gap-3">
+                <div class="flex items-center gap-3">
+                  <span
+                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#2c2c31] text-xs font-semibold text-white/70"
+                  >
+                    1
+                  </span>
+                  <span class="text-sm text-white/70">
+                    שיחת אבחון ומיפוי תהליכים
+                  </span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span
+                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#2c2c31] text-xs font-semibold text-white/70"
+                  >
+                    2
+                  </span>
+                  <span class="text-sm text-white/70">בנייה והדגמה חיה</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span
+                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#2c2c31] text-xs font-semibold text-white/70"
+                  >
+                    3
+                  </span>
+                  <span class="text-sm text-white/70">השקה והדרכת הצוות</span>
+                </div>
+              </div>
+              <p class="mt-6 text-center text-sm text-white/50">
+                מ-8 ימי עבודה ועד 8 שבועות, לפי היקף הפרויקט
+              </p>
+            </div>
+            <div
+              data-reveal=""
+              class="transition-all duration-700 relative overflow-hidden rounded-[28px] border border-white/5 bg-[#202024] p-8 sm:p-10 lg:col-span-2"
+            >
+              <div class="flex flex-col gap-8 sm:flex-row sm:items-center">
+                <div class="relative shrink-0">
+                  <span
+                    class="pointer-events-none absolute -left-5 -top-5 h-3 w-3 rounded-full bg-[#F05A3C]/70"
+                  ></span>
+                  <span
+                    class="pointer-events-none absolute -bottom-4 left-16 h-2 w-2 rounded-full bg-[#F05A3C]/40"
+                  ></span>
+                  <span
+                    class="pointer-events-none absolute -right-3 -top-2 h-1.5 w-1.5 rounded-full bg-white/30"
+                  ></span>
+                  <span
+                    class="inline-flex items-center gap-2 rounded-full bg-[#F05A3C] px-4 py-2 text-sm font-medium text-white shadow-[0_14px_28px_-10px_rgba(227,74,50,0.8)]"
+                  >
+                    <i
+                      data-lucide="rocket"
+                      class="h-4 w-4"
+                      stroke-width="1.5"
+                    ></i>
+                    מהרעיון לעבודה שוטפת
+                  </span>
+                </div>
+                <div>
+                  <h3 class="text-2xl font-semibold text-white">
+                    מתחברים למה
+                    <span class="text-white/50">שכבר יש לכם</span>
+                  </h3>
+                  <p
+                    class="mt-2 max-w-md text-base leading-relaxed text-white/55"
+                  >
+                    וואטסאפ, CRM, יומן, הנהלת חשבונות, מייל וחשבוניות — הכל מדבר
+                    אחד עם השני. בלי להחליף תוכנה ובלי להעביר נתונים ידנית.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div
+              data-reveal=""
+              class="transition-all duration-700 delay-150 rounded-[28px] border border-white/5 bg-[#202024] p-8"
+            >
+              <div class="flex items-center">
+                <span
+                  class="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-[#2c2c31] text-white/70"
+                >
+                  <i data-lucide="user" class="h-5 w-5" stroke-width="1.5"></i>
+                </span>
+                <span
+                  class="-mr-2 flex h-8 w-8 items-center justify-center rounded-full bg-[#F05A3C] text-white shadow-[0_10px_20px_-8px_rgba(227,74,50,0.8)]"
+                >
+                  <i data-lucide="plus" class="h-4 w-4" stroke-width="1.5"></i>
+                </span>
+              </div>
+              <h3 class="mt-5 text-2xl font-semibold text-white">
+                ליווי
+                <span class="text-white/50">אחרי ההשקה</span>
+              </h3>
+              <p class="mt-2 text-base leading-relaxed text-white/55">
+                אנחנו לא נעלמים. חודש מלא של תמיכה, שיפורים והדרכה לצוות כלול
+                בכל פרויקט — ואחריו ליווי חודשי לפי הצורך, כדי שהמערכת תמשיך
+                לעבוד גם בעוד שנה.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= WORK ================= -->
+      <section id="work" class="px-4 pb-24 sm:px-10 lg:px-16 lg:pb-32">
+        <div class="max-w-2xl">
+          <p class="text-sm font-semibold text-[#E34A32]">דמו</p>
+          <h2
+            class="mt-3 text-4xl font-semibold leading-tight text-[#2E3034] sm:text-5xl"
+          >
+            כך זה עובד בפועל
+          </h2>
+          <p class="mt-4 text-lg leading-relaxed text-[#55575c]">
+            שלושה תהליכים שבנינו כמערכות הדגמה מלאות. אפשר לראות כל אחד מהם רץ
+            בשיחה קצרה.
+          </p>
+        </div>
+
+        <div class="mt-14 space-y-6">
+          <!-- Case 1 -->
+          <div
+            data-reveal=""
+            class="transition-all duration-700 grid overflow-hidden rounded-[28px] border border-black/5 bg-white shadow-[0_20px_44px_-24px_rgba(35,36,39,0.3)] lg:grid-cols-5"
+          >
+            <div class="p-8 sm:p-10 lg:col-span-3">
+              <span
+                class="inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]"
+              >
+                משרד עורכי דין · טיפול בפניות
+              </span>
+              <h3 class="mt-4 text-2xl font-semibold sm:text-3xl">
+                פנייה שנכנסת ומטופלת לבד
+              </h3>
+              <div
+                class="mt-6 grid gap-5 sm:grid-cols-3 text-base leading-relaxed text-[#55575c]"
+              >
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    הבעיה
+                  </p>
+                  <p class="mt-1.5">
+                    פניות מהאתר ומוואטסאפ נענות אחרי יום-יומיים, וחלקן נעלמות.
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    מה שבנינו
+                  </p>
+                  <p class="mt-1.5">
+                    זיהוי כל פנייה, מענה ראשוני מיידי ופתיחת כרטיס לקוח.
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    מה רואים בדמו
+                  </p>
+                  <p class="mt-1.5">
+                    המסלול המלא מהודעה נכנסת ועד פגישה ביומן.
+                  </p>
+                </div>
+              </div>
+              <a
+                href="#contact"
+                class="mt-6 inline-flex w-fit items-center justify-center gap-2 rounded-full border border-black/10 bg-white px-6 py-3 text-base font-medium shadow-[0_8px_18px_-10px_rgba(35,36,39,0.3)] transition-all hover:-translate-y-0.5"
+              >
+                לתיאום הדגמה חיה
+                <i
+                  data-lucide="arrow-left"
+                  class="h-4 w-4"
+                  stroke-width="1.5"
+                ></i>
+              </a>
+            </div>
+            <div
+              class="relative min-h-[220px] bg-gradient-to-br from-[#F4F5F5] to-[#ECEDEE] lg:col-span-2"
+            >
+              <div
+                class="absolute inset-6 rounded-2xl border border-black/5 bg-white p-4 shadow-lg rotate-1"
+              >
+                <div class="flex items-center gap-2">
+                  <span class="h-2.5 w-2.5 rounded-full bg-[#E34A32]"></span>
+                  <span class="h-2.5 w-2.5 rounded-full bg-black/10"></span>
+                  <span class="h-2.5 w-2.5 rounded-full bg-black/10"></span>
+                </div>
+                <div class="mt-4 space-y-2.5">
+                  <div class="h-3 w-3/4 rounded-full bg-[#ECEDEE]"></div>
+                  <div class="h-3 w-1/2 rounded-full bg-[#ECEDEE]"></div>
+                  <div
+                    class="h-9 rounded-xl bg-[#F4F5F5] border border-black/5"
+                  ></div>
+                  <div
+                    class="h-9 rounded-xl bg-[#F4F5F5] border border-black/5"
+                  ></div>
+                  <div class="h-8 w-28 rounded-full bg-[#171719]"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Case 2 -->
+          <div
+            data-reveal=""
+            class="transition-all duration-700 grid overflow-hidden rounded-[28px] border border-black/5 bg-white shadow-[0_20px_44px_-24px_rgba(35,36,39,0.3)] lg:grid-cols-5"
+          >
+            <div
+              class="relative order-last min-h-[220px] bg-gradient-to-bl from-[#F4F5F5] to-[#ECEDEE] lg:order-first lg:col-span-2"
+            >
+              <div
+                class="absolute inset-6 rounded-2xl border border-black/5 bg-white p-4 shadow-lg -rotate-1"
+              >
+                <div class="flex gap-2.5">
+                  <span class="h-8 w-8 rounded-full bg-[#E34A32]/15"></span>
+                  <div class="flex-1 space-y-2 pt-1">
+                    <div class="h-3 w-2/3 rounded-full bg-[#ECEDEE]"></div>
+                    <div class="h-3 w-1/3 rounded-full bg-[#ECEDEE]"></div>
+                  </div>
+                </div>
+                <div
+                  class="mt-4 rounded-xl bg-[#F4F5F5] border border-black/5 p-3 space-y-2"
+                >
+                  <div class="h-2.5 w-full rounded-full bg-white"></div>
+                  <div class="h-2.5 w-4/5 rounded-full bg-white"></div>
+                  <div class="h-2.5 w-3/5 rounded-full bg-white"></div>
+                </div>
+                <div
+                  class="mt-3 h-8 rounded-full border border-black/5 bg-[#F7F7F5]"
+                ></div>
+              </div>
+            </div>
+            <div class="p-8 sm:p-10 lg:col-span-3">
+              <span
+                class="inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]"
+              >
+                מרפאה · תיאום תורים
+              </span>
+              <h3 class="mt-4 text-2xl font-semibold sm:text-3xl">
+                תיאום תורים בלי טלפונים
+              </h3>
+              <div
+                class="mt-6 grid gap-5 sm:grid-cols-3 text-base leading-relaxed text-[#55575c]"
+              >
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    הבעיה
+                  </p>
+                  <p class="mt-1.5">
+                    פקידות מבזבזות שעות על תיאומים וביטולים של הרגע האחרון.
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    מה שבנינו
+                  </p>
+                  <p class="mt-1.5">
+                    תיאום עצמי בוואטסאפ, תזכורות ואישור הגעה אוטומטי.
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    מה רואים בדמו
+                  </p>
+                  <p class="mt-1.5">
+                    קביעת תור חי מול יומן אמיתי, כולל תזכורת ואישור.
+                  </p>
+                </div>
+              </div>
+              <a
+                href="#contact"
+                class="mt-6 inline-flex w-fit items-center justify-center gap-2 rounded-full border border-black/10 bg-white px-6 py-3 text-base font-medium shadow-[0_8px_18px_-10px_rgba(35,36,39,0.3)] transition-all hover:-translate-y-0.5"
+              >
+                לתיאום הדגמה חיה
+                <i
+                  data-lucide="arrow-left"
+                  class="h-4 w-4"
+                  stroke-width="1.5"
+                ></i>
+              </a>
+            </div>
+          </div>
+
+          <!-- Case 3 -->
+          <div
+            data-reveal=""
+            class="transition-all duration-700 grid overflow-hidden rounded-[28px] border border-black/5 bg-white shadow-[0_20px_44px_-24px_rgba(35,36,39,0.3)] lg:grid-cols-5"
+          >
+            <div class="p-8 sm:p-10 lg:col-span-3">
+              <span
+                class="inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]"
+              >
+                סטודיו · הצעות מחיר
+              </span>
+              <h3 class="mt-4 text-2xl font-semibold sm:text-3xl">
+                מהצעת מחיר לחשבונית בלחיצה
+              </h3>
+              <div
+                class="mt-6 grid gap-5 sm:grid-cols-3 text-base leading-relaxed text-[#55575c]"
+              >
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    הבעיה
+                  </p>
+                  <p class="mt-1.5">
+                    כל הצעה נכתבת מחדש, וחשבוניות מונפקות באיחור.
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    מה שבנינו
+                  </p>
+                  <p class="mt-1.5">
+                    יצירת הצעה, חתימה דיגיטלית והנפקת חשבונית בלחיצה אחת.
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    מה רואים בדמו
+                  </p>
+                  <p class="mt-1.5">
+                    התהליך המלא, מטופס ועד חשבונית בהנהלת החשבונות.
+                  </p>
+                </div>
+              </div>
+              <a
+                href="#contact"
+                class="mt-6 inline-flex w-fit items-center justify-center gap-2 rounded-full border border-black/10 bg-white px-6 py-3 text-base font-medium shadow-[0_8px_18px_-10px_rgba(35,36,39,0.3)] transition-all hover:-translate-y-0.5"
+              >
+                לתיאום הדגמה חיה
+                <i
+                  data-lucide="arrow-left"
+                  class="h-4 w-4"
+                  stroke-width="1.5"
+                ></i>
+              </a>
+            </div>
+            <div
+              class="relative min-h-[220px] bg-gradient-to-br from-[#F4F5F5] to-[#ECEDEE] lg:col-span-2"
+            >
+              <div
+                class="absolute inset-6 rounded-2xl border border-black/5 bg-white p-4 shadow-lg rotate-1"
+              >
+                <div
+                  class="h-16 rounded-xl bg-gradient-to-br from-[#E34A32]/20 to-[#F05A3C]/5 border border-black/5"
+                ></div>
+                <div class="mt-3 space-y-2.5">
+                  <div class="h-3 w-2/3 rounded-full bg-[#ECEDEE]"></div>
+                  <div class="h-3 w-full rounded-full bg-[#ECEDEE]"></div>
+                  <div class="h-3 w-1/2 rounded-full bg-[#ECEDEE]"></div>
+                </div>
+                <div class="mt-4 flex gap-2">
+                  <span class="h-7 w-20 rounded-full bg-[#171719]"></span>
+                  <span
+                    class="h-7 w-20 rounded-full border border-black/10 bg-white"
+                  ></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PACKAGES ================= -->
+      <section id="packages" class="px-4 pb-24 sm:px-10 lg:px-16 lg:pb-32">
+        <div
+          class="relative overflow-hidden rounded-[36px] bg-[#F7F7F5] border border-white px-6 py-16 sm:px-12 lg:py-20 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_24px_60px_-30px_rgba(35,36,39,0.3)]"
+        >
+          <div
+            class="pointer-events-none absolute -top-32 left-1/2 h-72 w-[600px] -translate-x-1/2 rounded-full opacity-40 blur-3xl"
+            style="background: radial-gradient(circle, rgba(227,74,50,0.3), transparent 70%)"
+          ></div>
+
+          <div class="relative mx-auto max-w-2xl text-center">
+            <p class="text-sm font-semibold text-[#E34A32]">חבילות</p>
+            <h2
+              class="mt-3 text-4xl font-semibold leading-tight text-[#2E3034] sm:text-5xl"
+            >
+              בוחרים לפי הצורך
+            </h2>
+            <p class="mt-4 text-lg leading-relaxed text-[#55575c]">
+              תשלום חד-פעמי להקמה, בלי דמי מנוי חודשיים לתוכנה שלנו. הקוד
+              והמערכת נשארים בבעלותכם.
+            </p>
+            <p class="mt-4 text-base leading-relaxed text-[#55575c]">
+              עובד שמבזבז 10 שעות בשבוע על העברות ידניות עולה לעסק כ-30,000 ₪
+              בשנה. רוב הפרויקטים מחזירים את עצמם תוך חודשים.
+            </p>
+          </div>
+
+          <div class="relative mt-14 grid gap-5 sm:grid-cols-2">
+            <!-- Tier 1 -->
+            <div
+              data-reveal=""
+              class="transition-all duration-700 flex flex-col rounded-[26px] border border-black/5 bg-white p-8 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)]"
+            >
+              <h3 class="text-lg font-semibold">אוטומציה בודדת</h3>
+              <p class="mt-1 text-sm text-[#8a8c91]">עד 8 ימים · תהליך אחד</p>
+              <p class="mt-5 text-4xl font-semibold">
+                <span dir="ltr">החל מ-$890</span>
+                <span class="text-base font-medium text-[#8a8c91]">
+                  / לפרויקט
+                </span>
+              </p>
+              <div class="mt-5 rounded-2xl bg-[#F7F7F5] p-4">
+                <p class="text-xs font-semibold text-[#8a8c91]">
+                  מה זה אומר בפועל
+                </p>
+                <p class="mt-1.5 text-sm leading-relaxed text-[#55575c]">
+                  בוחרים תהליך אחד שחוזר על עצמו כל יום — למשל כל פנייה חדשה
+                  נרשמת ב-CRM ומקבלת מענה — ואנחנו הופכים אותו לאוטומטי.
+                </p>
+              </div>
+              <ul class="mt-6 space-y-3 text-base text-[#55575c]">
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]"
+                    stroke-width="1.5"
+                  ></i>
+                  שיחת אבחון ומיפוי התהליך
+                </li>
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]"
+                    stroke-width="1.5"
+                  ></i>
+                  אוטומציה אחת מקצה לקצה
+                </li>
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]"
+                    stroke-width="1.5"
+                  ></i>
+                  חיבור בין שתי מערכות קיימות
+                </li>
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]"
+                    stroke-width="1.5"
+                  ></i>
+                  הדרכה קצרה לצוות
+                </li>
+              </ul>
+              <a
+                href="#contact"
+                class="mt-auto pt-8 flex items-center justify-center rounded-full border border-black/10 bg-white px-6 py-3 text-base font-medium transition-all hover:-translate-y-0.5"
+              >
+                מתחילים בקטן
+              </a>
+            </div>
+
+            <!-- Tier 2 — flagship, featured -->
+            <div
+              data-reveal=""
+              class="transition-all duration-700 delay-150 relative z-10 flex flex-col rounded-[26px] bg-[#171719] p-8 text-white shadow-[0_1px_0_rgba(255,255,255,0.15)_inset,0_30px_60px_-24px_rgba(23,23,25,0.7)]"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <h3 class="text-lg font-semibold">צ'אטבוט חכם לעסק</h3>
+                <span
+                  class="shrink-0 rounded-full bg-[#E34A32] px-3 py-1 text-xs font-medium"
+                >
+                  הכי מבוקש
+                </span>
+              </div>
+              <p class="mt-1 text-sm text-white/50">
+                עד 3 שבועות · מענה אוטומטי 24/7
+              </p>
+              <p class="mt-5 text-4xl font-semibold">
+                <span dir="ltr">החל מ-$1,390</span>
+                <span class="text-base font-medium text-white/50">
+                  / לפרויקט
+                </span>
+              </p>
+              <div class="mt-5 rounded-2xl bg-white/5 p-4">
+                <p class="text-xs font-semibold text-white/50">
+                  מה זה אומר בפועל
+                </p>
+                <p class="mt-1.5 text-sm leading-relaxed text-white/75">
+                  הלקוחות שלכם שולחים הודעה בוואטסאפ ומקבלים תשובה תוך שניות —
+                  גם בשתיים בלילה. הבוט עונה על שאלות נפוצות, קובע פגישות, ומעביר
+                  אליכם רק את מה שדורש אדם.
+                </p>
+              </div>
+              <ul class="mt-6 space-y-3 text-base text-white/75">
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#F05A3C]"
+                    stroke-width="1.5"
+                  ></i>
+                  בוט בוואטסאפ שעונה בשם העסק, בעברית תקינה
+                </li>
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#F05A3C]"
+                    stroke-width="1.5"
+                  ></i>
+                  תשובות מתוך המחירון והנהלים שלכם
+                </li>
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#F05A3C]"
+                    stroke-width="1.5"
+                  ></i>
+                  קביעת פגישות ישירות ליומן
+                </li>
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#F05A3C]"
+                    stroke-width="1.5"
+                  ></i>
+                  העברה לנציג אנושי כשצריך שיקול דעת
+                </li>
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#F05A3C]"
+                    stroke-width="1.5"
+                  ></i>
+                  חודש ליווי אחרי ההשקה
+                </li>
+              </ul>
+              <p class="mt-5 text-xs leading-relaxed text-white/40">
+                עלויות צד-שלישי (שרת, טוקנים) מועברות אליכם במחיר עלות.
+              </p>
+              <a
+                href="#contact"
+                class="mt-auto pt-8 flex items-center justify-center gap-2 text-base font-medium"
+              >
+                <span
+                  class="flex w-full items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-[#171719] transition-all hover:-translate-y-0.5 shadow-[0_14px_28px_-12px_rgba(0,0,0,0.6)]"
+                >
+                  לתיאום הדגמה חיה
+                  <i
+                    data-lucide="arrow-left"
+                    class="h-4 w-4"
+                    stroke-width="1.5"
+                  ></i>
+                </span>
+              </a>
+            </div>
+
+            <!-- Tier 3 -->
+            <div
+              data-reveal=""
+              class="transition-all duration-700 flex flex-col rounded-[26px] border border-black/5 bg-white p-8 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)]"
+            >
+              <h3 class="text-lg font-semibold">חבילת עסק</h3>
+              <p class="mt-1 text-sm text-[#8a8c91]">
+                עד 4 שבועות · 2–3 תהליכים
+              </p>
+              <p class="mt-5 text-4xl font-semibold">
+                <span dir="ltr">החל מ-$1,790</span>
+                <span class="text-base font-medium text-[#8a8c91]">
+                  / לפרויקט
+                </span>
+              </p>
+              <div class="mt-5 rounded-2xl bg-[#F7F7F5] p-4">
+                <p class="text-xs font-semibold text-[#8a8c91]">
+                  מה זה אומר בפועל
+                </p>
+                <p class="mt-1.5 text-sm leading-relaxed text-[#55575c]">
+                  שניים עד שלושה תהליכים שאתם עושים ידנית היום — למשל לידים,
+                  תזכורות ללקוחות והפקת חשבוניות — עוברים לעבוד לבד ומדברים אחד
+                  עם השני.
+                </p>
+              </div>
+              <ul class="mt-6 space-y-3 text-base text-[#55575c]">
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]"
+                    stroke-width="1.5"
+                  ></i>
+                  כל מה שבאוטומציה בודדת
+                </li>
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]"
+                    stroke-width="1.5"
+                  ></i>
+                  2–3 תהליכים מלאים מקצה לקצה
+                </li>
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]"
+                    stroke-width="1.5"
+                  ></i>
+                  חיבור בין המערכות שכבר יש לכם
+                </li>
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]"
+                    stroke-width="1.5"
+                  ></i>
+                  חודש ליווי אחרי ההשקה
+                </li>
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]"
+                    stroke-width="1.5"
+                  ></i>
+                  הקוד והמערכת בבעלותכם
+                </li>
+              </ul>
+              <a
+                href="#contact"
+                class="mt-auto pt-8 flex items-center justify-center rounded-full border border-black/10 bg-white px-6 py-3 text-base font-medium transition-all hover:-translate-y-0.5"
+              >
+                לשיחת אבחון
+              </a>
+            </div>
+
+            <!-- Tier 4 -->
+            <div
+              data-reveal=""
+              class="transition-all duration-700 delay-150 flex flex-col rounded-[26px] border border-black/5 bg-white p-8 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)]"
+            >
+              <h3 class="text-lg font-semibold">מערכת שלמה</h3>
+              <p class="mt-1 text-sm text-[#8a8c91]">
+                עד 8 שבועות · כל תחומי העסק
+              </p>
+              <p class="mt-5 text-4xl font-semibold">
+                <span dir="ltr">החל מ-$5,000</span>
+                <span class="text-base font-medium text-[#8a8c91]">
+                  / לפרויקט
+                </span>
+              </p>
+              <div class="mt-5 rounded-2xl bg-[#F7F7F5] p-4">
+                <p class="text-xs font-semibold text-[#8a8c91]">
+                  מה זה אומר בפועל
+                </p>
+                <p class="mt-1.5 text-sm leading-relaxed text-[#55575c]">
+                  ממפים את כל העסק — מכירות, שירות, תפעול והנהלת חשבונות — ובונים
+                  שכבת אוטומציה אחת שמחברת בין כולם, עם דוחות וניטור במקום אחד.
+                </p>
+              </div>
+              <ul class="mt-6 space-y-3 text-base text-[#55575c]">
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]"
+                    stroke-width="1.5"
+                  ></i>
+                  כל מה שבחבילת עסק
+                </li>
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]"
+                    stroke-width="1.5"
+                  ></i>
+                  מיפוי מלא של תהליכי העסק
+                </li>
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]"
+                    stroke-width="1.5"
+                  ></i>
+                  דוחות וניטור מרוכזים
+                </li>
+                <li class="flex gap-2.5">
+                  <i
+                    data-lucide="check"
+                    class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]"
+                    stroke-width="1.5"
+                  ></i>
+                  הדרכה מלאה ונהלי עבודה כתובים
+                </li>
+              </ul>
+              <a
+                href="#contact"
+                class="mt-auto pt-8 flex items-center justify-center rounded-full border border-black/10 bg-white px-6 py-3 text-base font-medium transition-all hover:-translate-y-0.5"
+              >
+                לאפיון מותאם
+              </a>
+            </div>
+          </div>
+
+          <!-- Retainer -->
+          <div
+            class="relative mt-5 flex flex-col items-center gap-6 rounded-[26px] border border-black/5 bg-white p-8 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)] sm:flex-row sm:p-10"
+          >
+            <div class="flex-1">
+              <span
+                class="inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]"
+              >
+                ליווי חודשי · אופציונלי
+              </span>
+              <h3 class="mt-3 text-lg font-semibold">
+                שהמערכת תמשיך לעבוד גם בעוד שנה
+              </h3>
+              <p class="mt-2 text-base leading-relaxed text-[#55575c]">
+                אחרי חודש הליווי הכלול, אפשר להמשיך בליווי חודשי: ניטור, תיקונים
+                ושינויים קטנים. עד 4 שעות עבודה בחודש, תגובה תוך יום עסקים,
+                והתראה אוטומטית לפני שתהליך נופל. אפשר גם לקרוא לנו נקודתית.
+              </p>
+            </div>
+            <div class="shrink-0 flex flex-col items-center sm:items-end gap-3">
+              <span class="text-sm text-[#8a8c91]">
+                <span dir="ltr">החל מ-$190</span>
+                / לחודש
+              </span>
+              <a
+                href="#contact"
+                class="flex items-center justify-center rounded-full border border-black/10 bg-white px-6 py-3 text-base font-medium shadow-[0_8px_18px_-10px_rgba(35,36,39,0.3)] transition-all hover:-translate-y-0.5"
+              >
+                לפרטים
+              </a>
+            </div>
+          </div>
+
+          <!-- White label -->
+          <div
+            class="relative mt-5 flex flex-col items-center gap-6 rounded-[26px] border border-black/5 bg-white p-8 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)] sm:flex-row sm:p-10"
+          >
+            <div class="flex-1">
+              <span
+                class="inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]"
+              >
+                שותפי ביצוע
+              </span>
+              <h3 class="mt-3 text-lg font-semibold">
+                עובדים עם סוכנויות ובתי תוכנה
+              </h3>
+              <p class="mt-2 text-base leading-relaxed text-[#55575c]">
+                אנחנו הזרוע הטכנית שלכם. הביצוע נעשה בשמכם, מול הלקוח אתם
+                היחידים שמופיעים, ואנחנו חותמים על אי-עקיפה. תמחור לפי פרויקט או
+                לפי שעות.
+              </p>
+            </div>
+            <a
+              href="#contact"
+              class="shrink-0 flex items-center justify-center rounded-full border border-black/10 bg-white px-6 py-3 text-base font-medium shadow-[0_8px_18px_-10px_rgba(35,36,39,0.3)] transition-all hover:-translate-y-0.5"
+            >
+              לתיאום שיחה
+            </a>
+          </div>
+
+          <p class="relative mt-8 text-center text-xs text-[#8a8c91]">
+            כל פרויקט מתומחר בנפרד אחרי שיחת אבחון. המספרים כאן הם נקודת פתיחה
+            מייצגת — לפעמים הפתרון הנכון פשוט וזול ממה שחשבתם, ואם זה המצב נגיד
+            לכם את זה.
+          </p>
+        </div>
+      </section>
+
+      <!-- ================= STUDIO ================= -->
+      <section id="studio" class="px-4 pb-24 sm:px-10 lg:px-16 lg:pb-32">
+        <div class="max-w-2xl">
+          <p class="text-sm font-semibold text-[#E34A32]">עלינו</p>
+          <h2
+            class="mt-3 text-4xl font-semibold leading-tight text-[#2E3034] sm:text-5xl"
+          >
+            מי עומד מאחורי זה
+          </h2>
+        </div>
+        <div class="mx-auto mt-14 grid max-w-5xl gap-5 md:grid-cols-3">
+          <div
+            data-reveal=""
+            class="transition-all duration-700 relative flex min-h-[440px] flex-col justify-between overflow-hidden rounded-[26px] bg-[#171719] shadow-[0_20px_44px_-24px_rgba(35,36,39,0.5)]"
+          >
+            <!-- TODO: replace with your own image -->
+            <img
+              src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg"
+              alt="רקע מופשט"
+              class="absolute inset-0 h-full w-full object-cover opacity-70"
+            />
+            <div
+              class="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30"
+            ></div>
+            <div class="relative flex items-start justify-between p-5">
+              <div class="flex gap-2">
+                <span
+                  class="inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]"
+                >
+                  אוטומציה
+                </span>
+                <span
+                  class="inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]"
+                >
+                  <span dir="ltr">AI</span>
+                </span>
+              </div>
+              <i
+                data-lucide="arrow-up-right"
+                class="h-4 w-4 text-white/80"
+                stroke-width="1.5"
+              ></i>
+            </div>
+            <div class="relative p-5 pb-6">
+              <p class="text-sm leading-relaxed text-white/90">
+                אנחנו לוקחים את התהליכים ששורפים לכם את הזמן — ובונים מערכות
+                שמריצות אותם לבד.
+              </p>
+            </div>
+          </div>
+          <div
+            data-reveal=""
+            class="transition-all duration-700 delay-150 relative flex min-h-[440px] flex-col overflow-hidden rounded-[26px] bg-[#ECEDEE] shadow-[0_20px_44px_-24px_rgba(35,36,39,0.5)]"
+          >
+            <!-- TODO: replace with a photo of the two of you -->
+            <img
+              src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg"
+              alt="צוות מנגנון"
+              class="absolute inset-0 h-full w-full object-cover grayscale"
+            />
+            <div class="absolute inset-0 bg-black/20"></div>
+            <div class="relative flex flex-1 items-center justify-center">
+              <div class="text-center">
+                <p class="text-xl font-semibold text-white drop-shadow">
+                  שיחת אפיון · 60 דקות
+                </p>
+                <p
+                  class="mt-1 text-[10px] font-medium tracking-widest text-white/80"
+                >
+                  בלי התחייבות
+                </p>
+                <p
+                  class="mt-3 text-xs leading-relaxed text-white/80 max-w-[220px] mx-auto"
+                >
+                  נבין מאיפה הכי כדאי להתחיל אצלכם, מה ההחזר הצפוי, והאם אנחנו
+                  מתאימים.
+                </p>
+              </div>
+            </div>
+            <div class="relative flex justify-center pb-6">
+              <a
+                href="#contact"
+                class="rounded-full border border-white/50 bg-white/20 px-5 py-2 text-sm font-medium text-white backdrop-blur transition hover:bg-white/30"
+              >
+                לקביעת שיחה
+              </a>
+            </div>
+          </div>
+          <div
+            data-reveal=""
+            class="transition-all duration-700 delay-300 flex min-h-[440px] flex-col justify-between rounded-[26px] bg-[#171719] p-6 shadow-[0_20px_44px_-24px_rgba(35,36,39,0.5)]"
+          >
+            <div>
+              <p
+                class="text-[10px] font-medium uppercase tracking-widest text-white/50"
+              >
+                ← הגישה שלנו
+              </p>
+              <p class="mt-5 text-sm leading-relaxed text-white/80">
+                <span class="block mb-2">
+                  שנינו בוגרי מדעי המחשב, עם שנים של פרויקטים מאחורינו.
+                </span>
+                <span class="font-semibold text-white">
+                  סטודיו אוטומציה בוטיק מישראל.
+                </span>
+                צ'אטבוטים בוואטסאפ, אוטומציה של תהליכים עסקיים וחיבור בין מערכות
+                ו-CRM. מתחברים למה שכבר עובד אצלכם, ומורידים מהדרך את העבודה
+                החוזרת.
+              </p>
+            </div>
+            <div class="text-xs leading-relaxed text-white/60">
+              <a
+                href="mailto:mangenon.sheket@gmail.com"
+                class="block hover:text-white"
+              >
+                mangenon.sheket@gmail.com
+              </a>
+              <p class="mt-1">
+                <a href="tel:+972545605087" class="block hover:text-white">
+                  <span dir="ltr" class="inline-block">054-560-5087</span>
+                </a>
+              </p>
+              <p class="mt-1">
+                שותפים וסוכנויות:
+                <a href="tel:+972522860930" class="hover:text-white">
+                  <span dir="ltr" class="inline-block">052-286-0930</span>
+                </a>
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= FAQ ================= -->
+      <section id="faq" class="px-4 pb-24 sm:px-10 lg:px-16 lg:pb-32">
+        <div class="max-w-2xl">
+          <p class="text-sm font-semibold text-[#E34A32]">שאלות</p>
+          <h2
+            class="mt-3 text-4xl font-semibold leading-tight text-[#2E3034] sm:text-5xl"
+          >
+            מה שכולם שואלים לפני שמתחילים
+          </h2>
+        </div>
+        <div
+          data-reveal=""
+          class="transition-all duration-700 mt-14 mx-auto max-w-3xl flex flex-col gap-3"
+        >
+          <details
+            class="rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)]"
+          >
+            <summary
+              class="[&amp;::-webkit-details-marker]:hidden cursor-pointer list-none text-base font-semibold flex items-center justify-between gap-4"
+            >
+              כמה עולה צ'אטבוט לעסק?
+              <i
+                data-lucide="plus"
+                class="h-4 w-4 shrink-0 text-[#E34A32]"
+                stroke-width="1.5"
+              ></i>
+            </summary>
+            <p class="mt-3 text-base leading-relaxed text-[#55575c]">
+              בוט שעונה ללקוחות בוואטסאפ, מחובר ליומן ול-CRM, מתחיל
+              <span dir="ltr">מ-$1,390</span>
+              כתשלום חד-פעמי. אין דמי מנוי לתוכנה שלנו — רק עלויות צד-שלישי
+              (שרת וטוקנים) שמועברות אליכם במחיר עלות. את המחיר המדויק נגדיר
+              אחרי שיחת האבחון, לפי כמה שאלות הבוט צריך לכסות ולאילו מערכות הוא
+              מתחבר.
+            </p>
+          </details>
+          <details
+            class="rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)]"
+          >
+            <summary
+              class="[&amp;::-webkit-details-marker]:hidden cursor-pointer list-none text-base font-semibold flex items-center justify-between gap-4"
+            >
+              הקוד והמערכת בבעלות מי?
+              <i
+                data-lucide="plus"
+                class="h-4 w-4 shrink-0 text-[#E34A32]"
+                stroke-width="1.5"
+              ></i>
+            </summary>
+            <p class="mt-3 text-base leading-relaxed text-[#55575c]">
+              שלכם. בנייה חד-פעמית, בלי מנוי לתוכנה שלנו, ובלי תלות בנו. גם אם
+              ניפרד מחר — המערכת ממשיכה לעבוד ואתם מקבלים את כל מה שנבנה.
+            </p>
+          </details>
+          <details
+            class="rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)]"
+          >
+            <summary
+              class="[&amp;::-webkit-details-marker]:hidden cursor-pointer list-none text-base font-semibold flex items-center justify-between gap-4"
+            >
+              מה קורה אם האוטומציה תיפול בעוד חצי שנה?
+              <i
+                data-lucide="plus"
+                class="h-4 w-4 shrink-0 text-[#E34A32]"
+                stroke-width="1.5"
+              ></i>
+            </summary>
+            <p class="mt-3 text-base leading-relaxed text-[#55575c]">
+              כל מערכת יוצאת עם ניטור שמתריע לנו לפני שאתם מרגישים. בחודש הראשון
+              התיקונים כלולים, ואחר כך אפשר להמשיך בליווי חודשי או לקרוא לנו
+              נקודתית.
+            </p>
+          </details>
+          <details
+            class="rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)]"
+          >
+            <summary
+              class="[&amp;::-webkit-details-marker]:hidden cursor-pointer list-none text-base font-semibold flex items-center justify-between gap-4"
+            >
+              אני צריך להחליף את המערכות שאני עובד איתן?
+              <i
+                data-lucide="plus"
+                class="h-4 w-4 shrink-0 text-[#E34A32]"
+                stroke-width="1.5"
+              ></i>
+            </summary>
+            <p class="mt-3 text-base leading-relaxed text-[#55575c]">
+              לא. אנחנו מתחברים למה שכבר עובד אצלכם — וואטסאפ, יומן, CRM, הנהלת
+              חשבונות. אם משהו באמת חוסם, נגיד את זה מראש בשיחת האבחון.
+            </p>
+          </details>
+          <details
+            class="rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)]"
+          >
+            <summary
+              class="[&amp;::-webkit-details-marker]:hidden cursor-pointer list-none text-base font-semibold flex items-center justify-between gap-4"
+            >
+              עובדים עם מערכות ישראליות?
+              <i
+                data-lucide="plus"
+                class="h-4 w-4 shrink-0 text-[#E34A32]"
+                stroke-width="1.5"
+              ></i>
+            </summary>
+            <p class="mt-3 text-base leading-relaxed text-[#55575c]">
+              כן. iCount, חשבונית ירוקה, Priority, חשבשבת, Monday ועוד. איפה
+              שאין חיבור מוכן, אנחנו כותבים אותו — זה בדיוק היתרון של צוות שמגיע
+              מפיתוח.
+            </p>
+          </details>
+          <details
+            class="rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)]"
+          >
+            <summary
+              class="[&amp;::-webkit-details-marker]:hidden cursor-pointer list-none text-base font-semibold flex items-center justify-between gap-4"
+            >
+              כמה זמן זה דורש ממני?
+              <i
+                data-lucide="plus"
+                class="h-4 w-4 shrink-0 text-[#E34A32]"
+                stroke-width="1.5"
+              ></i>
+            </summary>
+            <p class="mt-3 text-base leading-relaxed text-[#55575c]">
+              שיחת אפיון של 60 דקות בהתחלה, ואחר כך בדיקה קצרה של מה שבנינו. את
+              שאר העבודה אנחנו עושים לבד ומגיעים אליכם עם משהו שאפשר ללחוץ עליו.
+            </p>
+          </details>
+          <details
+            class="rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)]"
+          >
+            <summary
+              class="[&amp;::-webkit-details-marker]:hidden cursor-pointer list-none text-base font-semibold flex items-center justify-between gap-4"
+            >
+              אין לי מושג מאיפה להתחיל.
+              <i
+                data-lucide="plus"
+                class="h-4 w-4 shrink-0 text-[#E34A32]"
+                stroke-width="1.5"
+              ></i>
+            </summary>
+            <p class="mt-3 text-base leading-relaxed text-[#55575c]">
+              זה המצב הנפוץ. בשיחת האבחון נמפה איתכם את התהליכים, נדרג אותם לפי
+              החזר צפוי, ונמליץ מאיפה להתחיל — גם אם התשובה היא לחכות.
+            </p>
+          </details>
+          <details
+            class="rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)]"
+          >
+            <summary
+              class="[&amp;::-webkit-details-marker]:hidden cursor-pointer list-none text-base font-semibold flex items-center justify-between gap-4"
+            >
+              איך מתחילים?
+              <i
+                data-lucide="plus"
+                class="h-4 w-4 shrink-0 text-[#E34A32]"
+                stroke-width="1.5"
+              ></i>
+            </summary>
+            <p class="mt-3 text-base leading-relaxed text-[#55575c]">
+              שיחת אפיון של 60 דקות, בלי התחייבות. אם נראה שיש מה לאוטמט — תקבלו
+              הצעה מפורטת תוך 48 שעות. אם לא — נגיד לכם את זה בכנות.
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <!-- ================= FOOTER CTA ================= -->
+      <footer id="contact" class="px-2 pb-2 sm:px-0 sm:pb-4">
+        <div
+          class="relative overflow-hidden rounded-[28px] sm:rounded-[40px] bg-[#F4F5F5] px-6 py-20 sm:px-12 lg:py-28 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_20px_60px_-30px_rgba(35,36,39,0.25)]"
+        >
+          <div
+            class="pointer-events-none absolute -left-40 bottom-0 h-[520px] w-[520px] rounded-full opacity-60 blur-3xl"
+            style="background: radial-gradient(circle, rgba(227,74,50,0.4), transparent 70%)"
+          ></div>
+          <div
+            class="pointer-events-none absolute -right-40 -top-20 h-[420px] w-[420px] rounded-full opacity-40 blur-3xl"
+            style="background: radial-gradient(circle, rgba(46,48,52,0.3), transparent 70%)"
+          ></div>
+
+          <div class="relative mx-auto max-w-3xl text-center">
+            <h2
+              class="text-4xl font-semibold leading-tight text-[#2E3034] sm:text-6xl"
+            >
+              ספרו לנו איפה נשרף לכם הזמן.
+              <br class="hidden sm:block" />
+              אנחנו נהפוך את זה לאוטומטי.
+            </h2>
+            <p class="mt-6 text-lg leading-relaxed text-[#55575c]">
+              תארו לנו תהליך אחד שמעצבן אתכם, ותקבלו הצעה מפורטת תוך 48 שעות.
+              שיחת אפיון של 60 דקות, בלי עלות ובלי התחייבות.
+            </p>
+
+            <form
+              id="contactForm"
+              class="mx-auto mt-10 flex w-full max-w-lg flex-col gap-3"
+              action="https://formspree.io/f/mqernpra"
+              method="POST"
+            >
+              <input
+                type="hidden"
+                name="_subject"
+                value="פנייה חדשה מהאתר — מנגנון"
+              />
+              <input type="text" name="_gotcha" class="hidden" tabindex="-1" />
+              <input
+                type="text"
+                name="message"
+                required=""
+                placeholder="במשפט אחד — מה תרצו לפתור?"
+                class="w-full flex-1 rounded-full border border-black/10 bg-white px-6 py-3.5 text-base outline-none placeholder:text-[#8a8c91] shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_8px_20px_-12px_rgba(35,36,39,0.25)] focus:border-[#E34A32]/50 focus:ring-2 focus:ring-[#E34A32]/20"
+              />
+              <input
+                type="email"
+                name="email"
+                required=""
+                placeholder="name@company.co.il"
+                class="w-full flex-1 rounded-full border border-black/10 bg-white px-6 py-3.5 text-base outline-none placeholder:text-[#8a8c91] shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_8px_20px_-12px_rgba(35,36,39,0.25)] focus:border-[#E34A32]/50 focus:ring-2 focus:ring-[#E34A32]/20"
+              />
+              <button
+                type="submit"
+                class="group flex w-full shrink-0 items-center justify-center gap-2 rounded-full bg-[#171719] px-8 py-3.5 text-base font-medium text-white shadow-[0_14px_28px_-12px_rgba(23,23,25,0.75)] transition-all hover:-translate-y-0.5 disabled:opacity-60"
+              >
+                <span data-btn-label>לשיחת אבחון חינם</span>
+                <i
+                  data-lucide="arrow-left"
+                  class="h-4 w-4 transition-transform group-hover:-translate-x-0.5"
+                  stroke-width="1.5"
+                ></i>
+              </button>
+            </form>
+            <p class="mt-4 text-sm text-[#8a8c91]">
+              או פשוט כתבו לנו ל־
+              <a
+                href="mailto:mangenon.sheket@gmail.com"
+                class="font-medium text-[#E34A32] hover:underline"
+              >
+                mangenon.sheket@gmail.com
+              </a>
+              <br />
+              <span class="mt-1 inline-block">
+                <a
+                  href="https://wa.me/972545605087?text=%D7%94%D7%99%D7%99%2C%20%D7%99%D7%A9%20%D7%9C%D7%99%20%D7%A2%D7%A1%D7%A7%20%D7%95%D7%90%D7%A9%D7%9E%D7%97%20%D7%9C%D7%A9%D7%9E%D7%95%D7%A2%20%D7%A2%D7%9C%20%D7%90%D7%95%D7%98%D7%95%D7%9E%D7%A6%D7%99%D7%94.%20%D7%A7%D7%A6%D7%AA%20%D7%A8%D7%A7%D7%A2%20%D7%A2%D7%9C%20%D7%94%D7%A2%D7%A1%D7%A7%20%D7%A9%D7%9C%D7%99%3A%20"
+                  target="_blank"
+                  rel="noopener"
+                  class="font-medium text-[#E34A32] hover:underline"
+                >
+                  או דברו איתנו עכשיו בוואטסאפ ←
+                </a>
+              </span>
+            </p>
+          </div>
+
+          <div
+            class="relative mx-auto mt-16 flex max-w-5xl flex-col items-center justify-between gap-6 border-t border-black/5 pt-8 sm:flex-row text-center sm:text-right"
+          >
+            <a href="#" class="flex items-center gap-2.5">
+              <span class="relative flex h-5 w-8 items-center">
+                <span
+                  class="absolute left-0 h-5 w-5 rounded-full bg-[#171719]"
+                ></span>
+                <span
+                  class="absolute left-3 h-5 w-5 rounded-full bg-[#E34A32]"
+                ></span>
+              </span>
+              <span class="text-base font-semibold">מנגנון</span>
+            </a>
+            <div
+              class="flex items-center gap-6 text-sm font-medium text-[#55575c] flex-wrap justify-center"
+            >
+              <a href="#services" class="hover:text-[#232427]">שירותים</a>
+              <a href="#work" class="hover:text-[#232427]">דמו</a>
+              <a href="#packages" class="hover:text-[#232427]">חבילות</a>
+              <a href="#faq" class="hover:text-[#232427]">שאלות</a>
+              <a href="#contact" class="hover:text-[#232427]">צור קשר</a>
+              <button
+                type="button"
+                class="hover:text-[#232427]"
+                onclick="document.getElementById('a11yDialog').showModal();"
+              >
+                הצהרת נגישות
+              </button>
+              <button
+                type="button"
+                class="hover:text-[#232427]"
+                onclick="document.getElementById('privacyDialog').showModal();"
+              >
+                מדיניות פרטיות
+              </button>
+            </div>
+            <p class="text-xs text-[#8a8c91]">
+              <span dir="ltr" class="inline-block">© 2026</span>
+              מנגנון. כל הזכויות שמורות.
+            </p>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <script>
+      lucide.createIcons();
+
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // Hero rise-in
+      window.addEventListener('load', () => {
+        document.querySelectorAll('[data-rise]').forEach(el => {
+          el.classList.remove('opacity-0', 'translate-y-4');
+        });
+        document.querySelectorAll('[data-drift]').forEach(el => {
+          el.classList.remove('opacity-0');
+        });
+      });
+
+      // Scroll reveals
+      if (reduceMotion) {
+        document.querySelectorAll('[data-reveal]').forEach(el => {
+          el.classList.remove('opacity-0', 'translate-y-4');
+        });
+      } else {
+        const io = new IntersectionObserver((entries) => {
+          entries.forEach(e => {
+            if (e.isIntersecting) {
+              e.target.classList.remove('opacity-0', 'translate-y-4');
+              io.unobserve(e.target);
+            }
+          });
+        }, { threshold: 0.15 });
+        document.querySelectorAll('[data-reveal]').forEach(el => io.observe(el));
+      }
+
+      // Nav shadow on scroll
+      const nav = document.getElementById('nav');
+      window.addEventListener('scroll', () => {
+        if (window.scrollY > 24) {
+          nav.classList.add('shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_44px_-14px_rgba(35,36,39,0.4)]');
+        } else {
+          nav.classList.remove('shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_44px_-14px_rgba(35,36,39,0.4)]');
+        }
+      }, { passive: true });
+
+      // Mobile menu
+      document.getElementById('menuBtn').addEventListener('click', (e) => {
+        document.getElementById('mobileMenu').classList.toggle('hidden');
+        const isExpanded = e.currentTarget.getAttribute('aria-expanded') === 'true';
+        e.currentTarget.setAttribute('aria-expanded', String(!isExpanded));
+      });
+
+      // Contact form
+      (function () {
+        var form = document.getElementById('contactForm');
+        if (!form) return;
+        var btn = form.querySelector('button[type="submit"]');
+        var label = form.querySelector('[data-btn-label]');
+
+        function showError() {
+          btn.disabled = false;
+          if (label) label.textContent = 'לשיחת אבחון חינם';
+          if (form.querySelector('[data-form-error]')) return;
+          var err = document.createElement('p');
+          err.className = 'mt-3 text-sm text-[#E34A32]';
+          err.setAttribute('data-form-error', '');
+          err.textContent = 'משהו נתקע בשליחה. אפשר לכתוב לנו ישירות למייל.';
+          form.appendChild(err);
+        }
+
+        form.addEventListener('submit', function (e) {
+          e.preventDefault();
+          var prev = form.querySelector('[data-form-error]');
+          if (prev) prev.remove();
+          btn.disabled = true;
+          if (label) label.textContent = 'שולח…';
+
+          fetch(form.action, {
+            method: 'POST',
+            body: new FormData(form),
+            headers: { Accept: 'application/json' }
+          })
+            .then(function (r) {
+              if (!r.ok) { showError(); return; }
+              var done = document.createElement('p');
+              done.className = 'mt-10 text-lg leading-relaxed text-[#55575c]';
+              done.textContent = 'קיבלנו. נחזור אליכם עם הצעה מפורטת תוך 48 שעות.';
+              form.replaceWith(done);
+            })
+            .catch(showError);
+        });
+      })();
+
+      // Subtle tile drift + bloom parallax
+      if (!reduceMotion) {
+        const tiles = document.querySelectorAll('[data-drift]');
+        let t = 0;
+        (function drift() {
+          t += 0.008;
+          tiles.forEach((el, i) => {
+            const base = el.classList.contains('rotate-6') ? 6 : el.classList.contains('-rotate-6') ? -6 : 3;
+            el.style.transform = `translateY(${Math.sin(t + i * 2) * 6}px) rotate(${base + Math.sin(t * 0.7 + i) * 2}deg)`;
+          });
+          requestAnimationFrame(drift);
+        })();
+
+        const bloom = document.getElementById('bloom');
+        window.addEventListener('pointermove', (e) => {
+          const x = (e.clientX / window.innerWidth - 0.5) * 24;
+          const y = (e.clientY / window.innerHeight - 0.5) * 24;
+          bloom.style.transform = `translate(${x}px, ${y}px)`;
+        }, { passive: true });
+      }
+    </script>
+
+    <script>
+      (function(){
+        var canvas = document.getElementById('meshGL');
+        if (canvas && window.THREE) {
+          var renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+          var scene = new THREE.Scene();
+          var camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+          camera.position.z = 15;
+
+          var geometry = new THREE.IcosahedronGeometry(3, 0);
+          var material = new THREE.MeshStandardMaterial({
+            color: 0xE34A32,
+            emissive: 0x7a2012,
+            roughness: 0.3,
+            metalness: 0.6,
+            flatShading: true
+          });
+          var mesh = new THREE.Mesh(geometry, material);
+          scene.add(mesh);
+
+          scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+          var mainLight = new THREE.DirectionalLight(0xffffff, 1.2);
+          mainLight.position.set(10, 10, 10);
+          scene.add(mainLight);
+          var fillLight = new THREE.DirectionalLight(0xF05A3C, 0.6);
+          fillLight.position.set(-10, -5, 5);
+          scene.add(fillLight);
+
+          function resize(){
+            var w = canvas.clientWidth, h = canvas.clientHeight;
+            renderer.setSize(w, h, false);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            mesh.position.x = (w < 1024) ? 0 : 4.5;
+          }
+          window.addEventListener('resize', resize);
+          resize();
+
+          var t = 0;
+          (function frame(){
+            t += 0.01;
+            mesh.rotation.x = t * 0.2;
+            mesh.rotation.y = t * 0.3;
+            mesh.position.y = 0.4 + Math.sin(t * 1.2) * 0.3;
+            renderer.render(scene, camera);
+            requestAnimationFrame(frame);
+          })();
+        }
+
+        function splitChars(el){
+          if (!el || el.__splitCharsDone) return;
+          el.__splitCharsDone = true;
+
+          var label = (el.getAttribute('aria-label') || '').trim();
+          if (!label) {
+            var originalText = (el.textContent || '').replace(/\s+/g,' ').trim();
+            if (originalText) el.setAttribute('aria-label', originalText);
+          }
+
+          var walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,null);
+          var nodes=[]; while(walker.nextNode()) nodes.push(walker.currentNode);
+          nodes.forEach(function(node){
+            var text=node.textContent;
+            if(!text.trim()) return;
+            var frag=document.createDocumentFragment();
+            var words=text.trim().split(/\s+/);
+            words.forEach(function(word, idx){
+              var wSpan=document.createElement('span');
+              wSpan.style.display='inline-block';
+              wSpan.style.whiteSpace='nowrap';
+              word.split('').forEach(function(ch){
+                var s=document.createElement('span');
+                s.className='wchar';
+                s.setAttribute('aria-hidden','true');
+                s.textContent=ch;
+                wSpan.appendChild(s);
+              });
+              frag.appendChild(wSpan);
+              if(idx<words.length-1){
+                frag.appendChild(document.createTextNode(' '));
+              }
+            });
+            node.parentNode.replaceChild(frag,node);
+          });
+        }
+        document.querySelectorAll('h1, h2').forEach(splitChars);
+        var chars=Array.prototype.slice.call(document.querySelectorAll('.wchar'));
+        var mx=-9999,my=-9999;
+        window.addEventListener('pointermove',function(e){mx=e.clientX;my=e.clientY;},{passive:true});
+        (function tick(){
+          for(var i=0;i<chars.length;i++){
+            var s=chars[i], r=s.getBoundingClientRect();
+            if(r.bottom<-80||r.top>innerHeight+80) continue;
+            var d=Math.hypot(mx-(r.left+r.width/2),my-(r.top+r.height/2));
+            var w=d<200?600+(1-d/200)*300:600;
+            s.style.fontVariationSettings="'wght' "+Math.round(w);
+          }
+          requestAnimationFrame(tick);
+        })();
+      })();
+    </script>
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "ProfessionalService",
+        "name": "מנגנון",
+        "alternateName": "Mangenon",
+        "url": "https://mangenon-sheket.aura.build",
+        "email": "mangenon.sheket@gmail.com",
+        "telephone": "+972545605087",
+        "areaServed": "IL",
+        "inLanguage": "he",
+        "priceRange": "$$",
+        "description": "בונים צ'אטבוטים חכמים ואוטומציות שמריצות את העבודה החוזרת במקומכם. מחברים בין וואטסאפ, CRM, יומן והנהלת חשבונות — בלי להחליף תוכנה. הקוד נשאר שלכם."
+      }
+    </script>
+
+    <dialog
+      id="a11yDialog"
+      dir="rtl"
+      aria-labelledby="a11yDialogTitle"
+      class="rounded-[28px] bg-white max-w-2xl w-[92vw] max-h-[85vh] overflow-y-auto p-8 sm:p-10 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)]"
+    >
+      <h2
+        id="a11yDialogTitle"
+        class="text-2xl font-semibold tracking-tight text-[#2E3034]"
+      >
+        הצהרת נגישות
+      </h2>
+      <div class="mt-5 text-base leading-relaxed text-[#55575c]">
+        <p>
+          [שם החברה המלא] (להלן "מנגנון") רואה חשיבות רבה במתן שירות נגיש
+          ושוויוני לכלל הלקוחות, לרבות אנשים עם מוגבלות.
+        </p>
+
+        <h3 class="mt-6 text-lg font-semibold text-[#2E3034]">
+          רמת הנגישות באתר
+        </h3>
+        <p class="mt-2">
+          האתר נבנה בהתאם להנחיות התקן הישראלי ת"י 5568 ברמה AA, המבוסס על
+          הנחיות WCAG 2.0 של ארגון W3C. בין היתר, האתר כולל מבנה כותרות היררכי,
+          טקסט חלופי לתמונות, ניגודיות צבעים מספקת, תמיכה בניווט באמצעות מקלדת,
+          והתאמה למצב "הפחתת תנועה" בהגדרות מערכת ההפעלה.
+        </p>
+
+        <h3 class="mt-6 text-lg font-semibold text-[#2E3034]">הסדרי נגישות</h3>
+        <p class="mt-2">
+          ניתן לנווט באתר באמצעות מקלדת בלבד. האתר מותאם לצפייה בדפדפנים הנפוצים
+          ובמכשירים ניידים, ותומך בהגדלת טקסט באמצעות הדפדפן.
+        </p>
+
+        <h3 class="mt-6 text-lg font-semibold text-[#2E3034]">
+          החרגות ומגבלות
+        </h3>
+        <p class="mt-2">
+          אנו פועלים לשיפור מתמיד של נגישות האתר. ייתכן שחלקים מסוימים, ובפרט
+          תכנים של צד שלישי שאין לנו שליטה עליהם, טרם הונגשו במלואם. אם נתקלתם
+          בקושי, נשמח לשמוע ולתקן.
+        </p>
+
+        <h3 class="mt-6 text-lg font-semibold text-[#2E3034]">
+          פניות בנושא נגישות
+        </h3>
+        <p class="mt-2">
+          רכז/ת הנגישות: [שם מלא]
+          <br />
+          דוא"ל: mangenon.sheket@gmail.com
+          <br />
+          טלפון:
+          <span dir="ltr">054-560-5087</span>
+          <br />
+          נשיב לפניות בנושא נגישות בתוך זמן סביר.
+        </p>
+
+        <p class="mt-6 text-sm text-[#8a8c91]">תאריך עדכון ההצהרה: [תאריך]</p>
+      </div>
+      <div class="mt-8 flex justify-start">
+        <button
+          type="button"
+          class="flex items-center justify-center rounded-full border border-black/10 bg-white px-6 py-3 text-base font-medium transition-all hover:-translate-y-0.5 shadow-[0_8px_18px_-10px_rgba(35,36,39,0.3)]"
+          onclick="this.closest('dialog').close();"
+        >
+          סגירה
+        </button>
+      </div>
+    </dialog>
+
+    <dialog
+      id="privacyDialog"
+      dir="rtl"
+      aria-labelledby="privacyDialogTitle"
+      class="rounded-[28px] bg-white max-w-2xl w-[92vw] max-h-[85vh] overflow-y-auto p-8 sm:p-10 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)]"
+    >
+      <h2
+        id="privacyDialogTitle"
+        class="text-2xl font-semibold tracking-tight text-[#2E3034]"
+      >
+        מדיניות פרטיות
+      </h2>
+      <div class="mt-5 text-base leading-relaxed text-[#55575c]">
+        <p>
+          מדיניות זו מסבירה אילו פרטים אנו אוספים באתר, למה, ומה הזכויות שלכם.
+        </p>
+
+        <h3 class="mt-6 text-lg font-semibold text-[#2E3034]">
+          איזה מידע אנחנו אוספים
+        </h3>
+        <p class="mt-2">
+          כאשר אתם ממלאים את טופס יצירת הקשר, אנו אוספים את כתובת הדוא"ל שהזנתם
+          ואת תיאור הפנייה. אם תיצרו קשר בוואטסאפ, בטלפון או בדוא"ל, יישמרו גם
+          הפרטים שתמסרו במסגרת ההתכתבות. אין חובה חוקית למסור פרטים אלה, אך
+          בלעדיהם לא נוכל לחזור אליכם.
+        </p>
+
+        <h3 class="mt-6 text-lg font-semibold text-[#2E3034]">
+          למה אנחנו משתמשים במידע
+        </h3>
+        <p class="mt-2">
+          המידע משמש אך ורק כדי לחזור אליכם בנוגע לפנייה, להכין הצעת מחיר ולנהל
+          את הקשר העסקי. איננו מוכרים, משכירים או מעבירים את פרטיכם לצדדים
+          שלישיים למטרות שיווק.
+        </p>
+
+        <h3 class="mt-6 text-lg font-semibold text-[#2E3034]">
+          העברת מידע לצדדים שלישיים
+        </h3>
+        <p class="mt-2">
+          טופס יצירת הקשר מופעל באמצעות שירות Formspree, ספק חיצוני שמעביר את
+          תוכן הפנייה לתיבת הדוא"ל שלנו. בהתאם לכך, פרטי הפנייה עשויים להישמר
+          בשרתים הממוקמים מחוץ לישראל. שימוש בדוא"ל ובוואטסאפ כפוף אף הוא לתנאי
+          השימוש ולמדיניות הפרטיות של אותם שירותים.
+        </p>
+
+        <h3 class="mt-6 text-lg font-semibold text-[#2E3034]">
+          אבטחת מידע ושמירה
+        </h3>
+        <p class="mt-2">
+          אנו נוקטים אמצעים סבירים לאבטחת המידע. נשמור את פרטי הפנייה כל עוד הם
+          נדרשים לצורך הקשר העסקי או לפי דרישות הדין, ולאחר מכן נמחק אותם.
+        </p>
+
+        <h3 class="mt-6 text-lg font-semibold text-[#2E3034]">הזכויות שלכם</h3>
+        <p class="mt-2">
+          אתם זכאים לעיין במידע שנשמר עליכם, לבקש את תיקונו ולבקש את מחיקתו.
+          <br />
+          לפנייה בנושא: mangenon.sheket@gmail.com
+        </p>
+
+        <h3 class="mt-6 text-lg font-semibold text-[#2E3034]">עוגיות</h3>
+        <p class="mt-2">
+          האתר עושה שימוש בשירותים חיצוניים לטעינת גופנים ואייקונים, שעשויים
+          להציב עוגיות טכניות. איננו מפעילים באתר כלי מעקב פרסומיים.
+        </p>
+
+        <p class="mt-6 text-sm text-[#8a8c91]">תאריך עדכון: [תאריך]</p>
+      </div>
+      <div class="mt-8 flex justify-start">
+        <button
+          type="button"
+          class="flex items-center justify-center rounded-full border border-black/10 bg-white px-6 py-3 text-base font-medium transition-all hover:-translate-y-0.5 shadow-[0_8px_18px_-10px_rgba(35,36,39,0.3)]"
+          onclick="this.closest('dialog').close();"
+        >
+          סגירה
+        </button>
+      </div>
+    </dialog>
+
+    <script>
+      (function(){
+        function setupDialog(d){
+          if(!d) return;
+          d.addEventListener('click', function(e){
+            var r = d.getBoundingClientRect();
+            var inDialog = (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom);
+            if(!inDialog) d.close();
+          });
+        }
+        setupDialog(document.getElementById('a11yDialog'));
+        setupDialog(document.getElementById('privacyDialog'));
+      })();
+    </script>
+  </body>
+</html>

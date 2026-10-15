@@ -1,0 +1,2655 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Summer Learning Compass — Student Diagnostic</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link
+href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&amp;family=Nunito:wght@400;500;600;700&amp;display=swap"
+rel="stylesheet"
+/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<style>
+:root {
+--ocean: #003566;
+--teal: #00B4D8;
+--sky: #CAF0F8;
+--sand: #FFB703;
+--cream: #F0F9FF;
+}
+* { box-sizing: border-box; }
+body {
+font-family: 'Nunito', sans-serif;
+background: linear-gradient(155deg, #F0F9FF 0%, #E0F2FE 40%, #BAE6FD 100%);
+min-height: 100vh;
+margin: 0;
+color: #334155;
+}
+.df { font-family: 'Baloo 2', cursive; }
+.screen { display: none; }
+.screen.active { display: block; }
+@keyframes fadeUp {
+from { opacity: 0; transform: translateY(1rem); }
+to { opacity: 1; transform: translateY(0); }
+}
+@keyframes popIn {
+0% { opacity: 0; transform: scale(.95); }
+100% { opacity: 1; transform: scale(1); }
+}
+.fade-up { animation: fadeUp .4s ease-out both; }
+.pop-in { animation: popIn .3s ease-out both; }
+.stagger > *:nth-child(1) { animation-delay: .05s; }
+.stagger > *:nth-child(2) { animation-delay: .1s; }
+.stagger > *:nth-child(3) { animation-delay: .15s; }
+.stagger > *:nth-child(4) { animation-delay: .2s; }
+.stagger > *:nth-child(5) { animation-delay: .25s; }
+.stagger > *:nth-child(6) { animation-delay: .3s; }
+.grade-btn { cursor: pointer; transition: all .2s ease; }
+.grade-btn:hover { transform: translateY(-0.15rem); box-shadow: 0 0.5rem 1rem rgba(0,0,0,.05); }
+.grade-btn.selected { transform: scale(1.02); box-shadow: 0 0 0 0.15rem var(--teal), 0 0.5rem 1rem rgba(0,0,0,.08); }
+.answer-opt { cursor: pointer; transition: all .2s ease; user-select: none; }
+.answer-opt:hover:not(.locked) { border-color: var(--teal); background: #F0F9FF; transform: translateX(0.2rem); }
+.answer-opt.selected { border-color: var(--ocean); background: #E0F2FE; box-shadow: 0 0 0 1px var(--ocean); }
+.answer-opt.correct { border-color: #22c55e; background: #f0fdf4; color: #166534; box-shadow: 0 0 0 1px #22c55e; }
+.answer-opt.incorrect { border-color: #ef4444; background: #fef2f2; color: #991b1b; box-shadow: 0 0 0 1px #ef4444; }
+.answer-opt.dimmed { opacity: .5; filter: grayscale(100%); }
+.prog-fill { background: linear-gradient(90deg, var(--teal), var(--ocean)); transition: width .4s cubic-bezier(.4,0,.2,1); }
+.week-card { page-break-inside: avoid; break-inside: avoid; }
+.wave-bottom {
+background: var(--ocean);
+clip-path: polygon(0 0, 100% 0, 100% 85%, 50% 100%, 0 85%);
+padding-bottom: 3rem;
+}
+a.resource-link {
+text-decoration: none; display: flex; align-items: center; gap: 0.5rem;
+background: white; border: 1px solid #e2e8f0; border-radius: 0.75rem;
+padding: 0.75rem 1rem; font-size: 0.875rem; font-weight: 600;
+color: var(--ocean); transition: all .2s ease;
+}
+a.resource-link:hover { border-color: var(--teal); background: #F0F9FF; transform: translateX(0.2rem); box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,.02); }
+input[type=email], input[type=text] {
+border: 1px solid #cbd5e1; border-radius: 0.75rem; padding: 0.75rem 1rem;
+width: 100%; font-family: 'Nunito', sans-serif; transition: all .2s ease;
+background: #f8fafc; box-shadow: inset 0 0.125rem 0.25rem rgba(0,0,0,.02);
+}
+input[type=email]:focus, input[type=text]:focus {
+outline: none; border-color: var(--teal); background: white; box-shadow: 0 0 0 0.15rem rgba(0, 180, 216, 0.2);
+}
+input.error { border-color: #ef4444; background: #fef2f2; }
+@media print {
+body { background: white !important; }
+.screen { display: none !important; }
+#screen-roadmap { display: block !important; }
+.no-print { display: none !important; }
+.print-only { display: block !important; }
+.week-card { margin-bottom: 1.5rem; }
+}
+.print-only { display: none; }
+::-webkit-scrollbar { width: 0.4rem; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 0.25rem; }
+</style>
+<meta name="aura-font-heading-class" content="font-sans" />
+<meta name="aura-font-body-class" content="font-nunito" />
+<meta name="aura-font-heading-label" content="Inter" />
+<meta name="aura-font-body-label" content="Nunito" />
+<style>
+@media print {
+.week-card { page-break-after: always; break-after: page; border-left: 2px solid #cbd5e1 !important; box-shadow: none !important; margin-bottom: 2rem; }
+.show-answer-btn { display: none !important; }
+.answer-text { display: block !important; }
+.daily-checkbox { display: none !important; }
+.no-print { display: none !important; }
+.act-text.line-through { text-decoration: none !important; color: inherit !important; }
+}
+</style>
+<style>
+/* Roadmap daily plan: teal underlined inline links */
+a.inline-resource-link{color:#00B4D8;text-decoration:underline;text-underline-offset:2px;font-weight:800;}
+a.inline-resource-link:hover{color:#0096B4;}
+/* Print: show full URL in brackets instead of hyperlink */
+@media print{
+a.inline-resource-link{color:inherit !important;text-decoration:none !important;}
+a.inline-resource-link::after{content:" (" attr(href) ")";}
+}
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body class="antialiased text-slate-700">
+    <!-- Background (image) added by Aura -->
+    <div
+      class="fixed top-0 w-full h-screen bg-cover bg-center -z-10"
+      style='background-image: url("https://images.unsplash.com/photo-1498747946579-bde604cb8f44?w=3840&amp;q=80");; mask-image: linear-gradient(to bottom, transparent, black 0%, black 80%, transparent); -webkit-mask-image: linear-gradient(to bottom, transparent, black 0%, black 80%, transparent)'
+      data-alpha-mask="80"
+    ></div>
+
+    <div
+      class="aura-background-component fixed top-0 w-full -z-10 hue-rotate-15 h-1/2 opacity-70"
+      data-alpha-mask="61"
+      style="; mask-image: linear-gradient(to bottom, transparent, black 0%, black 61%, transparent); -webkit-mask-image: linear-gradient(to bottom, transparent, black 0%, black 61%, transparent)"
+    >
+      <div class="aura-background-component top-0 w-full -z-10 absolute h-full">
+        <div
+          data-us-project="FixNvEwvWwbu3QX9qC3F"
+          class="absolute w-full h-full left-0 top-0 -z-10"
+        ></div>
+        <script type="text/javascript">
+          !function(){if(!window.UnicornStudio){window.UnicornStudio={isInitialized:!1};var i=document.createElement("script");i.src="https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v1.4.29/dist/unicornStudio.umd.js",i.onload=function(){window.UnicornStudio.isInitialized||(UnicornStudio.init(),window.UnicornStudio.isInitialized=!0)},(document.head || document.body).appendChild(i)}}();
+        </script>
+      </div>
+    </div>
+
+    <!-- ══════ SCREEN 1: WELCOME ══════ -->
+    <div class="screen active" id="screen-welcome">
+      <div class="wave-bottom mb-8 px-4 pt-10 pb-16 text-center text-white">
+        <div
+          class="df text-xs font-bold uppercase mb-6 opacity-70 flex justify-center"
+        >
+          AGB Digital SOLUTIONS
+        </div>
+        <div class="text-5xl mb-4 text-cyan-200">
+          <iconify-icon
+            icon="solar:water-sun-outline"
+            stroke-width="1.5"
+            class=""
+            width="48"
+            height="48"
+            style="color: rgb(251, 191, 36)"
+          ></iconify-icon>
+        </div>
+        <h1
+          class="df text-3xl md:text-5xl font-semibold tracking-tight mb-3 text-white"
+        >
+          Summer Learning Compass
+        </h1>
+        <p
+          class="text-sm md:text-base max-w-sm mx-auto leading-relaxed font-bold text-cyan-100"
+        >
+          Find the gaps. Fill the summer. Watch them soar.
+        </p>
+      </div>
+
+      <div class="max-w-lg mx-auto px-4 -mt-8 pb-12">
+        <div class="flex flex-wrap justify-center gap-2 mb-8 fade-up">
+          <span
+            class="backdrop-blur-sm border text-[#003566] text-xs px-4 py-1.5 rounded-full shadow-sm flex items-center font-bold bg-white/60 border-white"
+          >
+            <iconify-icon
+              icon="solar:ruler-angular-linear"
+              stroke-width="1.5"
+              class="mr-1.5 text-base"
+            ></iconify-icon>
+            Maths
+          </span>
+          <span
+            class="backdrop-blur-sm border text-[#003566] text-xs px-4 py-1.5 rounded-full shadow-sm flex items-center font-bold bg-white/60 border-white"
+          >
+            <iconify-icon
+              icon="solar:book-linear"
+              stroke-width="1.5"
+              class="mr-1.5 text-base"
+            ></iconify-icon>
+            Literacy
+          </span>
+          <span
+            class="backdrop-blur-sm border text-[#003566] text-xs px-4 py-1.5 rounded-full shadow-sm flex items-center font-bold bg-white/60 border-white"
+          >
+            <iconify-icon
+              icon="solar:stopwatch-linear"
+              stroke-width="1.5"
+              class="mr-1.5 text-base"
+            ></iconify-icon>
+            ~20 Mins
+          </span>
+          <span
+            class="backdrop-blur-sm border text-[#003566] text-xs px-4 py-1.5 rounded-full shadow-sm flex items-center font-bold bg-white/60 border-white"
+          >
+            <iconify-icon
+              icon="solar:target-linear"
+              stroke-width="1.5"
+              class="mr-1.5 text-base"
+            ></iconify-icon>
+            Grades 1–6
+          </span>
+        </div>
+
+        <div
+          class="fade-up stagger border rounded-2xl mb-8 pt-8 pr-8 pb-8 pl-8 shadow bg-white border-sky-100"
+        >
+          <h2
+            class="df text-2xl font-semibold tracking-tight text-[#003566] mb-6"
+          >
+            How It Works
+          </h2>
+          <div class="space-y-6">
+            <div class="flex items-start gap-4">
+              <span
+                class="border rounded-full w-8 h-8 flex items-center justify-center text-sm flex-shrink-0 font-bold bg-cyan-50 text-blue-600 border-blue-100"
+              >
+                1
+              </span>
+              <div class="">
+                <p class="text-sm font-bold text-blue-800">
+                  Select Grade Level
+                </p>
+                <p class="text-xs mt-0.5 font-bold text-blue-500">
+                  Choose the grade your child just completed
+                </p>
+              </div>
+            </div>
+            <div class="flex items-start gap-4">
+              <span
+                class="border rounded-full w-8 h-8 flex items-center justify-center text-sm flex-shrink-0 font-bold bg-cyan-50 text-blue-600 border-blue-100"
+              >
+                2
+              </span>
+              <div class="">
+                <p class="text-sm font-bold text-blue-800">Enter Your Email</p>
+                <p class="text-xs mt-0.5 font-bold text-blue-500">
+                  We'll send the results straight to your inbox
+                </p>
+              </div>
+            </div>
+            <div class="flex items-start gap-4">
+              <span
+                class="border rounded-full w-8 h-8 flex items-center justify-center text-sm flex-shrink-0 font-bold bg-cyan-50 text-blue-600 border-blue-100"
+              >
+                3
+              </span>
+              <div class="">
+                <p class="text-sm font-bold text-blue-800">
+                  Complete 30 Questions
+                </p>
+                <p class="text-xs mt-0.5 font-bold text-blue-500">
+                  5 Maths + 5 Literacy skill areas, 3 questions each
+                </p>
+              </div>
+            </div>
+            <div class="flex items-start gap-4">
+              <span
+                class="border rounded-full w-8 h-8 flex items-center justify-center text-sm flex-shrink-0 font-bold bg-blue-50 text-blue-600 border-blue-200"
+              >
+                4
+              </span>
+              <div class="">
+                <p class="text-sm font-bold text-blue-800">
+                  Get Your Summer Roadmap
+                </p>
+                <p class="text-xs mt-0.5 font-bold text-blue-500">
+                  A 4-week printable plan with free resources
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="text-center fade-up">
+          <button
+            onclick="showGradeSelect()"
+            class="df hover:bg-[#02284d] font-semibold text-lg tracking-tight px-10 py-3.5 rounded-xl shadow-sm transition-all focus:ring-2 focus:ring-offset-2 focus:ring-[#003566] text-white bg-blue-600"
+          >
+            Begin Assessment
+            <iconify-icon
+              icon="solar:arrow-right-linear"
+              stroke-width="1.5"
+              class="ml-1 align-middle"
+            ></iconify-icon>
+          </button>
+          <p
+            class="text-xs mt-4 flex items-center justify-center gap-1 font-bold text-blue-400"
+          >
+            <iconify-icon
+              icon="solar:info-circle-linear"
+              stroke-width="1.5"
+            ></iconify-icon>
+            Free · No account needed · Works on any device
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ SCREEN 2: GRADE SELECT ══════ -->
+    <div id="screen-grade" class="screen">
+      <div class="max-w-lg mx-auto px-4 py-10">
+        <button
+          onclick="showScreen('welcome')"
+          class="no-print hover:text-[#003566] text-sm mb-8 flex items-center gap-1 transition-colors font-bold text-blue-400"
+        >
+          <iconify-icon
+            icon="solar:arrow-left-linear"
+            stroke-width="1.5"
+          ></iconify-icon>
+          Back
+        </button>
+
+        <div class="text-center mb-10 fade-up">
+          <div class="text-4xl mb-3 text-blue-500">
+            <iconify-icon
+              icon="solar:backpack-linear"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </div>
+          <h2
+            class="df text-2xl font-semibold tracking-tight text-[#003566] mb-2"
+          >
+            Select Grade Level
+          </h2>
+          <p class="text-sm font-bold text-blue-500">
+            Choose the grade your child
+            <strong class="font-bold text-blue-700">just completed</strong>
+          </p>
+        </div>
+
+        <div
+          id="grade-buttons"
+          class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-10 stagger"
+        >
+          <button
+            class="grade-btn bg-pink-50 text-pink-600 border border-pink-200 hover:bg-pink-100 rounded-2xl py-6 px-2 font-semibold text-center shadow-sm df fade-up relative overflow-hidden"
+            id="grade-1"
+            style="animation-delay: 0s;"
+          >
+            <div class="text-3xl mb-1.5 flex justify-center">
+              <iconify-icon
+                icon="solar:backpack-linear"
+                stroke-width="1.5"
+              ></iconify-icon>
+            </div>
+            <div
+              class="text-[0.65rem] uppercase tracking-widest opacity-70 font-bold"
+            >
+              Grade
+            </div>
+            <div class="text-2xl mt-0.5">1</div>
+          </button>
+          <button
+            class="grade-btn bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 rounded-2xl py-6 px-2 font-semibold text-center shadow-sm df fade-up relative overflow-hidden"
+            id="grade-2"
+            style="animation-delay: 0.07s;"
+          >
+            <div class="text-3xl mb-1.5 flex justify-center">
+              <iconify-icon
+                icon="solar:book-linear"
+                stroke-width="1.5"
+              ></iconify-icon>
+            </div>
+            <div
+              class="text-[0.65rem] uppercase tracking-widest opacity-70 font-bold"
+            >
+              Grade
+            </div>
+            <div class="text-2xl mt-0.5">2</div>
+          </button>
+          <button
+            class="grade-btn bg-yellow-50 text-yellow-600 border border-yellow-200 hover:bg-yellow-100 rounded-2xl py-6 px-2 font-semibold text-center shadow-sm df fade-up relative overflow-hidden"
+            id="grade-3"
+            style="animation-delay: 0.14s;"
+          >
+            <div class="text-3xl mb-1.5 flex justify-center">
+              <iconify-icon
+                icon="solar:pen-linear"
+                stroke-width="1.5"
+              ></iconify-icon>
+            </div>
+            <div
+              class="text-[0.65rem] uppercase tracking-widest opacity-70 font-bold"
+            >
+              Grade
+            </div>
+            <div class="text-2xl mt-0.5">3</div>
+          </button>
+          <button
+            class="grade-btn bg-green-50 text-green-600 border border-green-200 hover:bg-green-100 rounded-2xl py-6 px-2 font-semibold text-center shadow-sm df fade-up relative overflow-hidden"
+            id="grade-4"
+            style="animation-delay: 0.21s;"
+          >
+            <div class="text-3xl mb-1.5 flex justify-center">
+              <iconify-icon
+                icon="solar:calculator-linear"
+                stroke-width="1.5"
+              ></iconify-icon>
+            </div>
+            <div
+              class="text-[0.65rem] uppercase tracking-widest opacity-70 font-bold"
+            >
+              Grade
+            </div>
+            <div class="text-2xl mt-0.5">4</div>
+          </button>
+          <button
+            class="grade-btn bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-2xl py-6 px-2 font-semibold text-center shadow-sm df fade-up relative overflow-hidden"
+            id="grade-5"
+            style="animation-delay: 0.28s;"
+          >
+            <div class="text-3xl mb-1.5 flex justify-center">
+              <iconify-icon
+                icon="solar:star-linear"
+                stroke-width="1.5"
+              ></iconify-icon>
+            </div>
+            <div
+              class="text-[0.65rem] uppercase tracking-widest opacity-70 font-bold"
+            >
+              Grade
+            </div>
+            <div class="text-2xl mt-0.5">5</div>
+          </button>
+          <button
+            class="grade-btn bg-purple-50 text-purple-600 border border-purple-200 hover:bg-purple-100 rounded-2xl py-6 px-2 font-semibold text-center shadow-sm df fade-up relative overflow-hidden"
+            id="grade-6"
+            style="animation-delay: 0.35s;"
+          >
+            <div class="text-3xl mb-1.5 flex justify-center">
+              <iconify-icon
+                icon="solar:rocket-linear"
+                stroke-width="1.5"
+              ></iconify-icon>
+            </div>
+            <div
+              class="text-[0.65rem] uppercase tracking-widest opacity-70 font-bold"
+            >
+              Grade
+            </div>
+            <div class="text-2xl mt-0.5">6</div>
+          </button>
+        </div>
+
+        <div class="text-center">
+          <button
+            id="start-btn"
+            onclick="showLeadCapture()"
+            class="hidden df bg-[#FFB703] hover:bg-[#e6a600] text-[#003566] font-semibold tracking-tight text-lg px-10 py-3.5 rounded-xl shadow-sm transition-all pop-in"
+          >
+            Continue
+            <iconify-icon
+              icon="solar:arrow-right-linear"
+              stroke-width="1.5"
+              class="ml-1 align-middle"
+            ></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ SCREEN 3: LEAD CAPTURE ══════ -->
+    <div id="screen-lead" class="screen">
+      <div class="max-w-lg mx-auto px-4 py-10">
+        <button
+          onclick="showScreen('grade')"
+          class="no-print hover:text-[#003566] text-sm mb-8 flex items-center gap-1 transition-colors font-bold text-blue-400"
+        >
+          <iconify-icon
+            icon="solar:arrow-left-linear"
+            stroke-width="1.5"
+          ></iconify-icon>
+          Back
+        </button>
+
+        <div class="text-center mb-8 fade-up">
+          <div class="text-4xl mb-3 text-blue-500">
+            <iconify-icon
+              icon="solar:letter-linear"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </div>
+          <h2
+            class="df text-2xl font-semibold tracking-tight text-[#003566] mb-2"
+          >
+            Where Should We Send Your Results?
+          </h2>
+          <p
+            class="text-sm leading-relaxed max-w-md mx-auto font-bold text-blue-500"
+          >
+            Enter your details below. Your personalised Skills Report and Summer
+            Roadmap will be emailed to you upon completion.
+          </p>
+        </div>
+
+        <div
+          class="rounded-2xl shadow-sm border p-6 mb-6 fade-up bg-white border-sky-100"
+        >
+          <div class="mb-5">
+            <label class="block mb-2 text-sm font-bold text-blue-700">
+              Child's First Name
+              <span class="font-bold text-blue-400">(optional)</span>
+            </label>
+            <input
+              type="text"
+              id="child-name"
+              placeholder="e.g. Jamie"
+              class="w-full"
+            />
+          </div>
+          <div class="mb-3">
+            <label class="block mb-2 text-sm font-bold text-blue-700">
+              Parent / Guardian Email
+              <span class="font-bold text-blue-500">*</span>
+            </label>
+            <input
+              type="email"
+              id="parent-email"
+              placeholder="your@email.com"
+              class="w-full"
+            />
+            <p
+              id="email-error"
+              class="hidden text-xs mt-1.5 flex items-center gap-1 font-bold text-blue-500"
+            >
+              <iconify-icon
+                icon="solar:danger-circle-linear"
+                stroke-width="1.5"
+              ></iconify-icon>
+              Please enter a valid email address.
+            </p>
+          </div>
+          <p
+            class="text-xs mt-4 flex items-center gap-1.5 p-2 rounded-lg border font-bold text-blue-400 bg-blue-50 border-blue-100"
+          >
+            <iconify-icon
+              icon="solar:lock-password-linear"
+              stroke-width="1.5"
+              class="text-blue-500"
+            ></iconify-icon>
+            Your email is only used to send your results. No spam.
+          </p>
+        </div>
+
+        <div
+          class="border rounded-xl p-4 mb-8 fade-up flex gap-3 bg-cyan-50 border-cyan-100"
+        >
+          <iconify-icon
+            icon="solar:info-circle-linear"
+            stroke-width="1.5"
+            class="text-xl flex-shrink-0 mt-0.5 text-cyan-600"
+          ></iconify-icon>
+          <p class="text-xs leading-relaxed font-bold text-cyan-800">
+            <strong class="text-[#003566] font-bold">
+              Grade
+              <span id="selected-grade-display"></span>
+              Diagnostic
+            </strong>
+            — 30 questions across 10 skill areas (5 Maths + 5 Literacy). Easy,
+            Medium and Hard questions in each area.
+          </p>
+        </div>
+
+        <div class="text-center fade-up">
+          <button
+            onclick="validateAndStart()"
+            class="df hover:bg-[#02284d] font-semibold tracking-tight text-lg px-10 py-3.5 rounded-xl shadow-sm transition-all w-full flex justify-center items-center gap-2 text-white bg-blue-600"
+          >
+            Start Diagnostic
+            <iconify-icon
+              icon="solar:pen-new-square-linear"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ SCREEN 4: DIAGNOSTIC ══════ -->
+    <div id="screen-diagnostic" class="screen">
+      <div class="max-w-lg mx-auto px-4 py-8">
+        <div
+          class="no-print border rounded-xl p-4 mb-6 shadow-sm bg-white border-sky-200"
+        >
+          <div class="flex justify-between items-center mb-3">
+            <span
+              id="q-subject"
+              class="text-xs font-semibold text-[#003566] border px-3 py-1 rounded-full flex items-center gap-1.5 bg-blue-100 border-blue-200"
+            ></span>
+            <span
+              id="q-counter"
+              class="text-xs font-semibold text-blue-500"
+            ></span>
+          </div>
+          <div class="rounded-full h-2 overflow-hidden bg-blue-100">
+            <div
+              id="progress-bar"
+              class="prog-fill h-2 rounded-full"
+              style="width:0%"
+            ></div>
+          </div>
+        </div>
+
+        <div
+          id="question-card"
+          class="border rounded-2xl shadow-sm p-6 mb-6 bg-white border-sky-200"
+        >
+          <div class="flex items-center justify-between mb-4">
+            <p
+              id="skill-label"
+              class="text-xs font-bold uppercase tracking-widest text-blue-600"
+            ></p>
+            <span
+              id="diff-badge"
+              class="text-[0.65rem] font-semibold px-2.5 py-1 rounded-full border"
+            ></span>
+          </div>
+          <p
+            id="question-text"
+            class="text-lg md:text-xl font-semibold mb-6 leading-snug text-blue-800"
+          ></p>
+          <div id="options-container" class="space-y-2.5"></div>
+        </div>
+
+        <div class="text-center">
+          <button
+            id="next-btn"
+            onclick="nextQuestion()"
+            class="hidden df hover:bg-[#02284d] font-semibold tracking-tight text-base px-10 py-3 rounded-xl shadow-sm transition-all fade-up flex items-center justify-center gap-1.5 mx-auto text-white bg-blue-600"
+          >
+            Next
+            <iconify-icon
+              icon="solar:arrow-right-linear"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ SCREEN 5: SKILLS GAP REPORT ══════ -->
+    <div id="screen-report" class="screen">
+      <div class="max-w-2xl mx-auto px-4 py-10">
+        <div class="text-center mb-8 fade-up">
+          <div class="text-5xl mb-4 text-blue-500">
+            <iconify-icon
+              icon="solar:chart-square-linear"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </div>
+          <h2
+            class="df text-3xl font-semibold tracking-tight text-[#003566] mb-2"
+          >
+            Skills Gap Report
+          </h2>
+          <p class="text-sm font-bold text-blue-500">
+            Results for
+            <span
+              id="report-name-label"
+              class="font-semibold text-blue-800"
+            ></span>
+          </p>
+        </div>
+
+        <div
+          id="overall-score"
+          class="border rounded-2xl p-8 mb-8 text-center shadow-sm fade-up pop-in bg-white border-sky-200"
+        ></div>
+
+        <div class="mb-8 fade-up">
+          <h3
+            class="df text-xl font-semibold tracking-tight text-[#003566] mb-4 flex items-center gap-2"
+          >
+            <iconify-icon
+              icon="solar:ruler-angular-linear"
+              stroke-width="1.5"
+              class="text-blue-500"
+            ></iconify-icon>
+            Mathematics
+          </h3>
+          <div id="math-skills" class="space-y-3 stagger"></div>
+        </div>
+
+        <div class="mb-10 fade-up">
+          <h3
+            class="df text-xl font-semibold tracking-tight text-[#003566] mb-4 flex items-center gap-2"
+          >
+            <iconify-icon
+              icon="solar:book-linear"
+              stroke-width="1.5"
+              class="text-blue-500"
+            ></iconify-icon>
+            Literacy
+          </h3>
+          <div id="literacy-skills" class="space-y-3 stagger"></div>
+        </div>
+
+        <div
+          class="border rounded-xl p-4 mb-8 flex flex-wrap gap-5 justify-center no-print text-xs font-semibold bg-blue-50 border-blue-200 text-blue-600"
+        >
+          <span class="flex items-center gap-1.5 font-bold">
+            <iconify-icon
+              icon="solar:check-square-linear"
+              class="text-sky-500 text-base"
+            ></iconify-icon>
+            Mastered (3/3)
+          </span>
+          <span class="flex items-center gap-1.5 font-bold">
+            <iconify-icon
+              icon="solar:refresh-linear"
+              class="text-base text-cyan-500"
+            ></iconify-icon>
+            Developing (2/3)
+          </span>
+          <span class="flex items-center gap-1.5 font-bold">
+            <iconify-icon
+              icon="solar:target-linear"
+              class="text-base text-blue-500"
+            ></iconify-icon>
+            Needs Support (0–1/3)
+          </span>
+        </div>
+
+        <div class="no-print space-y-3 fade-up">
+          <button
+            onclick="showRoadmap()"
+            class="df bg-[#FFB703] hover:bg-[#e6a600] text-[#003566] font-semibold tracking-tight text-lg px-10 py-3.5 rounded-xl shadow-sm transition-all block w-full flex justify-center items-center gap-2"
+          >
+            Generate Summer Roadmap
+            <iconify-icon
+              icon="solar:calendar-linear"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </button>
+          <button
+            onclick="restartApp()"
+            class="text-xs block text-center w-full mt-4 transition-colors font-bold text-blue-400 hover:text-blue-600"
+          >
+            Start Over
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ SCREEN 6: SUMMER ROADMAP ══════ -->
+    <div id="screen-roadmap" class="screen">
+      <div class="max-w-2xl mx-auto px-4 py-10">
+        <div class="print-only mb-8 border-b pb-4 border-sky-200">
+          <h1 class="df text-2xl font-semibold tracking-tight text-[#003566]">
+            Summer Learning Compass — 4-Week Plan
+          </h1>
+          <p
+            id="print-meta"
+            class="text-xs mt-2 font-semibold text-blue-500"
+          ></p>
+        </div>
+
+        <div class="text-center mb-10 fade-up no-print">
+          <div class="text-5xl mb-4 text-blue-500">
+            <iconify-icon
+              icon="solar:calendar-linear"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </div>
+          <h2
+            class="df text-3xl font-semibold tracking-tight text-[#003566] mb-2"
+          >
+            Summer Success Roadmap
+          </h2>
+          <p class="text-sm mb-8 font-bold text-blue-500">
+            Personalised for
+            <span
+              id="roadmap-name-label"
+              class="font-semibold text-blue-800"
+            ></span>
+          </p>
+
+          <div
+            class="flex flex-col items-center gap-4 no-print w-full max-w-2xl mx-auto"
+          >
+            <div class="flex justify-center gap-3 w-full flex-wrap">
+              <button
+                onclick="copyShareLink()"
+                class="df bg-[#FFB703] hover:bg-[#e6a600] text-[#003566] font-semibold tracking-tight px-5 py-2.5 rounded-xl shadow-sm transition-all text-sm flex items-center gap-2"
+              >
+                <iconify-icon
+                  icon="solar:link-circle-linear"
+                  stroke-width="1.5"
+                  class="text-lg"
+                ></iconify-icon>
+                📎 Save &amp; Share Your Plan
+              </button>
+              <button
+                onclick="emailShareLink()"
+                class="df border border-[#003566] hover:bg-blue-50 text-[#003566] font-semibold tracking-tight px-5 py-2.5 rounded-xl shadow-sm transition-all text-sm flex items-center gap-2 bg-white"
+              >
+                <iconify-icon
+                  icon="solar:letter-linear"
+                  stroke-width="1.5"
+                  class="text-lg"
+                ></iconify-icon>
+                ✉️ Email this link to myself
+              </button>
+              <button
+                onclick="window.print()"
+                class="df bg-[#003566] hover:bg-[#02284d] text-white font-semibold tracking-tight px-5 py-2.5 rounded-xl shadow-sm transition-all text-sm flex items-center gap-2"
+              >
+                <iconify-icon
+                  icon="solar:printer-linear"
+                  stroke-width="1.5"
+                  class="text-lg"
+                ></iconify-icon>
+                Print / PDF
+              </button>
+            </div>
+            <div
+              id="share-link-container"
+              class="hidden w-full max-w-md flex items-center gap-2 mt-2"
+            >
+              <input
+                type="text"
+                id="share-link-input"
+                readonly=""
+                class="text-xs p-2.5 border border-sky-200 rounded-lg w-full bg-sky-50 text-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-300 transition-all font-medium"
+              />
+              <button
+                onclick="copyToClipboardInput()"
+                class="p-2.5 bg-sky-100 text-[#003566] rounded-lg hover:bg-sky-200 transition-colors flex-shrink-0"
+              >
+                <iconify-icon
+                  icon="solar:copy-linear"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </button>
+            </div>
+            <div
+              id="copy-toast"
+              class="hidden text-sm font-bold text-teal-700 bg-teal-50 px-4 py-3 rounded-lg border border-teal-200 w-full max-w-md text-center shadow-sm flex items-center justify-center gap-2"
+            >
+              <iconify-icon
+                icon="solar:check-circle-bold"
+                class="text-teal-500 text-lg"
+              ></iconify-icon>
+              Link copied! Bookmark it or share it with your co-parent.
+            </div>
+            <div class="mt-1 text-center">
+              <button
+                onclick="showScreen('report')"
+                class="hover:text-[#003566] text-sm transition-colors font-bold text-blue-500 flex justify-center items-center gap-1 mx-auto"
+              >
+                <iconify-icon
+                  icon="solar:arrow-left-linear"
+                  stroke-width="1.5"
+                ></iconify-icon>
+                Back to Report
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="roadmap-weeks" class="space-y-6"></div>
+
+        <div
+          class="mt-8 border rounded-2xl p-6 text-center no-print bg-cyan-50 border-cyan-100"
+        >
+          <p
+            class="df text-lg font-semibold tracking-tight mb-2 text-[#003566] flex justify-center items-center gap-2"
+          >
+            <iconify-icon
+              icon="solar:star-linear"
+              stroke-width="1.5"
+              class="text-blue-500"
+            ></iconify-icon>
+            Tips for Summer Success
+          </p>
+          <p
+            class="text-xs leading-relaxed max-w-md mx-auto font-bold text-cyan-800"
+          >
+            Aim for 20–30 minutes per day, 3–4 days a week. Keep it fun and
+            pressure-free. Celebrate every small win!
+          </p>
+        </div>
+
+        <div
+          class="print-only mt-8 text-[0.65rem] text-center uppercase font-bold text-blue-400"
+        >
+          Summer Learning Compass · Free resources via Khan Academy &amp; BBC
+          Bitesize
+        </div>
+
+        <div class="mt-8 text-center no-print">
+          <button
+            onclick="restartApp()"
+            class="text-xs transition-colors font-bold text-blue-400 hover:text-blue-600"
+          >
+            Start a New Assessment
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      /* ═══════════════════════════════════════════════════════════════
+         CONFIGURATION
+      ═══════════════════════════════════════════════════════════════ */
+      const CONFIG = {
+        businessEmail: 'your-business@email.com',
+        businessName:  'Summer Learning Compass'
+      };
+
+      /* ═══════════════════════════════════════════════════════════════
+         QUESTION BANK
+      ═══════════════════════════════════════════════════════════════ */
+      const QB = {
+        1:[
+          {sub:'Math',skill:'Number Sense & Counting',sid:'num_sense',dif:'easy',
+           q:'Which number comes AFTER 8 when counting?',opts:['7','9','10','6'],cor:1},
+          {sub:'Math',skill:'Number Sense & Counting',sid:'num_sense',dif:'medium',
+           q:'What number is 10 MORE than 23?',opts:['13','33','24','32'],cor:1},
+          {sub:'Math',skill:'Number Sense & Counting',sid:'num_sense',dif:'hard',
+           q:'What is the value of the digit 3 in the number 37?',opts:['3','7','30','37'],cor:2},
+
+          {sub:'Math',skill:'Addition & Subtraction (to 20)',sid:'addition',dif:'easy',
+           q:'What is 4 + 5?',opts:['8','9','10','7'],cor:1},
+          {sub:'Math',skill:'Addition & Subtraction (to 20)',sid:'addition',dif:'medium',
+           q:'Tom has 8 stickers. He gets 7 more. How many does he have now?',opts:['13','14','15','16'],cor:2},
+          {sub:'Math',skill:'Addition & Subtraction (to 20)',sid:'addition',dif:'hard',
+           q:'What is the MISSING number? 9 + ___ = 16',opts:['5','6','7','8'],cor:2},
+
+          {sub:'Math',skill:'Addition & Subtraction (to 20)',sid:'subtraction',dif:'easy',
+           q:'What is 9 − 4?',opts:['4','5','6','3'],cor:1},
+          {sub:'Math',skill:'Addition & Subtraction (to 20)',sid:'subtraction',dif:'medium',
+           q:'There were 14 cookies. 6 were eaten. How many are left?',opts:['6','7','8','9'],cor:2},
+          {sub:'Math',skill:'Addition & Subtraction (to 20)',sid:'subtraction',dif:'hard',
+           q:'What is the missing number? 20 − ___ = 13',opts:['6','7','8','9'],cor:1},
+
+          {sub:'Math',skill:'Shapes & Geometry',sid:'shapes_geo',dif:'easy',
+           q:'How many sides does a triangle have?',opts:['2','3','4','5'],cor:1},
+          {sub:'Math',skill:'Shapes & Geometry',sid:'shapes_geo',dif:'medium',
+           q:'Which shape has 4 EQUAL sides and 4 right-angle corners?',opts:['Rectangle','Circle','Square','Triangle'],cor:2},
+          {sub:'Math',skill:'Shapes & Geometry',sid:'shapes_geo',dif:'hard',
+           q:'How many flat faces does a cube have?',opts:['4','5','6','8'],cor:2},
+
+          {sub:'Math',skill:'Measurement & Time',sid:'meas_time',dif:'easy',
+           q:'Which is LONGER — a school bus or a crayon?',opts:['A crayon','They are the same','A school bus','Neither'],cor:2},
+          {sub:'Math',skill:'Measurement & Time',sid:'meas_time',dif:'medium',
+           q:'The short clock hand is on 3 and the long hand is on 12. What time is it?',opts:['12:03','3:00','3:12','12:30'],cor:1},
+          {sub:'Math',skill:'Measurement & Time',sid:'meas_time',dif:'hard',
+           q:'A book is 18 cm long. A pencil is 5 cm shorter. How long is the pencil?',opts:['13 cm','14 cm','23 cm','12 cm'],cor:0},
+
+          {sub:'Literacy',skill:'Phonics',sid:'phonics',dif:'easy',
+           q:'Which word starts with the same sound as "cat"?',opts:['Ship','Cake','Dog','Fish'],cor:1},
+          {sub:'Literacy',skill:'Phonics',sid:'phonics',dif:'medium',
+           q:'Which word has a LONG "a" sound?',opts:['Cat','Cap','Cake','Can'],cor:2},
+          {sub:'Literacy',skill:'Phonics',sid:'phonics',dif:'hard',
+           q:'Which pair of words RHYMES?',opts:['Cat and Dog','Run and Fun','Ball and Book','Fish and Ship'],cor:1},
+
+          {sub:'Literacy',skill:'Sight Words & Pronouns',sid:'sight_words',dif:'easy',
+           q:'Which of these is a common sight word?',opts:['Elephant','Bicycle','Said','Purple'],cor:2},
+          {sub:'Literacy',skill:'Sight Words & Pronouns',sid:'sight_words',dif:'medium',
+           q:'Choose the correct word: ___ went to the store to buy apples.',opts:['Him','She','His','Her'],cor:1},
+          {sub:'Literacy',skill:'Sight Words & Pronouns',sid:'sight_words',dif:'hard',
+           q:'Which sentence uses pronouns CORRECTLY?',opts:['Me and him went there.','She and I went there.','Her and me went there.','Him and I went there.'],cor:1},
+
+          {sub:'Literacy',skill:'Vocabulary',sid:'vocabulary',dif:'easy',
+           q:'What does "huge" mean?',opts:['Very small','Very big','Very loud','Very fast'],cor:1},
+          {sub:'Literacy',skill:'Vocabulary',sid:'vocabulary',dif:'medium',
+           q:'Which word means the OPPOSITE of "dark"?',opts:['Night','Shadow','Bright','Dim'],cor:2},
+          {sub:'Literacy',skill:'Vocabulary',sid:'vocabulary',dif:'hard',
+           q:'"The exhausted puppy fell asleep." What does EXHAUSTED mean?',opts:['Very hungry','Very playful','Very tired','Very scared'],cor:2},
+
+          {sub:'Literacy',skill:'Reading Comprehension',sid:'comprehension',dif:'easy',
+           q:'"Ben has a red ball." What colour is Ben\'s ball?',opts:['Blue','Green','Red','Yellow'],cor:2},
+          {sub:'Literacy',skill:'Reading Comprehension',sid:'comprehension',dif:'medium',
+           q:'"The rain fell hard all day. Sam looked out the window with a sad face." Why is Sam sad?',opts:['He lost his toy','He cannot go outside','He is hungry','He is cold'],cor:1},
+          {sub:'Literacy',skill:'Reading Comprehension',sid:'comprehension',dif:'hard',
+           q:'"Every morning, Lily made her bed, packed her bag, and had breakfast before school." What can you say about Lily?',opts:['She is always late','She is responsible and organised','She doesn\'t like school','She eats a lot'],cor:1},
+
+          {sub:'Literacy',skill:'Writing & Sentences',sid:'writing_sent',dif:'easy',
+           q:'Which sentence is written CORRECTLY?',opts:['the cat sat down','The cat sat down.','the Cat sat Down','The Cat Sat Down'],cor:1},
+          {sub:'Literacy',skill:'Writing & Sentences',sid:'writing_sent',dif:'medium',
+           q:'Which word BEST fills the blank: The _____ cat climbed the tall tree.',opts:['Slowly','Fluffy','Quickly','Loudly'],cor:1},
+          {sub:'Literacy',skill:'Writing & Sentences',sid:'writing_sent',dif:'hard',
+           q:'Which sentence uses the MOST vivid, descriptive language?',opts:['The dog ran.','The big brown dog ran fast.','The enormous shaggy dog dashed across the yard.','A dog went to a place.'],cor:2}
+        ],
+
+        2:[
+          {sub:'Math',skill:'Place Value (tens & ones)',sid:'place_value',dif:'easy',
+           q:'In the number 45, how many TENS are there?',opts:['1','2','4','5'],cor:2},
+          {sub:'Math',skill:'Place Value (tens & ones)',sid:'place_value',dif:'medium',
+           q:'Which number has 7 tens and 3 ones?',opts:['37','73','703','370'],cor:1},
+          {sub:'Math',skill:'Place Value (tens & ones)',sid:'place_value',dif:'hard',
+           q:'What is the value of the digit 4 in the number 347?',opts:['4','40','400','4,000'],cor:1},
+
+          {sub:'Math',skill:'Addition to 100',sid:'add_100',dif:'easy',
+           q:'What is 43 + 20?',opts:['53','63','73','43'],cor:1},
+          {sub:'Math',skill:'Addition to 100',sid:'add_100',dif:'medium',
+           q:'What is 36 + 47?',opts:['73','83','93','63'],cor:1},
+          {sub:'Math',skill:'Addition to 100',sid:'add_100',dif:'hard',
+           q:'A baker had 48 rolls. She baked 35 more and sold 12. How many does she have now?',opts:['71','83','95','61'],cor:0},
+
+          {sub:'Math',skill:'Subtraction to 100',sid:'sub_100',dif:'easy',
+           q:'What is 75 − 30?',opts:['35','45','55','65'],cor:1},
+          {sub:'Math',skill:'Subtraction to 100',sid:'sub_100',dif:'medium',
+           q:'What is 82 − 47?',opts:['45','35','65','25'],cor:1},
+          {sub:'Math',skill:'Subtraction to 100',sid:'sub_100',dif:'hard',
+           q:'A baker made 90 cakes. She sold 43 on Monday and 17 on Tuesday. How many are left?',opts:['30','40','50','60'],cor:0},
+
+          {sub:'Math',skill:'Equal Groups & Arrays',sid:'skip_patt',dif:'easy',
+           q:'There are 4 bags with 3 apples in each bag. How many apples are there in total?',opts:['7','9','12','16'],cor:2},
+          {sub:'Math',skill:'Equal Groups & Arrays',sid:'skip_patt',dif:'medium',
+           q:'An array has 5 rows and 4 columns. Which number sentence shows the TOTAL?',opts:['5 + 4 = 9','4 + 4 + 4 + 4 + 4 = 20','5 × 4 = 25','4 + 5 + 4 = 13'],cor:1},
+          {sub:'Math',skill:'Equal Groups & Arrays',sid:'skip_patt',dif:'hard',
+           q:'A shop arranges cans into 6 equal rows with 7 cans in each row. Which sentence shows the total?',opts:['6 + 7 = 13','7 + 7 + 7 + 7 + 7 + 7 = 42','7 − 6 = 1','6 × 6 = 36'],cor:1},
+
+          {sub:'Math',skill:'Money & Time',sid:'money_time2',dif:'easy',
+           q:'Which coin is worth 10 pence (10p)?',opts:['1p','2p','5p','10p'],cor:3},
+          {sub:'Math',skill:'Money & Time',sid:'money_time2',dif:'medium',
+           q:'What time is 30 minutes after 2:00?',opts:['2:15','2:30','3:00','1:30'],cor:1},
+          {sub:'Math',skill:'Money & Time',sid:'money_time2',dif:'hard',
+           q:'You have 20p. You buy a snack for 12p. How much change do you get?',opts:['6p','7p','8p','9p'],cor:2},
+
+          {sub:'Literacy',skill:'Phonics & Spelling',sid:'phonics',dif:'easy',
+           q:'Which word is spelled CORRECTLY?',opts:['Kat','Cat','Caat','Cet'],cor:1},
+          {sub:'Literacy',skill:'Phonics & Spelling',sid:'phonics',dif:'medium',
+           q:'Which word contains the "ch" sound?',opts:['Ship','Chair','Shoe','Think'],cor:1},
+          {sub:'Literacy',skill:'Phonics & Spelling',sid:'phonics',dif:'hard',
+           q:'Which word contains a SILENT letter?',opts:['Stop','Gnat','Rain','Blue'],cor:1},
+
+          {sub:'Literacy',skill:'Vocabulary',sid:'vocabulary',dif:'easy',
+           q:'What does "tiny" mean?',opts:['Very large','Very small','Very fast','Very bright'],cor:1},
+          {sub:'Literacy',skill:'Vocabulary',sid:'vocabulary',dif:'medium',
+           q:'Which word is a SYNONYM for "happy"?',opts:['Angry','Sad','Joyful','Bored'],cor:2},
+          {sub:'Literacy',skill:'Vocabulary',sid:'vocabulary',dif:'hard',
+           q:'"The magician made the rabbit vanish." What does VANISH mean?',opts:['Appear','Disappear','Jump','Sleep'],cor:1},
+
+          {sub:'Literacy',skill:'Sentence Structure',sid:'sentences',dif:'easy',
+           q:'Which is a COMPLETE sentence?',opts:['The big dog.','Running fast.','The dog ran fast.','Under the tree.'],cor:2},
+          {sub:'Literacy',skill:'Sentence Structure',sid:'sentences',dif:'medium',
+           q:'What type of sentence is "Please sit down!"?',opts:['Statement','Question','Command','Exclamation'],cor:2},
+          {sub:'Literacy',skill:'Sentence Structure',sid:'sentences',dif:'hard',
+           q:'Which sentence correctly uses a COMMA in a list?',opts:['I like dogs cats and fish','I like dogs, cats, and fish.','I like, dogs cats and fish','I, like dogs cats and fish.'],cor:1},
+
+          {sub:'Literacy',skill:'Story Comprehension',sid:'story_comp',dif:'easy',
+           q:'"The bear lived in the forest and ate honey." Where did the bear live?',opts:['In a cave','In a house','In the forest','By the sea'],cor:2},
+          {sub:'Literacy',skill:'Story Comprehension',sid:'story_comp',dif:'medium',
+           q:'"Jake woke up, grabbed his umbrella, and looked at the grey sky." What was Jake probably expecting?',opts:['A sunny day','Rain','Snow','Wind'],cor:1},
+          {sub:'Literacy',skill:'Story Comprehension',sid:'story_comp',dif:'hard',
+           q:'What is the THEME of a story?',opts:['The setting of the story','The main character\'s name','The central message or lesson','The problem the character faces'],cor:2},
+
+          {sub:'Literacy',skill:'Writing',sid:'writing_basics',dif:'easy',
+           q:'Which is the BEST topic sentence for a paragraph about dogs?',opts:['Dogs are animals.','I have a pet.','Dogs make wonderful, loyal pets for families.','My dog is named Rex.'],cor:2},
+          {sub:'Literacy',skill:'Writing',sid:'writing_basics',dif:'medium',
+           q:'Which word makes the sentence MORE specific: "The ___ dog ran across the yard."',opts:['Nice','Good','Enormous fluffy','Very'],cor:2},
+          {sub:'Literacy',skill:'Writing',sid:'writing_basics',dif:'hard',
+           q:'A student writes: "I like pizza. I eat pizza. Pizza is good." What would MOST improve this?',opts:['Add more sentences','Combine and vary the sentences','Add a title','Use capital letters'],cor:1}
+        ],
+
+        3:[
+          {sub:'Math',skill:'Place Value (to 1,000)',sid:'place_value3',dif:'easy',
+           q:'In the number 306, what is the value of the digit 3?',opts:['3','30','300','3,000'],cor:2},
+          {sub:'Math',skill:'Place Value (to 1,000)',sid:'place_value3',dif:'medium',
+           q:'Which number is 200 + 40 + 7?',opts:['247','207','240','274'],cor:0},
+          {sub:'Math',skill:'Place Value (to 1,000)',sid:'place_value3',dif:'hard',
+           q:'Round 678 to the nearest hundred.',opts:['600','700','680','670'],cor:1},
+
+          {sub:'Math',skill:'Addition & Subtraction (to 1,000)',sid:'addsub_1000',dif:'easy',
+           q:'What is 250 + 30?',opts:['280','253','230','300'],cor:0},
+          {sub:'Math',skill:'Addition & Subtraction (to 1,000)',sid:'addsub_1000',dif:'medium',
+           q:'What is 468 + 127?',opts:['585','595','605','615'],cor:1},
+          {sub:'Math',skill:'Addition & Subtraction (to 1,000)',sid:'addsub_1000',dif:'hard',
+           q:'A library has 650 books. It buys 175 more and then lends out 90. How many books are there now?',opts:['735','825','815','915'],cor:2},
+
+          {sub:'Math',skill:'Multiplication & Division Facts',sid:'mult_div_facts',dif:'easy',
+           q:'What is 3 × 4?',opts:['7','10','12','14'],cor:2},
+          {sub:'Math',skill:'Multiplication & Division Facts',sid:'mult_div_facts',dif:'medium',
+           q:'What is 24 ÷ 6?',opts:['3','4','5','6'],cor:1},
+          {sub:'Math',skill:'Multiplication & Division Facts',sid:'mult_div_facts',dif:'hard',
+           q:'Which is true?',opts:['7 × 5 = 30','8 × 4 = 36','9 × 3 = 27','6 × 6 = 30'],cor:2},
+
+          {sub:'Math',skill:'Fractions (unit fractions)',sid:'fractions3',dif:'easy',
+           q:'Which fraction means "one out of four equal parts"?',opts:['1/2','1/3','1/4','2/4'],cor:2},
+          {sub:'Math',skill:'Fractions (unit fractions)',sid:'fractions3',dif:'medium',
+           q:'Which fraction is EQUIVALENT to 2/4?',opts:['1/2','1/4','2/8','3/4'],cor:0},
+          {sub:'Math',skill:'Fractions (unit fractions)',sid:'fractions3',dif:'hard',
+           q:'Which is greater?',opts:['1/3','1/4','They are equal','Not enough information'],cor:0},
+
+          {sub:'Math',skill:'Measurement & Time',sid:'meas_time3',dif:'easy',
+           q:'Which is a reasonable estimate for the length of a pencil?',opts:['2 cm','18 cm','2 m','18 m'],cor:1},
+          {sub:'Math',skill:'Measurement & Time',sid:'meas_time3',dif:'medium',
+           q:'How many minutes are in 2 hours?',opts:['60','90','120','180'],cor:2},
+          {sub:'Math',skill:'Measurement & Time',sid:'meas_time3',dif:'hard',
+           q:'A movie starts at 3:25 and lasts 45 minutes. What time does it end?',opts:['4:00','4:10','4:15','3:70'],cor:1},
+
+          {sub:'Literacy',skill:'Spelling Patterns',sid:'spelling3',dif:'easy',
+           q:'Which word is spelled correctly?',opts:['Happee','Happy','Hapy','Happey'],cor:1},
+          {sub:'Literacy',skill:'Spelling Patterns',sid:'spelling3',dif:'medium',
+           q:'Which word has the long "i" sound?',opts:['Sit','Bike','Slip','Sing'],cor:1},
+          {sub:'Literacy',skill:'Spelling Patterns',sid:'spelling3',dif:'hard',
+           q:'Which pair are HOMOPHONES (sound the same, different meaning)?',opts:['Big / Bigger','There / Their','Run / Ran','Cat / Kitten'],cor:1},
+
+          {sub:'Literacy',skill:'Vocabulary & Context Clues',sid:'vocab_context3',dif:'easy',
+           q:'Which word means "quick"?',opts:['Slow','Fast','Heavy','Quiet'],cor:1},
+          {sub:'Literacy',skill:'Vocabulary & Context Clues',sid:'vocab_context3',dif:'medium',
+           q:'"The soup was scalding, so Mia waited before taking a sip." What does SCALDING most likely mean?',opts:['Very cold','Very spicy','Very hot','Very sweet'],cor:2},
+          {sub:'Literacy',skill:'Vocabulary & Context Clues',sid:'vocab_context3',dif:'hard',
+           q:'Which word is the best synonym for "fortunate"?',opts:['Lucky','Angry','Tired','Nervous'],cor:0},
+
+          {sub:'Literacy',skill:'Reading Comprehension (inference)',sid:'comp_infer3',dif:'easy',
+           q:'"Ella put on her coat and grabbed an umbrella." What is the weather probably like?',opts:['Sunny','Rainy','Snowy','Windy'],cor:1},
+          {sub:'Literacy',skill:'Reading Comprehension (inference)',sid:'comp_infer3',dif:'medium',
+           q:'"Mason tiptoed past the sleeping baby." Why did Mason tiptoe?',opts:['He was dancing','He did not want to wake the baby','He was cold','He was in a race'],cor:1},
+          {sub:'Literacy',skill:'Reading Comprehension (inference)',sid:'comp_infer3',dif:'hard',
+           q:'What does it mean to make an INFERENCE while reading?',opts:['Sound out words','Guess using clues from the text','Copy a sentence','Skip hard parts'],cor:1},
+
+          {sub:'Literacy',skill:'Grammar & Punctuation',sid:'grammar3',dif:'easy',
+           q:'Choose the sentence with correct punctuation.',opts:['We went to the park','We went to the park.','we went to the park.','We went to the park?'],cor:1},
+          {sub:'Literacy',skill:'Grammar & Punctuation',sid:'grammar3',dif:'medium',
+           q:'Which sentence uses an apostrophe correctly?',opts:['The dogs bone is red.','The dog\'s bone is red.','The dogs\' bone is red.','The dog\'s bones is red.'],cor:1},
+          {sub:'Literacy',skill:'Grammar & Punctuation',sid:'grammar3',dif:'hard',
+           q:'Which sentence correctly uses quotation marks?',opts:['Liam said I am ready.','Liam said, "I am ready."','Liam said "I am ready".','Liam said, I am ready.'],cor:1}
+        ],
+
+        4:[
+          {sub:'Math',skill:'Multi-digit Place Value',sid:'place_value4',dif:'easy',
+           q:'In the number 5,203 what is the value of the digit 2?',opts:['2','20','200','2,000'],cor:3},
+          {sub:'Math',skill:'Multi-digit Place Value',sid:'place_value4',dif:'medium',
+           q:'Which number is 7,000 + 400 + 50 + 6?',opts:['7,456','7,546','7,406','7,056'],cor:0},
+          {sub:'Math',skill:'Multi-digit Place Value',sid:'place_value4',dif:'hard',
+           q:'Round 38,649 to the nearest thousand.',opts:['38,000','39,000','38,600','40,000'],cor:1},
+
+          {sub:'Math',skill:'Addition & Subtraction (to 100,000)',sid:'addsub_100k',dif:'easy',
+           q:'What is 3,400 + 600?',opts:['3,500','4,000','3,900','4,100'],cor:1},
+          {sub:'Math',skill:'Addition & Subtraction (to 100,000)',sid:'addsub_100k',dif:'medium',
+           q:'What is 12,408 − 3,219?',opts:['9,189','9,199','8,189','8,199'],cor:0},
+          {sub:'Math',skill:'Addition & Subtraction (to 100,000)',sid:'addsub_100k',dif:'hard',
+           q:'A town library had 24,560 books. It bought 3,750 more and discarded 1,420. How many books does it have now?',opts:['26,890','27,890','28,310','25,890'],cor:1},
+
+          {sub:'Math',skill:'Multiplication (2-digit × 1-digit)',sid:'mult_2x1',dif:'easy',
+           q:'What is 12 × 3?',opts:['15','24','36','42'],cor:2},
+          {sub:'Math',skill:'Multiplication (2-digit × 1-digit)',sid:'mult_2x1',dif:'medium',
+           q:'What is 24 × 6?',opts:['124','134','144','154'],cor:2},
+          {sub:'Math',skill:'Multiplication (2-digit × 1-digit)',sid:'mult_2x1',dif:'hard',
+           q:'Which equation matches this: 8 groups of 27?',opts:['27 + 8','27 × 8','27 − 8','27 ÷ 8'],cor:1},
+
+          {sub:'Math',skill:'Fractions (equivalence)',sid:'fractions4',dif:'easy',
+           q:'Which fraction is equivalent to 1/2?',opts:['2/3','2/4','3/4','1/4'],cor:1},
+          {sub:'Math',skill:'Fractions (equivalence)',sid:'fractions4',dif:'medium',
+           q:'Which is greater?',opts:['3/8','1/2','They are equal','Not enough information'],cor:1},
+          {sub:'Math',skill:'Fractions (equivalence)',sid:'fractions4',dif:'hard',
+           q:'Which fraction is equivalent to 3/6?',opts:['1/2','2/3','1/3','3/4'],cor:0},
+
+          {sub:'Math',skill:'Measurement & Perimeter',sid:'meas_perim4',dif:'easy',
+           q:'What is the perimeter of a rectangle with sides 5 cm and 3 cm?',opts:['8 cm','15 cm','16 cm','30 cm'],cor:2},
+          {sub:'Math',skill:'Measurement & Perimeter',sid:'meas_perim4',dif:'medium',
+           q:'Which is the best estimate of 1 kilogram?',opts:['A paperclip','A loaf of bread','A bus','A pencil'],cor:1},
+          {sub:'Math',skill:'Measurement & Perimeter',sid:'meas_perim4',dif:'hard',
+           q:'A square has perimeter 36 cm. What is the length of one side?',opts:['6 cm','8 cm','9 cm','12 cm'],cor:2},
+
+          {sub:'Literacy',skill:'Vocabulary (roots & prefixes)',sid:'vocab_prefix4',dif:'easy',
+           q:'What does the prefix "un-" usually mean?',opts:['again','not','before','too much'],cor:1},
+          {sub:'Literacy',skill:'Vocabulary (roots & prefixes)',sid:'vocab_prefix4',dif:'medium',
+           q:'What does the prefix "re-" mean in the word "rewrite"?',opts:['not','again','over','before'],cor:1},
+          {sub:'Literacy',skill:'Vocabulary (roots & prefixes)',sid:'vocab_prefix4',dif:'hard',
+           q:'If "predict" means "say what will happen", what does "prediction" mean?',opts:['Something that already happened','A statement about what will happen','A question','A kind of map'],cor:1},
+
+          {sub:'Literacy',skill:'Reading Comprehension (main idea)',sid:'main_idea4',dif:'easy',
+           q:'What is the MAIN IDEA of a paragraph?',opts:['A small detail','The overall point','A question at the end','The title only'],cor:1},
+          {sub:'Literacy',skill:'Reading Comprehension (main idea)',sid:'main_idea4',dif:'medium',
+           q:'Which is a supporting detail for the main idea "Dogs are helpful"?',opts:['Dogs have four legs','Some dogs guide people who cannot see','Dogs are mammals','Dogs like toys'],cor:1},
+          {sub:'Literacy',skill:'Reading Comprehension (main idea)',sid:'main_idea4',dif:'hard',
+           q:'Which sentence is the BEST summary of a passage?',opts:['It includes every detail.','It tells the most important points in order.','It adds your opinion.','It copies one sentence.'],cor:1},
+
+          {sub:'Literacy',skill:'Grammar (clauses & sentences)',sid:'grammar4',dif:'easy',
+           q:'Which is a compound sentence?',opts:['I ran.','I ran and I jumped.','Running fast.','Under the tree.'],cor:1},
+          {sub:'Literacy',skill:'Grammar (clauses & sentences)',sid:'grammar4',dif:'medium',
+           q:'Choose the sentence with correct subject-verb agreement.',opts:['The dogs barks loudly.','The dog bark loudly.','The dog barks loudly.','The dogs barks loudly.'],cor:2},
+          {sub:'Literacy',skill:'Grammar (clauses & sentences)',sid:'grammar4',dif:'hard',
+           q:'Which sentence uses a comma correctly after an opening word?',opts:['First we packed the bags.','First, we packed the bags.','First we, packed the bags.','First we packed, the bags.'],cor:1},
+
+          {sub:'Literacy',skill:'Writing (organisation)',sid:'writing_org4',dif:'easy',
+           q:'Which is a good concluding sentence?',opts:['This is my topic.','In conclusion, I learned a lot about frogs.','Frogs are.','Also, frogs.'],cor:1},
+          {sub:'Literacy',skill:'Writing (organisation)',sid:'writing_org4',dif:'medium',
+           q:'Which transition word shows time order?',opts:['Because','Finally','However','Although'],cor:1},
+          {sub:'Literacy',skill:'Writing (organisation)',sid:'writing_org4',dif:'hard',
+           q:'Which plan is best for an opinion paragraph?',opts:['Opinion, reasons, conclusion','Only reasons','Only examples','Title and ending'],cor:0}
+        ],
+
+        5:[
+          {sub:'Math',skill:'Place Value & Decimals',sid:'decimals5',dif:'easy',
+           q:'Which number is greater?',opts:['0.5','0.05','They are equal','Cannot tell'],cor:0},
+          {sub:'Math',skill:'Place Value & Decimals',sid:'decimals5',dif:'medium',
+           q:'What is 3.7 + 0.5?',opts:['3.12','4.2','4.12','3.2'],cor:1},
+          {sub:'Math',skill:'Place Value & Decimals',sid:'decimals5',dif:'hard',
+           q:'Which is 0.3 written as a fraction in simplest form?',opts:['3/100','3/10','30/10','1/3'],cor:1},
+
+          {sub:'Math',skill:'Fraction Operations',sid:'frac_ops5',dif:'easy',
+           q:'Which fraction is equivalent to 4/8?',opts:['1/2','2/3','3/4','1/4'],cor:0},
+          {sub:'Math',skill:'Fraction Operations',sid:'frac_ops5',dif:'medium',
+           q:'What is 1/4 + 1/4?',opts:['1/8','1/4','1/2','2/8'],cor:2},
+          {sub:'Math',skill:'Fraction Operations',sid:'frac_ops5',dif:'hard',
+           q:'What is 3/4 − 1/8?',opts:['2/8','5/8','6/8','1/2'],cor:1},
+
+          {sub:'Math',skill:'Multiplication & Division',sid:'mult_div5',dif:'easy',
+           q:'What is 45 ÷ 5?',opts:['7','8','9','10'],cor:2},
+          {sub:'Math',skill:'Multiplication & Division',sid:'mult_div5',dif:'medium',
+           q:'What is 26 × 7?',opts:['162','172','182','192'],cor:2},
+          {sub:'Math',skill:'Multiplication & Division',sid:'mult_div5',dif:'hard',
+           q:'A box holds 8 bottles. How many bottles are in 15 boxes?',opts:['105','110','115','120'],cor:3},
+
+          {sub:'Math',skill:'Order of Operations',sid:'ooe5',dif:'easy',
+           q:'What is 6 + 3 × 2?',opts:['18','12','9','15'],cor:1},
+          {sub:'Math',skill:'Order of Operations',sid:'ooe5',dif:'medium',
+           q:'What is (10 − 4) × 3?',opts:['6','18','22','30'],cor:1},
+          {sub:'Math',skill:'Order of Operations',sid:'ooe5',dif:'hard',
+           q:'Which is correct?',opts:['8 + 12 ÷ 3 = 12','8 + 12 ÷ 3 = 20','8 + 12 ÷ 3 = 10','8 + 12 ÷ 3 = 8'],cor:0},
+
+          {sub:'Math',skill:'Measurement & Volume',sid:'volume5',dif:'easy',
+           q:'How many millilitres are in 1 litre?',opts:['10','100','1,000','10,000'],cor:2},
+          {sub:'Math',skill:'Measurement & Volume',sid:'volume5',dif:'medium',
+           q:'A cuboid has length 4 cm, width 3 cm, height 2 cm. What is its volume?',opts:['9 cm³','24 cm³','12 cm³','18 cm³'],cor:1},
+          {sub:'Math',skill:'Measurement & Volume',sid:'volume5',dif:'hard',
+           q:'A tank holds 2 litres. How many millilitres is that?',opts:['200 ml','2,000 ml','20,000 ml','2 ml'],cor:1},
+
+          {sub:'Literacy',skill:'Figurative Language',sid:'figurative5',dif:'easy',
+           q:'Which is a simile?',opts:['The sun is a ball of fire.','He ran like the wind.','The classroom was silent.','She smiled.'],cor:1},
+          {sub:'Literacy',skill:'Figurative Language',sid:'figurative5',dif:'medium',
+           q:'"The leaves danced in the wind." This is an example of:',opts:['Alliteration','Personification','Hyperbole','Fact'],cor:1},
+          {sub:'Literacy',skill:'Figurative Language',sid:'figurative5',dif:'hard',
+           q:'"I\'ve told you a million times" is an example of:',opts:['Metaphor','Hyperbole','Simile','Onomatopoeia'],cor:1},
+
+          {sub:'Literacy',skill:'Reading Comprehension (author\'s purpose)',sid:'auth_purpose5',dif:'easy',
+           q:'An author\'s purpose is the reason the author wrote the text. Which is NOT a common purpose?',opts:['To inform','To entertain','To persuade','To confuse'],cor:3},
+          {sub:'Literacy',skill:'Reading Comprehension (author\'s purpose)',sid:'auth_purpose5',dif:'medium',
+           q:'A text that gives steps to do something is mainly written to:',opts:['Entertain','Inform/teach','Persuade','Describe a character'],cor:1},
+          {sub:'Literacy',skill:'Reading Comprehension (author\'s purpose)',sid:'auth_purpose5',dif:'hard',
+           q:'A poster that says "Recycle to protect our oceans" is mainly trying to:',opts:['Entertain','Persuade','Tell a story','Explain a joke'],cor:1},
+
+          {sub:'Literacy',skill:'Grammar (punctuation)',sid:'punct5',dif:'easy',
+           q:'Which sentence uses an apostrophe correctly?',opts:['Its raining today.','It\'s raining today.','Its\' raining today.','Its raining\' today.'],cor:1},
+          {sub:'Literacy',skill:'Grammar (punctuation)',sid:'punct5',dif:'medium',
+           q:'Which sentence uses a colon correctly?',opts:['I need: milk eggs and bread.','I need: milk, eggs, and bread.','I need milk: eggs, and bread.','I: need milk, eggs, and bread.'],cor:1},
+          {sub:'Literacy',skill:'Grammar (punctuation)',sid:'punct5',dif:'hard',
+           q:'Which sentence uses commas correctly?',opts:['After dinner we played, a game.','After dinner, we played a game.','After, dinner we played a game.','After dinner we, played a game.'],cor:1},
+
+          {sub:'Literacy',skill:'Writing (evidence)',sid:'writing_evidence5',dif:'easy',
+           q:'Which is the best supporting evidence for the claim "Plants need sunlight"?',opts:['Plants are green.','Some plants grow in the dark.','Plants use sunlight to make food.','Plants are tall.'],cor:2},
+          {sub:'Literacy',skill:'Writing (evidence)',sid:'writing_evidence5',dif:'medium',
+           q:'Which sentence is an OPINION?',opts:['The book has 120 pages.','The book is the best I\'ve ever read.','The book was published in 2020.','The book is on the table.'],cor:1},
+          {sub:'Literacy',skill:'Writing (evidence)',sid:'writing_evidence5',dif:'hard',
+           q:'Which revision best improves clarity?',opts:['Add more exclamation marks','Remove repeated ideas','Add unrelated details','Use all capital letters'],cor:1}
+        ],
+
+        6:[
+          {sub:'Math',skill:'Ratios & Rates (intro)',sid:'ratio6',dif:'easy',
+           q:'A recipe uses 2 cups of flour for every 1 cup of sugar. What is the flour:sugar ratio?',opts:['1:2','2:1','2:3','3:2'],cor:1},
+          {sub:'Math',skill:'Ratios & Rates (intro)',sid:'ratio6',dif:'medium',
+           q:'If the ratio of red to blue beads is 3:2, how many blue beads are there if there are 12 red beads?',opts:['6','8','10','12'],cor:1},
+          {sub:'Math',skill:'Ratios & Rates (intro)',sid:'ratio6',dif:'hard',
+           q:'A car travels 150 km in 3 hours. What is its average speed?',opts:['40 km/h','45 km/h','50 km/h','60 km/h'],cor:2},
+
+          {sub:'Math',skill:'Fractions, Decimals & Percent',sid:'fdp6',dif:'easy',
+           q:'Which is equal to 25%?',opts:['1/2','1/4','3/4','2/5'],cor:1},
+          {sub:'Math',skill:'Fractions, Decimals & Percent',sid:'fdp6',dif:'medium',
+           q:'What is 0.6 written as a fraction in simplest form?',opts:['6/100','6/10','3/5','5/3'],cor:2},
+          {sub:'Math',skill:'Fractions, Decimals & Percent',sid:'fdp6',dif:'hard',
+           q:'What is 15% of 80?',opts:['8','10','12','15'],cor:2},
+
+          {sub:'Math',skill:'Algebra (expressions)',sid:'algebra6',dif:'easy',
+           q:'If x = 5, what is x + 3?',opts:['2','8','15','53'],cor:1},
+          {sub:'Math',skill:'Algebra (expressions)',sid:'algebra6',dif:'medium',
+           q:'If y = 4, what is 3y?',opts:['7','12','16','34'],cor:1},
+          {sub:'Math',skill:'Algebra (expressions)',sid:'algebra6',dif:'hard',
+           q:'Which expression is the same as "five more than twice a number n"?',opts:['2n + 5','5n + 2','2(n + 5)','n + 10'],cor:0},
+
+          {sub:'Math',skill:'Area & Volume',sid:'area_vol6',dif:'easy',
+           q:'What is the area of a rectangle with length 8 cm and width 3 cm?',opts:['11 cm²','24 cm²','16 cm²','48 cm²'],cor:1},
+          {sub:'Math',skill:'Area & Volume',sid:'area_vol6',dif:'medium',
+           q:'A triangle has base 10 cm and height 6 cm. What is its area?',opts:['16 cm²','30 cm²','60 cm²','20 cm²'],cor:1},
+          {sub:'Math',skill:'Area & Volume',sid:'area_vol6',dif:'hard',
+           q:'A cube has side length 4 cm. What is its volume?',opts:['12 cm³','16 cm³','64 cm³','256 cm³'],cor:2},
+
+          {sub:'Math',skill:'Integers (basic)',sid:'integers6',dif:'easy',
+           q:'Which number is less than 0?',opts:['3','1','0','-2'],cor:3},
+          {sub:'Math',skill:'Integers (basic)',sid:'integers6',dif:'medium',
+           q:'What is -3 + 7?',opts:['-10','4','10','-4'],cor:1},
+          {sub:'Math',skill:'Integers (basic)',sid:'integers6',dif:'hard',
+           q:'What is 5 − 8?',opts:['-13','-3','3','13'],cor:1},
+
+          {sub:'Literacy',skill:'Reading (theme & evidence)',sid:'theme6',dif:'easy',
+           q:'What is a THEME in a story?',opts:['The main character','The message or lesson','The setting only','The title'],cor:1},
+          {sub:'Literacy',skill:'Reading (theme & evidence)',sid:'theme6',dif:'medium',
+           q:'Which detail best supports the theme "hard work pays off"?',opts:['A character falls asleep','A character practises daily and improves','A character wins by luck','A character eats dinner'],cor:1},
+          {sub:'Literacy',skill:'Reading (theme & evidence)',sid:'theme6',dif:'hard',
+           q:'A strong text-based explanation should include:',opts:['Only opinions','Evidence from the text and clear reasoning','A summary with no quotes or details','A list of random facts'],cor:1},
+
+          {sub:'Literacy',skill:'Vocabulary (Greek/Latin roots)',sid:'roots6',dif:'easy',
+           q:'The root "bio" most often relates to:',opts:['Life','Light','Sound','Earth'],cor:0},
+          {sub:'Literacy',skill:'Vocabulary (Greek/Latin roots)',sid:'roots6',dif:'medium',
+           q:'If "tele" means "far", what does "telephone" suggest?',opts:['A far sound','A far write','A far speak','A far smell'],cor:2},
+          {sub:'Literacy',skill:'Vocabulary (Greek/Latin roots)',sid:'roots6',dif:'hard',
+           q:'If "aqua" means water, which word most likely relates to water?',opts:['Aquarium','Aerial','Audible','Ancient'],cor:0},
+
+          {sub:'Literacy',skill:'Grammar (pronouns & clarity)',sid:'grammar6',dif:'easy',
+           q:'Which sentence is clearest?',opts:['When Sam told Alex that he was late, he was upset.','Sam was upset because Alex was late.','He was upset because he was late.','When he told him, he was late.'],cor:1},
+          {sub:'Literacy',skill:'Grammar (pronouns & clarity)',sid:'grammar6',dif:'medium',
+           q:'Which sentence correctly uses "their"?',opts:['Their going to school.','There books are new.','They put their books away.','They\'re dog is friendly.'],cor:2},
+          {sub:'Literacy',skill:'Grammar (pronouns & clarity)',sid:'grammar6',dif:'hard',
+           q:'Which revision improves formality?',opts:['I\'m gonna do the project.','I will complete the project.','Me do project now.','Doing the project, yeah.'],cor:1},
+
+          {sub:'Literacy',skill:'Writing (argument)',sid:'argument6',dif:'easy',
+           q:'Which is a strong claim for an opinion essay?',opts:['Dogs are animals.','School should start later to help students sleep more.','I like pizza.','Books exist.'],cor:1},
+          {sub:'Literacy',skill:'Writing (argument)',sid:'argument6',dif:'medium',
+           q:'Which is the best evidence to support a claim?',opts:['A personal insult','A relevant fact or example','An unrelated story','A random guess'],cor:1},
+          {sub:'Literacy',skill:'Writing (argument)',sid:'argument6',dif:'hard',
+           q:'A counterargument is:',opts:['Your strongest reason','A reason someone might disagree with you','A title','A conclusion'],cor:1}
+        ]
+      };
+
+      /* ═══════════════════════════════════════════════════════════════
+         RESOURCE LIBRARY
+      ═══════════════════════════════════════════════════════════════ */
+      const RES = {
+        num_sense:{title:'Number Sense & Counting',emoji:'solar:calculator-linear',
+         resources:[{n:'Counting & Numbers',p:'Khan Academy',u:'https://www.khanacademy.org',t:'📹'}],
+         tips:['Count everyday objects aloud','Practice ordering number cards','Write numbers 1–100','Play number guessing games']},
+        addition:{title:'Addition to 20',emoji:'solar:add-circle-linear',
+         resources:[{n:'Addition Basics',p:'Khan Academy',u:'https://www.khanacademy.org',t:'📹'}],
+         tips:['Use coins as counters','Play "How many altogether?"','Practise flashcards','Write word problems']},
+        subtraction:{title:'Subtraction',emoji:'solar:minus-circle-linear',
+         resources:[{n:'Taking Away',p:'BBC Bitesize',u:'https://bbc.co.uk/bitesize',t:'📖'}],
+         tips:['Use a number line','Draw dot diagrams','Practice fact families','Play dice games']},
+        shapes_geo:{title:'Shapes & Geometry',emoji:'solar:ruler-angular-linear',
+         resources:[{n:'2D Shapes',p:'Khan Academy',u:'https://www.khanacademy.org',t:'📹'}],
+         tips:['Find shapes at home','Trace shapes','Build 3D shapes','Sort shapes']},
+        meas_time:{title:'Measurement & Time',emoji:'solar:stopwatch-linear',
+         resources:[{n:'Measuring Time',p:'BBC Bitesize',u:'https://bbc.co.uk/bitesize',t:'📖'}],
+         tips:['Measure objects','Practice analogue clocks','Order events','Compare lengths']},
+        phonics:{title:'Phonics',emoji:'solar:text-square-linear',
+         resources:[{n:'Phonics Foundations',p:'Khan Academy',u:'https://www.khanacademy.org',t:'📹'}],
+         tips:['Say letter sounds','Play "I Spy"','Sort picture cards','Read simple books']},
+        sight_words:{title:'Sight Words',emoji:'solar:eye-linear',
+         resources:[{n:'High Frequency Words',p:'BBC Bitesize',u:'https://bbc.co.uk/bitesize',t:'📖'}],
+         tips:['Make flashcards','Play memory match','Write in sand','Find in picture books']},
+        vocabulary:{title:'Vocabulary',emoji:'solar:chat-round-line-linear',
+         resources:[{n:'Word Meanings',p:'BBC Bitesize',u:'https://bbc.co.uk/bitesize',t:'📖'}],
+         tips:['Learn 3 new words','Play "Opposites"','Keep a notebook','Discuss words']},
+        comprehension:{title:'Reading Comprehension',emoji:'solar:book-2-linear',
+         resources:[{n:'Understanding Stories',p:'BBC Bitesize',u:'https://bbc.co.uk/bitesize',t:'📖'}],
+         tips:['Ask who, what, why','Retell the story','Predict what happens','Summarise in one sentence']},
+        writing_sent:{title:'Writing & Sentences',emoji:'solar:pen-new-square-linear',
+         resources:[{n:'Sentences',p:'BBC Bitesize',u:'https://bbc.co.uk/bitesize',t:'📖'}],
+         tips:['Write a sentence daily','Add adjectives','Write about your day','Read aloud to check']},
+        place_value:{title:'Place Value',emoji:'solar:bank-linear',
+         resources:[{n:'Tens and Ones',p:'BBC Bitesize',u:'https://bbc.co.uk/bitesize',t:'🎮'}],
+         tips:['Build numbers with straws','Expanded form','Find 2-digit numbers','Make the number']},
+        add_100:{title:'Addition to 100',emoji:'solar:medal-star-linear',
+         resources:[{n:'Add to 100',p:'Khan Academy',u:'https://www.khanacademy.org',t:'📹'}],
+         tips:['100-square grid','10 problems a day','Mental maths shopping','Number bond games']},
+        sub_100:{title:'Subtraction to 100',emoji:'solar:calculator-linear',
+         resources:[{n:'Subtracting',p:'BBC Bitesize',u:'https://bbc.co.uk/bitesize',t:'📖'}],
+         tips:['Count backwards','Counting up method','Solve real problems','Daily subtraction']},
+        skip_patt:{title:'Equal Groups & Arrays',emoji:'solar:widget-linear',
+         resources:[{n:'Arrays',p:'BBC Bitesize',u:'https://bbc.co.uk/bitesize',t:'🎮'}],
+         tips:['Arrange objects','Draw arrays','Use egg cartons','Repeated addition']},
+        story_comp:{title:'Story Comprehension',emoji:'solar:book-linear',
+         resources:[{n:'Understanding Stories',p:'BBC Bitesize',u:'https://bbc.co.uk/bitesize',t:'📖'}],
+         tips:['Draw a story map','Ask questions','Predict the ending','Act a scene']},
+        writing_basics:{title:'Writing',emoji:'solar:pen-linear',
+         resources:[{n:'Creative Writing',p:'BBC Bitesize',u:'https://bbc.co.uk/bitesize',t:'📖'}],
+         tips:['Write daily paragraph','Topic sentences','Read aloud','Peer review questions']},
+        sentences:{title:'Sentence Structure',emoji:'solar:pen-new-square-linear',
+         resources:[{n:'Sentences',p:'BBC Bitesize',u:'https://bbc.co.uk/bitesize',t:'📖'}],
+         tips:['Daily punctuation','Identify types','Combine sentences','Fix bad sentences']}
+      };
+      const defaultRes = {title:'Core Skill Review',emoji:'solar:target-linear',resources:[{n:'Practice Module',p:'Khan Academy',u:'https://www.khanacademy.org',t:'📹'}],tips:['Review basic concepts','Try 5 practice problems','Explain the concept to someone else','Write a summary of the rule']};
+
+      /* ═══════════════════════════════════════════════════════════════
+         STATE
+      ═══════════════════════════════════════════════════════════════ */
+      let S={grade:null,questions:[],currentQ:0,answers:[],selectedAnswer:null,results:{},focusSkills:[],parentEmail:'',childName:'',subjectBreakShown:false};
+
+      /* ═══════════════════════════════════════════════════════════════
+         SCREEN MANAGEMENT
+      ═══════════════════════════════════════════════════════════════ */
+      function showScreen(id){
+        document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+        document.getElementById('screen-'+id).classList.add('active');
+        window.scrollTo({top:0,behavior:'smooth'});
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         GRADE SELECT
+      ═══════════════════════════════════════════════════════════════ */
+      const GM = [
+        {e:'solar:leaf-linear', b:'bg-pink-50 text-pink-600 border border-pink-200 hover:bg-pink-100'},
+        {e:'solar:leaves-linear', b:'bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100'},
+        {e:'solar:flower-linear', b:'bg-yellow-50 text-yellow-600 border border-yellow-200 hover:bg-yellow-100'},
+        {e:'solar:tree-linear', b:'bg-green-50 text-green-600 border border-green-200 hover:bg-green-100'},
+        {e:'solar:star-linear', b:'bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100'},
+        {e:'solar:rocket-linear', b:'bg-purple-50 text-purple-600 border border-purple-200 hover:bg-purple-100'}
+      ];
+
+      function renderGradeButtons(){
+        const c=document.getElementById('grade-buttons');if(!c)return;c.innerHTML='';
+        GM.forEach((_,i)=>{
+          const g=i+1,btn=document.createElement('button');
+          btn.className=`grade-btn ${GM[i].b} rounded-2xl py-6 px-2 font-semibold text-center shadow-sm df fade-up relative overflow-hidden`;
+          btn.id=`grade-${g}`;btn.style.animationDelay=`${i*.07}s`;
+          btn.innerHTML=`
+            <div class="text-3xl mb-1.5 flex justify-center"><iconify-icon icon="${GM[i].e}" stroke-width="1.5"></iconify-icon></div>
+            <div class="text-[0.65rem] uppercase tracking-widest opacity-70 font-bold">Grade</div>
+            <div class="text-2xl mt-0.5">${g}</div>
+          `;
+          btn.onclick=()=>selectGrade(g);c.appendChild(btn);
+        });
+      }
+
+      function showGradeSelect(){renderGradeButtons();showScreen('grade');}
+
+      function selectGrade(g){
+        S.grade=g;
+        for(let i=1;i<=6;i++){
+          const b=document.getElementById(`grade-${i}`);
+          if(b){ b.classList.remove('selected'); b.style.opacity='0.6'; b.style.filter='grayscale(0.5)'; }
+        }
+        const sel=document.getElementById(`grade-${g}`);
+        if(sel){ sel.classList.add('selected'); sel.style.opacity='1'; sel.style.filter='none'; }
+        document.getElementById('start-btn').classList.remove('hidden');
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         LEAD CAPTURE
+      ═══════════════════════════════════════════════════════════════ */
+      function showLeadCapture(){
+        if(!S.grade)return;
+        document.getElementById('selected-grade-display').textContent=S.grade;
+        showScreen('lead');
+      }
+
+      function validateAndStart(){
+        const emailEl=document.getElementById('parent-email');
+        const email=emailEl.value.trim();
+        const errEl=document.getElementById('email-error');
+        const emailRx=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if(!emailRx.test(email)){
+          emailEl.classList.add('error');errEl.classList.remove('hidden');return;
+        }
+        emailEl.classList.remove('error');errEl.classList.add('hidden');
+        S.parentEmail=email;
+        S.childName=document.getElementById('child-name').value.trim();
+        startDiagnostic();
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         DIAGNOSTIC
+      ═══════════════════════════════════════════════════════════════ */
+      function startDiagnostic(){
+        S.questions=QB[S.grade];S.currentQ=0;
+        S.answers=new Array(S.questions.length).fill(null);
+        S.selectedAnswer=null;S.subjectBreakShown=false;
+        showScreen('diagnostic');renderQuestion();
+      }
+
+      function renderQuestion(){
+        const q=S.questions[S.currentQ],tot=S.questions.length,pct=Math.round((S.currentQ/tot)*100);
+
+        document.getElementById('question-card').innerHTML=`
+          <div class="flex items-center justify-between mb-4">
+            <p id="skill-label" class="text-xs font-bold text-teal-600 uppercase tracking-widest"></p>
+            <span id="diff-badge" class="text-[0.65rem] font-semibold px-2.5 py-1 rounded-full border"></span>
+          </div>
+          <p id="question-text" class="text-lg md:text-xl font-semibold text-slate-800 mb-6 leading-snug"></p>
+          <div id="options-container" class="space-y-2.5"></div>`;
+
+        const subIcon = q.sub==='Math'?'solar:ruler-angular-linear':'solar:book-linear';
+        document.getElementById('q-subject').innerHTML=`<iconify-icon icon="${subIcon}" stroke-width="1.5" class="text-base"></iconify-icon> ${q.sub}`;
+        document.getElementById('q-counter').textContent=`Q ${S.currentQ+1} of ${tot}`;
+        document.getElementById('progress-bar').style.width=pct+'%';
+        document.getElementById('skill-label').textContent=q.skill;
+
+        const db=document.getElementById('diff-badge');
+        const dc={easy:'bg-green-50 text-green-700 border-green-200',medium:'bg-yellow-50 text-yellow-700 border-yellow-200',hard:'bg-red-50 text-red-700 border-red-200'};
+        const dl={easy:'Easy',medium:'Medium',hard:'Hard'};
+        db.className=`text-[0.65rem] font-bold px-2.5 py-1 rounded-full border ${dc[q.dif]} uppercase tracking-wider flex items-center gap-1`;
+        db.innerHTML=`<span class="w-1.5 h-1.5 rounded-full bg-current inline-block"></span> ${dl[q.dif]}`;
+
+        document.getElementById('question-text').textContent=q.q;
+
+        const container=document.getElementById('options-container');container.innerHTML='';
+        const letters=['A','B','C','D'];
+        q.opts.forEach((opt,idx)=>{
+          const div=document.createElement('div');
+          div.className='answer-opt bg-white border border-slate-200 rounded-xl px-4 py-3.5 font-medium text-slate-600 flex items-start gap-3 shadow-sm';
+          div.innerHTML=`<span class="df text-slate-400 font-semibold text-sm flex-shrink-0 mt-0.5">${letters[idx]}.</span><span class="leading-snug">${opt}</span>`;
+          div.onclick=()=>selectAnswer(idx);container.appendChild(div);
+        });
+
+        document.getElementById('next-btn').classList.add('hidden');
+        document.getElementById('next-btn').innerHTML='Next <iconify-icon icon="solar:arrow-right-linear" stroke-width="1.5"></iconify-icon>';
+        document.getElementById('next-btn').onclick=nextQuestion;
+        S.selectedAnswer=null;
+
+        const card=document.getElementById('question-card');
+        card.style.cssText='opacity:0;transform:translateY(0.75rem);transition:none;';
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{
+          card.style.cssText='opacity:1;transform:translateY(0);transition:opacity .3s ease,transform .3s ease;';
+        }));
+      }
+
+      function selectAnswer(idx){
+        if(S.selectedAnswer!==null)return;
+        S.selectedAnswer=idx;S.answers[S.currentQ]=idx;
+        const opts=document.querySelectorAll('.answer-opt'),correct=S.questions[S.currentQ].cor;
+        opts.forEach((el,i)=>{
+          el.classList.add('locked');
+          if(i===correct) {
+            el.classList.add('correct');
+            el.innerHTML += `<iconify-icon icon="solar:check-circle-linear" stroke-width="1.5" class="ml-auto text-lg"></iconify-icon>`;
+          }
+          else if(i===idx) {
+            el.classList.add('incorrect');
+            el.innerHTML += `<iconify-icon icon="solar:close-circle-linear" stroke-width="1.5" class="ml-auto text-lg"></iconify-icon>`;
+          }
+          else el.classList.add('dimmed');
+        });
+        setTimeout(()=>document.getElementById('next-btn').classList.remove('hidden'),450);
+      }
+
+      function nextQuestion(){
+        const prevSub=S.questions[S.currentQ]?.sub;
+        S.currentQ++;
+        if(S.currentQ>=S.questions.length){computeResults();renderReport();showScreen('report');return;}
+        const nextSub=S.questions[S.currentQ].sub;
+        if(!S.subjectBreakShown&&prevSub==='Math'&&nextSub==='Literacy'){
+          S.subjectBreakShown=true;showSubjectBreak();return;
+        }
+        renderQuestion();
+      }
+
+      function showSubjectBreak(){
+        const card=document.getElementById('question-card');
+        card.innerHTML=`
+          <div class="text-center py-8">
+            <div class="text-5xl mb-4 text-amber-400 flex justify-center"><iconify-icon icon="solar:star-linear" stroke-width="1.5"></iconify-icon></div>
+            <h3 class="df text-2xl font-semibold tracking-tight text-[#003566] mb-2">Maths Complete!</h3>
+            <p class="text-slate-500 text-sm mb-3">Great focus! Now let's check <strong class="font-semibold text-slate-700">Literacy</strong> skills.</p>
+            <p class="text-slate-400 text-xs">15 questions remaining</p>
+          </div>`;
+        const nb=document.getElementById('next-btn');
+        nb.innerHTML='Start Literacy Section <iconify-icon icon="solar:arrow-right-linear" stroke-width="1.5"></iconify-icon>';
+        nb.classList.remove('hidden');
+        nb.onclick=()=>{
+          nb.innerHTML='Next <iconify-icon icon="solar:arrow-right-linear" stroke-width="1.5"></iconify-icon>';
+          nb.onclick=nextQuestion;
+          nb.classList.add('hidden');
+          renderQuestion();
+        };
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         RESULTS COMPUTATION
+      ═══════════════════════════════════════════════════════════════ */
+      function computeResults(){
+        const r={};
+        S.questions.forEach((q,i)=>{
+          if(!r[q.sid])r[q.sid]={skill:q.skill,subject:q.sub,sid:q.sid,correct:0,total:0};
+          r[q.sid].total++;if(S.answers[i]===q.cor)r[q.sid].correct++;
+        });
+        Object.values(r).forEach(x=>{const p=x.correct/x.total;x.status=p>=1?'mastered':p>=.667?'developing':'needs-support';});
+        S.results=r;
+        S.focusSkills=Object.values(r).filter(x=>x.status!=='mastered').sort((a,b)=>a.correct-b.correct);
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         REPORT SCREEN
+      ═══════════════════════════════════════════════════════════════ */
+      function renderReport(){
+        const tot=S.questions.length,correct=Object.values(S.results).reduce((s,r)=>s+r.correct,0),pct=Math.round((correct/tot)*100);
+        const name=S.childName||`Grade ${S.grade} student`;
+        document.getElementById('report-name-label').textContent=name;
+
+        const em=pct>=80?'solar:star-linear':pct>=60?'solar:dumbbell-large-linear':'solar:target-linear';
+        const emColor=pct>=80?'text-amber-400':pct>=60?'text-teal-500':'text-rose-500';
+        const msg=pct>=80?'Excellent result! Nearly ready for the next grade.':pct>=60?'Good progress! A few key areas to strengthen.':'Great effort! We\'ve built a targeted plan to boost confidence.';
+
+        document.getElementById('overall-score').innerHTML=`
+          <div class="text-4xl mb-3 ${emColor} flex justify-center"><iconify-icon icon="${em}" stroke-width="1.5"></iconify-icon></div>
+          <div class="df text-5xl font-semibold tracking-tight text-[#003566]">${pct}%</div>
+          <div class="text-slate-400 mt-2 text-xs font-semibold uppercase tracking-widest">Overall Score — ${correct} of ${tot}</div>
+          <div class="mt-4 pt-4 border-t border-gray-100 text-slate-500 text-sm leading-relaxed">${msg}</div>
+        `;
+
+        ['math-skills','literacy-skills'].forEach(id=>document.getElementById(id).innerHTML='');
+        Object.values(S.results).forEach(r=>{
+          const cfg={
+            mastered:{cls:'border border-green-200 bg-green-50/50',badge:'bg-green-100 text-green-700 border border-green-200',bar:'bg-green-500',label:'<iconify-icon icon="solar:check-square-linear" class="mr-1"></iconify-icon> Mastered'},
+            developing:{cls:'border border-yellow-200 bg-yellow-50/50',badge:'bg-yellow-100 text-yellow-700 border border-yellow-200',bar:'bg-yellow-400',label:'<iconify-icon icon="solar:refresh-linear" class="mr-1"></iconify-icon> Developing'},
+            'needs-support':{cls:'border border-red-200 bg-red-50/50',badge:'bg-red-100 text-red-700 border border-red-200',bar:'bg-red-500',label:'<iconify-icon icon="solar:target-linear" class="mr-1"></iconify-icon> Needs Support'}
+          }[r.status];
+
+          const pct2=Math.round((r.correct/r.total)*100);
+          const res=RES[r.sid] || defaultRes;
+          const emoji=res.emoji;
+
+          const div=document.createElement('div');
+          div.className=`${cfg.cls} rounded-xl p-4 fade-up shadow-sm`;
+          div.innerHTML=`
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2 font-semibold text-slate-700 text-sm">
+                <iconify-icon icon="${emoji}" stroke-width="1.5" class="text-lg text-slate-400"></iconify-icon><span>${r.skill}</span>
+              </div>
+              <span class="text-[0.65rem] font-bold px-2.5 py-1 rounded-full flex items-center uppercase tracking-wider ${cfg.badge}">${cfg.label}</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-white border border-slate-200 rounded-full h-1.5 overflow-hidden">
+                <div class="${cfg.bar} h-1.5 rounded-full" style="width:${pct2}%"></div>
+              </div>
+              <span class="text-xs font-bold text-slate-400 w-6 text-right">${r.correct}/${r.total}</span>
+            </div>`;
+          document.getElementById(r.subject==='Math'?'math-skills':'literacy-skills').appendChild(div);
+        });
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         ROADMAP (base builder)
+      ═══════════════════════════════════════════════════════════════ */
+      const WT = [
+        {bg:'bg-white border-rose-200', hdr:'bg-rose-50 border-b border-rose-100 text-rose-900', icon:'solar:target-linear'},
+        {bg:'bg-white border-amber-200', hdr:'bg-amber-50 border-b border-amber-100 text-amber-900', icon:'solar:dumbbell-large-linear'},
+        {bg:'bg-white border-sky-200', hdr:'bg-sky-50 border-b border-sky-100 text-sky-900', icon:'solar:rocket-linear'},
+        {bg:'bg-white border-violet-200', hdr:'bg-violet-50 border-b border-violet-100 text-violet-900', icon:'solar:star-linear'}
+      ];
+
+      function showRoadmap(){
+        const name=S.childName||`Grade ${S.grade}`;
+        document.getElementById('roadmap-name-label').textContent=name;
+        document.getElementById('print-meta').textContent=`${name} · Grade ${S.grade} · ${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}`;
+        const c=document.getElementById('roadmap-weeks');c.innerHTML='';
+
+        if(!S.focusSkills.length){
+          c.innerHTML=`
+            <div class="bg-white border border-green-200 rounded-2xl p-8 text-center shadow-sm">
+              <div class="text-5xl mb-4 text-green-500 flex justify-center"><iconify-icon icon="solar:cup-first-linear" stroke-width="1.5"></iconify-icon></div>
+              <h3 class="df text-2xl font-semibold tracking-tight text-green-800 mb-2">Outstanding Achievement!</h3>
+              <p class="text-green-700 text-sm">All skills mastered! Use the summer for enrichment — coding, science experiments, creative writing, or mathematics competitions!</p>
+            </div>`;
+          showScreen('roadmap');return;
+        }
+
+        const weeks=S.focusSkills.slice(0,3);
+        weeks.forEach((skill,w)=>{
+          const res=RES[skill.sid] || defaultRes;
+          c.appendChild(buildWeekCard({theme:WT[w],weekNum:w+1,title:`Week ${w+1}: ${res.title}`,emoji:res.emoji,activities:buildActivities(w+1,res),resources:res.resources}));
+        });
+
+        const revRes=weeks.map(s=> (RES[s.sid]||defaultRes).resources[0]).filter(Boolean);
+        c.appendChild(buildWeekCard({theme:WT[3],weekNum:4,title:'Week 4: Review & Consolidation',emoji:'solar:star-linear',
+          activities:['Monday: Revisit Week 1 skill — redo 5 practice questions and check your answers','Tuesday: Revisit Week 2 skill — watch the resource video and take brief notes','Wednesday: Revisit Week 3 skill — complete one interactive activity or worksheet','Thursday: Mixed review — one question from each of the 3 focus skills','Friday: Celebration quiz! Share your results and reward the hard work'],
+          resources:revRes}));
+        showScreen('roadmap');
+      }
+
+      function buildActivities(w,res){
+        const days=['Monday','Tuesday','Wednesday','Thursday','Friday'];
+        const t=[
+          `Watch the introductory ${res.resources[0]?.p||'Khan Academy'} video on ${res.title} and write 3 key things you learned`,
+          `Complete 10 practice problems on ${res.title}. Check each answer carefully`,
+          `Try the interactive activity — ${res.tips[0]}`,
+          `Real-life challenge: ${res.tips[w%res.tips.length]}`,
+          `End-of-week review: redo 5 earlier questions, note what was still tricky and revisit it`
+        ];
+        return days.map((d,i)=>`${d}: ${t[i]}`);
+      }
+
+      function buildWeekCard({theme,weekNum,title,emoji,activities,resources}){
+        const div=document.createElement('div');
+        div.className=`week-card border ${theme.bg} rounded-2xl overflow-hidden shadow-sm fade-up`;
+        div.style.animationDelay=`${(weekNum-1)*.1}s`;
+
+        const aHTML=activities.map(a=>{
+          const co=a.indexOf(':');
+          const day=a.substring(0,co),task=a.substring(co+1);
+          return `<li class="py-2.5 border-b border-gray-100 last:border-0 text-sm text-slate-600 flex gap-3"><span class="font-semibold text-slate-800 flex-shrink-0 w-24">${day}:</span><span class="leading-relaxed">${task}</span></li>`;
+        }).join('');
+
+        const rHTML=(resources||[]).map(r=>`<a href="${r.u}" target="_blank" rel="noopener noreferrer" class="resource-link">
+          <span class="text-base text-slate-400 mt-0.5"><iconify-icon icon="solar:link-linear" stroke-width="1.5"></iconify-icon></span>
+          <span class="flex-1">${r.n}</span>
+          <span class="text-xs text-slate-400 font-normal ml-auto flex items-center gap-1">${r.p} <iconify-icon icon="solar:arrow-right-up-linear" stroke-width="1.5"></iconify-icon></span>
+        </a>`).join('');
+
+        div.innerHTML=`
+          <div class="${theme.hdr} p-5">
+            <div class="flex items-center gap-4">
+              <span class="text-3xl text-current opacity-80"><iconify-icon icon="${emoji}" stroke-width="1.5"></iconify-icon></span>
+              <div>
+                <h3 class="df text-xl font-semibold tracking-tight leading-tight mb-0.5">${title}</h3>
+                <span class="text-current opacity-70 text-xs font-semibold tracking-wide uppercase flex items-center gap-1">
+                  <iconify-icon icon="${theme.icon}" stroke-width="1.5"></iconify-icon> 5 days of practice
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="p-6 bg-white">
+            <h4 class="text-slate-400 font-bold text-[0.65rem] uppercase tracking-widest mb-3 flex items-center gap-1">
+              <iconify-icon icon="solar:calendar-linear" stroke-width="1.5"></iconify-icon> Daily Plan
+            </h4>
+            <ul class="list-none m-0 p-0 mb-6">${aHTML}</ul>
+            <h4 class="text-slate-400 font-bold text-[0.65rem] uppercase tracking-widest mb-3 flex items-center gap-1">
+              <iconify-icon icon="solar:folder-with-files-linear" stroke-width="1.5"></iconify-icon> Free Resources
+            </h4>
+            <div class="space-y-2">${rHTML}</div>
+          </div>`;
+        return div;
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         EMAIL RESULTS
+      ═══════════════════════════════════════════════════════════════ */
+      function generateReportText(){
+        const name=S.childName||`Grade ${S.grade} student`;
+        const tot=S.questions.length,correct=Object.values(S.results).reduce((s,r)=>s+r.correct,0),pct=Math.round((correct/tot)*100);
+        let b=`SUMMER LEARNING COMPASS — DIAGNOSTIC RESULTS\n${'='.repeat(50)}\n`;
+        b+=`Student: ${name}\nGrade: ${S.grade}\nDate: ${new Date().toLocaleDateString()}\nOverall Score: ${pct}% (${correct}/${tot} correct)\n\n`;
+        b+=`MATHEMATICS RESULTS:\n${'-'.repeat(35)}\n`;
+        Object.values(S.results).filter(r=>r.subject==='Math').forEach(r=>{
+          const st=r.status==='mastered'?'✓ Mastered':r.status==='developing'?'~ Developing':'! Needs Support';
+          b+=`${r.skill}: ${r.correct}/${r.total} — ${st}\n`;
+        });
+        b+=`\nLITERACY RESULTS:\n${'-'.repeat(35)}\n`;
+        Object.values(S.results).filter(r=>r.subject==='Literacy').forEach(r=>{
+          const st=r.status==='mastered'?'✓ Mastered':r.status==='developing'?'~ Developing':'! Needs Support';
+          b+=`${r.skill}: ${r.correct}/${r.total} — ${st}\n`;
+        });
+        b+=`\n4-WEEK SUMMER PLAN:\n${'-'.repeat(35)}\n`;
+        S.focusSkills.slice(0,3).forEach((skill,i)=>{const res=RES[skill.sid]||defaultRes; b+=`Week ${i+1}: Focus on ${res.title}\n`;});
+        b+=`Week 4: Review & Consolidation\n\nFREE RESOURCES:\n${'-'.repeat(35)}\n`;
+        S.focusSkills.slice(0,3).forEach(skill=>{const res=RES[skill.sid]||defaultRes; (res.resources||[]).forEach(r=>{b+=`• ${r.n} (${r.p}): ${r.u}\n`;});});
+        b+=`\n${'='.repeat(50)}\nGenerated by ${CONFIG.businessName}\n`;
+        return b;
+      }
+
+      function emailResults(){
+        const name=S.childName||`Grade ${S.grade} student`;
+        const subject=encodeURIComponent(`Summer Learning Compass — Results for ${name}`);
+        const body=encodeURIComponent(generateReportText());
+        const mailto=`mailto:${CONFIG.businessEmail}?cc=${encodeURIComponent(S.parentEmail)}&subject=${subject}&body=${body}`;
+        window.open(mailto);
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         RESTART
+      ═══════════════════════════════════════════════════════════════ */
+      function restartApp(){
+        S={grade:null,questions:[],currentQ:0,answers:[],selectedAnswer:null,results:{},focusSkills:[],parentEmail:'',childName:'',subjectBreakShown:false};
+        document.getElementById('parent-email').value='';
+        document.getElementById('child-name').value='';
+        showScreen('welcome');
+      }
+
+      /* ── INIT ── */
+      renderGradeButtons();
+    </script>
+
+    <script>
+      const BOOKS = {
+        1: [
+          { t: "Among the Meadow People", a: "Clara Dillingham Pierson", d: "Charming tales of insects and small creatures.", l: "Ages 6–7", u: "https://www.gutenberg.org/ebooks/34943" },
+          { t: "Among the Forest People", a: "Clara Dillingham Pierson", d: "Gentle stories of forest animals and their lives.", l: "Ages 6–7", u: "https://www.gutenberg.org/ebooks/34971" },
+          { t: "Among the Pond People", a: "Clara Dillingham Pierson", d: "Discover the adventures of pond-dwelling creatures.", l: "Ages 6–7", u: "https://www.gutenberg.org/ebooks/35002" },
+          { t: "Among the Farmyard People", a: "Clara Dillingham Pierson", d: "Delightful stories of animals on the farm.", l: "Ages 6–7", u: "https://www.gutenberg.org/ebooks/19381" },
+          { t: "A Child's Garden of Verses", a: "Robert Louis Stevenson", d: "Classic poetry celebrating childhood imagination.", l: "Ages 6–7", u: "https://www.gutenberg.org/ebooks/136" },
+          { t: "The Tale of Peter Rabbit", a: "Beatrix Potter", d: "The famous tale of a mischievous bunny.", l: "Ages 6–7", u: "https://www.gutenberg.org/ebooks/14838" }
+        ],
+        2: [
+          { t: "Aesop's Fables", a: "Aesop", d: "Classic moral tales featuring animal characters.", l: "Ages 7–8", u: "https://www.gutenberg.org/ebooks/11339" },
+          { t: "Just So Stories", a: "Rudyard Kipling", d: "Playful origin stories of animals.", l: "Ages 7–8", u: "https://www.gutenberg.org/ebooks/2781" },
+          { t: "Grimm's Fairy Tales", a: "Brothers Grimm", d: "Timeless magical fairy tales.", l: "Ages 7–8", u: "https://www.gutenberg.org/ebooks/2591" },
+          { t: "The Wonderful Wizard of Oz", a: "L. Frank Baum", d: "Dorothy's magical journey to Oz.", l: "Ages 7–8", u: "https://www.gutenberg.org/ebooks/55" },
+          { t: "Peter Pan", a: "J. M. Barrie", d: "The boy who wouldn't grow up.", l: "Ages 7–8", u: "https://www.gutenberg.org/ebooks/16" },
+          { t: "The Wind in the Willows", a: "Kenneth Grahame", d: "Adventures of Mole, Ratty, and Toad.", l: "Ages 7–8", u: "https://www.gutenberg.org/ebooks/22340" }
+        ],
+        3: [
+          { t: "Alice's Adventures in Wonderland", a: "Lewis Carroll", d: "Alice's whimsical journey down the rabbit hole.", l: "Ages 8–9", u: "https://www.gutenberg.org/ebooks/11" },
+          { t: "Black Beauty", a: "Anna Sewell", d: "The touching life story of a horse.", l: "Ages 8–9", u: "https://www.gutenberg.org/ebooks/271" },
+          { t: "Heidi", a: "Johanna Spyri", d: "An orphan girl's life in the Swiss Alps.", l: "Ages 8–9", u: "https://www.gutenberg.org/ebooks/1448" },
+          { t: "The Secret Garden", a: "Frances Hodgson Burnett", d: "Discovering magic and healing in a hidden garden.", l: "Ages 8–9", u: "https://www.gutenberg.org/ebooks/113" },
+          { t: "Anne of Green Gables", a: "L. M. Montgomery", d: "The imaginative life of Anne Shirley.", l: "Ages 8–9", u: "https://www.gutenberg.org/ebooks/45" },
+          { t: "Through the Looking-Glass", a: "Lewis Carroll", d: "Alice's return to a topsy-turvy world.", l: "Ages 8–9", u: "https://www.gutenberg.org/ebooks/12" }
+        ],
+        4: [
+          { t: "Tales from Shakespeare", a: "Charles & Mary Lamb", d: "Accessible retellings of classic plays.", l: "Ages 9–10", u: "https://www.gutenberg.org/ebooks/1777" },
+          { t: "The Merry Adventures of Robin Hood", a: "Howard Pyle", d: "The legendary hero of Sherwood Forest.", l: "Ages 9–10", u: "https://www.gutenberg.org/ebooks/24550" },
+          { t: "Arabian Nights", a: "Various", d: "Enchanting tales of magic and adventure.", l: "Ages 9–10", u: "https://www.gutenberg.org/ebooks/128" },
+          { t: "Hans Brinker, or The Silver Skates", a: "Mary Mapes Dodge", d: "A heartwarming Dutch story of family and skating.", l: "Ages 9–10", u: "https://www.gutenberg.org/ebooks/764" },
+          { t: "The Prince and the Pauper", a: "Mark Twain", d: "A prince and a poor boy switch places.", l: "Ages 9–10", u: "https://www.gutenberg.org/ebooks/1837" },
+          { t: "A Connecticut Yankee in King Arthur's Court", a: "Mark Twain", d: "A time-travel adventure to Camelot.", l: "Ages 9–10", u: "https://www.gutenberg.org/ebooks/86" }
+        ],
+        5: [
+          { t: "Treasure Island", a: "Robert Louis Stevenson", d: "A classic tale of pirates and buried gold.", l: "Ages 10–11", u: "https://www.gutenberg.org/ebooks/120" },
+          { t: "Robinson Crusoe", a: "Daniel Defoe", d: "A mariner's survival on a deserted island.", l: "Ages 10–11", u: "https://www.gutenberg.org/ebooks/521" },
+          { t: "The Swiss Family Robinson", a: "Johann David Wyss", d: "A shipwrecked family's island adventures.", l: "Ages 10–11", u: "https://www.gutenberg.org/ebooks/3836" },
+          { t: "Kidnapped", a: "Robert Louis Stevenson", d: "A historical adventure in the Scottish Highlands.", l: "Ages 10–11", u: "https://www.gutenberg.org/ebooks/421" },
+          { t: "Gulliver's Travels", a: "Jonathan Swift", d: "Fantastic voyages to strange lands.", l: "Ages 10–11", u: "https://www.gutenberg.org/ebooks/829" },
+          { t: "The Jungle Book", a: "Rudyard Kipling", d: "Mowgli's life among the wolves in India.", l: "Ages 10–11", u: "https://www.gutenberg.org/ebooks/236" }
+        ],
+        6: [
+          { t: "The Adventures of Sherlock Holmes", a: "Arthur Conan Doyle", d: "Brilliant mysteries solved by the famous detective.", l: "Ages 11–12", u: "https://www.gutenberg.org/ebooks/1661" },
+          { t: "Little Women", a: "Louisa May Alcott", d: "The lives and loves of the four March sisters.", l: "Ages 11–12", u: "https://www.gutenberg.org/ebooks/514" },
+          { t: "The Adventures of Tom Sawyer", a: "Mark Twain", d: "A boy's adventurous life on the Mississippi.", l: "Ages 11–12", u: "https://www.gutenberg.org/ebooks/74" },
+          { t: "A Christmas Carol", a: "Charles Dickens", d: "Scrooge's magical journey to redemption.", l: "Ages 11–12", u: "https://www.gutenberg.org/ebooks/46" },
+          { t: "Adventures of Huckleberry Finn", a: "Mark Twain", d: "Huck's river journey to freedom.", l: "Ages 11–12", u: "https://www.gutenberg.org/ebooks/76" },
+          { t: "Captains Courageous", a: "Rudyard Kipling", d: "A spoiled boy learns hard work at sea.", l: "Ages 11–12", u: "https://www.gutenberg.org/ebooks/2186" }
+        ]
+      };
+
+      window.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const plan = urlParams.get('plan');
+        if (plan) {
+          try {
+            const decoded = JSON.parse(decodeURIComponent(atob(plan)));
+            S.childName = decoded.n;
+            S.grade = decoded.g;
+            S.focusSkills = decoded.f;
+            S.results = decoded.r;
+            S.planHash = plan;
+            showRoadmap();
+          } catch(e) {
+            showScreen('welcome');
+          }
+        }
+      });
+
+      function showRoadmap() {
+        if (!S.planHash) {
+           const payload = { n: S.childName, g: S.grade, f: S.focusSkills, r: S.results, d: Date.now() };
+           const encoded = btoa(encodeURIComponent(JSON.stringify(payload)));
+           S.planHash = encoded;
+           try {
+             const newUrl = window.location.pathname + '?plan=' + encoded;
+             window.history.replaceState({}, '', newUrl);
+           } catch(e) {
+             console.warn('Could not update URL history:', e);
+           }
+        }
+        const name = S.childName || `Grade ${S.grade} student`;
+        document.getElementById('roadmap-name-label').textContent = name;
+        document.getElementById('print-meta').textContent = `${name} · Grade ${S.grade} · ${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}`;
+        const c = document.getElementById('roadmap-weeks');
+        c.innerHTML = '';
+        if (!S.focusSkills || !S.focusSkills.length) {
+           c.innerHTML = `<div class="bg-white border border-green-200 rounded-2xl p-8 text-center shadow-sm"><div class="text-5xl mb-4 text-green-500 flex justify-center"><iconify-icon icon="solar:cup-first-linear" stroke-width="1.5"></iconify-icon></div><h3 class="df text-2xl font-semibold tracking-tight text-green-800 mb-2">Outstanding Achievement!</h3><p class="text-green-700 text-sm">All skills mastered! Use the summer for enrichment!</p></div>`;
+           showScreen('roadmap');
+           return;
+        }
+        const weeks = S.focusSkills.slice(0, 3);
+        weeks.forEach((skill, w) => {
+           const res = RES[skill.sid] || defaultRes;
+           let questions = [];
+           if(QB[S.grade]) {
+             questions = QB[S.grade].filter(q => q.sid === skill.sid).slice(0, 5);
+             if(questions.length < 5) {
+               const more = QB[S.grade].filter(q => q.sub === skill.subject && q.sid !== skill.sid);
+               questions = questions.concat(more.slice(0, 5 - questions.length));
+             }
+           }
+           c.appendChild(buildNewWeekCard(w, skill, res, questions));
+        });
+        const revRes = {
+          title: 'Review & Consolidation',
+          emoji: 'solar:star-linear',
+          tips: ['Review Week 1', 'Review Week 2', 'Review Week 3', 'Mixed review', 'Celebration quiz'],
+          resources: weeks.map(s => (RES[s.sid]||defaultRes).resources[0]).filter(Boolean)
+        };
+        let revQuestions = [];
+        if (QB[S.grade]) {
+          weeks.forEach(skill => {
+              const q = QB[S.grade].find(q => q.sid === skill.sid);
+              if(q) revQuestions.push(q);
+          });
+        }
+        c.appendChild(buildNewWeekCard(3, {sid: 'review', skill: 'Review & Consolidation'}, revRes, revQuestions));
+        showScreen('roadmap');
+        updateProgressBars();
+      }
+
+      function escapeHtml(str){
+        return String(str||'')
+          .replaceAll('&','&amp;')
+          .replaceAll('<','&lt;')
+          .replaceAll('>','&gt;')
+          .replaceAll('"','&quot;')
+          .replaceAll("'",'&#039;');
+      }
+
+      function getThursdayChallenge(skillName){
+        const s = String(skillName||'');
+        if (s.includes('Addition')) {
+          return 'Challenge: Give your child a handful of coins and ask them to make three different totals using addition. Check each answer together.';
+        }
+        if (s.includes('Subtraction')) {
+          return "Challenge: Look at a receipt or shopping list. Ask your child to calculate how much change you'd get from a round number (e.g. $10 or $20).";
+        }
+        if (s.includes('Multiplication') || s.includes('Equal Groups')) {
+          return 'Challenge: Choose something in groups at home (e.g. 4 chairs at a table, 3 windows per wall). Ask your child to write a multiplication sentence and work out the total.';
+        }
+        if (s.includes('Division')) {
+          return 'Challenge: Count out 24 small objects (coins, grapes, blocks). Ask your child to divide them equally into 3 groups, then 4 groups, then 6 groups.';
+        }
+        if (s.includes('Fractions')) {
+          return 'Challenge: Cut a piece of fruit or a sandwich into equal parts. Ask your child to name the fraction of each piece and which fraction is bigger.';
+        }
+        if (s.includes('Place Value')) {
+          return 'Challenge: Write a 3-digit number on paper. Ask your child to say the value of each digit, then rearrange the digits to make the largest and smallest possible number.';
+        }
+        if (s.includes('Area') || s.includes('Perimeter')) {
+          return 'Challenge: Choose a room or table at home. Measure its length and width with a ruler or tape measure. Calculate both the area and perimeter together.';
+        }
+        if (s.includes('Data') || s.includes('Graphs')) {
+          return 'Challenge: Conduct a mini family survey (e.g. favourite fruit). Tally the results and draw a simple bar graph together on paper.';
+        }
+        if (s.includes('Phonics') || s.includes('Spelling')) {
+          return "Challenge: Call out 8 words that use this week's sound pattern. Your child writes each one, then you reveal the correct spelling together.";
+        }
+        if (s.includes('Vocabulary')) {
+          return "Challenge: Pick 3 new words from this week's reading book. For each one, ask your child to use it in a sentence of their own, then draw a quick picture clue.";
+        }
+        if (s.includes('Comprehension') || s.includes('Reading')) {
+          return 'Challenge: Read a page from any book aloud. Then close the book and ask: What happened? Why did the character do that? What do you think happens next?';
+        }
+        if (s.includes('Writing') || s.includes('Sentences')) {
+          return 'Challenge: Ask your child to write 3 sentences about something they did this week. Read them back together and suggest one word to make each sentence more vivid.';
+        }
+        if (s.includes('Grammar')) {
+          return 'Challenge: Find a paragraph in any book or magazine. Ask your child to underline all the verbs in one colour and all the nouns in another.';
+        }
+        return `Challenge: Ask your child to teach you ${s} as if you've never heard of it. Let them explain, give examples, and correct you if you get a practice question wrong.`;
+      }
+
+      function buildDailyPlanRows(w, skillName, khanRes, bbcRes){
+        const skillEsc = escapeHtml(skillName);
+        const khanName = escapeHtml(khanRes?.n || 'Khan Academy resource');
+        const khanUrl = khanRes?.u || 'https://www.khanacademy.org';
+        const bbcName  = escapeHtml(bbcRes?.n || 'BBC Bitesize guide');
+        const bbcUrl  = bbcRes?.u || 'https://www.bbc.co.uk/bitesize';
+
+        const rows = [
+          {
+            day: 'Monday',
+            time: '15 min',
+            text: `Visit ${khanName} on <a class="inline-resource-link" href="${khanUrl}" target="_blank" rel="noopener noreferrer">Khan Academy</a> → Watch the introductory video on ${skillEsc}. Pause after each section and ask your child: &quot;Can you explain that in your own words?&quot;`
+          },
+          {
+            day: 'Tuesday',
+            time: '20 min',
+            text: `Return to ${khanName} → Complete the practice exercises on ${skillEsc}. Work through at least 5 questions. For any wrong answer, read the hint together before moving on.`
+          },
+          {
+            day: 'Wednesday',
+            time: '10 min',
+            text: `Open the ${bbcName} guide on <a class="inline-resource-link" href="${bbcUrl}" target="_blank" rel="noopener noreferrer">BBC Bitesize</a> → Read through the page on ${skillEsc} together, then complete the interactive activity or quiz at the bottom.`
+          },
+          {
+            day: 'Thursday',
+            time: '10 min',
+            text: escapeHtml(getThursdayChallenge(skillName))
+          },
+          {
+            day: 'Friday',
+            time: '10 min',
+            text: `Ask your child 5 quick verbal questions on ${skillEsc} — make them progressively harder. For every correct answer, they earn a point. Tally the score and celebrate the week's progress! 🎉`
+          }
+        ];
+
+        return rows.map((r,i)=>{
+          const cbId = `cb-${w}-${i}`;
+          return `
+              <label class="flex items-center gap-3 p-3.5 border-b border-slate-100 last:border-0 hover:bg-slate-50 cursor-pointer transition-colors group bg-white">
+                <div class="w-24 font-bold text-sm text-[#003566] flex-shrink-0">${r.day}</div>
+                <div class="flex-1 text-sm text-slate-700 font-medium act-text group-has-[:checked]:line-through group-has-[:checked]:text-slate-400 transition-colors">${r.text}</div>
+                <div class="text-[0.65rem] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-full flex items-center gap-1 whitespace-nowrap">
+                  <iconify-icon icon="solar:stopwatch-linear"></iconify-icon> ${r.time}
+                </div>
+                <div class="relative flex items-center justify-center w-5 h-5 border-2 border-slate-300 rounded group-has-[:checked]:bg-teal-500 group-has-[:checked]:border-teal-500 transition-colors ml-2 no-print daily-checkbox">
+                  <input type="checkbox" id="${cbId}" class="peer sr-only" onchange="toggleDay(${w}, ${i})">
+                  <iconify-icon icon="solar:check-read-linear" class="text-white opacity-0 peer-checked:opacity-100 transition-opacity text-sm absolute"></iconify-icon>
+                </div>
+              </label>
+          `;
+        }).join('');
+      }
+
+      function buildNewWeekCard(w, skill, res, questions) {
+        const themeColors = [
+          { border: 'border-l-rose-500 border-l-2', headerBg: 'bg-rose-50', headerText: 'text-rose-900', badge: 'bg-rose-100 text-rose-800' },
+          { border: 'border-l-amber-500 border-l-2', headerBg: 'bg-amber-50', headerText: 'text-amber-900', badge: 'bg-amber-100 text-amber-800' },
+          { border: 'border-l-sky-500 border-l-2', headerBg: 'bg-sky-50', headerText: 'text-sky-900', badge: 'bg-sky-100 text-sky-800' },
+          { border: 'border-l-violet-500 border-l-2', headerBg: 'bg-violet-50', headerText: 'text-violet-900', badge: 'bg-violet-100 text-violet-800' }
+        ];
+        const t = themeColors[w % 4];
+        const div = document.createElement('div');
+        div.className = `week-card bg-white shadow-sm rounded-2xl mb-8 overflow-hidden border-y border-r border-slate-200 ${t.border} fade-up`;
+        div.style.animationDelay = `${w*.1}s`;
+        const progId = `prog-${w}`;
+        let html = `
+          <div class="h-1.5 w-full bg-slate-100 no-print"><div id="${progId}" class="h-full bg-teal-500 transition-all duration-300" style="width: 0%"></div></div>
+          <div class="${t.headerBg} p-5 border-b border-slate-100 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="text-3xl ${t.headerText} opacity-80"><iconify-icon icon="${res.emoji}" stroke-width="1.5"></iconify-icon></div>
+              <div>
+                <h3 class="df text-xl font-semibold tracking-tight leading-tight ${t.headerText} mb-0.5">Week ${w+1}: ${res.title}</h3>
+              </div>
+            </div>
+            <span class="text-[0.65rem] font-bold px-2.5 py-1 rounded-full ${t.badge} flex items-center gap-1 whitespace-nowrap border border-white/50 shadow-sm">
+              <iconify-icon icon="solar:calendar-linear" stroke-width="1.5"></iconify-icon> 5 days · ~15 min/day
+            </span>
+          </div>
+          <div class="p-6">
+        `;
+        const busyQ = questions.length > 0 ? questions[0] : { q: "Ask your child to explain the main concept they learned this week.", opts: [], cor: 0 };
+        const busyA = busyQ.opts && busyQ.opts.length > busyQ.cor ? busyQ.opts[busyQ.cor] : "Listen for understanding and encourage them.";
+        html += `
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 relative shadow-sm">
+              <div class="flex items-center gap-2 text-amber-800 font-bold text-sm mb-2">
+                <iconify-icon icon="solar:bolt-linear" class="text-amber-500 text-lg"></iconify-icon> ⚡ Tight on time?
+              </div>
+              <p class="text-slate-700 text-sm font-semibold mb-2">${busyQ.q}</p>
+              <p class="text-amber-700 text-xs font-bold bg-amber-100/60 px-2.5 py-1.5 rounded-lg inline-block border border-amber-200/50">Answer: ${busyA}</p>
+            </div>
+        `;
+
+        const khanRes = res.resources && res.resources[0] ? res.resources[0] : { n: 'Practice Module', p: 'Khan Academy', u: 'https://www.khanacademy.org', t: '📹' };
+        const bbcRes  = res.resources && res.resources[1] ? res.resources[1] : { n: 'Topic Guide', p: 'BBC Bitesize', u: 'https://www.bbc.co.uk/bitesize', t: '📖' };
+
+        const isReview = (skill && skill.sid === 'review') || (res && res.title === 'Review & Consolidation');
+        const skillNameForPlan = isReview ? 'Review & Consolidation' : (skill?.skill || res.title);
+
+        html += `
+            <h4 class="text-slate-500 font-bold text-[0.65rem] uppercase tracking-widest mb-3 flex items-center gap-1">
+              <iconify-icon icon="solar:calendar-date-linear" stroke-width="1.5"></iconify-icon> Daily Plan
+            </h4>
+            <div class="border border-slate-200 rounded-xl overflow-hidden mb-8 shadow-sm">
+              ${buildDailyPlanRows(w, skillNameForPlan, khanRes, bbcRes)}
+            </div>
+        `;
+
+        html += `
+            <div class="bg-[#F0F9FF] rounded-xl p-5 border border-sky-100 shadow-sm mt-8">
+              <h4 class="text-[#003566] font-bold text-[0.65rem] uppercase tracking-widest mb-4 flex items-center gap-1">
+                <iconify-icon icon="solar:book-linear" stroke-width="1.5"></iconify-icon> 📚 Free Resources & Reading
+              </h4>
+              <div class="mb-6">
+                <h5 class="text-sm font-bold text-[#003566] mb-3">Online Tools & Videos</h5>
+                <div class="flex flex-col gap-3">
+        `;
+
+        let r1 = res.resources && res.resources[0] ? res.resources[0] : { n: 'Practice Module', p: 'Khan Academy', u: 'https://www.khanacademy.org', t: '📹' };
+        let r2 = res.resources && res.resources[1] ? res.resources[1] : { n: 'Topic Guide', p: 'BBC Bitesize', u: 'https://www.bbc.co.uk/bitesize', t: '📖' };
+
+        [r1, r2].forEach((r, idx) => {
+           let platform = r.p.includes('Khan') ? 'Khan Academy' : (r.p.includes('BBC') ? 'BBC Bitesize' : r.p);
+           if (!res.resources || res.resources.length < 2) {
+               if (idx === 0) platform = 'Khan Academy';
+               if (idx === 1) platform = 'BBC Bitesize';
+           }
+           const emoji = platform === 'Khan Academy' ? '📹' : '📖';
+           const desc = platform === 'Khan Academy' ? 'Interactive practice and video lessons' : 'Fun guides and activities';
+
+           html += `
+                  <div class="bg-white border border-slate-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between shadow-sm gap-3">
+                    <div class="flex items-center gap-3">
+                      <span class="text-2xl">${emoji}</span>
+                      <div>
+                        <p class="text-sm font-bold text-slate-800">${r.n} <span class="text-xs text-slate-500 font-normal ml-1">via ${platform}</span></p>
+                        <p class="text-xs text-slate-500">${desc}</p>
+                      </div>
+                    </div>
+                    <a href="${r.u}" target="_blank" rel="noopener noreferrer" class="no-print bg-[#003566] text-white text-xs font-bold px-4 py-2 rounded-full hover:bg-[#02284d] transition-colors flex items-center justify-center whitespace-nowrap shadow-sm">
+                      Open <iconify-icon icon="solar:arrow-right-linear" class="ml-1"></iconify-icon>
+                    </a>
+                    <span class="print-only text-xs text-slate-500 break-all">${r.u}</span>
+                  </div>
+           `;
+        });
+
+        html += `
+                </div>
+              </div>
+              <div>
+                <h5 class="text-sm font-bold text-[#003566] mb-3">Free Vintage Books to Read This Week</h5>
+                <div class="flex flex-col gap-3">
+        `;
+
+        const gradeBooks = BOOKS[S.grade] || BOOKS[1];
+        let booksToShow = [];
+        if (w === 3) {
+            booksToShow = [gradeBooks[0], gradeBooks[1]];
+        } else {
+            const startIdx = (w * 2) % gradeBooks.length;
+            booksToShow = [gradeBooks[startIdx], gradeBooks[(startIdx + 1) % gradeBooks.length]];
+        }
+
+        booksToShow.forEach(b => {
+           html += `
+                  <div class="bg-white border-l-2 border-l-[#00B4D8] border-y border-r border-slate-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between shadow-sm gap-3">
+                    <div class="flex items-center gap-3">
+                      <div class="text-2xl text-[#00B4D8]"><iconify-icon icon="solar:book-bookmark-linear" stroke-width="1.5"></iconify-icon></div>
+                      <div>
+                        <p class="text-sm font-bold text-slate-800">${b.t} <span class="text-xs text-slate-500 font-normal ml-1">by ${b.a}</span></p>
+                        <p class="text-xs text-slate-500 mb-1">${b.d}</p>
+                        <span class="text-[0.65rem] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">${b.l}</span>
+                      </div>
+                    </div>
+                    <a href="${b.u}" target="_blank" rel="noopener noreferrer" class="no-print bg-[#00B4D8] text-white text-xs font-bold px-4 py-2 rounded-full hover:bg-[#0096B4] transition-colors flex items-center justify-center whitespace-nowrap shadow-sm">
+                      Read Free <iconify-icon icon="solar:arrow-right-linear" class="ml-1"></iconify-icon>
+                    </a>
+                    <span class="print-only text-xs text-slate-500 break-all">${b.u}</span>
+                  </div>
+           `;
+        });
+
+        html += `
+                </div>
+              </div>
+            </div>
+        `;
+
+        html += `</div>`;
+        div.innerHTML = html;
+        return div;
+      }
+
+      function toggleDay(w, i) {
+        if (!S.planHash) return;
+        const key = 'slc_prog_' + S.planHash;
+        let prog = JSON.parse(localStorage.getItem(key) || '{}');
+        if (!prog[w]) prog[w] = {};
+        const cb = document.getElementById(`cb-${w}-${i}`);
+        prog[w][i] = cb.checked;
+        localStorage.setItem(key, JSON.stringify(prog));
+        updateProgressBars();
+      }
+
+      function updateProgressBars() {
+        if (!S.planHash) return;
+        const key = 'slc_prog_' + S.planHash;
+        let prog = JSON.parse(localStorage.getItem(key) || '{}');
+        for(let w=0; w<4; w++) {
+          let checked = 0;
+          for(let i=0; i<5; i++) {
+            const cb = document.getElementById(`cb-${w}-${i}`);
+            if (cb) {
+               if (prog[w] && prog[w][i]) {
+                  cb.checked = true;
+                  checked++;
+               } else {
+                  cb.checked = false;
+               }
+            }
+          }
+          const progBar = document.getElementById(`prog-${w}`);
+          if (progBar) {
+            progBar.style.width = (checked * 20) + '%';
+          }
+        }
+      }
+
+      function copyShareLink() {
+        const url = window.location.href;
+        navigator.clipboard.writeText(url).then(() => {
+          document.getElementById('share-link-container').classList.remove('hidden');
+          document.getElementById('share-link-input').value = url;
+          document.getElementById('copy-toast').classList.remove('hidden');
+          setTimeout(() => {
+            document.getElementById('copy-toast').classList.add('hidden');
+          }, 4000);
+        }).catch(err => {
+          document.getElementById('share-link-container').classList.remove('hidden');
+          document.getElementById('share-link-input').value = url;
+        });
+      }
+
+      function copyToClipboardInput() {
+        const el = document.getElementById('share-link-input');
+        el.select();
+        document.execCommand('copy');
+        document.getElementById('copy-toast').classList.remove('hidden');
+        setTimeout(() => document.getElementById('copy-toast').classList.add('hidden'), 4000);
+      }
+
+      function emailShareLink() {
+        const name = S.childName || 'Your child';
+        const subject = encodeURIComponent(`${name}'s Summer Learning Plan`);
+        const body = encodeURIComponent(`Here is the personalised 4-week Summer Learning Roadmap for ${name}:\n\n${window.location.href}\n\nBookmark this link to return to your plan anytime and track your progress.`);
+        window.open(`mailto:?subject=${subject}&body=${body}`);
+      }
+    </script>
+
+    <script>
+      const BOOKS = {
+        1: [
+          { t: "Among the Meadow People", a: "Clara Dillingham Pierson", d: "Charming tales of insects and small creatures.", l: "Ages 6–7", u: "https://www.gutenberg.org/ebooks/34943" },
+          { t: "Among the Forest People", a: "Clara Dillingham Pierson", d: "Gentle stories of forest animals and their lives.", l: "Ages 6–7", u: "https://www.gutenberg.org/ebooks/34971" },
+          { t: "Among the Pond People", a: "Clara Dillingham Pierson", d: "Discover the adventures of pond-dwelling creatures.", l: "Ages 6–7", u: "https://www.gutenberg.org/ebooks/35002" },
+          { t: "Among the Farmyard People", a: "Clara Dillingham Pierson", d: "Delightful stories of animals on the farm.", l: "Ages 6–7", u: "https://www.gutenberg.org/ebooks/19381" },
+          { t: "A Child's Garden of Verses", a: "Robert Louis Stevenson", d: "Classic poetry celebrating childhood imagination.", l: "Ages 6–7", u: "https://www.gutenberg.org/ebooks/136" },
+          { t: "The Tale of Peter Rabbit", a: "Beatrix Potter", d: "The famous tale of a mischievous bunny.", l: "Ages 6–7", u: "https://www.gutenberg.org/ebooks/14838" }
+        ],
+        2: [
+          { t: "Aesop's Fables", a: "Aesop", d: "Classic moral tales featuring animal characters.", l: "Ages 7–8", u: "https://www.gutenberg.org/ebooks/11339" },
+          { t: "Just So Stories", a: "Rudyard Kipling", d: "Playful origin stories of animals.", l: "Ages 7–8", u: "https://www.gutenberg.org/ebooks/2781" },
+          { t: "Grimm's Fairy Tales", a: "Brothers Grimm", d: "Timeless magical fairy tales.", l: "Ages 7–8", u: "https://www.gutenberg.org/ebooks/2591" },
+          { t: "The Wonderful Wizard of Oz", a: "L. Frank Baum", d: "Dorothy's magical journey to Oz.", l: "Ages 7–8", u: "https://www.gutenberg.org/ebooks/55" },
+          { t: "Peter Pan", a: "J. M. Barrie", d: "The boy who wouldn't grow up.", l: "Ages 7–8", u: "https://www.gutenberg.org/ebooks/16" },
+          { t: "The Wind in the Willows", a: "Kenneth Grahame", d: "Adventures of Mole, Ratty, and Toad.", l: "Ages 7–8", u: "https://www.gutenberg.org/ebooks/22340" }
+        ],
+        3: [
+          { t: "Alice's Adventures in Wonderland", a: "Lewis Carroll", d: "Alice's whimsical journey down the rabbit hole.", l: "Ages 8–9", u: "https://www.gutenberg.org/ebooks/11" },
+          { t: "Black Beauty", a: "Anna Sewell", d: "The touching life story of a horse.", l: "Ages 8–9", u: "https://www.gutenberg.org/ebooks/271" },
+          { t: "Heidi", a: "Johanna Spyri", d: "An orphan girl's life in the Swiss Alps.", l: "Ages 8–9", u: "https://www.gutenberg.org/ebooks/1448" },
+          { t: "The Secret Garden", a: "Frances Hodgson Burnett", d: "Discovering magic and healing in a hidden garden.", l: "Ages 8–9", u: "https://www.gutenberg.org/ebooks/113" },
+          { t: "Anne of Green Gables", a: "L. M. Montgomery", d: "The imaginative life of Anne Shirley.", l: "Ages 8–9", u: "https://www.gutenberg.org/ebooks/45" },
+          { t: "Through the Looking-Glass", a: "Lewis Carroll", d: "Alice's return to a topsy-turvy world.", l: "Ages 8–9", u: "https://www.gutenberg.org/ebooks/12" }
+        ],
+        4: [
+          { t: "Tales from Shakespeare", a: "Charles & Mary Lamb", d: "Accessible retellings of classic plays.", l: "Ages 9–10", u: "https://www.gutenberg.org/ebooks/1777" },
+          { t: "The Merry Adventures of Robin Hood", a: "Howard Pyle", d: "The legendary hero of Sherwood Forest.", l: "Ages 9–10", u: "https://www.gutenberg.org/ebooks/24550" },
+          { t: "Arabian Nights", a: "Various", d: "Enchanting tales of magic and adventure.", l: "Ages 9–10", u: "https://www.gutenberg.org/ebooks/128" },
+          { t: "Hans Brinker, or The Silver Skates", a: "Mary Mapes Dodge", d: "A heartwarming Dutch story of family and skating.", l: "Ages 9–10", u: "https://www.gutenberg.org/ebooks/764" },
+          { t: "The Prince and the Pauper", a: "Mark Twain", d: "A prince and a poor boy switch places.", l: "Ages 9–10", u: "https://www.gutenberg.org/ebooks/1837" },
+          { t: "A Connecticut Yankee in King Arthur's Court", a: "Mark Twain", d: "A time-travel adventure to Camelot.", l: "Ages 9–10", u: "https://www.gutenberg.org/ebooks/86" }
+        ],
+        5: [
+          { t: "Treasure Island", a: "Robert Louis Stevenson", d: "A classic tale of pirates and buried gold.", l: "Ages 10–11", u: "https://www.gutenberg.org/ebooks/120" },
+          { t: "Robinson Crusoe", a: "Daniel Defoe", d: "A mariner's survival on a deserted island.", l: "Ages 10–11", u: "https://www.gutenberg.org/ebooks/521" },
+          { t: "The Swiss Family Robinson", a: "Johann David Wyss", d: "A shipwrecked family's island adventures.", l: "Ages 10–11", u: "https://www.gutenberg.org/ebooks/3836" },
+          { t: "Kidnapped", a: "Robert Louis Stevenson", d: "A historical adventure in the Scottish Highlands.", l: "Ages 10–11", u: "https://www.gutenberg.org/ebooks/421" },
+          { t: "Gulliver's Travels", a: "Jonathan Swift", d: "Fantastic voyages to strange lands.", l: "Ages 10–11", u: "https://www.gutenberg.org/ebooks/829" },
+          { t: "The Jungle Book", a: "Rudyard Kipling", d: "Mowgli's life among the wolves in India.", l: "Ages 10–11", u: "https://www.gutenberg.org/ebooks/236" }
+        ],
+        6: [
+          { t: "The Adventures of Sherlock Holmes", a: "Arthur Conan Doyle", d: "Brilliant mysteries solved by the famous detective.", l: "Ages 11–12", u: "https://www.gutenberg.org/ebooks/1661" },
+          { t: "Little Women", a: "Louisa May Alcott", d: "The lives and loves of the four March sisters.", l: "Ages 11–12", u: "https://www.gutenberg.org/ebooks/514" },
+          { t: "The Adventures of Tom Sawyer", a: "Mark Twain", d: "A boy's adventurous life on the Mississippi.", l: "Ages 11–12", u: "https://www.gutenberg.org/ebooks/74" },
+          { t: "A Christmas Carol", a: "Charles Dickens", d: "Scrooge's magical journey to redemption.", l: "Ages 11–12", u: "https://www.gutenberg.org/ebooks/46" },
+          { t: "Adventures of Huckleberry Finn", a: "Mark Twain", d: "Huck's river journey to freedom.", l: "Ages 11–12", u: "https://www.gutenberg.org/ebooks/76" },
+          { t: "Captains Courageous", a: "Rudyard Kipling", d: "A spoiled boy learns hard work at sea.", l: "Ages 11–12", u: "https://www.gutenberg.org/ebooks/2186" }
+        ]
+      };
+
+      window.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const plan = urlParams.get('plan');
+        if (plan) {
+          try {
+            const decoded = JSON.parse(decodeURIComponent(atob(plan)));
+            S.childName = decoded.n;
+            S.grade = decoded.g;
+            S.focusSkills = decoded.f;
+            S.results = decoded.r;
+            S.planHash = plan;
+            showRoadmap();
+          } catch(e) {
+            showScreen('welcome');
+          }
+        }
+      });
+
+      function showRoadmap() {
+        if (!S.planHash) {
+           const payload = { n: S.childName, g: S.grade, f: S.focusSkills, r: S.results, d: Date.now() };
+           const encoded = btoa(encodeURIComponent(JSON.stringify(payload)));
+           S.planHash = encoded;
+           try {
+             const newUrl = window.location.pathname + '?plan=' + encoded;
+             window.history.replaceState({}, '', newUrl);
+           } catch(e) {
+             console.warn('Could not update URL history:', e);
+           }
+        }
+        const name = S.childName || `Grade ${S.grade} student`;
+        document.getElementById('roadmap-name-label').textContent = name;
+        document.getElementById('print-meta').textContent = `${name} · Grade ${S.grade} · ${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}`;
+        const c = document.getElementById('roadmap-weeks');
+        c.innerHTML = '';
+        if (!S.focusSkills || !S.focusSkills.length) {
+           c.innerHTML = `<div class="bg-white border border-green-200 rounded-2xl p-8 text-center shadow-sm"><div class="text-5xl mb-4 text-green-500 flex justify-center"><iconify-icon icon="solar:cup-first-linear" stroke-width="1.5"></iconify-icon></div><h3 class="df text-2xl font-semibold tracking-tight text-green-800 mb-2">Outstanding Achievement!</h3><p class="text-green-700 text-sm">All skills mastered! Use the summer for enrichment!</p></div>`;
+           showScreen('roadmap');
+           return;
+        }
+        const weeks = S.focusSkills.slice(0, 3);
+        weeks.forEach((skill, w) => {
+           const res = RES[skill.sid] || defaultRes;
+           let questions = [];
+           if(QB[S.grade]) {
+             questions = QB[S.grade].filter(q => q.sid === skill.sid).slice(0, 5);
+             if(questions.length < 5) {
+               const more = QB[S.grade].filter(q => q.sub === skill.subject && q.sid !== skill.sid);
+               questions = questions.concat(more.slice(0, 5 - questions.length));
+             }
+           }
+           c.appendChild(buildNewWeekCard(w, skill, res, questions));
+        });
+        const revRes = {
+          title: 'Review & Consolidation',
+          emoji: 'solar:star-linear',
+          tips: ['Review Week 1', 'Review Week 2', 'Review Week 3', 'Mixed review', 'Celebration quiz'],
+          resources: weeks.map(s => (RES[s.sid]||defaultRes).resources[0]).filter(Boolean)
+        };
+        let revQuestions = [];
+        if (QB[S.grade]) {
+          weeks.forEach(skill => {
+              const q = QB[S.grade].find(q => q.sid === skill.sid);
+              if(q) revQuestions.push(q);
+          });
+        }
+        c.appendChild(buildNewWeekCard(3, {sid: 'review', skill: 'Review & Consolidation'}, revRes, revQuestions));
+        showScreen('roadmap');
+        updateProgressBars();
+      }
+
+      function buildNewWeekCard(w, skill, res, questions) {
+        const themeColors = [
+          { border: 'border-l-rose-500 border-l-2', headerBg: 'bg-rose-50', headerText: 'text-rose-900', badge: 'bg-rose-100 text-rose-800' },
+          { border: 'border-l-amber-500 border-l-2', headerBg: 'bg-amber-50', headerText: 'text-amber-900', badge: 'bg-amber-100 text-amber-800' },
+          { border: 'border-l-sky-500 border-l-2', headerBg: 'bg-sky-50', headerText: 'text-sky-900', badge: 'bg-sky-100 text-sky-800' },
+          { border: 'border-l-violet-500 border-l-2', headerBg: 'bg-violet-50', headerText: 'text-violet-900', badge: 'bg-violet-100 text-violet-800' }
+        ];
+        const t = themeColors[w % 4];
+        const div = document.createElement('div');
+        div.className = `week-card bg-white shadow-sm rounded-2xl mb-8 overflow-hidden border-y border-r border-slate-200 ${t.border} fade-up`;
+        div.style.animationDelay = `${w*.1}s`;
+        const progId = `prog-${w}`;
+        let html = `
+          <div class="h-1.5 w-full bg-slate-100 no-print"><div id="${progId}" class="h-full bg-teal-500 transition-all duration-300" style="width: 0%"></div></div>
+          <div class="${t.headerBg} p-5 border-b border-slate-100 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="text-3xl ${t.headerText} opacity-80"><iconify-icon icon="${res.emoji}" stroke-width="1.5"></iconify-icon></div>
+              <div>
+                <h3 class="df text-xl font-semibold tracking-tight leading-tight ${t.headerText} mb-0.5">Week ${w+1}: ${res.title}</h3>
+              </div>
+            </div>
+            <span class="text-[0.65rem] font-bold px-2.5 py-1 rounded-full ${t.badge} flex items-center gap-1 whitespace-nowrap border border-white/50 shadow-sm">
+              <iconify-icon icon="solar:calendar-linear" stroke-width="1.5"></iconify-icon> 5 days · ~15 min/day
+            </span>
+          </div>
+          <div class="p-6">
+        `;
+        const busyQ = questions.length > 0 ? questions[0] : { q: "Ask your child to explain the main concept they learned this week.", opts: [], cor: 0 };
+        const busyA = busyQ.opts && busyQ.opts.length > busyQ.cor ? busyQ.opts[busyQ.cor] : "Listen for understanding and encourage them.";
+        html += `
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 relative shadow-sm">
+              <div class="flex items-center gap-2 text-amber-800 font-bold text-sm mb-2">
+                <iconify-icon icon="solar:bolt-linear" class="text-amber-500 text-lg"></iconify-icon> ⚡ Tight on time?
+              </div>
+              <p class="text-slate-700 text-sm font-semibold mb-2">${busyQ.q}</p>
+              <p class="text-amber-700 text-xs font-bold bg-amber-100/60 px-2.5 py-1.5 rounded-lg inline-block border border-amber-200/50">Answer: ${busyA}</p>
+            </div>
+        `;
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+        const activities = [
+          `Watch intro video & write 3 key takeaways`,
+          `Complete practice problems & review answers`,
+          `Try an interactive online resource`,
+          `Real-life challenge: ${res.tips && res.tips[0] ? res.tips[0] : 'Discuss a topic'}`,
+          `End-of-week review & celebration`
+        ];
+        html += `
+            <h4 class="text-slate-500 font-bold text-[0.65rem] uppercase tracking-widest mb-3 flex items-center gap-1">
+              <iconify-icon icon="solar:calendar-date-linear" stroke-width="1.5"></iconify-icon> Daily Plan
+            </h4>
+            <div class="border border-slate-200 rounded-xl overflow-hidden mb-8 shadow-sm">
+        `;
+        days.forEach((day, i) => {
+          const cbId = `cb-${w}-${i}`;
+          html += `
+              <label class="flex items-center gap-3 p-3.5 border-b border-slate-100 last:border-0 hover:bg-slate-50 cursor-pointer transition-colors group bg-white">
+                <div class="w-24 font-bold text-sm text-[#003566] flex-shrink-0">${day}</div>
+                <div class="flex-1 text-sm text-slate-700 font-medium act-text group-has-[:checked]:line-through group-has-[:checked]:text-slate-400 transition-colors">${activities[i]}</div>
+                <div class="text-[0.65rem] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-full flex items-center gap-1 whitespace-nowrap">
+                  <iconify-icon icon="solar:stopwatch-linear"></iconify-icon> ${i === 1 ? '15 min' : '10 min'}
+                </div>
+                <div class="relative flex items-center justify-center w-5 h-5 border-2 border-slate-300 rounded group-has-[:checked]:bg-teal-500 group-has-[:checked]:border-teal-500 transition-colors ml-2 no-print daily-checkbox">
+                  <input type="checkbox" id="${cbId}" class="peer sr-only" onchange="toggleDay(${w}, ${i})">
+                  <iconify-icon icon="solar:check-read-linear" class="text-white opacity-0 peer-checked:opacity-100 transition-opacity text-sm absolute"></iconify-icon>
+                </div>
+              </label>
+          `;
+        });
+        html += `</div>`;
+
+        html += `
+            <div class="bg-[#F0F9FF] rounded-xl p-5 border border-sky-100 shadow-sm mt-8">
+              <h4 class="text-[#003566] font-bold text-[0.65rem] uppercase tracking-widest mb-4 flex items-center gap-1">
+                <iconify-icon icon="solar:book-linear" stroke-width="1.5"></iconify-icon> 📚 Free Resources & Reading
+              </h4>
+              <div class="mb-6">
+                <h5 class="text-sm font-bold text-[#003566] mb-3">Online Tools & Videos</h5>
+                <div class="flex flex-col gap-3">
+        `;
+
+        let r1 = res.resources && res.resources[0] ? res.resources[0] : { n: 'Practice Module', p: 'Khan Academy', u: 'https://www.khanacademy.org', t: '📹' };
+        let r2 = res.resources && res.resources[1] ? res.resources[1] : { n: 'Topic Guide', p: 'BBC Bitesize', u: 'https://www.bbc.co.uk/bitesize', t: '📖' };
+
+        [r1, r2].forEach((r, idx) => {
+           let platform = r.p.includes('Khan') ? 'Khan Academy' : (r.p.includes('BBC') ? 'BBC Bitesize' : r.p);
+           if (!res.resources || res.resources.length < 2) {
+               if (idx === 0) platform = 'Khan Academy';
+               if (idx === 1) platform = 'BBC Bitesize';
+           }
+           const emoji = platform === 'Khan Academy' ? '📹' : '📖';
+           const desc = platform === 'Khan Academy' ? 'Interactive practice and video lessons' : 'Fun guides and activities';
+
+           html += `
+                  <div class="bg-white border border-slate-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between shadow-sm gap-3">
+                    <div class="flex items-center gap-3">
+                      <span class="text-2xl">${emoji}</span>
+                      <div>
+                        <p class="text-sm font-bold text-slate-800">${r.n} <span class="text-xs text-slate-500 font-normal ml-1">via ${platform}</span></p>
+                        <p class="text-xs text-slate-500">${desc}</p>
+                      </div>
+                    </div>
+                    <a href="${r.u}" target="_blank" rel="noopener noreferrer" class="no-print bg-[#003566] text-white text-xs font-bold px-4 py-2 rounded-full hover:bg-[#02284d] transition-colors flex items-center justify-center whitespace-nowrap shadow-sm">
+                      Open <iconify-icon icon="solar:arrow-right-linear" class="ml-1"></iconify-icon>
+                    </a>
+                    <span class="print-only text-xs text-slate-500 break-all">${r.u}</span>
+                  </div>
+           `;
+        });
+
+        html += `
+                </div>
+              </div>
+              <div>
+                <h5 class="text-sm font-bold text-[#003566] mb-3">Free Vintage Books to Read This Week</h5>
+                <div class="flex flex-col gap-3">
+        `;
+
+        const gradeBooks = BOOKS[S.grade] || BOOKS[1];
+        let booksToShow = [];
+        if (w === 3) {
+            booksToShow = [gradeBooks[0], gradeBooks[1]];
+        } else {
+            const startIdx = (w * 2) % gradeBooks.length;
+            booksToShow = [gradeBooks[startIdx], gradeBooks[(startIdx + 1) % gradeBooks.length]];
+        }
+
+        booksToShow.forEach(b => {
+           html += `
+                  <div class="bg-white border-l-2 border-l-[#00B4D8] border-y border-r border-slate-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between shadow-sm gap-3">
+                    <div class="flex items-center gap-3">
+                      <div class="text-2xl text-[#00B4D8]"><iconify-icon icon="solar:book-bookmark-linear" stroke-width="1.5"></iconify-icon></div>
+                      <div>
+                        <p class="text-sm font-bold text-slate-800">${b.t} <span class="text-xs text-slate-500 font-normal ml-1">by ${b.a}</span></p>
+                        <p class="text-xs text-slate-500 mb-1">${b.d}</p>
+                        <span class="text-[0.65rem] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">${b.l}</span>
+                      </div>
+                    </div>
+                    <a href="${b.u}" target="_blank" rel="noopener noreferrer" class="no-print bg-[#00B4D8] text-white text-xs font-bold px-4 py-2 rounded-full hover:bg-[#0096B4] transition-colors flex items-center justify-center whitespace-nowrap shadow-sm">
+                      Read Free <iconify-icon icon="solar:arrow-right-linear" class="ml-1"></iconify-icon>
+                    </a>
+                    <span class="print-only text-xs text-slate-500 break-all">${b.u}</span>
+                  </div>
+           `;
+        });
+
+        html += `
+                </div>
+              </div>
+            </div>
+        `;
+
+        html += `</div>`;
+        div.innerHTML = html;
+        return div;
+      }
+
+      function toggleDay(w, i) {
+        if (!S.planHash) return;
+        const key = 'slc_prog_' + S.planHash;
+        let prog = JSON.parse(localStorage.getItem(key) || '{}');
+        if (!prog[w]) prog[w] = {};
+        const cb = document.getElementById(`cb-${w}-${i}`);
+        prog[w][i] = cb.checked;
+        localStorage.setItem(key, JSON.stringify(prog));
+        updateProgressBars();
+      }
+
+      function updateProgressBars() {
+        if (!S.planHash) return;
+        const key = 'slc_prog_' + S.planHash;
+        let prog = JSON.parse(localStorage.getItem(key) || '{}');
+        for(let w=0; w<4; w++) {
+          let checked = 0;
+          for(let i=0; i<5; i++) {
+            const cb = document.getElementById(`cb-${w}-${i}`);
+            if (cb) {
+               if (prog[w] && prog[w][i]) {
+                  cb.checked = true;
+                  checked++;
+               } else {
+                  cb.checked = false;
+               }
+            }
+          }
+          const progBar = document.getElementById(`prog-${w}`);
+          if (progBar) {
+            progBar.style.width = (checked * 20) + '%';
+          }
+        }
+      }
+
+      function copyShareLink() {
+        const url = window.location.href;
+        navigator.clipboard.writeText(url).then(() => {
+          document.getElementById('share-link-container').classList.remove('hidden');
+          document.getElementById('share-link-input').value = url;
+          document.getElementById('copy-toast').classList.remove('hidden');
+          setTimeout(() => {
+            document.getElementById('copy-toast').classList.add('hidden');
+          }, 4000);
+        }).catch(err => {
+          document.getElementById('share-link-container').classList.remove('hidden');
+          document.getElementById('share-link-input').value = url;
+        });
+      }
+
+      function copyToClipboardInput() {
+        const el = document.getElementById('share-link-input');
+        el.select();
+        document.execCommand('copy');
+        document.getElementById('copy-toast').classList.remove('hidden');
+        setTimeout(() => document.getElementById('copy-toast').classList.add('hidden'), 4000);
+      }
+
+      function emailShareLink() {
+        const name = S.childName || 'Your child';
+        const subject = encodeURIComponent(`${name}'s Summer Learning Plan`);
+        const body = encodeURIComponent(`Here is the personalised 4-week Summer Learning Roadmap for ${name}:\n\n${window.location.href}\n\nBookmark this link to return to your plan anytime and track your progress.`);
+        window.open(`mailto:?subject=${subject}&body=${body}`);
+      }
+    </script>
+  </body>
+</html>

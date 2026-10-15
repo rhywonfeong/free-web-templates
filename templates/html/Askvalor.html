@@ -1,0 +1,1706 @@
+<html lang="en" class="scroll-smooth"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AskValor — The Decision Layer</title>
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;1,9..144,300&amp;family=Plus+Jakarta+Sans:wght@200;300;500&amp;display=swap" rel="stylesheet">
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Iconify -->
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<style>
+/* Custom Animations for Brand SVG Elements */
+@keyframes drawPath {
+0% { stroke-dashoffset: 100; }
+100% { stroke-dashoffset: 0; }
+}
+@keyframes drawLongPath {
+0% { stroke-dashoffset: 1000; }
+100% { stroke-dashoffset: 0; }
+}
+@keyframes fadeInScale {
+0% { opacity: 0; transform: scale(0.5); }
+100% { opacity: 1; transform: scale(1); }
+}
+@keyframes highlightChosen {
+0% { stroke: #1A2418; stroke-width: 1.3; }
+100% { stroke: #2E6B4F; stroke-width: 1.8; }
+}
+@keyframes fadeUnchosen {
+0% { opacity: 1; }
+100% { opacity: 0.18; }
+}
+@keyframes float {
+0%, 100% { transform: translateY(0px); }
+50% { transform: translateY(-12px); }
+}
+@keyframes pulseClarity {
+0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(46,107,79, 0.4); }
+50% { transform: scale(1.05); opacity: 0.9; box-shadow: 0 0 0 10px rgba(46,107,79, 0); }
+}
+/* Sequential Animation Classes */
+.anim-entry {
+stroke-dasharray: 100;
+animation: drawPath 1.5s cubic-bezier(0.4, 0, 0.2, 1) forwards infinite alternate;
+}
+.anim-node {
+opacity: 0;
+transform-origin: center;
+animation: fadeInScale 0.5s ease-out 0.6s forwards infinite alternate;
+}
+.anim-branch {
+stroke-dasharray: 100;
+stroke-dashoffset: 100;
+animation: drawPath 1s cubic-bezier(0.4, 0, 0.2, 1) 0.8s forwards infinite alternate;
+}
+.anim-chosen-color {
+animation: highlightChosen 0.8s ease-out 1.2s forwards infinite alternate;
+}
+.anim-unchosen-fade {
+animation: fadeUnchosen 0.8s ease-out 1.2s forwards infinite alternate;
+}
+.anim-clarity-point {
+opacity: 0;
+transform-origin: center;
+animation: fadeInScale 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) 1.5s forwards infinite alternate;
+}
+.bg-line {
+stroke-dasharray: 1000;
+stroke-dashoffset: 1000;
+animation: drawLongPath 8s linear forwards infinite alternate;
+}
+.bg-line-delay-1 { animation-delay: -2s; }
+.bg-line-delay-2 { animation-delay: -4s; }
+.bg-line-delay-3 { animation-delay: -6s; }
+/* Custom Toggle Styling */
+.toggle-checkbox:checked {
+right: 0;
+border-color: #2E6B4F;
+}
+.toggle-checkbox:checked + .toggle-label {
+background-color: #2E6B4F;
+}
+</style>
+<style>
+.reveal-up {
+opacity: 0;
+transform: translateY(30px) scale(0.98);
+transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal-up.is-revealed {
+opacity: 1;
+transform: translateY(0) scale(1);
+}
+</style></head>
+  <body class="bg-[#F8F8F8] text-[#0B0F19] antialiased selection:bg-[#0B0F19] selection:text-white font-['Plus_Jakarta_Sans'] overflow-x-hidden relative min-h-screen flex flex-col">
+    <!-- Background Architectural Animation -->
+    <div class="absolute top-0 left-0 w-full h-[100vh] z-0 pointer-events-none overflow-visible flex items-center justify-center">
+      <div class="absolute inset-0 flex items-center justify-center lg:translate-x-1/4 opacity-[0.03]"></div>
+      <!-- Layer 1: Distant, huge, slow rotation -->
+      <div class="absolute inset-0 flex items-center justify-center lg:translate-x-1/4 opacity-[0.03] scale-150 rotate-12">
+        <div class="animate-[spin_120s_linear_infinite]">
+          <svg viewBox="0 0 60 56" class="w-[150vw] h-[150vw] min-w-[1200px] text-[#2E6B4F]">
+            <line x1="4" y1="28" x2="18" y2="28" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></line>
+            <line x1="18" y1="28" x2="27" y2="16" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></line>
+            <line x1="18" y1="28" x2="27" y2="40" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></line>
+            <line x1="27" y1="16" x2="39" y2="28" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></line>
+            <line x1="27" y1="40" x2="39" y2="28" stroke="currentColor" stroke-width="1" stroke-linecap="round"></line>
+            <circle cx="18" cy="28" r="2.5" fill="currentColor"></circle>
+            <circle cx="27" cy="16" r="2.5" fill="currentColor"></circle>
+            <circle cx="27" cy="40" r="1.8" fill="none" stroke="currentColor" stroke-width="0.8"></circle>
+            <circle cx="39" cy="28" r="3.5" fill="currentColor"></circle>
+          </svg>
+        </div>
+      </div>
+      <!-- Layer 2: Mid-ground, subtle parallax drift and float -->
+
+      <!-- Layer 3: Foreground, sharper, subtle rotation and drift -->
+      <div class="absolute inset-0 flex items-center justify-center opacity-[0.05] scale-110 -rotate-6">
+        <div class="animate-[spin_90s_linear_infinite_reverse]">
+          <svg viewBox="0 0 60 56" class="w-[80vw] h-[80vw] min-w-[600px] text-[#2E6B4F]">
+            <line x1="4" y1="28" x2="18" y2="28" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></line>
+            <line x1="18" y1="28" x2="27" y2="16" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></line>
+            <line x1="18" y1="28" x2="27" y2="40" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></line>
+            <line x1="27" y1="16" x2="39" y2="28" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></line>
+            <line x1="27" y1="40" x2="39" y2="28" stroke="currentColor" stroke-width="1" stroke-linecap="round"></line>
+            <circle cx="18" cy="28" r="2.5" fill="currentColor"></circle>
+            <circle cx="27" cy="16" r="2.5" fill="currentColor"></circle>
+            <circle cx="27" cy="40" r="1.8" fill="none" stroke="currentColor" stroke-width="0.8"></circle>
+            <circle cx="39" cy="28" r="3.5" fill="currentColor"></circle>
+          </svg>
+        </div>
+      </div>
+    </div>
+    <div class="absolute top-[100vh] left-0 w-full h-[250vh] z-0 pointer-events-none overflow-hidden">
+      <div class="sticky top-[30vh] w-full flex items-center justify-center opacity-[0.02] scale-[1.8] rotate-45">
+        <div class="animate-[spin_150s_linear_infinite]">
+          <svg viewBox="0 0 60 56" class="w-[100vw] h-[100vw] min-w-[800px] text-[#2E6B4F]">
+            <circle cx="30" cy="28" r="20" fill="none" stroke="currentColor" stroke-width="1"></circle>
+            <path d="M10 28 L50 28 M30 8 L30 48" stroke="currentColor" stroke-width="0.5"></path>
+          </svg>
+        </div>
+      </div>
+      <div class="absolute top-[40%] right-[-10vw] opacity-[0.03] scale-125 -rotate-12">
+        <div class="animate-[spin_90s_linear_infinite_reverse]">
+          <svg viewBox="0 0 60 56" class="w-[80vw] h-[80vw] min-w-[600px] text-[#2E6B4F]">
+            <rect x="15" y="13" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1"></rect>
+            <circle cx="30" cy="28" r="15" fill="none" stroke="currentColor" stroke-width="0.5"></circle>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="relative z-50 w-full px-4 sm:px-6 py-4 md:py-6 md:px-12 flex flex-wrap items-center justify-between border-b border-[#1A2418]/5">
+      <div class="absolute inset-0 bg-white/70 backdrop-blur-md -z-10 pointer-events-none"></div>
+      <div class="flex items-center gap-2 md:gap-3 cursor-pointer group">
+        <label for="mobile-menu" class="md:hidden flex items-center justify-center cursor-pointer text-[#1A2418] transition-opacity hover:opacity-70">
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 md:w-7 md:h-7">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </label>
+        <!-- Brand Logo Mark (Standalone) -->
+        <svg width="48" height="48" viewBox="0 0 60 56" fill="none" class="w-8 h-8 md:w-12 md:h-12 transition-transform duration-500 group-hover:scale-105">
+          <line x1="4" y1="28" x2="18" y2="28" stroke="#1A2418" stroke-width="1.2" stroke-linecap="round"></line>
+          <line x1="18" y1="28" x2="27" y2="16" stroke="#1A2418" stroke-width="1.2" stroke-linecap="round"></line>
+          <line x1="18" y1="28" x2="27" y2="40" stroke="#1A2418" stroke-width="1.2" stroke-linecap="round"></line>
+          <line x1="27" y1="16" x2="39" y2="28" stroke="#2E6B4F" stroke-width="1.6" stroke-linecap="round"></line>
+          <line x1="27" y1="40" x2="39" y2="28" stroke="rgba(46,107,79,0.18)" stroke-width="1" stroke-linecap="round"></line>
+          <circle cx="18" cy="28" r="2.5" fill="#1A2418"></circle>
+          <circle cx="27" cy="16" r="2.5" fill="#2E6B4F"></circle>
+          <circle cx="27" cy="40" r="1.8" fill="none" stroke="rgba(46,107,79,0.22)" stroke-width="0.8"></circle>
+          <circle cx="39" cy="28" r="3.5" fill="#2E6B4F"></circle>
+        </svg>
+        <span class="font-light tracking-[0.2em] text-[#0B0F19] text-sm md:text-xl">
+          ASK
+          <span class="font-bold tracking-normal text-[#2E6B4F]">VALOR</span>
+        </span>
+      </div>
+
+      <input type="checkbox" id="mobile-menu" class="peer hidden">
+      <label for="mobile-menu" class="fixed inset-0 bg-[#0B0F19]/20 backdrop-blur-sm z-[55] opacity-0 pointer-events-none transition-opacity duration-300 peer-checked:opacity-100 peer-checked:pointer-events-auto md:hidden cursor-pointer"></label>
+      <div class="flex flex-col items-start fixed inset-0 z-[60] w-full h-[100dvh] overflow-hidden bg-[#FFFFFF] p-6 md:p-0 gap-4 transform -translate-x-full transition-transform duration-300 ease-in-out peer-checked:translate-x-0 md:static md:inset-auto md:w-auto md:h-auto md:bg-transparent md:shadow-none md:translate-x-0 md:flex-row md:items-center md:gap-8">
+        <div class="md:hidden flex items-center justify-between w-full pb-4 border-b border-gray-100/50">
+          <div class="flex items-center gap-2">
+            <svg width="28" height="28" viewBox="0 0 60 56" fill="none">
+              <line x1="4" y1="28" x2="18" y2="28" stroke="#1A2418" stroke-width="1.2" stroke-linecap="round"></line>
+              <line x1="18" y1="28" x2="27" y2="16" stroke="#1A2418" stroke-width="1.2" stroke-linecap="round"></line>
+              <line x1="18" y1="28" x2="27" y2="40" stroke="#1A2418" stroke-width="1.2" stroke-linecap="round"></line>
+              <line x1="27" y1="16" x2="39" y2="28" stroke="#2E6B4F" stroke-width="1.6" stroke-linecap="round"></line>
+              <line x1="27" y1="40" x2="39" y2="28" stroke="rgba(46,107,79,0.18)" stroke-width="1" stroke-linecap="round"></line>
+              <circle cx="18" cy="28" r="2.5" fill="#1A2418"></circle>
+              <circle cx="27" cy="16" r="2.5" fill="#2E6B4F"></circle>
+              <circle cx="27" cy="40" r="1.8" fill="none" stroke="rgba(46,107,79,0.22)" stroke-width="0.8"></circle>
+              <circle cx="39" cy="28" r="3.5" fill="#2E6B4F"></circle>
+            </svg>
+            <span class="font-light tracking-[0.2em] text-[#0B0F19] text-xs">
+              ASK
+              <span class="font-bold tracking-normal text-[#2E6B4F]">
+                VALOR
+              </span>
+            </span>
+          </div>
+          <label for="mobile-menu" class="cursor-pointer text-[#1A2418] hover:text-[#2E6B4F] transition-colors p-2 bg-gray-50 rounded-full">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </label>
+        </div>
+        <a href="/experts-search-list" class="font-medium text-[#4A5C48] hover:text-[#1A2418] transition-colors text-xl md:text-base md:font-light w-full md:w-auto px-2 md:px-0">
+          Find Experts
+        </a>
+        <a href="/about-us" class="font-medium text-[#4A5C48] hover:text-[#1A2418] transition-colors text-xl md:text-base md:font-light w-full md:w-auto px-2 md:px-0">
+          About Us
+        </a>
+        <a href="/contact-us" class="font-medium text-[#4A5C48] hover:text-[#1A2418] transition-colors text-xl md:text-base md:font-light w-full md:w-auto px-2 md:px-0">
+          Contact
+        </a>
+        <div class="md:hidden mt-auto pt-4 border-t border-gray-100/50 w-full flex flex-col gap-3">
+          <a href="#" class="text-center font-medium text-[#1A2418] text-base w-full py-2">
+            Sign in
+          </a>
+          <a href="/experts-page" class="bg-[#2E6B4F] text-white w-full py-3.5 rounded-xl font-semibold shadow-lg shadow-[#2E6B4F]/20 text-base flex items-center justify-center gap-2">
+            Find Expert
+            <iconify-icon icon="solar:arrow-right-line-duotone" class="text-lg"></iconify-icon>
+          </a>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <a href="/sign-up" class="hidden md:block font-light text-[#1A2418] text-base">
+          Sign in
+        </a>
+        <a href="/experts-page" class="bg-[#2E6B4F] hover:bg-[#1f4734] text-white px-3 py-1.5 md:px-5 md:py-2.5 rounded font-medium transition-colors duration-300 shadow-sm text-xs md:text-base whitespace-nowrap inline-flex items-center justify-center">
+          <span class="md:hidden">Find Expert</span>
+          <span class="hidden md:inline">Find your expert</span>
+        </a>
+      </div>
+    </nav>
+
+    <!-- Main Hero Content -->
+    <main class="relative z-10 flex-grow grid grid-cols-1 lg:grid-cols-2 gap-12 items-center container mx-auto px-6 md:px-12 py-16 md:py-24">
+      <!-- Text Content -->
+      <div class="w-full max-w-2xl flex flex-col items-start text-left">
+        <!-- Animated Label -->
+        <div class="flex items-center justify-start gap-3 mb-6 opacity-0 animate-[fadeInScale_1s_ease-out_forwards]">
+          <div class="relative flex items-center justify-center w-6 h-6">
+            <div class="absolute inset-0 bg-[#2E6B4F]/10 rounded-full animate-ping" style="animation-duration: 3s;"></div>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <line x1="1" y1="8" x2="4.5" y2="8" stroke="#1A2418" stroke-width="0.8" stroke-linecap="round"></line>
+              <line x1="4.5" y1="8" x2="7" y2="5" stroke="#2E6B4F" stroke-width="1" stroke-linecap="round"></line>
+              <circle cx="7" cy="5" r="1.2" fill="#2E6B4F"></circle>
+            </svg>
+          </div>
+          <span class="text-[10px] font-bold tracking-[0.25em] text-[#0B0F19] uppercase">
+            The Decision Layer
+          </span>
+        </div>
+
+        <!-- Headline -->
+        <h1 class="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tighter text-[#2E6B4F] leading-[1.05] mb-6 opacity-0 translate-y-4 animate-[fadeInScale_1s_ease-out_0.2s_forwards]">
+          Building the decision layer
+          <br class="hidden lg:block">
+          <span class="text-[#6B7280] font-medium">
+            between information and action.
+          </span>
+        </h1>
+
+        <!-- Subtitle -->
+        <p class="text-sm md:text-lg font-normal text-[#6B7280] leading-relaxed max-w-xl mb-10 opacity-0 translate-y-4 animate-[fadeInScale_1s_ease-out_0.4s_forwards]">
+          When you've done the research and still can't make the call — talk to
+          someone who's been there. Direct access to vetted industry leaders.
+        </p>
+
+        <!-- Actions -->
+        <div class="w-full max-w-xl opacity-0 translate-y-4 animate-[fadeInScale_1s_ease-out_0.6s_forwards] relative group">
+          <form action="/experts-page" method="GET" class="relative flex flex-col md:flex-row items-stretch md:items-center bg-white border border-gray-200 shadow-sm rounded-2xl md:rounded-full p-2 transition-all duration-500 focus-within:shadow-md focus-within:border-gray-300 gap-2 md:gap-0">
+            <div class="flex items-center flex-1 w-full px-2 md:px-0">
+              <button type="submit" aria-label="Search" class="flex items-center justify-center p-1 hover:opacity-70 transition-opacity">
+                <iconify-icon icon="solar:magnifer-linear" class="text-[#6B7280] text-xl md:ml-3"></iconify-icon>
+              </button>
+              <input name="q" type="text" placeholder="e.g. I need a product designer for my SaaS..." class="w-full bg-transparent border-none outline-none px-3 md:px-4 py-3 text-sm text-[#0B0F19] placeholder-gray-400 font-medium">
+            </div>
+            <button type="submit" class="hover:bg-[#1f4734] md:rounded-full transition-all duration-300 flex-shrink-0 flex md:w-auto text-sm font-medium text-white bg-[#2E6B4F] w-full rounded-xl pt-3 pr-8 pb-3 pl-8 shadow-sm gap-x-2 gap-y-2 items-center justify-center" onclick="window.location.href='/experts-search-list'" role="button">
+              Start a Session
+              <iconify-icon icon="solar:arrow-right-line-duotone" class="text-lg"></iconify-icon>
+            </button>
+          </form>
+        </div>
+        <div class="flex flex-wrap items-center gap-4 md:gap-6 mt-6 md:mt-8 opacity-0 translate-y-4 animate-[fadeInScale_1s_ease-out_0.8s_forwards]">
+          <div class="flex items-center gap-2 text-xs text-[#6B7280]">
+            <iconify-icon icon="solar:check-circle-bold" class="text-[#0B0F19] text-base"></iconify-icon>
+            Smart Matching
+          </div>
+          <div class="flex items-center gap-2 text-xs text-[#6B7280]">
+            <iconify-icon icon="solar:check-circle-bold" class="text-[#0B0F19] text-base"></iconify-icon>
+            Vetted Experts
+          </div>
+          <div class="flex items-center gap-2 text-xs text-[#6B7280]">
+            <iconify-icon icon="solar:check-circle-bold" class="text-[#0B0F19] text-base"></iconify-icon>
+            Instant Booking
+          </div>
+        </div>
+
+        <div class="mt-16 w-full opacity-0 translate-y-4 animate-[fadeInScale_1s_ease-out_1s_forwards] relative">
+          <div class="relative z-10 grid grid-cols-2 gap-6 md:flex md:flex-row md:items-center md:justify-between md:gap-4">
+            <div class="flex flex-col">
+              <span class="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight">
+                5,000+
+              </span>
+              <span class="text-xs text-gray-500 font-medium mt-1">
+                Expert Advisors
+              </span>
+            </div>
+            <div class="flex flex-col">
+              <span class="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight">
+                50k+
+              </span>
+              <span class="text-xs text-gray-500 font-medium mt-1">
+                Sessions Booked
+              </span>
+            </div>
+            <div class="flex flex-col">
+              <span class="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight flex items-baseline">
+                4.9
+                <span class="text-sm font-semibold text-slate-400 ml-0.5">
+                  /5
+                </span>
+              </span>
+              <span class="text-xs text-gray-500 font-medium mt-1">
+                Average Rating
+              </span>
+            </div>
+            <div class="flex flex-col">
+              <span class="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight">
+                98%
+              </span>
+              <span class="text-xs text-gray-500 font-medium mt-1">
+                Client Satisfaction
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="hidden lg:flex relative w-full h-full min-h-[500px] items-center justify-center opacity-0 animate-[fadeInScale_1s_ease-out_0.4s_forwards]">
+        <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/variants/854ac679-1112-4535-9b36-71dc4db82330/1600w.png" alt="Placeholder" class="w-full max-w-md rounded-3xl shadow-2xl object-cover">
+        <div class="absolute top-1/4 -left-4 bg-white/80 backdrop-blur-xl border border-white/60 shadow-[0_8px_30px_rgba(11,15,25,0.08)] rounded-2xl p-4 flex items-center gap-4 animate-[float_6s_ease-in-out_infinite]">
+          <div class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
+            <img src="https://i.pravatar.cc/100?img=12" alt="Avatar" class="w-full h-full object-cover">
+          </div>
+          <div class="">
+            <p class="text-sm font-semibold text-[#0B0F19]">Top Rated Expert</p>
+            <p class="text-xs text-[#6B7280]">Available for session</p>
+          </div>
+        </div>
+        <div class="absolute bottom-1/3 right-0 bg-white/80 backdrop-blur-xl border border-white/60 shadow-[0_8px_30px_rgba(11,15,25,0.08)] rounded-2xl p-4 flex items-center gap-4 animate-[float_8s_ease-in-out_infinite_reverse]">
+          <div class="w-10 h-10 rounded-full bg-[#0B0F19] flex items-center justify-center text-white">
+            <iconify-icon icon="solar:stars-minimalistic-bold" class="text-xl"></iconify-icon>
+          </div>
+          <div>
+            <p class="text-sm font-semibold text-[#0B0F19]">Smart Matching</p>
+            <p class="text-xs text-[#6B7280]">99% accuracy</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Animated Graphic Foreground -->
+    </main>
+    <section id="problem" class="relative z-10 w-full py-24 md:py-32 flex flex-col items-center">
+      <div class="container mx-auto px-6 md:px-12">
+        <div class="flex flex-col items-center text-center max-w-3xl mx-auto mb-16 reveal-up">
+          <div class="flex items-center justify-center gap-3 mb-6">
+            <span class="text-[10px] font-bold tracking-[0.25em] text-[#0B0F19] uppercase">
+              The Problem With Current Options
+            </span>
+          </div>
+          <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tighter text-[#0B0F19] leading-[1.1]">
+            More information doesn't make
+            <br class="hidden md:block">
+            <span class="text-[#2E6B4F]">the decision easier.</span>
+          </h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 w-full max-w-6xl mx-auto">
+          <div class="bg-white/60 backdrop-blur-xl border border-gray-200/60 rounded-3xl p-8 flex flex-col gap-6 shadow-sm hover:shadow-2xl hover:shadow-gray-200/50 hover:border-gray-300 transition-all duration-500 hover:-translate-y-2 hover:-rotate-1 reveal-up" style="transition-delay: 100ms;">
+            <h3 class="text-sm font-bold tracking-widest text-gray-500 uppercase">
+              AI TOOLS
+            </h3>
+            <p class="text-lg font-medium text-gray-800">
+              More information. More reasons to keep researching.
+            </p>
+            <ul class="flex flex-col gap-3 mt-auto pt-6 border-t border-gray-100">
+              <li class="flex gap-3 text-sm text-gray-600">
+                <iconify-icon icon="solar:close-circle-linear" class="text-red-400 text-lg shrink-0"></iconify-icon>
+                No lived experience
+              </li>
+              <li class="flex gap-3 text-sm text-gray-600">
+                <iconify-icon icon="solar:close-circle-linear" class="text-red-400 text-lg shrink-0"></iconify-icon>
+                No accountability
+              </li>
+              <li class="flex gap-3 text-sm text-gray-600">
+                <iconify-icon icon="solar:close-circle-linear" class="text-red-400 text-lg shrink-0"></iconify-icon>
+                No clear next step
+              </li>
+              <li class="flex gap-3 text-sm text-gray-600">
+                <iconify-icon icon="solar:close-circle-linear" class="text-red-400 text-lg shrink-0"></iconify-icon>
+                No written record
+              </li>
+            </ul>
+          </div>
+
+          <div class="bg-white/60 backdrop-blur-xl border border-gray-200/60 rounded-3xl p-8 flex flex-col gap-6 shadow-sm hover:shadow-2xl hover:shadow-gray-200/50 hover:border-gray-300 transition-all duration-500 hover:-translate-y-2 hover:rotate-1 reveal-up" style="transition-delay: 200ms;">
+            <h3 class="text-sm font-bold tracking-widest text-gray-500 uppercase">
+              TRADITIONAL CONSULTING
+            </h3>
+            <p class="text-lg font-medium text-gray-800">
+              Too slow. Too expensive. Built for large engagements.
+            </p>
+            <ul class="flex flex-col gap-3 mt-auto pt-6 border-t border-gray-100">
+              <li class="flex gap-3 text-sm text-gray-600">
+                <iconify-icon icon="solar:close-circle-linear" class="text-red-400 text-lg shrink-0"></iconify-icon>
+                Weeks to onboard
+              </li>
+              <li class="flex gap-3 text-sm text-gray-600">
+                <iconify-icon icon="solar:close-circle-linear" class="text-red-400 text-lg shrink-0"></iconify-icon>
+                Expensive retainers
+              </li>
+              <li class="flex gap-3 text-sm text-gray-600">
+                <iconify-icon icon="solar:close-circle-linear" class="text-red-400 text-lg shrink-0"></iconify-icon>
+                Long contracts
+              </li>
+              <li class="flex gap-3 text-sm text-gray-600">
+                <iconify-icon icon="solar:close-circle-linear" class="text-red-400 text-lg shrink-0"></iconify-icon>
+                Not built for urgent decisions
+              </li>
+            </ul>
+          </div>
+
+          <div class="bg-cyan-50/80 backdrop-blur-xl border border-cyan-200/50 rounded-3xl p-8 flex flex-col gap-6 shadow-lg shadow-cyan-900/5 hover:shadow-2xl hover:shadow-cyan-900/10 transition-all duration-500 hover:-translate-y-2 hover:-rotate-1 relative overflow-hidden reveal-up z-10 md:scale-105" style="transition-delay: 300ms;">
+            <div class="absolute top-0 right-0 w-32 h-32 bg-cyan-400/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+            <h3 class="text-sm font-bold tracking-widest text-cyan-800 uppercase relative z-10">
+              ASKVALOR
+            </h3>
+            <p class="text-lg font-semibold text-[#1A2418] relative z-10">
+              One conversation. Someone who's been there.
+            </p>
+            <ul class="flex flex-col gap-3 mt-auto pt-6 border-t border-cyan-900/10 relative z-10">
+              <li class="flex gap-3 text-sm font-medium text-[#1A2418]">
+                <iconify-icon icon="solar:check-circle-bold" class="text-[#2E6B4F] text-lg shrink-0"></iconify-icon>
+                Expert arrives prepared
+              </li>
+              <li class="flex gap-3 text-sm font-medium text-[#1A2418]">
+                <iconify-icon icon="solar:check-circle-bold" class="text-[#2E6B4F] text-lg shrink-0"></iconify-icon>
+                Live one-to-one session
+              </li>
+              <li class="flex gap-3 text-sm font-medium text-[#1A2418]">
+                <iconify-icon icon="solar:check-circle-bold" class="text-[#2E6B4F] text-lg shrink-0"></iconify-icon>
+                Fixed pricing
+              </li>
+              <li class="flex gap-3 text-sm font-medium text-[#1A2418]">
+                <iconify-icon icon="solar:check-circle-bold" class="text-[#2E6B4F] text-lg shrink-0"></iconify-icon>
+                Written decision summary included
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how-it-works" class="relative z-20 w-full py-24 md:py-32 flex flex-col items-center bg-white overflow-hidden">
+      <div class="container mx-auto px-6 md:px-12 relative z-10"></div>
+      <div class="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent z-0"></div>
+      <div class="container mx-auto px-6 md:px-12">
+        <div class="flex flex-col items-center text-center max-w-3xl mx-auto mb-16 reveal-up">
+          <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tighter text-[#0B0F19] leading-[1.1]">
+            How It Works
+          </h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-6xl mx-auto">
+          <div class="group bg-white/60 backdrop-blur-xl border border-gray-200/60 rounded-3xl p-8 flex flex-col gap-4 shadow-sm hover:shadow-2xl hover:shadow-[#2E6B4F]/10 hover:border-[#2E6B4F]/40 transition-all duration-500 hover:-translate-y-2 hover:-rotate-1 relative overflow-hidden reveal-up" style="transition-delay: 100ms;">
+            <div class="absolute inset-0 bg-gradient-to-br from-[#2E6B4F]/0 to-[#2E6B4F]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+            <div class="w-12 h-12 rounded-2xl bg-[#F8F8F8] border border-gray-200 flex items-center justify-center text-[#2E6B4F] font-bold text-xl group-hover:scale-110 group-hover:bg-[#2E6B4F] group-hover:text-white transition-all duration-500 relative z-10 group-hover:-translate-y-1 group-hover:shadow-[0_0_15px_rgba(46,107,79,0.3)] group-hover:rotate-6">
+              1
+            </div>
+            <h3 class="text-xl font-bold text-[#0B0F19] mt-2 relative z-10">
+              Submit Your Question
+            </h3>
+            <p class="text-sm text-gray-600 leading-relaxed relative z-10">
+              Ask your question and receive expert guidance.
+            </p>
+          </div>
+
+          <div class="group bg-white/60 backdrop-blur-xl border border-gray-200/60 rounded-3xl p-8 flex flex-col gap-4 shadow-sm hover:shadow-2xl hover:shadow-[#2E6B4F]/10 hover:border-[#2E6B4F]/40 transition-all duration-500 hover:-translate-y-2 hover:rotate-1 relative overflow-hidden reveal-up" style="transition-delay: 200ms;">
+            <div class="absolute inset-0 bg-gradient-to-br from-[#2E6B4F]/0 to-[#2E6B4F]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+            <div class="w-12 h-12 rounded-2xl bg-[#F8F8F8] border border-gray-200 flex items-center justify-center text-[#2E6B4F] font-bold text-xl group-hover:scale-110 group-hover:bg-[#2E6B4F] group-hover:text-white transition-all duration-500 relative z-10 group-hover:-translate-y-1 group-hover:shadow-[0_0_15px_rgba(46,107,79,0.3)] group-hover:rotate-6">
+              2
+            </div>
+            <h3 class="text-xl font-bold text-[#0B0F19] mt-2 relative z-10">
+              Get AI Matched Instantly
+            </h3>
+            <p class="text-sm text-gray-600 leading-relaxed relative z-10">
+              AI finds the best expert.
+            </p>
+          </div>
+
+          <div class="group bg-white/60 backdrop-blur-xl border border-gray-200/60 rounded-3xl p-8 flex flex-col gap-4 shadow-sm hover:shadow-2xl hover:shadow-[#2E6B4F]/10 hover:border-[#2E6B4F]/40 transition-all duration-500 hover:-translate-y-2 hover:-rotate-1 relative overflow-hidden reveal-up" style="transition-delay: 300ms;">
+            <div class="absolute inset-0 bg-gradient-to-br from-[#2E6B4F]/0 to-[#2E6B4F]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+            <div class="w-12 h-12 rounded-2xl bg-[#F8F8F8] border border-gray-200 flex items-center justify-center text-[#2E6B4F] font-bold text-xl group-hover:scale-110 group-hover:bg-[#2E6B4F] group-hover:text-white transition-all duration-500 relative z-10 group-hover:-translate-y-1 group-hover:shadow-[0_0_15px_rgba(46,107,79,0.3)] group-hover:rotate-6">
+              3
+            </div>
+            <h3 class="text-xl font-bold text-[#0B0F19] mt-2 relative z-10">
+              Talk to an Expert
+            </h3>
+            <p class="text-sm text-gray-600 leading-relaxed relative z-10">
+              Meet one-to-one.
+            </p>
+          </div>
+
+          <div class="group bg-white/60 backdrop-blur-xl border border-gray-200/60 rounded-3xl p-8 flex flex-col gap-4 shadow-sm hover:shadow-2xl hover:shadow-[#2E6B4F]/10 hover:border-[#2E6B4F]/40 transition-all duration-500 hover:-translate-y-2 hover:rotate-1 relative overflow-hidden reveal-up" style="transition-delay: 400ms;">
+            <div class="absolute inset-0 bg-gradient-to-br from-[#2E6B4F]/0 to-[#2E6B4F]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+            <div class="w-12 h-12 rounded-2xl bg-[#F8F8F8] border border-gray-200 flex items-center justify-center text-[#2E6B4F] font-bold text-xl group-hover:scale-110 group-hover:bg-[#2E6B4F] group-hover:text-white transition-all duration-500 relative z-10 group-hover:-translate-y-1 group-hover:shadow-[0_0_15px_rgba(46,107,79,0.3)] group-hover:rotate-6">
+              4
+            </div>
+            <h3 class="text-xl font-bold text-[#0B0F19] mt-2 relative z-10">
+              Decision Summarized
+            </h3>
+            <p class="text-sm text-gray-600 leading-relaxed relative z-10">
+              Receive recommendations and next steps.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pricing" class="relative z-20 w-full py-24 md:py-32 flex flex-col items-center mb-12 bg-[#F8F8F8] overflow-hidden border-t border-gray-100/50">
+      <div class="container mx-auto px-6 md:px-12 relative z-10">
+        <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-[#2E6B4F]/[0.04] blur-[120px] rounded-[100%]"></div>
+      </div>
+      <div class="container mx-auto px-6 md:px-12">
+        <div class="flex flex-col items-center text-center max-w-3xl mx-auto mb-16 reveal-up">
+          <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tighter text-[#0B0F19] leading-[1.1] mb-6">
+            Simple, Flat-rate Pricing
+          </h2>
+          <p class="text-lg text-gray-600">
+            No subscriptions. Pay only when you need clarity.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 w-full max-w-6xl mx-auto items-center">
+          <div class="bg-white/60 backdrop-blur-xl border border-gray-200/60 rounded-3xl p-8 flex flex-col items-center text-center gap-4 shadow-sm hover:shadow-2xl hover:shadow-[#2E6B4F]/5 transition-all duration-500 hover:-translate-y-2 hover:rotate-1 reveal-up" style="transition-delay: 100ms;">
+            <h3 class="text-xl font-bold text-[#0B0F19]">Quick Sense-Check</h3>
+            <div class="inline-flex items-center justify-center px-3 py-1 bg-gray-100 rounded-full text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2">
+              10 Minute Session
+            </div>
+            <div class="flex items-baseline gap-1">
+              <span class="text-4xl font-bold text-[#0B0F19]">£15</span>
+            </div>
+            <p class="text-sm text-gray-600 mt-2 mb-6">One focused question</p>
+            <button class="w-full py-3.5 rounded-xl border border-gray-300 font-semibold text-[#0B0F19] hover:border-[#2E6B4F] hover:text-[#2E6B4F] transition-all duration-300 hover:shadow-[0_0_15px_rgba(46,107,79,0.1)] active:scale-95 hover:-translate-y-0.5 overflow-hidden relative after:absolute after:inset-0 after:bg-[#2E6B4F]/5 after:opacity-0 hover:after:opacity-100 after:transition-opacity">
+              Book Now
+            </button>
+          </div>
+
+          <div class="bg-white/90 backdrop-blur-2xl border-2 border-[#2E6B4F] rounded-3xl p-10 flex flex-col items-center text-center gap-4 shadow-2xl shadow-[#2E6B4F]/30 hover:shadow-[0_0_40px_rgba(46,107,79,0.3)] transition-all duration-500 hover:-translate-y-3 relative overflow-hidden reveal-up z-10 md:scale-105" style="transition-delay: 200ms;">
+            <div class="absolute top-0 inset-x-0 bg-[#2E6B4F] text-white text-xs font-bold tracking-widest uppercase py-1.5 flex justify-center items-center">
+              <span class="animate-pulse">Most Popular</span>
+            </div>
+            <div class="absolute top-0 right-0 w-48 h-48 bg-[#2E6B4F]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+
+            <h3 class="text-2xl font-bold text-[#0B0F19] mt-6 relative z-10">
+              Clarity Session
+            </h3>
+            <div class="inline-flex items-center justify-center px-3 py-1 bg-[#2E6B4F]/10 rounded-full text-xs font-semibold text-[#2E6B4F] uppercase tracking-widest mb-2 relative z-10">
+              20 Minute Session
+            </div>
+            <div class="flex items-baseline gap-1 relative z-10">
+              <span class="text-5xl font-bold text-[#0B0F19]">£25</span>
+            </div>
+            <p class="text-sm font-medium text-gray-700 mt-2 mb-6 relative z-10">
+              Added context and clear direction.
+            </p>
+            <button class="w-full py-3.5 rounded-xl bg-[#2E6B4F] text-white font-semibold shadow-lg shadow-[#2E6B4F]/25 hover:bg-[#1f4734] hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-2 group relative z-10 hover:shadow-[0_0_20px_rgba(46,107,79,0.4)] active:scale-95 hover:-translate-y-1 overflow-hidden after:absolute after:inset-0 after:bg-white/20 after:opacity-0 hover:after:opacity-100 after:transition-opacity">
+              Book Now
+              <iconify-icon icon="solar:arrow-right-line-duotone" class="text-lg group-hover:translate-x-1 transition-transform"></iconify-icon>
+            </button>
+          </div>
+
+          <div class="bg-white/60 backdrop-blur-xl border border-gray-200/60 rounded-3xl p-8 flex flex-col items-center text-center gap-4 shadow-sm hover:shadow-2xl hover:shadow-[#2E6B4F]/5 transition-all duration-500 hover:-translate-y-2 hover:-rotate-1 reveal-up" style="transition-delay: 300ms;">
+            <h3 class="text-xl font-bold text-[#0B0F19]">Deep Sense-Check</h3>
+            <div class="inline-flex items-center justify-center px-3 py-1 bg-gray-100 rounded-full text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2">
+              30 Minute Session
+            </div>
+            <div class="flex items-baseline gap-1">
+              <span class="text-4xl font-bold text-[#0B0F19]">£35</span>
+            </div>
+            <p class="text-sm text-gray-600 mt-2 mb-6">
+              When more discussion is needed
+            </p>
+            <button class="w-full py-3.5 rounded-xl border border-gray-300 font-semibold text-[#0B0F19] hover:border-[#2E6B4F] hover:text-[#2E6B4F] transition-all duration-300 hover:shadow-[0_0_15px_rgba(46,107,79,0.1)] active:scale-95 hover:-translate-y-0.5 overflow-hidden relative after:absolute after:inset-0 after:bg-[#2E6B4F]/5 after:opacity-0 hover:after:opacity-100 after:transition-opacity">
+              Book Now
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="expert-categories" class="relative z-20 w-full py-24 md:py-32 flex flex-col items-center bg-white border-t border-gray-100/50">
+      <div class="container mx-auto px-6 md:px-12 mb-24">
+        <div class="flex flex-col items-center text-center max-w-3xl mx-auto mb-12 reveal-up">
+          <h2 class="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight text-[#0B0F19] mb-4">
+            Expert Categories
+          </h2>
+          <p class="text-base text-gray-500">
+            Connect with seasoned professionals across specialized domains.
+          </p>
+        </div>
+
+        <div class="flex flex-wrap justify-center gap-4 max-w-5xl mx-auto reveal-up" style="transition-delay: 100ms;">
+          <a href="#" class="flex items-center justify-between gap-4 px-6 py-4 bg-white border border-gray-200 rounded-full shadow-sm hover:shadow-md hover:border-[#2E6B4F]/30 transition-all group">
+            <span class="text-sm font-semibold text-[#0B0F19]">
+              Product Management
+            </span>
+            <iconify-icon icon="solar:box-minimalistic-linear" class="text-xl text-[#2E6B4F]/60 group-hover:text-[#2E6B4F] transition-colors"></iconify-icon>
+          </a>
+          <a href="#" class="flex items-center justify-between gap-4 px-6 py-4 bg-white border border-gray-200 rounded-full shadow-sm hover:shadow-md hover:border-[#2E6B4F]/30 transition-all group">
+            <span class="text-sm font-semibold text-[#0B0F19]">
+              Marketing &amp; Growth
+            </span>
+            <iconify-icon icon="solar:chart-square-linear" class="text-xl text-[#2E6B4F]/60 group-hover:text-[#2E6B4F] transition-colors"></iconify-icon>
+          </a>
+          <a href="#" class="flex items-center justify-between gap-4 px-6 py-4 bg-white border border-gray-200 rounded-full shadow-sm hover:shadow-md hover:border-[#2E6B4F]/30 transition-all group">
+            <span class="text-sm font-semibold text-[#0B0F19]">
+              Engineering Leadership
+            </span>
+            <iconify-icon icon="solar:code-square-linear" class="text-xl text-[#2E6B4F]/60 group-hover:text-[#2E6B4F] transition-colors"></iconify-icon>
+          </a>
+          <a href="#" class="flex items-center justify-between gap-4 px-6 py-4 bg-white border border-gray-200 rounded-full shadow-sm hover:shadow-md hover:border-[#2E6B4F]/30 transition-all group">
+            <span class="text-sm font-semibold text-[#0B0F19]">
+              Fundraising &amp; VC
+            </span>
+            <iconify-icon icon="solar:wallet-money-linear" class="text-xl text-[#2E6B4F]/60 group-hover:text-[#2E6B4F] transition-colors"></iconify-icon>
+          </a>
+          <a href="#" class="flex items-center justify-between gap-4 px-6 py-4 bg-white border border-gray-200 rounded-full shadow-sm hover:shadow-md hover:border-[#2E6B4F]/30 transition-all group">
+            <span class="text-sm font-semibold text-[#0B0F19]">
+              Startup Strategy
+            </span>
+            <iconify-icon icon="solar:lightbulb-minimalistic-linear" class="text-xl text-[#2E6B4F]/60 group-hover:text-[#2E6B4F] transition-colors"></iconify-icon>
+          </a>
+          <a href="#" class="flex items-center justify-between gap-4 px-6 py-4 bg-white border border-gray-200 rounded-full shadow-sm hover:shadow-md hover:border-[#2E6B4F]/30 transition-all group">
+            <span class="text-sm font-semibold text-[#0B0F19]">
+              Design &amp; UX
+            </span>
+            <iconify-icon icon="solar:pen-new-square-linear" class="text-xl text-[#2E6B4F]/60 group-hover:text-[#2E6B4F] transition-colors"></iconify-icon>
+          </a>
+          <a href="#" class="flex items-center justify-between gap-4 px-6 py-4 bg-white border border-gray-200 rounded-full shadow-sm hover:shadow-md hover:border-[#2E6B4F]/30 transition-all group">
+            <span class="text-sm font-semibold text-[#0B0F19]">
+              Sales &amp; Revenue
+            </span>
+            <iconify-icon icon="solar:graph-up-linear" class="text-xl text-[#2E6B4F]/60 group-hover:text-[#2E6B4F] transition-colors"></iconify-icon>
+          </a>
+        </div>
+      </div>
+
+      <div class="container mx-auto px-6 md:px-12">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-8 items-center max-w-6xl mx-auto">
+          <div class="flex flex-col gap-8 reveal-up" style="transition-delay: 200ms;">
+            <div class="flex flex-col gap-4">
+              <h3 class="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight text-[#0B0F19] leading-[1.2]">
+                Perfect When
+                <span class="text-[#2E6B4F]">One Question</span>
+                Is Holding You Back
+              </h3>
+              <p class="text-base text-gray-500 leading-relaxed max-w-lg">
+                Stop endlessly searching for answers online. Get direct,
+                personalized guidance from industry veterans to move past
+                roadblocks immediately.
+              </p>
+            </div>
+
+            <div class="flex flex-col gap-4">
+              <div class="flex items-center gap-4 bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                <div class="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl bg-gray-50 border border-gray-200">
+                  <iconify-icon icon="solar:tag-price-bold-duotone" class="text-2xl text-[#2E6B4F]"></iconify-icon>
+                </div>
+                <span class="text-sm font-semibold text-[#0B0F19]">
+                  Pricing strategy
+                </span>
+              </div>
+
+              <div class="flex items-center gap-4 bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                <div class="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl bg-gray-50 border border-gray-200">
+                  <iconify-icon icon="solar:settings-minimalistic-bold-duotone" class="text-2xl text-[#2E6B4F]"></iconify-icon>
+                </div>
+                <span class="text-sm font-semibold text-[#0B0F19]">
+                  Choosing the right tools
+                </span>
+              </div>
+
+              <div class="flex items-center gap-4 bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                <div class="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl bg-gray-50 border border-gray-200">
+                  <iconify-icon icon="solar:clipboard-check-bold-duotone" class="text-2xl text-[#2E6B4F]"></iconify-icon>
+                </div>
+                <span class="text-sm font-semibold text-[#0B0F19]">
+                  Evaluating offers
+                </span>
+              </div>
+
+              <div class="flex items-center gap-4 bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                <div class="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl bg-gray-50 border border-gray-200">
+                  <iconify-icon icon="solar:rocket-bold-duotone" class="text-2xl text-[#2E6B4F]"></iconify-icon>
+                </div>
+                <span class="text-sm font-semibold text-[#0B0F19]">
+                  Validating side projects
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="relative flex items-center justify-center min-h-[400px] lg:min-h-[500px] reveal-up" style="transition-delay: 300ms;">
+            <div class="absolute w-[300px] h-[300px] sm:w-[400px] sm:h-[400px] rounded-full border border-dashed border-gray-300 animate-[spin_60s_linear_infinite]"></div>
+            <div class="absolute w-[200px] h-[200px] sm:w-[280px] sm:h-[280px] rounded-full border border-dashed border-gray-300 animate-[spin_40s_linear_infinite_reverse]"></div>
+            <div class="absolute w-[100px] h-[100px] sm:w-[160px] sm:h-[160px] rounded-full border border-dashed border-gray-300 animate-[spin_20s_linear_infinite]"></div>
+
+            <div class="relative z-10 w-24 h-24 sm:w-32 sm:h-32 bg-white rounded-3xl shadow-[0_10px_40px_-10px_rgba(46,107,79,0.15)] flex items-center justify-center border border-gray-100">
+              <div class="absolute inset-0 bg-[#2E6B4F]/5 rounded-3xl blur-xl"></div>
+              <iconify-icon icon="solar:rocket-bold-duotone" class="text-5xl sm:text-6xl text-[#2E6B4F] relative z-20"></iconify-icon>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="who-it-is-for" class="relative z-20 w-full py-24 md:py-32 flex flex-col items-center bg-white overflow-hidden">
+      <div class="container mx-auto px-6 md:px-12 grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-8 items-center max-w-6xl">
+        <div class="flex flex-col gap-8 w-full pr-0 lg:pr-12 reveal-up">
+          <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-[#2E6B4F] leading-[1.1]">
+            Who Askvalor Is For
+          </h2>
+          <div class="flex flex-col gap-4">
+            <div class="group px-8 py-6 rounded-2xl border border-[#E2E8E4] bg-white hover:bg-[#F0F4F1] transition-all duration-300 cursor-default">
+              <h3 class="text-xl font-semibold text-[#5A6B61] group-hover:text-[#2E6B4F] transition-colors">
+                Freelancers and solopreneurs
+              </h3>
+            </div>
+            <div class="group px-8 py-6 rounded-2xl border border-[#E2E8E4] bg-white hover:bg-[#F0F4F1] transition-all duration-300 cursor-default">
+              <h3 class="text-xl font-semibold text-[#5A6B61] group-hover:text-[#2E6B4F] transition-colors">
+                Founders and startup operators
+              </h3>
+            </div>
+            <div class="group px-8 py-6 rounded-2xl border border-[#E2E8E4] bg-white hover:bg-[#F0F4F1] transition-all duration-300 cursor-default">
+              <h3 class="text-xl font-semibold text-[#5A6B61] group-hover:text-[#2E6B4F] transition-colors">
+                Students and early-career professionals
+              </h3>
+            </div>
+            <div class="group px-8 py-6 rounded-2xl border border-[#E2E8E4] bg-white hover:bg-[#F0F4F1] transition-all duration-300 cursor-default">
+              <h3 class="text-xl font-semibold text-[#5A6B61] group-hover:text-[#2E6B4F] transition-colors">
+                Anyone facing an everyday work or life decision
+              </h3>
+            </div>
+          </div>
+        </div>
+        <div class="relative flex items-center justify-center min-h-[400px] lg:min-h-[500px] reveal-up" style="transition-delay: 200ms;">
+          <div class="absolute inset-0 flex items-center justify-center animate-[float_8s_ease-in-out_infinite]">
+            <div class="w-64 h-64 md:w-80 md:h-80 bg-gradient-to-tr from-[#F0F4F1] to-[#D4C5B9]/20 rounded-full blur-3xl absolute opacity-80"></div>
+            <div class="relative z-10 w-48 h-48 md:w-64 md:h-64 rounded-3xl bg-white/40 backdrop-blur-2xl border border-[#E2E8E4]/60 shadow-[0_20px_40px_rgba(46,107,79,0.06)] flex items-center justify-center transform rotate-3">
+              <div class="w-24 h-24 rounded-full bg-gradient-to-br from-[#2E6B4F] to-[#1A2418] shadow-2xl flex items-center justify-center">
+                <iconify-icon icon="solar:users-group-two-rounded-bold-duotone" class="text-5xl text-[#D4C5B9]"></iconify-icon>
+              </div>
+            </div>
+            <div class="absolute top-10 right-10 z-20 w-24 h-24 rounded-2xl bg-white/80 backdrop-blur-xl border border-[#E2E8E4] shadow-[0_10px_30px_rgba(46,107,79,0.08)] flex items-center justify-center transform -rotate-6 animate-[float_6s_ease-in-out_infinite_reverse]">
+              <iconify-icon icon="solar:lightbulb-minimalistic-bold-duotone" class="text-3xl text-[#2E6B4F]"></iconify-icon>
+            </div>
+            <div class="absolute bottom-10 left-10 z-20 w-20 h-20 rounded-2xl bg-white/80 backdrop-blur-xl border border-[#E2E8E4] shadow-[0_10px_30px_rgba(46,107,79,0.08)] flex items-center justify-center transform rotate-12 animate-[float_7s_ease-in-out_infinite]">
+              <iconify-icon icon="solar:chart-square-bold-duotone" class="text-2xl text-[#5A6B61]"></iconify-icon>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="relative z-20 w-full py-24 md:py-32 flex flex-col items-center bg-white overflow-hidden border-t border-[#F0F4F1]">
+      <div class="container mx-auto px-6 md:px-12 max-w-5xl relative reveal-up">
+        <div class="absolute -top-16 -left-8 md:-left-16 text-[#2E6B4F] opacity-5 text-[150px] md:text-[250px] font-serif leading-none select-none">
+          "
+        </div>
+        <div class="absolute -bottom-32 -right-8 md:-right-16 text-[#2E6B4F] opacity-5 text-[150px] md:text-[250px] font-serif leading-none select-none rotate-180">
+          "
+        </div>
+        <h2 class="text-3xl md:text-5xl lg:text-6xl font-medium tracking-tight text-[#2E6B4F] leading-tight text-center relative z-10">
+          Sometimes you don't need a consultant. You just need
+          <span class="font-bold">one clear answer</span>
+          from someone who's been there.
+        </h2>
+      </div>
+    </section>
+    <section id="what-makes-us-different" class="relative z-20 w-full bg-[#F4F7F5] border-t border-[#E2E8E4]/50">
+      <div class="container mx-auto px-6 md:px-12 max-w-7xl">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-24 relative items-start">
+          <div class="lg:sticky lg:top-32 py-24 md:py-32 flex flex-col gap-12 pr-0 lg:pr-8 reveal-up">
+            <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-[#2E6B4F] leading-[1.1]">
+              What Makes Askvalor Different
+            </h2>
+            <div class="flex flex-col gap-10">
+              <div class="flex flex-col gap-2 group">
+                <h3 class="text-2xl font-bold text-[#2E6B4F] transition-colors group-hover:text-[#5A6B61]">
+                  Get Matched Instantly
+                </h3>
+                <p class="text-lg text-[#5A6B61] leading-relaxed">
+                  Our AI-powered engine connects you with the most relevant
+                  expert in minutes—no forms, no delays.
+                </p>
+              </div>
+              <div class="flex flex-col gap-2 group">
+                <h3 class="text-2xl font-bold text-[#2E6B4F] transition-colors group-hover:text-[#5A6B61]">
+                  Vetted Expertise
+                </h3>
+                <p class="text-lg text-[#5A6B61] leading-relaxed">
+                  Every consultant is handpicked and rigorously evaluated for
+                  expertise, experience, and impact.
+                </p>
+              </div>
+              <div class="flex flex-col gap-2 group">
+                <h3 class="text-2xl font-bold text-[#2E6B4F] transition-colors group-hover:text-[#5A6B61]">
+                  Micro-Consulting On Demand
+                </h3>
+                <p class="text-lg text-[#5A6B61] leading-relaxed">
+                  Skip the long contracts—book short, high-value sessions
+                  tailored to your specific business needs.
+                </p>
+              </div>
+              <div class="flex flex-col gap-2 group">
+                <h3 class="text-2xl font-bold text-[#2E6B4F] transition-colors group-hover:text-[#5A6B61]">
+                  Confidential &amp; Secure
+                </h3>
+                <p class="text-lg text-[#5A6B61] leading-relaxed">
+                  Your conversations and data are protected with
+                  enterprise-level encryption and strict confidentiality
+                  protocols.
+                </p>
+              </div>
+            </div>
+            <div class="mt-4">
+              <a href="/experts-page" class="bg-[#2E6B4F] hover:bg-[#5A6B61] text-white px-8 py-4 rounded-xl text-lg font-semibold transition-all duration-300 shadow-[0_8px_20px_rgba(46,107,79,0.2)] hover:shadow-[0_10px_25px_rgba(90,107,97,0.3)] hover:-translate-y-1 flex items-center justify-center gap-3 w-full sm:w-auto inline-flex">
+                Find Experts
+                <iconify-icon icon="solar:arrow-right-line-duotone" class="text-xl"></iconify-icon>
+              </a>
+            </div>
+          </div>
+          <div class="py-24 md:py-32 flex flex-col gap-8 relative z-10 hidden lg:flex pb-64">
+            <div class="flex flex-col gap-12 mt-20">
+              <div class="w-full max-w-md ml-auto bg-white/90 backdrop-blur-xl rounded-3xl p-6 shadow-[0_20px_40px_rgba(46,107,79,0.06)] border border-[#E2E8E4] transform transition-all duration-700 hover:-translate-y-2 hover:shadow-[0_30px_50px_rgba(46,107,79,0.1)] reveal-up">
+                <div class="flex items-center gap-4 mb-4">
+                  <div class="w-12 h-12 rounded-2xl bg-[#F0F4F1] flex items-center justify-center">
+                    <iconify-icon icon="solar:magic-stick-3-bold-duotone" class="text-2xl text-[#2E6B4F]"></iconify-icon>
+                  </div>
+                  <div>
+                    <div class="text-sm font-bold text-[#2E6B4F]">
+                      AI Match complete
+                    </div>
+                    <div class="text-xs text-[#5A6B61] mt-0.5">
+                      Found in 1.2s
+                    </div>
+                  </div>
+                </div>
+                <div class="h-2 w-full bg-[#F0F4F1] rounded-full overflow-hidden">
+                  <div class="h-full bg-gradient-to-r from-[#2E6B4F] to-[#D4C5B9] w-3/4 animate-pulse"></div>
+                </div>
+              </div>
+              <div class="w-full max-w-sm mr-auto bg-white/90 backdrop-blur-xl rounded-3xl p-6 shadow-[0_20px_40px_rgba(46,107,79,0.06)] border border-[#E2E8E4] transform transition-all duration-700 hover:-translate-y-2 hover:shadow-[0_30px_50px_rgba(46,107,79,0.1)] reveal-up" style="transition-delay: 150ms;">
+                <div class="flex items-center gap-4">
+                  <div class="relative">
+                    <img src="https://i.pravatar.cc/100?img=33" alt="Expert" class="w-14 h-14 rounded-full object-cover border-2 border-white shadow-sm">
+                    <div class="absolute -bottom-1 -right-1 w-5 h-5 bg-[#D4C5B9] rounded-full border-2 border-white flex items-center justify-center shadow-sm">
+                      <iconify-icon icon="solar:check-read-bold" class="text-[10px] text-white"></iconify-icon>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-sm font-bold text-[#2E6B4F]">
+                      Verified Expert
+                    </div>
+                    <div class="text-xs text-[#5A6B61] mt-0.5">
+                      Top 1% in Strategy
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="w-full max-w-md ml-auto bg-white/90 backdrop-blur-xl rounded-3xl p-8 shadow-[0_20px_40px_rgba(46,107,79,0.06)] border border-[#E2E8E4] transform transition-all duration-700 hover:-translate-y-2 hover:shadow-[0_30px_50px_rgba(46,107,79,0.1)] reveal-up" style="transition-delay: 300ms;">
+                <div class="flex justify-between items-end mb-6">
+                  <div class="flex flex-col gap-1">
+                    <span class="text-xs font-semibold text-[#5A6B61] uppercase tracking-wider">
+                      Session Time
+                    </span>
+                    <span class="text-3xl font-bold text-[#2E6B4F]">
+                      20 Min
+                    </span>
+                  </div>
+                  <div class="w-12 h-12 rounded-full bg-[#F0F4F1] flex items-center justify-center">
+                    <iconify-icon icon="solar:stopwatch-play-bold-duotone" class="text-2xl text-[#2E6B4F]"></iconify-icon>
+                  </div>
+                </div>
+                <div class="flex gap-2">
+                  <div class="h-10 flex-1 bg-[#F0F4F1] rounded-xl flex items-center justify-center">
+                    <div class="w-2 h-2 rounded-full bg-[#D4C5B9]"></div>
+                  </div>
+                  <div class="h-10 flex-1 bg-[#2E6B4F]/10 rounded-xl flex items-center justify-center">
+                    <div class="w-2 h-2 rounded-full bg-[#2E6B4F]"></div>
+                  </div>
+                  <div class="h-10 flex-1 bg-[#2E6B4F] rounded-xl flex items-center justify-center">
+                    <iconify-icon icon="solar:check-circle-bold" class="text-lg text-white"></iconify-icon>
+                  </div>
+                </div>
+              </div>
+              <div class="w-full max-w-sm mr-auto bg-white/90 backdrop-blur-xl rounded-3xl p-6 shadow-[0_20px_40px_rgba(46,107,79,0.06)] border border-[#E2E8E4] transform transition-all duration-700 hover:-translate-y-2 hover:shadow-[0_30px_50px_rgba(46,107,79,0.1)] reveal-up" style="transition-delay: 450ms;">
+                <div class="flex items-center gap-4">
+                  <div class="w-12 h-12 rounded-2xl bg-[#5A6B61]/10 flex items-center justify-center">
+                    <iconify-icon icon="solar:shield-check-bold-duotone" class="text-2xl text-[#5A6B61]"></iconify-icon>
+                  </div>
+                  <div>
+                    <div class="text-sm font-bold text-[#2E6B4F]">
+                      Enterprise Security
+                    </div>
+                    <div class="text-xs text-[#5A6B61] mt-0.5">
+                      E2E Encryption Active
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="lg:hidden py-12 flex flex-col gap-6 w-full">
+            <div class="w-full bg-white rounded-3xl p-6 shadow-[0_10px_40px_rgba(46,107,79,0.05)] border border-[#E2E8E4] reveal-up">
+              <div class="flex items-center gap-4">
+                <div class="relative">
+                  <img src="https://i.pravatar.cc/100?img=33" alt="Expert" class="w-14 h-14 rounded-full object-cover border-2 border-white shadow-sm">
+                  <div class="absolute -bottom-1 -right-1 w-5 h-5 bg-[#D4C5B9] rounded-full border-2 border-white flex items-center justify-center shadow-sm">
+                    <iconify-icon icon="solar:check-read-bold" class="text-[10px] text-white"></iconify-icon>
+                  </div>
+                </div>
+                <div>
+                  <div class="text-sm font-bold text-[#2E6B4F]">
+                    Verified Expert
+                  </div>
+                  <div class="text-xs text-[#5A6B61] mt-0.5">
+                    Top 1% in Strategy
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="expert-directory" class="relative z-20 w-full py-24 md:py-32 flex flex-col items-center bg-white border-t border-gray-100/50">
+      <div class="container mx-auto px-6 md:px-12 max-w-7xl">
+        <div class="flex flex-col items-center text-center mb-16 reveal-up">
+          <h2 class="text-4xl md:text-5xl font-bold tracking-tight text-[#1E2521] mb-6">
+            Expert Directory
+          </h2>
+          <div class="flex flex-wrap justify-center gap-6 md:gap-10">
+            <button class="text-lg font-medium text-[#2E6B4F] border-b-2 border-[#2E6B4F] pb-1">
+              All Experts
+            </button>
+            <button class="text-lg font-medium text-gray-400 hover:text-[#1E2521] transition-colors pb-1">
+              Strategy
+            </button>
+            <button class="text-lg font-medium text-gray-400 hover:text-[#1E2521] transition-colors pb-1">
+              Marketing
+            </button>
+            <button class="text-lg font-medium text-gray-400 hover:text-[#1E2521] transition-colors pb-1">
+              Engineering
+            </button>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div class="group bg-white p-8 rounded-3xl transition-all duration-500 hover:shadow-[0_20px_40px_rgba(0,0,0,0.04)] reveal-up" style="transition-delay: 100ms;">
+            <div class="flex items-start justify-between mb-6">
+              <img src="https://i.pravatar.cc/150?img=11" alt="David N." class="w-20 h-20 rounded-full border border-[#2E6B4F] object-cover p-1">
+              <div class="bg-[#F0F4F1] text-[#2E6B4F] text-xs font-bold px-3 py-1 rounded-full">
+                Top Rated
+              </div>
+            </div>
+            <h3 class="text-2xl font-bold text-[#1E2521] mb-1">David N.</h3>
+            <p class="text-sm text-gray-500 mb-4">
+              Former VP of Product at TechCorp
+            </p>
+            <div class="flex items-center gap-2 mb-6">
+              <iconify-icon icon="solar:star-bold" class="text-[#2E6B4F]"></iconify-icon>
+              <span class="text-sm font-semibold text-[#1E2521]">4.9</span>
+              <span class="text-xs text-gray-400">(120 sessions)</span>
+            </div>
+            <a href="#" class="inline-block w-full text-center py-3 rounded-full border border-gray-200 text-[#1E2521] font-medium transition-all duration-300 hover:border-[#2E6B4F] hover:bg-[#2E6B4F] hover:text-white">
+              View Profile
+            </a>
+          </div>
+          <div class="group bg-white p-8 rounded-3xl transition-all duration-500 hover:shadow-[0_20px_40px_rgba(0,0,0,0.04)] reveal-up md:translate-y-6" style="transition-delay: 200ms;">
+            <div class="flex items-start justify-between mb-6">
+              <img src="https://i.pravatar.cc/150?img=32" alt="Oliver Bennett" class="w-20 h-20 rounded-full border border-[#2E6B4F] object-cover p-1">
+              <div class="bg-[#F0F4F1] text-[#2E6B4F] text-xs font-bold px-3 py-1 rounded-full">
+                Strategy
+              </div>
+            </div>
+            <h3 class="text-2xl font-bold text-[#1E2521] mb-1">
+              Oliver Bennett
+            </h3>
+            <p class="text-sm text-gray-500 mb-4">
+              Ex-MBB Consultant &amp; Founder
+            </p>
+            <div class="flex items-center gap-2 mb-6">
+              <iconify-icon icon="solar:star-bold" class="text-[#2E6B4F]"></iconify-icon>
+              <span class="text-sm font-semibold text-[#1E2521]">5.0</span>
+              <span class="text-xs text-gray-400">(85 sessions)</span>
+            </div>
+            <a href="#" class="inline-block w-full text-center py-3 rounded-full border border-gray-200 text-[#1E2521] font-medium transition-all duration-300 hover:border-[#2E6B4F] hover:bg-[#2E6B4F] hover:text-white">
+              View Profile
+            </a>
+          </div>
+          <div class="group bg-white p-8 rounded-3xl transition-all duration-500 hover:shadow-[0_20px_40px_rgba(0,0,0,0.04)] reveal-up lg:translate-y-12" style="transition-delay: 300ms;">
+            <div class="flex items-start justify-between mb-6">
+              <img src="https://i.pravatar.cc/150?img=44" alt="Amelia Foster" class="w-20 h-20 rounded-full border border-[#2E6B4F] object-cover p-1">
+              <div class="bg-[#F0F4F1] text-[#2E6B4F] text-xs font-bold px-3 py-1 rounded-full">
+                Growth
+              </div>
+            </div>
+            <h3 class="text-2xl font-bold text-[#1E2521] mb-1">
+              Amelia Foster
+            </h3>
+            <p class="text-sm text-gray-500 mb-4">
+              Director of Marketing at ScaleUp
+            </p>
+            <div class="flex items-center gap-2 mb-6">
+              <iconify-icon icon="solar:star-bold" class="text-[#2E6B4F]"></iconify-icon>
+              <span class="text-sm font-semibold text-[#1E2521]">4.8</span>
+              <span class="text-xs text-gray-400">(210 sessions)</span>
+            </div>
+            <a href="#" class="inline-block w-full text-center py-3 rounded-full border border-gray-200 text-[#1E2521] font-medium transition-all duration-300 hover:border-[#2E6B4F] hover:bg-[#2E6B4F] hover:text-white">
+              View Profile
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="top-tier-expertise" class="relative z-20 w-full bg-white py-12 md:py-16 border-t border-gray-100/50 overflow-hidden">
+      <style>
+        .slide-left-override {
+          transform: translateX(-40px) !important;
+          filter: blur(0px) !important;
+        }
+        .slide-left-override.is-revealed {
+          transform: translateX(0) !important;
+        }
+        .parallax-lift-override {
+          transform: translateY(30px) perspective(1000px) rotateX(10deg) !important;
+          filter: blur(0px) !important;
+        }
+        .parallax-lift-override.is-revealed {
+          transform: translateY(0) perspective(1000px) rotateX(0deg) !important;
+        }
+        .delay-200-override {
+          transition-delay: 200ms !important;
+        }
+      </style>
+      <div class="container mx-auto px-6 md:px-12 max-w-7xl">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
+          <div class="lg:col-span-5 flex flex-col items-start gap-4 reveal-up slide-left-override">
+            <span class="inline-flex items-center px-3 py-1 rounded-full bg-[#2E6B4F]/10 text-[#2E6B4F] text-[11px] font-bold uppercase tracking-wider">
+              100,000+ Vetted Independent Experts
+            </span>
+            <h2 class="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight text-[#1E2521] leading-[1.1]">
+              Top-Tier Expertise
+              <br>
+              Across the
+              <span class="text-[#2E6B4F]">UK.</span>
+            </h2>
+            <p class="text-base text-gray-500 leading-relaxed max-w-md">
+              Access a vetted network of leaders who have scaled the
+              fastest-growing companies in the world. No fluff, just actionable
+              clarity.
+            </p>
+          </div>
+          <div class="lg:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-8 reveal-up parallax-lift-override delay-200-override">
+            <div class="flex flex-col gap-1">
+              <span class="text-5xl md:text-6xl font-bold text-[#2E6B4F] tracking-tighter">
+                19+
+              </span>
+              <span class="text-sm font-medium text-gray-500">
+                Average years of experience
+              </span>
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="text-5xl md:text-6xl font-bold text-[#2E6B4F] tracking-tighter">
+                10K+
+              </span>
+              <span class="text-sm font-medium text-gray-500">
+                Decisions Accelerated
+              </span>
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="text-5xl md:text-6xl font-bold text-[#2E6B4F] tracking-tighter">
+                8K+
+              </span>
+              <span class="text-sm font-medium text-gray-500">
+                Vetted Experts
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="for-expert" class="relative z-20 w-full bg-[#1A2418] text-white py-24 md:py-32 overflow-hidden border-t border-[#2E6B4F]/20">
+      <div class="container mx-auto px-6 md:px-12 max-w-7xl relative z-10">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-24 items-center">
+          <div class="flex flex-col items-start gap-8 reveal-up" style="transform: translateZ(0); transition-delay: 100ms;">
+            <div class="inline-flex items-center px-3 py-1 rounded-full bg-white/10 text-white text-[11px] font-bold uppercase tracking-wider border border-white/20">
+              For Expert
+            </div>
+            <div class="relative w-full rounded-3xl overflow-hidden shadow-2xl border border-white/10 group">
+              <div class="absolute inset-0 bg-gradient-to-tr from-[#2E6B4F]/40 to-transparent mix-blend-overlay z-10"></div>
+              <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&amp;w=2070&amp;auto=format&amp;fit=crop" alt="Dashboard Platform" class="w-full h-auto object-cover transform group-hover:scale-105 transition-transform duration-700">
+            </div>
+            <button class="bg-white text-[#1A2418] hover:bg-[#F0F4F1] px-8 py-3.5 rounded-full text-sm font-semibold transition-all duration-300 shadow-lg flex items-center justify-center gap-2 group">
+              Join as an expert
+              <iconify-icon icon="solar:arrow-right-line-duotone" class="text-lg group-hover:translate-x-1 transition-transform"></iconify-icon>
+            </button>
+          </div>
+          <div class="flex flex-col gap-8 reveal-up" style="transition-delay: 200ms;">
+            <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1]">
+              Share Your Expertise,
+              <br>
+              Drive Impact.
+            </h2>
+            <ul class="flex flex-col gap-8 mt-4">
+              <li class="flex items-start gap-5 reveal-up" style="transition-delay: 300ms;">
+                <div class="mt-1 flex-shrink-0 w-6 h-6 rounded-full bg-[#D4C5B9]/20 flex items-center justify-center border border-[#D4C5B9]/30">
+                  <iconify-icon icon="solar:check-read-linear" class="text-[#D4C5B9] text-sm"></iconify-icon>
+                </div>
+                <div class="flex flex-col gap-1">
+                  <h4 class="text-xl font-semibold text-white">
+                    Strategic Opportunities
+                  </h4>
+                  <p class="text-gray-400 text-sm leading-relaxed">
+                    Engage with high-growth teams and founders tackling real,
+                    complex problems.
+                  </p>
+                </div>
+              </li>
+              <li class="flex items-start gap-5 reveal-up" style="transition-delay: 400ms;">
+                <div class="mt-1 flex-shrink-0 w-6 h-6 rounded-full bg-[#D4C5B9]/20 flex items-center justify-center border border-[#D4C5B9]/30">
+                  <iconify-icon icon="solar:check-read-linear" class="text-[#D4C5B9] text-sm"></iconify-icon>
+                </div>
+                <div class="flex flex-col gap-1">
+                  <h4 class="text-xl font-semibold text-white">
+                    Flexible Engagements
+                  </h4>
+                  <p class="text-gray-400 text-sm leading-relaxed">
+                    Consult on your own terms. Short, high-impact sessions that
+                    fit your schedule.
+                  </p>
+                </div>
+              </li>
+              <li class="flex items-start gap-5 reveal-up" style="transition-delay: 500ms;">
+                <div class="mt-1 flex-shrink-0 w-6 h-6 rounded-full bg-[#D4C5B9]/20 flex items-center justify-center border border-[#D4C5B9]/30">
+                  <iconify-icon icon="solar:check-read-linear" class="text-[#D4C5B9] text-sm"></iconify-icon>
+                </div>
+                <div class="flex flex-col gap-1">
+                  <h4 class="text-xl font-semibold text-white">
+                    Smart Matching
+                  </h4>
+                  <p class="text-gray-400 text-sm leading-relaxed">
+                    Our AI connects your specific background to exact client
+                    needs instantly.
+                  </p>
+                </div>
+              </li>
+              <li class="flex items-start gap-5 reveal-up" style="transition-delay: 600ms;">
+                <div class="mt-1 flex-shrink-0 w-6 h-6 rounded-full bg-[#D4C5B9]/20 flex items-center justify-center border border-[#D4C5B9]/30">
+                  <iconify-icon icon="solar:check-read-linear" class="text-[#D4C5B9] text-sm"></iconify-icon>
+                </div>
+                <div class="flex flex-col gap-1">
+                  <h4 class="text-xl font-semibold text-white">
+                    Transparent Earnings
+                  </h4>
+                  <p class="text-gray-400 text-sm leading-relaxed">
+                    Clear payouts with zero hidden fees. Focus on advising, we
+                    handle the rest.
+                  </p>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="insights" class="relative z-20 w-full bg-white py-24 md:py-32 border-t border-gray-100/50">
+      <div class="container mx-auto px-6 md:px-12 max-w-7xl">
+        <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-16 reveal-up">
+          <h2 class="text-3xl md:text-5xl font-bold tracking-tight text-[#1E2521] leading-[1.15] max-w-2xl">
+            Space for bold decisions, fast-moving teams, and expert-backed
+            thinking
+          </h2>
+          <a href="#" class="inline-flex items-center gap-2 text-sm font-semibold text-[#2E6B4F] hover:text-[#1E2521] transition-colors group pb-2">
+            Discover More From the Blog
+            <iconify-icon icon="solar:alt-arrow-right-linear" class="text-lg group-hover:translate-x-1 transition-transform"></iconify-icon>
+          </a>
+        </div>
+        <div class="flex flex-wrap items-center gap-6 mb-12 reveal-up" style="transition-delay: 100ms;">
+          <button class="text-sm font-semibold text-[#2E6B4F] border-b-2 border-[#2E6B4F] pb-1">
+            All
+          </button>
+          <button class="text-sm font-medium text-gray-400 hover:text-[#1E2521] transition-colors pb-1">
+            Insights
+          </button>
+          <button class="text-sm font-medium text-gray-400 hover:text-[#1E2521] transition-colors pb-1">
+            Expert Voices
+          </button>
+          <button class="text-sm font-medium text-gray-400 hover:text-[#1E2521] transition-colors pb-1">
+            Platform News
+          </button>
+          <button class="text-sm font-medium text-gray-400 hover:text-[#1E2521] transition-colors pb-1">
+            Legal
+          </button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div class="group flex flex-col gap-6 cursor-pointer reveal-up" style="transition-delay: 100ms;">
+            <div class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100">
+              <img src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?q=80&amp;w=2070&amp;auto=format&amp;fit=crop" alt="Insight 1" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700">
+              <div class="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-[10px] font-bold text-[#1E2521] uppercase tracking-wider">
+                Insights
+              </div>
+            </div>
+            <div class="flex flex-col gap-3">
+              <h3 class="text-xl font-bold text-[#1E2521] leading-snug group-hover:text-[#2E6B4F] transition-colors">
+                Scaling your engineering team: When to hire your first VP
+              </h3>
+              <p class="text-sm text-gray-500 line-clamp-2">
+                Learn the critical inflection points that signal it's time to
+                bring in senior engineering leadership.
+              </p>
+              <div class="mt-2 w-10 h-10 rounded-full bg-[#2E6B4F] flex items-center justify-center transform group-hover:scale-110 transition-transform">
+                <iconify-icon icon="solar:arrow-right-up-linear" class="text-white text-lg"></iconify-icon>
+              </div>
+            </div>
+          </div>
+          <div class="group flex flex-col gap-6 cursor-pointer reveal-up md:translate-y-8" style="transition-delay: 200ms;">
+            <div class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100">
+              <img src="https://images.unsplash.com/photo-1553877522-43269d4ea984?q=80&amp;w=2070&amp;auto=format&amp;fit=crop" alt="Insight 2" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700">
+              <div class="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-[10px] font-bold text-[#1E2521] uppercase tracking-wider">
+                Expert Voices
+              </div>
+            </div>
+            <div class="flex flex-col gap-3">
+              <h3 class="text-xl font-bold text-[#1E2521] leading-snug group-hover:text-[#2E6B4F] transition-colors">
+                Pricing strategy tear-down: Finding the sweet spot
+              </h3>
+              <p class="text-sm text-gray-500 line-clamp-2">
+                A former pricing strategist at Stripe breaks down how to
+                approach pricing in a competitive market.
+              </p>
+              <div class="mt-2 w-10 h-10 rounded-full bg-[#2E6B4F] flex items-center justify-center transform group-hover:scale-110 transition-transform">
+                <iconify-icon icon="solar:arrow-right-up-linear" class="text-white text-lg"></iconify-icon>
+              </div>
+            </div>
+          </div>
+          <div class="group flex flex-col gap-6 cursor-pointer reveal-up md:translate-y-16" style="transition-delay: 300ms;">
+            <div class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100">
+              <img src="https://images.unsplash.com/photo-1600880292203-757bb62b4baf?q=80&amp;w=2070&amp;auto=format&amp;fit=crop" alt="Insight 3" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700">
+              <div class="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-[10px] font-bold text-[#1E2521] uppercase tracking-wider">
+                Platform News
+              </div>
+            </div>
+            <div class="flex flex-col gap-3">
+              <h3 class="text-xl font-bold text-[#1E2521] leading-snug group-hover:text-[#2E6B4F] transition-colors">
+                AskValor raises seed round to democratize expertise
+              </h3>
+              <p class="text-sm text-gray-500 line-clamp-2">
+                We are thrilled to announce our latest funding round to help
+                founders and operators build faster.
+              </p>
+              <div class="mt-2 w-10 h-10 rounded-full bg-[#2E6B4F] flex items-center justify-center transform group-hover:scale-110 transition-transform">
+                <iconify-icon icon="solar:arrow-right-up-linear" class="text-white text-lg"></iconify-icon>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="testimonials" class="relative z-20 w-full bg-[#F4F7F5] py-24 md:py-32 overflow-hidden border-t border-[#E2E8E4]">
+      <style>
+        @keyframes scrollMarquee {0% { transform: translateX(0); }100% { transform: translateX(calc(-50% - 12px)); }} .animate-scroll-marquee { animation: scrollMarquee 40s linear infinite; }
+      </style>
+      <div class="container mx-auto px-6 md:px-12 max-w-7xl mb-16 text-center reveal-up">
+        <h2 class="text-3xl md:text-5xl font-bold tracking-tight text-[#1E2521] mb-4">
+          Real Results. Trusted by Leaders.
+        </h2>
+      </div>
+      <div class="relative w-full flex overflow-x-hidden group">
+        <div class="flex space-x-6 px-6 animate-scroll-marquee group-hover:[animation-play-state:paused] w-max">
+          <div class="w-[350px] md:w-[450px] bg-white rounded-3xl p-8 flex flex-col gap-6 shadow-[0_10px_30px_rgba(46,107,79,0.03)] border border-[#E2E8E4] flex-shrink-0">
+            <iconify-icon icon="solar:quote-right-bold" class="text-3xl text-[#2E6B4F]/20"></iconify-icon>
+            <p class="text-lg text-[#1E2521] leading-relaxed font-medium">
+              "The clarity I got in just 20 minutes saved my team months of
+              back-and-forth. This platform is a game-changer for rapid decision
+              making."
+            </p>
+            <div class="mt-auto pt-6 border-t border-gray-100 flex items-center gap-4">
+              <div class="w-10 h-10 rounded-full bg-[#F0F4F1] flex items-center justify-center font-bold text-[#2E6B4F]">
+                S
+              </div>
+              <div class="flex flex-col">
+                <span class="text-sm font-bold text-[#1E2521]">
+                  Sarah Jenkins
+                </span>
+                <span class="text-xs text-gray-500">
+                  VP of Product, FinTech
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="w-[350px] md:w-[450px] bg-white rounded-3xl p-8 flex flex-col gap-6 shadow-[0_10px_30px_rgba(46,107,79,0.03)] border border-[#E2E8E4] flex-shrink-0">
+            <iconify-icon icon="solar:quote-right-bold" class="text-3xl text-[#2E6B4F]/20"></iconify-icon>
+            <p class="text-lg text-[#1E2521] leading-relaxed font-medium">
+              "We were struggling with our go-to-market strategy. One
+              conversation with an ex-Stripe marketer completely reframed our
+              approach."
+            </p>
+            <div class="mt-auto pt-6 border-t border-gray-100 flex items-center gap-4">
+              <div class="w-10 h-10 rounded-full bg-[#F0F4F1] flex items-center justify-center font-bold text-[#2E6B4F]">
+                M
+              </div>
+              <div class="flex flex-col">
+                <span class="text-sm font-bold text-[#1E2521]">Marcus T.</span>
+                <span class="text-xs text-gray-500">Founder, SaaS Startup</span>
+              </div>
+            </div>
+          </div>
+          <div class="w-[350px] md:w-[450px] bg-white rounded-3xl p-8 flex flex-col gap-6 shadow-[0_10px_30px_rgba(46,107,79,0.03)] border border-[#E2E8E4] flex-shrink-0">
+            <iconify-icon icon="solar:quote-right-bold" class="text-3xl text-[#2E6B4F]/20"></iconify-icon>
+            <p class="text-lg text-[#1E2521] leading-relaxed font-medium">
+              "I use AskValor as my secret weapon for sense-checking big
+              technical architecture decisions before committing engineering
+              resources."
+            </p>
+            <div class="mt-auto pt-6 border-t border-gray-100 flex items-center gap-4">
+              <div class="w-10 h-10 rounded-full bg-[#F0F4F1] flex items-center justify-center font-bold text-[#2E6B4F]">
+                E
+              </div>
+              <div class="flex flex-col">
+                <span class="text-sm font-bold text-[#1E2521]">Elena R.</span>
+                <span class="text-xs text-gray-500">CTO, HealthTech</span>
+              </div>
+            </div>
+          </div>
+          <div class="w-[350px] md:w-[450px] bg-white rounded-3xl p-8 flex flex-col gap-6 shadow-[0_10px_30px_rgba(46,107,79,0.03)] border border-[#E2E8E4] flex-shrink-0">
+            <iconify-icon icon="solar:quote-right-bold" class="text-3xl text-[#2E6B4F]/20"></iconify-icon>
+            <p class="text-lg text-[#1E2521] leading-relaxed font-medium">
+              "The clarity I got in just 20 minutes saved my team months of
+              back-and-forth. This platform is a game-changer for rapid decision
+              making."
+            </p>
+            <div class="mt-auto pt-6 border-t border-gray-100 flex items-center gap-4">
+              <div class="w-10 h-10 rounded-full bg-[#F0F4F1] flex items-center justify-center font-bold text-[#2E6B4F]">
+                S
+              </div>
+              <div class="flex flex-col">
+                <span class="text-sm font-bold text-[#1E2521]">
+                  Sarah Jenkins
+                </span>
+                <span class="text-xs text-gray-500">
+                  VP of Product, FinTech
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="w-[350px] md:w-[450px] bg-white rounded-3xl p-8 flex flex-col gap-6 shadow-[0_10px_30px_rgba(46,107,79,0.03)] border border-[#E2E8E4] flex-shrink-0">
+            <iconify-icon icon="solar:quote-right-bold" class="text-3xl text-[#2E6B4F]/20"></iconify-icon>
+            <p class="text-lg text-[#1E2521] leading-relaxed font-medium">
+              "We were struggling with our go-to-market strategy. One
+              conversation with an ex-Stripe marketer completely reframed our
+              approach."
+            </p>
+            <div class="mt-auto pt-6 border-t border-gray-100 flex items-center gap-4">
+              <div class="w-10 h-10 rounded-full bg-[#F0F4F1] flex items-center justify-center font-bold text-[#2E6B4F]">
+                M
+              </div>
+              <div class="flex flex-col">
+                <span class="text-sm font-bold text-[#1E2521]">Marcus T.</span>
+                <span class="text-xs text-gray-500">Founder, SaaS Startup</span>
+              </div>
+            </div>
+          </div>
+          <div class="w-[350px] md:w-[450px] bg-white rounded-3xl p-8 flex flex-col gap-6 shadow-[0_10px_30px_rgba(46,107,79,0.03)] border border-[#E2E8E4] flex-shrink-0">
+            <iconify-icon icon="solar:quote-right-bold" class="text-3xl text-[#2E6B4F]/20"></iconify-icon>
+            <p class="text-lg text-[#1E2521] leading-relaxed font-medium">
+              "I use AskValor as my secret weapon for sense-checking big
+              technical architecture decisions before committing engineering
+              resources."
+            </p>
+            <div class="mt-auto pt-6 border-t border-gray-100 flex items-center gap-4">
+              <div class="w-10 h-10 rounded-full bg-[#F0F4F1] flex items-center justify-center font-bold text-[#2E6B4F]">
+                E
+              </div>
+              <div class="flex flex-col">
+                <span class="text-sm font-bold text-[#1E2521]">Elena R.</span>
+                <span class="text-xs text-gray-500">CTO, HealthTech</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="container mx-auto px-6 md:px-12 max-w-5xl mt-24 reveal-up">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-8 py-8 border-y border-[#E2E8E4]/60">
+          <div class="flex flex-col items-center text-center gap-3">
+            <iconify-icon icon="solar:user-check-linear" class="text-3xl text-[#2E6B4F]"></iconify-icon>
+            <span class="text-sm font-bold text-[#1E2521]">5,000+</span>
+            <span class="text-xs font-medium text-gray-500">
+              Vetted Experts
+            </span>
+          </div>
+          <div class="flex flex-col items-center text-center gap-3">
+            <iconify-icon icon="solar:star-fall-minimalistic-2-linear" class="text-3xl text-[#2E6B4F]"></iconify-icon>
+            <span class="text-sm font-bold text-[#1E2521]">4.9/5</span>
+            <span class="text-xs font-medium text-gray-500">
+              Average Rating
+            </span>
+          </div>
+          <div class="flex flex-col items-center text-center gap-3">
+            <iconify-icon icon="solar:check-circle-linear" class="text-3xl text-[#2E6B4F]"></iconify-icon>
+            <span class="text-sm font-bold text-[#1E2521]">100%</span>
+            <span class="text-xs font-medium text-gray-500">
+              Session Completion
+            </span>
+          </div>
+          <div class="flex flex-col items-center text-center gap-3">
+            <iconify-icon icon="solar:shield-check-linear" class="text-3xl text-[#2E6B4F]"></iconify-icon>
+            <span class="text-sm font-bold text-[#1E2521]">Secure</span>
+            <span class="text-xs font-medium text-gray-500">
+              Enterprise Privacy
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+    <footer class="bg-white border-t border-gray-200/60 pt-16 pb-8 z-20 relative">
+      <div class="container mx-auto px-6 md:px-12 max-w-7xl">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
+          <div class="col-span-1 md:col-span-1 flex flex-col gap-6">
+            <div class="flex items-center gap-2">
+              <svg width="32" height="32" viewBox="0 0 60 56" fill="none">
+                <line x1="4" y1="28" x2="18" y2="28" stroke="#1A2418" stroke-width="1.2" stroke-linecap="round"></line>
+                <line x1="18" y1="28" x2="27" y2="16" stroke="#1A2418" stroke-width="1.2" stroke-linecap="round"></line>
+                <line x1="18" y1="28" x2="27" y2="40" stroke="#1A2418" stroke-width="1.2" stroke-linecap="round"></line>
+                <line x1="27" y1="16" x2="39" y2="28" stroke="#2E6B4F" stroke-width="1.6" stroke-linecap="round"></line>
+                <line x1="27" y1="40" x2="39" y2="28" stroke="rgba(46,107,79,0.18)" stroke-width="1" stroke-linecap="round"></line>
+                <circle cx="18" cy="28" r="2.5" fill="#1A2418"></circle>
+                <circle cx="27" cy="16" r="2.5" fill="#2E6B4F"></circle>
+                <circle cx="27" cy="40" r="1.8" fill="none" stroke="rgba(46,107,79,0.22)" stroke-width="0.8"></circle>
+                <circle cx="39" cy="28" r="3.5" fill="#2E6B4F"></circle>
+              </svg>
+              <span class="font-light tracking-[0.2em] text-[#0B0F19] text-lg">
+                ASK
+                <span class="font-bold tracking-normal text-[#2E6B4F]">
+                  VALOR
+                </span>
+              </span>
+            </div>
+            <p class="text-sm text-gray-500 leading-relaxed pr-4">
+              The decision layer between information and action. Direct access
+              to vetted industry leaders.
+            </p>
+          </div>
+
+          <div class="col-span-1 flex flex-col gap-4">
+            <h4 class="text-sm font-bold text-[#0B0F19] uppercase tracking-wider mb-2">
+              Platform
+            </h4>
+            <a href="/experts-page" class="text-sm font-medium text-gray-500 hover:text-[#2E6B4F] transition-colors">
+              Find Experts
+            </a>
+            <a href="#" class="text-sm font-medium text-gray-500 hover:text-[#2E6B4F] transition-colors">
+              How it Works
+            </a>
+            <a href="#" class="text-sm font-medium text-gray-500 hover:text-[#2E6B4F] transition-colors">
+              Pricing
+            </a>
+            <a href="#" class="text-sm font-medium text-gray-500 hover:text-[#2E6B4F] transition-colors">
+              Become an Expert
+            </a>
+          </div>
+
+          <div class="col-span-1 flex flex-col gap-4">
+            <h4 class="text-sm font-bold text-[#0B0F19] uppercase tracking-wider mb-2">
+              Company
+            </h4>
+            <a href="#" class="text-sm font-medium text-gray-500 hover:text-[#2E6B4F] transition-colors">
+              About Us
+            </a>
+            <a href="#" class="text-sm font-medium text-gray-500 hover:text-[#2E6B4F] transition-colors">
+              Blog &amp; Insights
+            </a>
+            <a href="#" class="text-sm font-medium text-gray-500 hover:text-[#2E6B4F] transition-colors">
+              Careers
+            </a>
+            <a href="#" class="text-sm font-medium text-gray-500 hover:text-[#2E6B4F] transition-colors">
+              Contact
+            </a>
+          </div>
+
+          <div class="col-span-1 flex flex-col gap-4">
+            <h4 class="text-sm font-bold text-[#0B0F19] uppercase tracking-wider mb-2">
+              Legal
+            </h4>
+            <a href="#" class="text-sm font-medium text-gray-500 hover:text-[#2E6B4F] transition-colors">
+              Privacy Policy
+            </a>
+            <a href="#" class="text-sm font-medium text-gray-500 hover:text-[#2E6B4F] transition-colors">
+              Terms of Service
+            </a>
+            <a href="#" class="text-sm font-medium text-gray-500 hover:text-[#2E6B4F] transition-colors">
+              Cookie Policy
+            </a>
+          </div>
+        </div>
+
+        <div class="pt-8 border-t border-gray-200/60 flex flex-col md:flex-row items-center justify-between gap-4">
+          <p class="text-sm font-medium text-gray-500">
+            © 2024 AskValor. All rights reserved.
+          </p>
+          <div class="flex items-center gap-6">
+            <span class="text-sm font-medium text-gray-500 flex items-center gap-2">
+              <iconify-icon icon="solar:global-linear" class="text-lg"></iconify-icon>
+              English (UK)
+            </span>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('is-revealed');
+              observer.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+        document.querySelectorAll('.reveal-up').forEach(el => observer.observe(el));
+      });
+    </script>
+
+    <style>
+      .reveal-up {
+        opacity: 0;
+        transform: translateY(40px) scale(0.95) !important;
+        filter: blur(10px) !important;
+        transition: all 1s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      }
+      .reveal-up.is-revealed {
+        opacity: 1 !important;
+        transform: translateY(0) scale(1) !important;
+        filter: blur(0px) !important;
+      }
+    </style>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const searchInput = document.querySelector('input[name="q"]');
+        if (!searchInput) return;
+        const expertLinks = document.querySelectorAll('a[href*="/experts-page"]');
+        expertLinks.forEach(link => {
+          link.addEventListener('click', (e) => {
+            if (searchInput.value.trim()) {
+              e.preventDefault();
+              const href = link.getAttribute('href');
+              const separator = href.includes('?') ? '&' : '?';
+              window.location.href = `${href}${separator}q=${encodeURIComponent(searchInput.value.trim())}`;
+            }
+          });
+        });
+      });
+    </script>
+
+    <script>
+      // Shared AI-Powered Search Service
+      // Evaluates semantic relevance and sorts results based on intent.
+      window.searchExperts = function(query, experts) {
+        if (!query || !query.trim()) return experts;
+        const lowerQuery = query.toLowerCase();
+
+        return experts.map(expert => {
+          let score = 0;
+          const textContent = [
+            expert.name,
+            expert.jobTitle,
+            ...(expert.skills || []),
+            ...(expert.categories || []),
+            ...(expert.technologies || []),
+            expert.bio,
+            expert.experience,
+            ...(expert.industries || []),
+            ...(expert.tags || [])
+          ].filter(Boolean).join(' ').toLowerCase();
+
+          const terms = lowerQuery.split(/\s+/);
+          terms.forEach(term => {
+            if (textContent.includes(term)) score += 10;
+          });
+
+          return { ...expert, relevanceScore: score };
+        }).sort((a, b) => b.relevanceScore - a.relevanceScore);
+      };
+    </script>
+  
+</body></html>

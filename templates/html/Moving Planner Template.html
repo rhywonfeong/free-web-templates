@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="fr" class="antialiased bg-gray-50 text-gray-900">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planificateur Déménagement</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Inter', sans-serif; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
+[x-cloak] { display: none !important; }
+/* Prevent flickering during drag over children */
+.pointer-events-none-on-drag * { pointer-events: none; }
+</style></head>
+<body class="h-screen flex flex-col overflow-hidden" 
+      x-data="appData()" 
+      x-init="initData()">
+
+    <!-- Header -->
+    <header class="flex-none bg-white border-b border-gray-200 px-6 py-4 z-10">
+        <div class="max-w-7xl mx-auto w-full flex flex-col md:flex-row md:items-center justify-between gap-4">
+            
+            <div class="flex items-center gap-3">
+                <div class="p-2 bg-gray-900 rounded-lg text-white">
+                    <i data-lucide="layout-grid" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-semibold tracking-tight text-gray-900 leading-none">Planning par Catégorie</h1>
+                    <p class="text-xs text-gray-500 mt-1 font-medium">Organisation des achats</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-4 md:gap-6 flex-1 justify-end">
+                
+                <div class="flex gap-6 pr-6 border-r border-gray-100 hidden sm:flex">
+                    <div>
+                        <span class="block text-xs text-gray-500 font-medium uppercase tracking-wider">Total</span>
+                        <span class="block text-base font-semibold tracking-tight text-gray-900" x-text="formatPrice(totalCost)"></span>
+                    </div>
+                    <div>
+                        <span class="block text-xs text-gray-500 font-medium uppercase tracking-wider">Dépensé</span>
+                        <span class="block text-base font-semibold tracking-tight text-emerald-600" x-text="formatPrice(spentCost)"></span>
+                    </div>
+                </div>
+
+                <!-- Filter by Status -->
+                <div class="relative">
+                    <select x-model="filterStatus" class="appearance-none bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 text-xs font-medium rounded-md py-2 pl-3 pr-8 focus:outline-none focus:ring-2 focus:ring-gray-900/10 cursor-pointer transition-colors">
+                        <option value="">Tous les statuts</option>
+                        <template x-for="status in statuses" :key="status.id">
+                            <option :value="status.id" x-text="status.label"></option>
+                        </template>
+                    </select>
+                    <i data-lucide="chevron-down" class="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"></i>
+                </div>
+
+                <button @click="openModal()" class="group flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-md transition-all shadow-sm active:scale-95">
+                    <i data-lucide="plus" class="w-4 h-4 text-gray-400 group-hover:text-white transition-colors"></i>
+                    <span class="text-xs font-medium">Nouvel Article</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Board -->
+    <main class="flex-1 overflow-x-auto overflow-y-hidden bg-gray-50 p-6">
+        <div class="max-w-7xl mx-auto h-full flex gap-6 min-w-max">
+            
+            <!-- Loop through Categories -->
+            <template x-for="cat in categories" :key="cat">
+                <div class="w-[300px] flex flex-col h-full"
+                     x-data="{ isOver: false }"
+                     @dragover.prevent="isOver = true"
+                     @dragleave="isOver = false"
+                     @drop="dropItem(cat); isOver = false">
+                    
+                    <!-- Column Header -->
+                    <div class="flex items-center justify-between mb-3 px-1">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-gray-500" x-text="cat"></span>
+                            <span class="bg-gray-200 text-gray-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full" x-text="getItemsByCategory(cat).length"></span>
+                        </div>
+                        <div class="text-xs font-medium text-gray-400" x-text="formatPrice(getCategoryTotal(cat))"></div>
+                    </div>
+
+                    <!-- Drop Zone -->
+                    <div class="flex-1 rounded-xl p-2 overflow-y-auto border border-dashed transition-all duration-200"
+                         :class="{ 
+                             'bg-gray-200/80 border-gray-400 shadow-inner ring-1 ring-gray-400/50': isOver,
+                             'bg-gray-100/50 border-transparent': !isOver && (!dragSourceCategory || dragSourceCategory === cat),
+                             'border-gray-300 bg-gray-100': dragSourceCategory && dragSourceCategory !== cat && !isOver
+                         }">
+                        
+                        <!-- Items -->
+                        <template x-for="item in getItemsByCategory(cat)" :key="item.id">
+                            <div draggable="true"
+                                 @dragstart="startDrag($event, item.id, item.category)"
+                                 @dragend="endDrag()"
+                                 class="group bg-white p-4 rounded-lg border border-gray-200 shadow-[0_2px_4px_rgba(0,0,0,0.02)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.05)] hover:border-gray-300 mb-3 cursor-grab active:cursor-grabbing transition-all relative pointer-events-auto">
+                                
+                                <!-- Card Header -->
+                                <div class="flex justify-between items-start mb-2">
+                                    <button @click="cycleStatus(item)" 
+                                            class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium tracking-wide uppercase transition-colors hover:opacity-80 border"
+                                            :class="getStatusColor(item.status)">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
+                                        <span x-text="getStatusLabel(item.status)"></span>
+                                    </button>
+
+                                    <div class="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                                        <button @click="editItem(item)" class="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600">
+                                            <i data-lucide="pencil" class="w-3 h-3"></i>
+                                        </button>
+                                        <button @click="deleteItem(item.id)" class="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-500">
+                                            <i data-lucide="trash-2" class="w-3 h-3"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Card Content -->
+                                <h3 class="text-sm font-medium text-gray-900 mb-1 leading-snug" x-text="item.name"></h3>
+                                
+                                <!-- Card Footer -->
+                                <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-50">
+                                    <div class="font-medium text-sm text-gray-900 tracking-tight" x-text="formatPrice(item.price)"></div>
+                                    <a :href="item.url" target="_blank" rel="noopener noreferrer" 
+                                       class="flex items-center gap-1 text-[10px] text-gray-400 hover:text-blue-600 transition-colors"
+                                       x-show="item.url">
+                                        Lien
+                                        <i data-lucide="external-link" class="w-3 h-3"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </template>
+                        
+                        <!-- Empty State -->
+                        <div x-show="getItemsByCategory(cat).length === 0" class="h-24 flex items-center justify-center pointer-events-none">
+                            <span class="text-xs text-gray-400 font-medium" x-text="isOver ? 'Déposer ici' : 'Vide'"></span>
+                        </div>
+                    </div>
+                </div>
+            </template>
+            
+            <!-- Add Category Column -->
+            <div class="w-[300px] flex flex-col h-full opacity-50 hover:opacity-100 transition-opacity">
+                 <div class="flex items-center justify-between mb-3 px-1">
+                     <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Nouvelle catégorie</span>
+                 </div>
+                 <button @click="addCategoryPrompt" class="flex-1 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center hover:border-gray-300 hover:bg-gray-100/50 transition-all text-gray-400 hover:text-gray-600">
+                     <i data-lucide="plus" class="w-6 h-6"></i>
+                 </button>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Modal Form -->
+    <div x-show="isModalOpen" 
+         x-transition.opacity
+         class="fixed inset-0 bg-gray-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4" x-cloak>
+        
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-gray-100"
+             @click.away="closeModal()">
+            
+            <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                <h2 class="text-sm font-semibold text-gray-900" x-text="editingId ? 'Modifier l\'article' : 'Ajouter un article'"></h2>
+                <button @click="closeModal()" class="text-gray-400 hover:text-gray-600">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <form @submit.prevent="saveItem" class="p-6 space-y-4">
+                
+                <!-- Name -->
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">Nom de l'article</label>
+                    <input type="text" x-model="form.name" required placeholder="Ex: Canapé 3 places" 
+                           class="w-full text-sm bg-white border border-gray-200 rounded-md px-3 py-2 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-shadow">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <!-- Price -->
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1.5">Prix (€)</label>
+                        <div class="relative">
+                            <input type="number" x-model="form.price" step="0.01" required placeholder="0.00" 
+                                   class="w-full text-sm bg-white border border-gray-200 rounded-md pl-3 pr-8 py-2 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-shadow">
+                            <span class="absolute right-3 top-2 text-xs text-gray-400 font-medium">€</span>
+                        </div>
+                    </div>
+
+                    <!-- Category -->
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1.5">Catégorie</label>
+                        <select x-model="form.category" class="w-full text-sm bg-white border border-gray-200 rounded-md px-3 py-2 text-gray-700 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-shadow appearance-none">
+                            <template x-for="cat in categories" :key="cat">
+                                <option :value="cat" x-text="cat"></option>
+                            </template>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Status Selector -->
+                 <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">Statut</label>
+                    <div class="flex gap-2">
+                        <template x-for="status in statuses" :key="status.id">
+                            <button type="button" 
+                                    @click="form.status = status.id"
+                                    class="flex-1 py-2 px-2 rounded-md text-xs font-medium border transition-all"
+                                    :class="form.status === status.id ? 'border-gray-900 bg-gray-900 text-white shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'">
+                                <span x-text="status.label"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- URL -->
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">Lien URL (Optionnel)</label>
+                    <div class="flex items-center border border-gray-200 rounded-md overflow-hidden focus-within:ring-1 focus-within:ring-gray-400 focus-within:border-gray-400">
+                        <div class="bg-gray-50 px-3 py-2 border-r border-gray-200">
+                            <i data-lucide="link" class="w-3.5 h-3.5 text-gray-400"></i>
+                        </div>
+                        <input type="url" x-model="form.url" placeholder="https://..." 
+                               class="w-full text-sm bg-white border-none px-3 py-2 placeholder-gray-400 focus:ring-0">
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="pt-4 flex justify-end gap-3">
+                    <button type="button" @click="closeModal()" class="px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-md transition-colors">
+                        Annuler
+                    </button>
+                    <button type="submit" class="px-4 py-2 text-xs font-medium text-white bg-gray-900 hover:bg-black rounded-md shadow-sm transition-all transform active:scale-95">
+                        <span x-text="editingId ? 'Mettre à jour' : 'Ajouter'"></span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function appData() {
+            return {
+                items: [],
+                categories: ['Meubles', 'Électroménager', 'Déco', 'Vaisselle', 'Divers'],
+                statuses: [
+                    { id: 'todo', label: 'À Acheter', color: 'bg-gray-100 text-gray-600 border-gray-200' },
+                    { id: 'ordered', label: 'Commandé', color: 'bg-amber-50 text-amber-700 border-amber-100' },
+                    { id: 'received', label: 'Reçu', color: 'bg-emerald-50 text-emerald-700 border-emerald-100' }
+                ],
+                filterStatus: '',
+                isModalOpen: false,
+                editingId: null,
+                dragSourceCategory: null,
+                form: {
+                    name: '',
+                    price: '',
+                    category: 'Meubles',
+                    url: '',
+                    status: 'todo'
+                },
+
+                initData() {
+                    const saved = localStorage.getItem('move-planner-cat-data');
+                    if (saved) {
+                        this.items = JSON.parse(saved);
+                    } else {
+                        this.items = [
+                            { id: 1, name: 'Canapé Scandinave', price: 699, category: 'Meubles', url: '', status: 'todo' },
+                            { id: 2, name: 'Lave-linge 8kg', price: 450, category: 'Électroménager', url: '', status: 'ordered' },
+                            { id: 3, name: 'Service assiettes', price: 89.90, category: 'Vaisselle', url: '', status: 'received' },
+                            { id: 4, name: 'Tapis Salon', price: 120, category: 'Déco', url: '', status: 'todo' }
+                        ];
+                    }
+                    this.$watch('items', () => {
+                        localStorage.setItem('move-planner-cat-data', JSON.stringify(this.items));
+                        this.refreshIcons();
+                    });
+                    setTimeout(() => this.refreshIcons(), 100);
+                },
+
+                refreshIcons() {
+                    this.$nextTick(() => {
+                        lucide.createIcons();
+                    });
+                },
+
+                get totalCost() {
+                    return this.items.reduce((sum, item) => sum + parseFloat(item.price || 0), 0);
+                },
+
+                get spentCost() {
+                    return this.items
+                        .filter(i => i.status === 'ordered' || i.status === 'received')
+                        .reduce((sum, item) => sum + parseFloat(item.price || 0), 0);
+                },
+
+                getCategoryTotal(cat) {
+                    return this.getItemsByCategory(cat).reduce((sum, item) => sum + parseFloat(item.price || 0), 0);
+                },
+
+                getItemsByCategory(cat) {
+                    return this.items.filter(item => {
+                        const matchesCat = item.category === cat;
+                        const matchesStatus = this.filterStatus === '' || item.status === this.filterStatus;
+                        return matchesCat && matchesStatus;
+                    });
+                },
+
+                getStatusLabel(id) {
+                    return this.statuses.find(s => s.id === id)?.label || id;
+                },
+
+                getStatusColor(id) {
+                    return this.statuses.find(s => s.id === id)?.color || 'bg-gray-100 text-gray-500';
+                },
+
+                cycleStatus(item) {
+                    const map = { 'todo': 'ordered', 'ordered': 'received', 'received': 'todo' };
+                    item.status = map[item.status];
+                    this.refreshIcons();
+                },
+
+                formatPrice(price) {
+                    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(price);
+                },
+
+                openModal() {
+                    this.form = { name: '', price: '', category: 'Meubles', url: '', status: 'todo' };
+                    this.editingId = null;
+                    this.isModalOpen = true;
+                    this.refreshIcons();
+                },
+
+                closeModal() {
+                    this.isModalOpen = false;
+                },
+
+                saveItem() {
+                    if (this.editingId) {
+                        const index = this.items.findIndex(i => i.id === this.editingId);
+                        if (index !== -1) {
+                            this.items[index] = { ...this.items[index], ...this.form, price: parseFloat(this.form.price) };
+                        }
+                    } else {
+                        const newItem = {
+                            id: Date.now(),
+                            ...this.form,
+                            price: parseFloat(this.form.price)
+                        };
+                        this.items.push(newItem);
+                    }
+                    this.closeModal();
+                },
+
+                editItem(item) {
+                    this.form = { ...item };
+                    this.editingId = item.id;
+                    this.isModalOpen = true;
+                },
+
+                deleteItem(id) {
+                    if(confirm('Supprimer cet élément ?')) {
+                        this.items = this.items.filter(i => i.id !== id);
+                    }
+                },
+
+                addCategoryPrompt() {
+                    const name = prompt("Nom de la nouvelle catégorie :");
+                    if (name && !this.categories.includes(name)) {
+                        this.categories.push(name);
+                    }
+                },
+
+                startDrag(e, id, cat) {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', id);
+                    this.dragSourceCategory = cat;
+                    // Helper to make children ignore mouse events during drag
+                    document.body.classList.add('pointer-events-none-on-drag');
+                },
+
+                endDrag() {
+                    this.dragSourceCategory = null;
+                    document.body.classList.remove('pointer-events-none-on-drag');
+                },
+
+                dropItem(newCategory) {
+                    const id = event.dataTransfer.getData('text/plain');
+                    const itemIndex = this.items.findIndex(i => i.id == id);
+                    
+                    if (itemIndex > -1 && this.items[itemIndex].category !== newCategory) {
+                        this.items[itemIndex].category = newCategory;
+                        this.items = [...this.items]; 
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>

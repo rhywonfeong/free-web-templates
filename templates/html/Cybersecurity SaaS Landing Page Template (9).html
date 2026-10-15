@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Générateur de mot de passe sécurisé et gratuit | MDP Aura</title>
+<!-- Fonts: Inter for UI, JetBrains Mono for Password -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link
+href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap"
+rel="stylesheet"
+/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Iconify -->
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<!-- Essential Inline Styles -->
+<style>
+/* To enforce font families without tailwind config */
+.font-sans { font-family: 'Inter', sans-serif; }
+.font-mono { font-family: 'JetBrains Mono', monospace; }
+/* Custom slider track styling */
+input[type=range]::-webkit-slider-thumb {
+-webkit-appearance: none;
+height: 16px;
+width: 16px;
+border-radius: 50%;
+background: #ffffff;
+cursor: pointer;
+border: 1px solid #d4d4d8;
+}
+</style>
+<meta
+name="description"
+content="Générateur de mot de passe 100% local et gratuit. Créez des mots de passe cryptographiquement sécurisés sans qu'aucune donnée ne quitte votre navigateur."
+/>
+<link rel="canonical" href="https://mdp.aura.build/" /><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body
+    class="bg-[#0A0A0A] text-zinc-400 font-sans antialiased selection:bg-white/10 selection:text-white min-h-screen flex flex-col overflow-x-hidden relative"
+  >
+    <!-- Subtle Background Glow -->
+    <div
+      class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-white/[0.03] blur-[120px] rounded-full pointer-events-none -z-10"
+    ></div>
+
+    <!-- Navigation -->
+    <nav
+      class="w-full border-b border-white/5 bg-black/20 backdrop-blur-md z-50 sticky top-0"
+    >
+      <div
+        class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between"
+      >
+        <div class="text-xl font-medium tracking-tighter text-white">
+          SECURE.
+        </div>
+        <div class="hidden md:flex items-center gap-8 text-sm font-medium">
+          <a
+            href="#about"
+            class="hover:text-white transition-colors duration-200"
+            onclick="document.getElementById('about').scrollIntoView({behavior:'smooth'}); return false;"
+          >
+            À propos
+          </a>
+          <a
+            href="#security"
+            class="hover:text-white transition-colors duration-200"
+            onclick="document.getElementById('security').scrollIntoView({behavior:'smooth'}); return false;"
+          >
+            Sécurité
+          </a>
+          <a
+            href="#faq"
+            class="hover:text-white transition-colors duration-200"
+            onclick="document.getElementById('faq').scrollIntoView({behavior:'smooth'}); return false;"
+          >
+            FAQ
+          </a>
+        </div>
+        <div class="flex items-center gap-4">
+          <a
+            href="#"
+            class="text-xs md:text-sm font-medium text-black bg-white hover:bg-zinc-200 px-4 py-2 rounded-full transition-colors duration-200 tracking-tight"
+            onclick="alert('Bientôt disponible'); return false;"
+          >
+            Obtenir une API
+          </a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main
+      class="flex-1 flex flex-col items-center justify-start pt-16 md:pt-24 pb-20 px-4 w-full max-w-6xl mx-auto"
+    >
+      <!-- Hero Section -->
+      <div class="text-center mb-12 z-10 w-full max-w-3xl">
+        <div
+          class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-white mb-6 font-medium"
+        >
+          <span
+            class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"
+          ></span>
+          Générateur 100% local
+        </div>
+        <h1
+          class="text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tighter text-white mb-6 leading-tight"
+        >
+          Générateur de mot de passe
+          <br class="hidden md:block" />
+          sécurisé.
+        </h1>
+        <p
+          class="text-base md:text-lg text-zinc-500 max-w-xl mx-auto tracking-tight"
+        >
+          Protégez vos comptes avec des combinaisons cryptographiques
+          impossibles à deviner. Aucune donnée ne quitte jamais votre appareil.
+        </p>
+      </div>
+
+      <!-- Generator Tool -->
+      <div
+        class="w-full max-w-2xl bg-zinc-900/40 border border-white/10 rounded-3xl p-6 md:p-8 backdrop-blur-xl shadow-2xl relative z-10"
+      >
+        <!-- Password Display -->
+        <div class="relative group mb-6">
+          <div
+            class="w-full bg-black/60 border border-white/10 rounded-2xl p-4 flex items-center justify-between gap-4 transition-colors duration-300 group-hover:border-white/20"
+          >
+            <input
+              type="text"
+              id="password-display"
+              readonly=""
+              class="bg-transparent border-none outline-none w-full text-white font-mono text-2xl md:text-3xl tracking-tight selection:bg-transparent cursor-default truncate"
+              value="••••••••••••••••"
+              aria-label="Mot de passe généré"
+            />
+
+            <button
+              id="copy-btn"
+              class="shrink-0 flex items-center justify-center h-12 w-12 bg-white text-black rounded-xl hover:bg-zinc-200 transition-colors focus:ring-2 focus:ring-white/50"
+              title="Copier le mot de passe"
+            >
+              <iconify-icon
+                icon="solar:copy-linear"
+                width="24"
+                stroke-width="1.5"
+              ></iconify-icon>
+            </button>
+          </div>
+          <!-- Copy Toast -->
+          <div
+            id="copy-toast"
+            class="absolute -top-10 right-2 bg-zinc-800 text-white text-xs font-medium px-3 py-1.5 rounded-md opacity-0 translate-y-2 transition-all duration-200 pointer-events-none border border-white/10 shadow-lg"
+            aria-live="polite"
+          >
+            Copié !
+          </div>
+        </div>
+
+        <!-- Strength Meter -->
+        <div class="mb-8">
+          <div class="flex justify-between items-center mb-2">
+            <span
+              class="text-xs font-medium uppercase tracking-tight text-zinc-500"
+            >
+              Robustesse
+            </span>
+            <span
+              id="strength-text"
+              class="text-xs font-medium tracking-tight text-emerald-400"
+            >
+              Excellent
+            </span>
+          </div>
+          <div class="flex gap-1.5 h-1.5 w-full">
+            <div
+              class="h-full flex-1 rounded-full transition-colors duration-300 bg-white/10"
+              id="strength-1"
+            ></div>
+            <div
+              class="h-full flex-1 rounded-full transition-colors duration-300 bg-white/10"
+              id="strength-2"
+            ></div>
+            <div
+              class="h-full flex-1 rounded-full transition-colors duration-300 bg-white/10"
+              id="strength-3"
+            ></div>
+            <div
+              class="h-full flex-1 rounded-full transition-colors duration-300 bg-white/10"
+              id="strength-4"
+            ></div>
+          </div>
+        </div>
+
+        <!-- Length Control -->
+        <div class="mb-8 p-5 rounded-2xl bg-white/[0.02] border border-white/5">
+          <div class="flex justify-between items-center mb-4">
+            <label
+              class="text-sm font-medium text-white tracking-tight"
+              for="length-slider"
+            >
+              Longueur du mot de passe
+            </label>
+            <div
+              class="px-3 py-1 rounded-md bg-black/50 border border-white/10 text-white font-mono text-sm tracking-tight"
+              id="length-val"
+            >
+              20
+            </div>
+          </div>
+          <input
+            type="range"
+            id="length-slider"
+            min="8"
+            max="64"
+            value="20"
+            class="w-full h-1.5 bg-zinc-800 rounded-full appearance-none outline-none accent-white"
+          />
+        </div>
+
+        <!-- Options Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
+          <!-- Option: Uppercase -->
+          <label
+            class="flex items-center justify-between cursor-pointer p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+          >
+            <span class="text-sm font-medium text-zinc-300 tracking-tight">
+              Majuscules
+            </span>
+            <div class="relative flex items-center">
+              <input
+                type="checkbox"
+                id="opt-upper"
+                class="sr-only peer"
+                checked=""
+              />
+              <div
+                class="w-9 h-5 bg-zinc-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-white peer-checked:after:bg-black"
+              ></div>
+            </div>
+          </label>
+
+          <!-- Option: Lowercase -->
+          <label
+            class="flex items-center justify-between cursor-pointer p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+          >
+            <span class="text-sm font-medium text-zinc-300 tracking-tight">
+              Minuscules
+            </span>
+            <div class="relative flex items-center">
+              <input
+                type="checkbox"
+                id="opt-lower"
+                class="sr-only peer"
+                checked=""
+              />
+              <div
+                class="w-9 h-5 bg-zinc-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-white peer-checked:after:bg-black"
+              ></div>
+            </div>
+          </label>
+
+          <!-- Option: Numbers -->
+          <label
+            class="flex items-center justify-between cursor-pointer p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+          >
+            <span class="text-sm font-medium text-zinc-300 tracking-tight">
+              Chiffres
+            </span>
+            <div class="relative flex items-center">
+              <input
+                type="checkbox"
+                id="opt-numbers"
+                class="sr-only peer"
+                checked=""
+              />
+              <div
+                class="w-9 h-5 bg-zinc-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-white peer-checked:after:bg-black"
+              ></div>
+            </div>
+          </label>
+
+          <!-- Option: Symbols -->
+          <label
+            class="flex items-center justify-between cursor-pointer p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+          >
+            <span class="text-sm font-medium text-zinc-300 tracking-tight">
+              Symboles
+            </span>
+            <div class="relative flex items-center">
+              <input
+                type="checkbox"
+                id="opt-symbols"
+                class="sr-only peer"
+                checked=""
+              />
+              <div
+                class="w-9 h-5 bg-zinc-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-white peer-checked:after:bg-black"
+              ></div>
+            </div>
+          </label>
+        </div>
+
+        <!-- Generate Action -->
+        <button
+          id="generate-btn"
+          class="w-full bg-white text-black font-medium text-sm py-4 rounded-xl hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2 group tracking-tight"
+        >
+          <iconify-icon
+            icon="solar:refresh-circle-linear"
+            width="20"
+            stroke-width="1.5"
+            class="transition-transform group-hover:rotate-180 duration-500"
+          ></iconify-icon>
+          Générer un nouveau mot de passe
+        </button>
+      </div>
+
+      <!-- Marketing Features (Below Fold logic) -->
+      <div
+        class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-24 w-full max-w-5xl"
+        id="about"
+      >
+        <div
+          class="flex flex-col items-center md:items-start text-center md:text-left gap-4 p-6 rounded-2xl border border-transparent hover:border-white/5 hover:bg-white/[0.01] transition-colors"
+        >
+          <div
+            class="h-12 w-12 rounded-full bg-white/5 flex items-center justify-center text-white"
+          >
+            <iconify-icon
+              icon="solar:shield-check-linear"
+              width="24"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </div>
+          <h3 class="text-lg font-medium text-white tracking-tight">
+            Zéro Connaissance
+          </h3>
+          <p class="text-sm text-zinc-500 leading-relaxed">
+            La génération s'effectue directement dans votre navigateur. Aucun
+            mot de passe n'est envoyé ou stocké sur nos serveurs.
+          </p>
+        </div>
+
+        <div
+          class="flex flex-col items-center md:items-start text-center md:text-left gap-4 p-6 rounded-2xl border border-transparent hover:border-white/5 hover:bg-white/[0.01] transition-colors"
+        >
+          <div
+            class="h-12 w-12 rounded-full bg-white/5 flex items-center justify-center text-white"
+          >
+            <iconify-icon
+              icon="solar:bolt-linear"
+              width="24"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </div>
+          <h3 class="text-lg font-medium text-white tracking-tight">
+            Ultra Rapide
+          </h3>
+          <p class="text-sm text-zinc-500 leading-relaxed">
+            Copiez votre nouveau mot de passe en un clic. Notre interface est
+            optimisée pour une fluidité d'utilisation maximale.
+          </p>
+        </div>
+
+        <div
+          class="flex flex-col items-center md:items-start text-center md:text-left gap-4 p-6 rounded-2xl border border-transparent hover:border-white/5 hover:bg-white/[0.01] transition-colors"
+        >
+          <div
+            class="h-12 w-12 rounded-full bg-white/5 flex items-center justify-center text-white"
+          >
+            <iconify-icon
+              icon="solar:key-minimalistic-linear"
+              width="24"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </div>
+          <h3 class="text-lg font-medium text-white tracking-tight">
+            Entropie Maximale
+          </h3>
+          <p class="text-sm text-zinc-500 leading-relaxed">
+            Utilisation des algorithmes cryptographiques natifs du navigateur
+            pour garantir un caractère aléatoire absolu.
+          </p>
+        </div>
+      </div>
+      <div
+        class="mt-24 w-full max-w-5xl text-left border-t border-white/5 pt-16 mx-auto flex flex-col md:flex-row gap-12"
+        id="security"
+      >
+        <div class="flex-1">
+          <h2 class="text-2xl font-semibold text-white tracking-tight mb-6">
+            Comment fonctionne notre générateur sécurisé ?
+          </h2>
+          <div class="space-y-4 text-sm text-zinc-400 leading-relaxed">
+            <p>
+              La sécurité d'un mot de passe repose sur son
+              <strong class="text-zinc-200 font-medium">entropie</strong>
+              . Contrairement aux générateurs basiques utilisant
+              <code class="text-zinc-300 bg-white/5 px-1 py-0.5 rounded">
+                Math.random()
+              </code>
+              , notre outil s'appuie sur l'API cryptographique native de votre
+              navigateur (
+              <code class="text-zinc-300 bg-white/5 px-1 py-0.5 rounded">
+                window.crypto.getRandomValues
+              </code>
+              ) et applique un algorithme de « rejection sampling » pour
+              garantir une distribution parfaitement uniforme et éviter tout
+              biais statistique.
+            </p>
+          </div>
+        </div>
+        <div class="flex-1">
+          <h2 class="text-2xl font-semibold text-white tracking-tight mb-6">
+            100% Local &amp; Privé
+          </h2>
+          <div class="space-y-4 text-sm text-zinc-400 leading-relaxed">
+            <p>
+              La génération s'effectue intégralement sur votre appareil. Aucun
+              mot de passe n'est envoyé sur le réseau, stocké dans des cookies,
+              ou transmis à des outils d'analyse.
+            </p>
+            <p>
+              Pour une sécurité optimale, nous recommandons une longueur
+              minimale de 20 caractères combinant lettres, chiffres et symboles
+              (offrant environ 130 bits d'entropie).
+            </p>
+          </div>
+        </div>
+      </div>
+      <div
+        class="mt-24 w-full max-w-5xl text-left border-t border-white/5 pt-16 mx-auto"
+      >
+        <div class="text-center mb-12">
+          <h2 class="text-3xl font-semibold text-white tracking-tight mb-4">
+            Pourquoi choisir notre générateur ?
+          </h2>
+          <p class="text-base text-zinc-500 max-w-2xl mx-auto tracking-tight">
+            Une solution pensée pour la sécurité, la simplicité et le respect de
+            votre vie privée.
+          </p>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div
+            class="flex flex-col items-center text-center gap-2 p-6 rounded-2xl bg-white/[0.02] border border-white/5"
+          >
+            <div class="text-3xl font-semibold text-white tracking-tight">
+              130+
+            </div>
+            <div class="text-sm text-zinc-500">bits d'entropie</div>
+          </div>
+          <div
+            class="flex flex-col items-center text-center gap-2 p-6 rounded-2xl bg-white/[0.02] border border-white/5"
+          >
+            <div class="text-3xl font-semibold text-white tracking-tight">
+              0
+            </div>
+            <div class="text-sm text-zinc-500">donnée envoyée</div>
+          </div>
+          <div
+            class="flex flex-col items-center text-center gap-2 p-6 rounded-2xl bg-white/[0.02] border border-white/5"
+          >
+            <div class="text-3xl font-semibold text-white tracking-tight">
+              64
+            </div>
+            <div class="text-sm text-zinc-500">caractères max</div>
+          </div>
+          <div
+            class="flex flex-col items-center text-center gap-2 p-6 rounded-2xl bg-white/[0.02] border border-white/5"
+          >
+            <div class="text-3xl font-semibold text-white tracking-tight">
+              100%
+            </div>
+            <div class="text-sm text-zinc-500">gratuit</div>
+          </div>
+        </div>
+      </div>
+      <div
+        class="mt-24 w-full max-w-3xl text-left border-t border-white/5 pt-16 mx-auto"
+        id="faq"
+      >
+        <div class="text-center mb-12">
+          <h2 class="text-3xl font-semibold text-white tracking-tight mb-4">
+            Questions fréquentes
+          </h2>
+          <p class="text-base text-zinc-500 max-w-2xl mx-auto tracking-tight">
+            Tout ce que vous devez savoir sur la génération de mots de passe.
+          </p>
+        </div>
+        <div class="space-y-4">
+          <details
+            class="group rounded-2xl bg-white/[0.02] border border-white/5 p-5"
+          >
+            <summary
+              class="flex items-center justify-between cursor-pointer text-white font-medium text-sm tracking-tight list-none"
+            >
+              Mes mots de passe sont-ils stockés ?
+              <iconify-icon
+                icon="solar:alt-arrow-down-linear"
+                width="20"
+                class="transition-transform group-open:rotate-180"
+              ></iconify-icon>
+            </summary>
+            <p class="text-sm text-zinc-500 leading-relaxed mt-3">
+              Non. La génération s'effectue intégralement dans votre navigateur.
+              Aucun mot de passe n'est jamais envoyé, enregistré ou transmis à
+              un serveur.
+            </p>
+          </details>
+          <details
+            class="group rounded-2xl bg-white/[0.02] border border-white/5 p-5"
+          >
+            <summary
+              class="flex items-center justify-between cursor-pointer text-white font-medium text-sm tracking-tight list-none"
+            >
+              Quelle longueur recommandez-vous ?
+              <iconify-icon
+                icon="solar:alt-arrow-down-linear"
+                width="20"
+                class="transition-transform group-open:rotate-180"
+              ></iconify-icon>
+            </summary>
+            <p class="text-sm text-zinc-500 leading-relaxed mt-3">
+              Nous recommandons une longueur minimale de 20 caractères combinant
+              majuscules, minuscules, chiffres et symboles, offrant environ 130
+              bits d'entropie.
+            </p>
+          </details>
+          <details
+            class="group rounded-2xl bg-white/[0.02] border border-white/5 p-5"
+          >
+            <summary
+              class="flex items-center justify-between cursor-pointer text-white font-medium text-sm tracking-tight list-none"
+            >
+              L'outil est-il vraiment gratuit ?
+              <iconify-icon
+                icon="solar:alt-arrow-down-linear"
+                width="20"
+                class="transition-transform group-open:rotate-180"
+              ></iconify-icon>
+            </summary>
+            <p class="text-sm text-zinc-500 leading-relaxed mt-3">
+              Oui, totalement. Aucun compte, aucun abonnement, aucune publicité.
+              Vous pouvez générer autant de mots de passe que vous le souhaitez.
+            </p>
+          </details>
+          <details
+            class="group rounded-2xl bg-white/[0.02] border border-white/5 p-5"
+          >
+            <summary
+              class="flex items-center justify-between cursor-pointer text-white font-medium text-sm tracking-tight list-none"
+            >
+              Le générateur est-il vraiment aléatoire ?
+              <iconify-icon
+                icon="solar:alt-arrow-down-linear"
+                width="20"
+                class="transition-transform group-open:rotate-180"
+              ></iconify-icon>
+            </summary>
+            <p class="text-sm text-zinc-500 leading-relaxed mt-3">
+              Oui. Nous utilisons l'API cryptographique native du navigateur
+              (window.crypto.getRandomValues) avec un algorithme de rejection
+              sampling pour garantir une distribution parfaitement uniforme.
+            </p>
+          </details>
+        </div>
+      </div>
+      <div
+        class="mt-24 w-full max-w-4xl mx-auto text-center border-t border-white/5 pt-16"
+      >
+        <div
+          class="bg-zinc-900/40 border border-white/10 rounded-3xl p-10 md:p-12 backdrop-blur-xl"
+        >
+          <h2
+            class="text-3xl md:text-4xl font-semibold text-white tracking-tight mb-4"
+          >
+            Sécurisez vos comptes dès maintenant
+          </h2>
+          <p
+            class="text-base text-zinc-500 max-w-xl mx-auto mb-8 tracking-tight"
+          >
+            Générez un mot de passe robuste en un clic, sans inscription et sans
+            compromis sur votre vie privée.
+          </p>
+          <a
+            href="#"
+            onclick="document.getElementById('generate-btn').scrollIntoView({behavior:'smooth',block:'center'}); return false;"
+            class="inline-flex items-center gap-2 bg-white text-black font-medium text-sm px-6 py-3 rounded-full hover:bg-zinc-200 transition-colors tracking-tight"
+          >
+            <iconify-icon
+              icon="solar:lock-keyhole-minimalistic-linear"
+              width="20"
+              stroke-width="1.5"
+            ></iconify-icon>
+            Générer mon mot de passe
+          </a>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="w-full border-t border-white/5 py-8 mt-auto">
+      <div
+        class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4"
+      >
+        <div class="text-sm tracking-tighter text-zinc-600 font-medium">
+          © 2023 SECURE. Tous droits réservés.
+        </div>
+        <div class="flex gap-6 text-xs text-zinc-500 font-medium">
+          <a href="/a-propos" class="hover:text-white transition-colors">
+            À propos
+          </a>
+          <a href="/confidentialite" class="hover:text-white transition-colors">
+            Confidentialité
+          </a>
+          <a
+            href="/mentions-legales"
+            class="hover:text-white transition-colors"
+          >
+            Mentions légales
+          </a>
+          <a href="/contact" class="hover:text-white transition-colors">
+            Contact
+          </a>
+        </div>
+      </div>
+    </footer>
+
+    <!-- Generator Logic -->
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+          const display = document.getElementById('password-display');
+          const lengthSlider = document.getElementById('length-slider');
+          const lengthVal = document.getElementById('length-val');
+          const btnGenerate = document.getElementById('generate-btn');
+          const btnCopy = document.getElementById('copy-btn');
+          const copyToast = document.getElementById('copy-toast');
+
+          const optUpper = document.getElementById('opt-upper');
+          const optLower = document.getElementById('opt-lower');
+          const optNumbers = document.getElementById('opt-numbers');
+          const optSymbols = document.getElementById('opt-symbols');
+
+          const s1 = document.getElementById('strength-1');
+          const s2 = document.getElementById('strength-2');
+          const s3 = document.getElementById('strength-3');
+          const s4 = document.getElementById('strength-4');
+          const sText = document.getElementById('strength-text');
+
+          const chars = {
+              upper: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+              lower: 'abcdefghijklmnopqrstuvwxyz',
+              numbers: '0123456789',
+              symbols: '!@#$%^&*()_+~|}{[]:;?><,./-='
+          };
+
+          function secureRandomInt(maxExclusive) {
+              if (maxExclusive <= 0 || maxExclusive > 256) throw new Error('Invalid range');
+              const limit = Math.floor(256 / maxExclusive) * maxExclusive;
+              const bytes = new Uint8Array(1);
+              do {
+                  window.crypto.getRandomValues(bytes);
+              } while (bytes[0] >= limit);
+              return bytes[0] % maxExclusive;
+          }
+
+          function generatePassword() {
+              let charset = '';
+              if (optUpper.checked) charset += chars.upper;
+              if (optLower.checked) charset += chars.lower;
+              if (optNumbers.checked) charset += chars.numbers;
+              if (optSymbols.checked) charset += chars.symbols;
+
+              if (charset === '') {
+                  optLower.checked = true;
+                  charset += chars.lower;
+              }
+
+              const length = parseInt(lengthSlider.value);
+              let password = '';
+
+              if (charset.length > 0) {
+                  for (let i = 0; i < length; i++) {
+                      password += charset[secureRandomInt(charset.length)];
+                  }
+              }
+
+              display.value = password;
+              updateStrength(length, charset);
+          }
+
+          function updateStrength(length, charset) {
+              const entropy = charset.length > 0 ? Math.floor(length * Math.log2(charset.length)) : 0;
+              let score = 0;
+
+              if (entropy >= 50) score += 1;
+              if (entropy >= 70) score += 1;
+              if (entropy >= 90) score += 1;
+              if (entropy >= 110) score += 1;
+
+              const bars = [s1, s2, s3, s4];
+              bars.forEach(bar => {
+                  bar.className = 'h-full flex-1 rounded-full transition-colors duration-300 bg-white/10';
+              });
+
+              let strengthLabel = '';
+              let strengthClass = '';
+
+              if (score <= 1) {
+                  s1.classList.replace('bg-white/10', 'bg-red-500');
+                  strengthLabel = 'Faible';
+                  strengthClass = 'text-xs font-medium tracking-tight text-red-500';
+              } else if (score === 2) {
+                  s1.classList.replace('bg-white/10', 'bg-yellow-500');
+                  s2.classList.replace('bg-white/10', 'bg-yellow-500');
+                  strengthLabel = 'Moyen';
+                  strengthClass = 'text-xs font-medium tracking-tight text-yellow-500';
+              } else if (score === 3) {
+                  s1.classList.replace('bg-white/10', 'bg-emerald-400');
+                  s2.classList.replace('bg-white/10', 'bg-emerald-400');
+                  s3.classList.replace('bg-white/10', 'bg-emerald-400');
+                  strengthLabel = 'Fort';
+                  strengthClass = 'text-xs font-medium tracking-tight text-emerald-400';
+              } else {
+                  bars.forEach(bar => bar.classList.replace('bg-white/10', 'bg-emerald-500'));
+                  strengthLabel = 'Excellent';
+                  strengthClass = 'text-xs font-medium tracking-tight text-emerald-500';
+              }
+
+              sText.textContent = `${entropy} bits - ${strengthLabel}`;
+              sText.className = strengthClass;
+          }
+
+          function copyToClipboard() {
+              if(!display.value) return;
+
+              navigator.clipboard.writeText(display.value).then(() => {
+                  copyToast.classList.remove('opacity-0', 'translate-y-2');
+                  copyToast.classList.add('opacity-100', 'translate-y-0');
+
+                  setTimeout(() => {
+                      copyToast.classList.remove('opacity-100', 'translate-y-0');
+                      copyToast.classList.add('opacity-0', 'translate-y-2');
+                  }, 2000);
+              });
+          }
+
+          lengthSlider.addEventListener('input', (e) => {
+              lengthVal.textContent = e.target.value;
+              generatePassword();
+          });
+
+          [optUpper, optLower, optNumbers, optSymbols].forEach(opt => {
+              opt.addEventListener('change', generatePassword);
+          });
+
+          btnGenerate.addEventListener('click', generatePassword);
+          btnCopy.addEventListener('click', copyToClipboard);
+
+          generatePassword();
+      });
+    </script>
+  </body>
+</html>

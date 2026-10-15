@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teacher Dashboard · teachly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+<script>document.addEventListener('click', event => {
+const anchor = event.target.closest?.('a[href]');
+const href = anchor?.getAttribute('href');
+if (event.defaultPrevented || !href?.startsWith('#')) return;
+event.preventDefault();
+if (href === '#') { window.scrollTo({top: 0, behavior: 'smooth'}); return; }
+try {
+const id = decodeURIComponent(href.slice(1));
+const target = document.getElementById(id) || document.getElementsByName(id)[0];
+target?.scrollIntoView({behavior: 'smooth', block: 'start'});
+} catch { /* Invalid fragments remain in the saved document. */ }
+});</script>
+<script>document.addEventListener('click', event => {
+if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+const anchor = event.target.closest?.('a[href]');
+if (!anchor || anchor.hasAttribute('download')) return;
+const target = anchor.getAttribute('target')?.toLowerCase();
+if (target && target !== '_self' && target !== '_top') return;
+try {
+const destination = new URL(anchor.href, document.baseURI);
+const base = new URL(document.baseURI);
+if (!['http:', 'https:'].includes(destination.protocol) || destination.origin === base.origin) return;
+event.preventDefault();
+window.open(destination.href, '_blank', 'noopener,noreferrer');
+} catch { /* Leave invalid links to the browser. */ }
+}, true);</script></head>
+<body class="bg-[#F7F8FC] text-[#25283D] antialiased" style="font-family: 'Inter', sans-serif;">
+  <!-- Your teacher dashboard is ready. -->
+  <div class="min-h-screen">
+    <div id="sidebarOverlay" class="fixed inset-0 z-30 hidden bg-slate-900/30 backdrop-blur-sm lg:hidden" onclick="toggleSidebar()"></div>
+
+    <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 flex w-60 -translate-x-full flex-col border-r border-[#EBECF3] bg-white transition-transform lg:translate-x-0">
+      <a href="#" class="flex h-24 items-center gap-2.5 px-7">
+        <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-[#7461D8] text-xl font-medium tracking-tight text-white">t</span>
+        <span class="text-2xl font-semibold tracking-tight text-[#302D49]">teachly<span class="text-[#7461D8]">.</span></span>
+      </a>
+
+      <div class="px-4">
+        <button onclick="showToast('You are in the Westwood Academy workspace.')" class="flex w-full items-center gap-3 rounded-xl border border-[#ECECF3] bg-[#FAFAFD] p-3 text-left">
+          <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#EEEAFB] text-[#7461D8]">
+            <iconify-icon icon="solar:buildings-2-linear" class="text-xl"></iconify-icon>
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-xs font-medium">Westwood Academy</span>
+            <span class="mt-1 block text-xs text-[#9293A5]">Teacher workspace</span>
+          </span>
+          <iconify-icon icon="solar:alt-arrow-down-linear" class="text-sm text-[#9293A5]"></iconify-icon>
+        </button>
+      </div>
+
+      <div class="mb-3 mt-8 px-7 text-xs font-medium uppercase tracking-widest text-[#A2A3B4]">Workspace</div>
+      <nav class="space-y-1.5 px-4">
+        <button data-nav="Dashboard" onclick="navigate(this)" class="flex w-full items-center gap-3 rounded-lg bg-[#EEEAFC] px-4 py-3 text-sm font-medium text-[#7660CF]">
+          <iconify-icon icon="solar:widget-2-linear" class="text-xl"></iconify-icon> Dashboard
+          <span class="ml-auto h-1.5 w-1.5 rounded-full bg-[#7660CF]"></span>
+        </button>
+        <button data-nav="My Classes" onclick="navigate(this)" class="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-[#797B90] hover:bg-[#F6F5FB]">
+          <iconify-icon icon="solar:book-2-linear" class="text-xl"></iconify-icon> My Classes
+        </button>
+        <button data-nav="Schedule" onclick="navigate(this)" class="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-[#797B90] hover:bg-[#F6F5FB]">
+          <iconify-icon icon="solar:calendar-linear" class="text-xl"></iconify-icon> Schedule
+        </button>
+        <button data-nav="Assignments" onclick="navigate(this)" class="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-[#797B90] hover:bg-[#F6F5FB]">
+          <iconify-icon icon="solar:document-text-linear" class="text-xl"></iconify-icon> Assignments
+          <span class="ml-auto rounded-md bg-[#F2F1F7] px-1.5 py-0.5 text-xs text-[#8A849F]">12</span>
+        </button>
+        <button data-nav="Students" onclick="navigate(this)" class="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-[#797B90] hover:bg-[#F6F5FB]">
+          <iconify-icon icon="solar:users-group-rounded-linear" class="text-xl"></iconify-icon> Students
+        </button>
+        <button data-nav="Messages" onclick="navigate(this)" class="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-[#797B90] hover:bg-[#F6F5FB]">
+          <iconify-icon icon="solar:chat-round-dots-linear" class="text-xl"></iconify-icon> Messages
+          <span class="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-[#FDEDE9] text-xs text-[#DC8A75]">3</span>
+        </button>
+      </nav>
+
+      <div class="mb-3 mt-8 px-7 text-xs font-medium uppercase tracking-widest text-[#A2A3B4]">Manage</div>
+      <nav class="space-y-1 px-4">
+        <button onclick="showToast('Your reports are up to date.')" class="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-[#797B90] hover:bg-[#F6F5FB]">
+          <iconify-icon icon="solar:chart-square-linear" class="text-xl"></iconify-icon> Reports
+        </button>
+        <button onclick="showToast('Notifications and account settings are enabled.')" class="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-[#797B90] hover:bg-[#F6F5FB]">
+          <iconify-icon icon="solar:settings-linear" class="text-xl"></iconify-icon> Settings
+        </button>
+      </nav>
+
+      <div class="mt-auto px-5 pb-5 pt-10">
+        <div class="rounded-xl bg-[#F5F2FD] p-4">
+          <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-[#8B75D8]">
+            <iconify-icon icon="solar:question-circle-linear" class="text-xl"></iconify-icon>
+          </span>
+          <p class="mt-3 text-sm font-medium">A little help?</p>
+          <p class="mt-1 text-xs leading-relaxed text-[#9490A6]">We're here to support your<br>teaching journey.</p>
+          <button onclick="showToast('Contact our team at support@teachly.school')" class="mt-3 flex items-center gap-2 text-xs font-medium text-[#7A63CB]">Visit help center <iconify-icon icon="solar:arrow-right-linear"></iconify-icon></button>
+        </div>
+        <button onclick="showToast('You are signed in as Sarah Johnson.')" class="mt-5 flex w-full items-center gap-3 border-t border-[#F0EFF5] pt-5 text-left">
+          <img src="https://i.pravatar.cc/100?img=47" alt="Sarah Johnson" class="h-9 w-9 rounded-full object-cover">
+          <span class="flex-1"><span class="block text-xs font-medium">Sarah Johnson</span><span class="mt-0.5 block text-xs text-[#9B9AAB]">Teacher</span></span>
+          <iconify-icon icon="solar:logout-2-linear" class="text-lg text-[#AAA7BA]"></iconify-icon>
+        </button>
+      </div>
+    </aside>
+
+    <div class="lg:ml-60">
+      <header class="flex h-20 items-center justify-between gap-4 border-b border-[#EBECF3] bg-white px-5 sm:px-8">
+        <div class="flex items-center gap-3">
+          <button onclick="toggleSidebar()" aria-label="Toggle navigation" class="flex items-center text-xl text-slate-500 lg:hidden"><iconify-icon icon="solar:hamburger-menu-linear"></iconify-icon></button>
+          <div class="flex items-center gap-2 text-xs text-[#9C9BAE]">
+            <span>Workspace</span><iconify-icon icon="solar:alt-arrow-right-linear"></iconify-icon><span class="text-[#575669]">Dashboard</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-4 sm:gap-6">
+          <label class="hidden items-center gap-2.5 text-[#A3A2B5] sm:flex">
+            <iconify-icon icon="solar:magnifer-linear" class="text-lg"></iconify-icon>
+            <input id="searchInput" type="search" placeholder="Search anything..." class="w-40 bg-transparent text-xs text-[#565568] outline-none placeholder:text-[#A3A2B5]" oninput="searchDashboard(this.value)">
+            <span class="rounded border border-[#ECECF3] px-1.5 py-0.5 text-xs">⌘ K</span>
+          </label>
+          <div class="relative">
+            <button onclick="toggleNotifications()" aria-label="Notifications" class="relative flex h-8 w-8 items-center justify-center text-xl text-[#77768D]">
+              <iconify-icon icon="solar:bell-linear"></iconify-icon>
+              <span class="absolute right-1.5 top-1 h-1.5 w-1.5 rounded-full border border-white bg-[#ED978A]"></span>
+            </button>
+            <div id="notifications" class="absolute right-0 top-12 z-20 hidden w-72 rounded-xl border border-[#ECECF3] bg-white p-4 shadow-lg shadow-slate-200/50">
+              <p class="text-sm font-medium">You're all caught up ✨</p>
+              <p class="mt-2 text-xs leading-relaxed text-[#858399]">12 assignments are ready to review, and your next class starts at 10:00 AM.</p>
+            </div>
+          </div>
+          <span class="h-7 w-px bg-[#EFEEF4]"></span>
+          <img src="https://i.pravatar.cc/100?img=47" alt="Your profile" class="h-9 w-9 rounded-full object-cover">
+        </div>
+      </header>
+
+      <main class="mx-auto max-w-[1600px] p-5 sm:p-8">
+        <div class="mb-7 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 class="text-2xl font-semibold tracking-tight">Dashboard</h1>
+            <p class="mt-1.5 text-xs text-[#9997AB]">A little overview of your teaching world.</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="hidden items-center gap-2 text-xs text-[#8B899F] md:flex"><iconify-icon icon="solar:calendar-linear" class="text-base"></iconify-icon> Monday, October 5, 2026</span>
+            <button onclick="openLessonModal()" class="flex items-center gap-2 rounded-lg bg-[#7964D4] px-4 py-2.5 text-xs font-medium text-white shadow-sm shadow-violet-200 transition hover:bg-[#6B56C6]">
+              <iconify-icon icon="solar:add-circle-linear" class="text-base"></iconify-icon> Create lesson
+            </button>
+          </div>
+        </div>
+
+        <section class="relative mb-6 overflow-hidden rounded-2xl border border-[#EAE5F6] bg-[#F0EBFC] px-6 py-7 sm:px-7">
+          <div class="relative z-10 max-w-lg">
+            <div class="mb-2 flex items-center gap-2 text-xs font-medium text-[#9580C6]"><span class="h-1.5 w-1.5 rounded-full bg-[#AA94DC]"></span> LET'S MAKE TODAY COUNT</div>
+            <h2 class="text-2xl font-semibold tracking-tight text-[#42365D]">Good morning, Sarah <span class="inline-block origin-bottom-right">☀️</span></h2>
+            <p class="mt-2 text-sm leading-relaxed text-[#8C7CA7]">You have <span class="font-medium text-[#6F579C]">3 classes</span> and <span class="font-medium text-[#6F579C]">12 assignments</span> to review today.<br class="hidden sm:block"> Ready to inspire some curious minds?</p>
+            <button onclick="document.getElementById('schedule').scrollIntoView({behavior:'smooth',block:'center'})" class="mt-4 inline-flex items-center gap-2 text-xs font-medium text-[#7960B8]">View today's schedule <iconify-icon icon="solar:arrow-right-linear" class="text-base"></iconify-icon></button>
+          </div>
+          <div aria-hidden="true" class="absolute -right-10 -top-16 h-72 w-72 rounded-full border-[35px] border-white/25 sm:right-8"></div>
+          <div aria-hidden="true" class="absolute right-16 top-9 hidden rotate-[-12deg] rounded-2xl border border-white/80 bg-white/65 p-6 shadow-lg shadow-purple-200/30 md:block">
+            <iconify-icon icon="solar:book-2-linear" class="text-6xl text-[#A18BD5]"></iconify-icon>
+          </div>
+          <div aria-hidden="true" class="absolute right-7 top-7 hidden rotate-[12deg] rounded-xl bg-[#E1D5F7] p-3 md:block"><iconify-icon icon="solar:star-linear" class="text-2xl text-[#A18AD4]"></iconify-icon></div>
+          <div aria-hidden="true" class="absolute bottom-5 right-36 hidden -rotate-12 rounded-xl bg-[#FAF6E9] p-3 md:block"><iconify-icon icon="solar:pen-2-linear" class="text-2xl text-[#C4A25B]"></iconify-icon></div>
+          <span aria-hidden="true" class="absolute bottom-12 right-10 hidden h-2 w-2 rounded-full bg-[#C3B0E7] md:block"></span>
+        </section>
+
+        <section class="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4 xl:gap-5">
+          <div class="rounded-xl border border-[#EAEAF2] bg-white p-4 sm:p-5">
+            <div class="mb-4 flex items-center justify-between"><span class="text-xs text-[#9693A8]">Total students</span><span class="flex h-9 w-9 items-center justify-center rounded-lg bg-[#F0EBFC] text-[#9B85D3]"><iconify-icon icon="solar:users-group-rounded-linear" class="text-xl"></iconify-icon></span></div>
+            <div class="flex items-end gap-3"><span class="text-3xl font-semibold tracking-tight">128</span><span class="mb-1 rounded-md bg-[#EFF8F3] px-1.5 py-1 text-xs text-[#79A98C]">↗ 8.5%</span></div>
+            <p class="mt-2 text-xs text-[#AFACBC]">vs. last month</p>
+          </div>
+          <div class="rounded-xl border border-[#EAEAF2] bg-white p-4 sm:p-5">
+            <div class="mb-4 flex items-center justify-between"><span class="text-xs text-[#9693A8]">Active classes</span><span class="flex h-9 w-9 items-center justify-center rounded-lg bg-[#EBF2FE] text-[#86A5D8]"><iconify-icon icon="solar:book-bookmark-linear" class="text-xl"></iconify-icon></span></div>
+            <div class="flex items-end gap-3"><span class="text-3xl font-semibold tracking-tight">6</span><span class="mb-1 rounded-md bg-[#F5F4F8] px-1.5 py-1 text-xs text-[#9B96AA]">This semester</span></div>
+            <p class="mt-2 text-xs text-[#AFACBC]">Across 3 grade levels</p>
+          </div>
+          <div class="rounded-xl border border-[#EAEAF2] bg-white p-4 sm:p-5">
+            <div class="mb-4 flex items-center justify-between"><span class="text-xs text-[#9693A8]">To review</span><span class="flex h-9 w-9 items-center justify-center rounded-lg bg-[#FEF3E8] text-[#D5AE7F]"><iconify-icon icon="solar:document-text-linear" class="text-xl"></iconify-icon></span></div>
+            <div class="flex items-end gap-3"><span class="text-3xl font-semibold tracking-tight">12</span><span class="mb-1 rounded-md bg-[#FFF5EB] px-1.5 py-1 text-xs text-[#CBA26F]">4 due today</span></div>
+            <p class="mt-2 text-xs text-[#AFACBC]">Assignments awaiting feedback</p>
+          </div>
+          <div class="rounded-xl border border-[#EAEAF2] bg-white p-4 sm:p-5">
+            <div class="mb-4 flex items-center justify-between"><span class="text-xs text-[#9693A8]">Avg. attendance</span><span class="flex h-9 w-9 items-center justify-center rounded-lg bg-[#ECF6F1] text-[#83B09C]"><iconify-icon icon="solar:check-circle-linear" class="text-xl"></iconify-icon></span></div>
+            <div class="flex items-end gap-3"><span class="text-3xl font-semibold tracking-tight">96<span class="text-xl">%</span></span><span class="mb-1 rounded-md bg-[#EFF8F3] px-1.5 py-1 text-xs text-[#79A98C]">↗ 2.4%</span></div>
+            <p class="mt-2 text-xs text-[#AFACBC]">Your students are showing up!</p>
+          </div>
+        </section>
+
+        <div class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
+          <div class="min-w-0 space-y-6">
+            <section id="schedule" class="overflow-hidden rounded-xl border border-[#EAEAF2] bg-white">
+              <div class="flex flex-wrap items-center justify-between gap-3 p-5">
+                <div><h2 class="text-sm font-semibold">Weekly schedule</h2><p id="weekLabel" class="mt-1 text-xs text-[#A3A0B2]">October 5 – 9, 2026</p></div>
+                <div class="flex items-center gap-2">
+                  <button onclick="changeWeek(-1)" aria-label="Previous week" class="flex h-7 w-7 items-center justify-center rounded-md border border-[#ECEAF3] text-[#8D869E] hover:bg-[#F7F5FC]"><iconify-icon icon="solar:alt-arrow-left-linear"></iconify-icon></button>
+                  <button onclick="changeWeek(0)" class="rounded-md border border-[#ECEAF3] px-3 py-1.5 text-xs text-[#8D869E] hover:bg-[#F7F5FC]">Today</button>
+                  <button onclick="changeWeek(1)" aria-label="Next week" class="flex h-7 w-7 items-center justify-center rounded-md border border-[#ECEAF3] text-[#8D869E] hover:bg-[#F7F5FC]"><iconify-icon icon="solar:alt-arrow-right-linear"></iconify-icon></button>
+                </div>
+              </div>
+              <div class="overflow-x-auto">
+                <div class="min-w-[620px] px-5 pb-5">
+                  <div class="grid grid-cols-[52px_repeat(5,minmax(0,1fr))] border-b border-[#F0EEF5] pb-3 text-center">
+                    <div></div>
+                    <div class="text-xs text-[#A19CAE]">MON <span data-day class="mx-auto mt-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-[#7B66D3] font-medium text-white">5</span></div>
+                    <div class="text-xs text-[#A19CAE]">TUE <span data-day class="mx-auto mt-1.5 flex h-7 w-7 items-center justify-center text-[#514B66]">6</span></div>
+                    <div class="text-xs text-[#A19CAE]">WED <span data-day class="mx-auto mt-1.5 flex h-7 w-7 items-center justify-center text-[#514B66]">7</span></div>
+                    <div class="text-xs text-[#A19CAE]">THU <span data-day class="mx-auto mt-1.5 flex h-7 w-7 items-center justify-center text-[#514B66]">8</span></div>
+                    <div class="text-xs text-[#A19CAE]">FRI <span data-day class="mx-auto mt-1.5 flex h-7 w-7 items-center justify-center text-[#514B66]">9</span></div>
+                  </div>
+                  <div class="relative mt-3 grid grid-cols-[52px_repeat(5,minmax(0,1fr))] gap-x-2">
+                    <div class="flex h-64 flex-col justify-between py-1 text-xs text-[#B0AABA]"><span>09:00</span><span>10:00</span><span>11:00</span><span>12:00</span></div>
+                    <div class="h-64 space-y-3 border-r border-dashed border-[#F1EEF5] pr-1">
+                      <button onclick="lessonDetails('Mathematics','Grade 8 · Room 204','09:00 – 09:45')" class="w-full rounded-lg border-l-2 border-[#A58CDE] bg-[#F0EBFB] p-2.5 text-left">
+                        <span class="block text-xs font-medium text-[#8B71BE]">Mathematics</span><span class="mt-1 block text-xs text-[#A393BF]">Grade 8 · A</span><span class="mt-2 block text-xs text-[#A393BF]">09:00 – 09:45</span>
+                      </button>
+                      <button onclick="lessonDetails('Science','Grade 7 · Lab 02','10:00 – 10:45')" class="w-full rounded-lg border-l-2 border-[#8EAFDB] bg-[#EDF3FC] p-2.5 text-left">
+                        <span class="block text-xs font-medium text-[#7796C4]">Science</span><span class="mt-1 block text-xs text-[#93A6C5]">Grade 7 · B</span><span class="mt-2 block text-xs text-[#93A6C5]">10:00 – 10:45</span>
+                      </button>
+                      <button onclick="lessonDetails('Mathematics','Grade 9 · Room 204','11:00 – 11:45')" class="w-full rounded-lg border-l-2 border-[#A58CDE] bg-[#F0EBFB] p-2.5 text-left"><span class="block text-xs font-medium text-[#8B71BE]">Mathematics</span><span class="mt-1 block text-xs text-[#A393BF]">Grade 9 · A</span></button>
+                    </div>
+                    <div class="h-64 border-r border-dashed border-[#F1EEF5] pr-1 pt-12">
+                      <button onclick="lessonDetails('English','Grade 8 · Room 108','09:30 – 10:15')" class="w-full rounded-lg border-l-2 border-[#D8B580] bg-[#FBF3E8] p-2.5 text-left"><span class="block text-xs font-medium text-[#B79667]">English</span><span class="mt-1 block text-xs text-[#C3AE8C]">Grade 8 · A</span><span class="mt-2 block text-xs text-[#C3AE8C]">09:30 – 10:15</span></button>
+                      <button onclick="lessonDetails('Science','Grade 7 · Lab 02','11:00 – 11:45')" class="mt-10 w-full rounded-lg border-l-2 border-[#8EAFDB] bg-[#EDF3FC] p-2.5 text-left"><span class="block text-xs font-medium text-[#7796C4]">Science</span><span class="mt-1 block text-xs text-[#93A6C5]">Grade 7 · A</span><span class="mt-2 block text-xs text-[#93A6C5]">11:00 – 11:45</span></button>
+                    </div>
+                    <div class="h-64 space-y-3 border-r border-dashed border-[#F1EEF5] pr-1">
+                      <button onclick="lessonDetails('Mathematics','Grade 8 · Room 204','09:00 – 09:45')" class="w-full rounded-lg border-l-2 border-[#A58CDE] bg-[#F0EBFB] p-2.5 text-left"><span class="block text-xs font-medium text-[#8B71BE]">Mathematics</span><span class="mt-1 block text-xs text-[#A393BF]">Grade 8 · A</span><span class="mt-2 block text-xs text-[#A393BF]">09:00 – 09:45</span></button>
+                      <button onclick="lessonDetails('English','Grade 9 · Room 108','10:00 – 10:45')" class="w-full rounded-lg border-l-2 border-[#D8B580] bg-[#FBF3E8] p-2.5 text-left"><span class="block text-xs font-medium text-[#B79667]">English</span><span class="mt-1 block text-xs text-[#C3AE8C]">Grade 9 · B</span><span class="mt-2 block text-xs text-[#C3AE8C]">10:00 – 10:45</span></button>
+                    </div>
+                    <div class="h-64 border-r border-dashed border-[#F1EEF5] pr-1 pt-12">
+                      <button onclick="lessonDetails('Science','Grade 7 · Lab 02','09:30 – 10:15')" class="w-full rounded-lg border-l-2 border-[#8EAFDB] bg-[#EDF3FC] p-2.5 text-left"><span class="block text-xs font-medium text-[#7796C4]">Science</span><span class="mt-1 block text-xs text-[#93A6C5]">Grade 7 · B</span><span class="mt-2 block text-xs text-[#93A6C5]">09:30 – 10:15</span></button>
+                      <button onclick="lessonDetails('Mathematics','Grade 9 · Room 204','11:00 – 11:45')" class="mt-10 w-full rounded-lg border-l-2 border-[#A58CDE] bg-[#F0EBFB] p-2.5 text-left"><span class="block text-xs font-medium text-[#8B71BE]">Mathematics</span><span class="mt-1 block text-xs text-[#A393BF]">Grade 9 · A</span><span class="mt-2 block text-xs text-[#A393BF]">11:00 – 11:45</span></button>
+                    </div>
+                    <div class="h-64">
+                      <button onclick="lessonDetails('English','Grade 8 · Room 108','09:00 – 09:45')" class="w-full rounded-lg border-l-2 border-[#D8B580] bg-[#FBF3E8] p-2.5 text-left"><span class="block text-xs font-medium text-[#B79667]">English</span><span class="mt-1 block text-xs text-[#C3AE8C]">Grade 8 · A</span><span class="mt-2 block text-xs text-[#C3AE8C]">09:00 – 09:45</span></button>
+                      <div class="mt-10 rounded-lg border border-dashed border-[#E8E3F1] px-2 py-4 text-center"><iconify-icon icon="solar:cup-hot-linear" class="text-lg text-[#B9B0C7]"></iconify-icon><p class="mt-1 text-xs text-[#B4AABE]">Planning time</p></div>
+                    </div>
+                  </div>
+                  <div class="mt-4 flex gap-5 border-t border-[#F2EFF6] pt-4 text-xs text-[#A39AAD]">
+                    <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-[#BBA6E5]"></span>Mathematics</span><span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-[#A4BDE2]"></span>Science</span><span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-[#E1C59D]"></span>English</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section id="classes">
+              <div class="mb-4 flex items-center justify-between"><h2 class="text-sm font-semibold">My classes</h2><button onclick="showToast('Showing all of your active classes.')" class="flex items-center gap-1.5 text-xs text-[#8D78C8]">View all classes <iconify-icon icon="solar:arrow-right-linear"></iconify-icon></button></div>
+              <div class="grid gap-4 md:grid-cols-3">
+                <button data-search="mathematics grade 8" onclick="lessonDetails('Mathematics','Grade 8 · Section A','24 students · 92% average score')" class="rounded-xl border border-[#EAEAF2] bg-white p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-purple-100/50">
+                  <div class="mb-4 flex items-center justify-between"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F0EBFB] text-[#9F88CE]"><iconify-icon icon="solar:calculator-linear" class="text-xl"></iconify-icon></span><iconify-icon icon="solar:menu-dots-linear" class="text-xl text-[#B7B1C3]"></iconify-icon></div>
+                  <h3 class="text-sm font-medium">Mathematics</h3><p class="mt-1 text-xs text-[#A8A1B4]">Grade 8 · Section A</p>
+                  <div class="mt-4 flex items-center gap-1.5 text-xs text-[#9C94AA]"><iconify-icon icon="solar:users-group-rounded-linear" class="text-base"></iconify-icon>24 students</div>
+                  <div class="mt-4 border-t border-[#F2EFF6] pt-3"><div class="mb-2 flex justify-between text-xs"><span class="text-[#A69EAF]">Class progress</span><span class="text-[#9E87CE]">72%</span></div><div class="h-1 rounded-full bg-[#F1ECF9]"><div class="h-1 w-[72%] rounded-full bg-[#B49DDE]"></div></div></div>
+                </button>
+                <button data-search="science grade 7" onclick="lessonDetails('Science','Grade 7 · Section B','22 students · 88% average score')" class="rounded-xl border border-[#EAEAF2] bg-white p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-blue-100/50">
+                  <div class="mb-4 flex items-center justify-between"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-[#ECF3FC] text-[#8FAAD0]"><iconify-icon icon="solar:test-tube-linear" class="text-xl"></iconify-icon></span><iconify-icon icon="solar:menu-dots-linear" class="text-xl text-[#B7B1C3]"></iconify-icon></div>
+                  <h3 class="text-sm font-medium">Science</h3><p class="mt-1 text-xs text-[#A8A1B4]">Grade 7 · Section B</p>
+                  <div class="mt-4 flex items-center gap-1.5 text-xs text-[#9C94AA]"><iconify-icon icon="solar:users-group-rounded-linear" class="text-base"></iconify-icon>22 students</div>
+                  <div class="mt-4 border-t border-[#F2EFF6] pt-3"><div class="mb-2 flex justify-between text-xs"><span class="text-[#A69EAF]">Class progress</span><span class="text-[#8AA5CA]">65%</span></div><div class="h-1 rounded-full bg-[#EBF2FB]"><div class="h-1 w-[65%] rounded-full bg-[#A1B9DC]"></div></div></div>
+                </button>
+                <button data-search="english grade 9" onclick="lessonDetails('English','Grade 9 · Section B','26 students · 90% average score')" class="rounded-xl border border-[#EAEAF2] bg-white p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-amber-100/50">
+                  <div class="mb-4 flex items-center justify-between"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FCF3E8] text-[#CCAA7F]"><iconify-icon icon="solar:book-linear" class="text-xl"></iconify-icon></span><iconify-icon icon="solar:menu-dots-linear" class="text-xl text-[#B7B1C3]"></iconify-icon></div>
+                  <h3 class="text-sm font-medium">English</h3><p class="mt-1 text-xs text-[#A8A1B4]">Grade 9 · Section B</p>
+                  <div class="mt-4 flex items-center gap-1.5 text-xs text-[#9C94AA]"><iconify-icon icon="solar:users-group-rounded-linear" class="text-base"></iconify-icon>26 students</div>
+                  <div class="mt-4 border-t border-[#F2EFF6] pt-3"><div class="mb-2 flex justify-between text-xs"><span class="text-[#A69EAF]">Class progress</span><span class="text-[#C3A177]">81%</span></div><div class="h-1 rounded-full bg-[#FAF1E6]"><div class="h-1 w-[81%] rounded-full bg-[#D7B68C]"></div></div></div>
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <div class="space-y-6">
+            <section class="rounded-xl border border-[#EAEAF2] bg-white p-5">
+              <div class="flex items-center justify-between"><h2 class="text-sm font-semibold">Today's agenda</h2><span class="rounded-md bg-[#F4F1FB] px-2 py-1 text-xs text-[#A08CBF]">3 classes</span></div>
+              <p class="mt-1.5 text-xs text-[#A8A1B4]">Monday, October 5</p>
+              <div id="agendaList" class="mt-6">
+                <div class="relative ml-1 border-l border-[#EEE9F6] pb-7 pl-5">
+                  <span class="absolute -left-1 top-1 h-2 w-2 rounded-full bg-[#C1ACE5] ring-4 ring-white"></span>
+                  <div class="flex items-center justify-between"><span class="text-xs text-[#A89CB7]">09:00 – 09:45</span><span class="text-xs text-[#AAA4B6]">Completed</span></div>
+                  <h3 class="mt-2 text-sm font-medium">Mathematics</h3><p class="mt-1 text-xs text-[#A69CAD]">Grade 8 · Room 204</p>
+                </div>
+                <div class="relative ml-1 border-l border-[#EEE9F6] pb-7 pl-5">
+                  <span class="absolute -left-1 top-1 h-2 w-2 rounded-full bg-[#97B3DD] ring-4 ring-white"></span>
+                  <div class="flex items-center justify-between"><span class="text-xs text-[#A89CB7]">10:00 – 10:45</span><span class="rounded bg-[#EDF3FC] px-1.5 py-0.5 text-xs text-[#8BA6CE]">Up next</span></div>
+                  <h3 class="mt-2 text-sm font-medium">Science</h3><p class="mt-1 text-xs text-[#A69CAD]">Grade 7 · Lab 02</p>
+                  <button onclick="lessonDetails('Science','Grade 7 · Lab 02','10:00 – 10:45 · Introduction to ecosystems')" class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-[#E7E0F4] bg-[#F8F5FD] py-2 text-xs font-medium text-[#9B82C5]"><iconify-icon icon="solar:play-circle-linear" class="text-base"></iconify-icon>Open lesson</button>
+                </div>
+                <div class="relative ml-1 pl-5">
+                  <span class="absolute -left-1 top-1 h-2 w-2 rounded-full bg-[#C1ACE5] ring-4 ring-white"></span>
+                  <span class="text-xs text-[#A89CB7]">11:00 – 11:45</span>
+                  <h3 class="mt-2 text-sm font-medium">Mathematics</h3><p class="mt-1 text-xs text-[#A69CAD]">Grade 9 · Room 204</p>
+                </div>
+              </div>
+              <button onclick="document.getElementById('schedule').scrollIntoView({behavior:'smooth',block:'center'})" class="mt-6 flex w-full items-center justify-center gap-2 border-t border-[#F0EDF5] pt-4 text-xs text-[#9C87C8]">View full schedule <iconify-icon icon="solar:arrow-right-linear"></iconify-icon></button>
+            </section>
+
+            <section id="assignments" class="rounded-xl border border-[#EAEAF2] bg-white p-5">
+              <div class="flex items-center justify-between"><h2 class="text-sm font-semibold">Needs your attention</h2><span class="h-1.5 w-1.5 rounded-full bg-[#DBB18C]"></span></div>
+              <div class="mt-5 space-y-5">
+                <button onclick="reviewAssignment(this,'Algebra worksheet')" class="flex w-full items-start gap-3 text-left">
+                  <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#F2EDFB] text-[#AF97D7]"><iconify-icon icon="solar:document-text-linear" class="text-lg"></iconify-icon></span>
+                  <span class="flex-1"><span class="block text-xs font-medium">Algebra worksheet</span><span class="mt-1 block text-xs text-[#AAA1B6]">Grade 8 · 8 submissions</span><span class="mt-2 block text-xs text-[#C6A27E]">Due today</span></span>
+                  <iconify-icon icon="solar:alt-arrow-right-linear" class="mt-1 text-sm text-[#B5ADBF]"></iconify-icon>
+                </button>
+                <button onclick="reviewAssignment(this,'Ecosystem project')" class="flex w-full items-start gap-3 text-left">
+                  <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#EEF4FC] text-[#97AED2]"><iconify-icon icon="solar:document-text-linear" class="text-lg"></iconify-icon></span>
+                  <span class="flex-1"><span class="block text-xs font-medium">Ecosystem project</span><span class="mt-1 block text-xs text-[#AAA1B6]">Grade 7 · 4 submissions</span><span class="mt-2 block text-xs text-[#ACA2B6]">Due tomorrow</span></span>
+                  <iconify-icon icon="solar:alt-arrow-right-linear" class="mt-1 text-sm text-[#B5ADBF]"></iconify-icon>
+                </button>
+              </div>
+              <button onclick="document.getElementById('assignments').scrollIntoView({behavior:'smooth'}); showToast('Select an assignment to review its submissions.')" class="mt-5 flex w-full items-center justify-center gap-2 border-t border-[#F0EDF5] pt-4 text-xs text-[#9C87C8]">View all assignments <iconify-icon icon="solar:arrow-right-linear"></iconify-icon></button>
+            </section>
+
+            <div class="flex gap-3 rounded-xl border border-[#E7EDE8] bg-[#F0F5F1] p-4">
+              <iconify-icon icon="solar:leaf-linear" class="mt-0.5 text-2xl text-[#98B59E]"></iconify-icon>
+              <div><p class="text-xs font-medium text-[#829886]">Small moments, big impact.</p><p class="mt-1.5 text-xs leading-relaxed text-[#9AA89D]">Every lesson is a chance to make a difference. You've got this.</p></div>
+            </div>
+          </div>
+        </div>
+
+        <footer class="mt-8 flex flex-wrap items-center justify-between gap-2 text-xs text-[#BAB5C5]"><span>© 2026 teachly. Made for inspiring teachers.</span><span class="flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-[#A4BCAA]"></span>All systems operational</span></footer>
+      </main>
+    </div>
+  </div>
+
+  <div id="lessonModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/30 p-5 backdrop-blur-sm" onclick="if(event.target===this)closeModal()">
+    <div class="w-full max-w-md rounded-2xl border border-white bg-white p-6 shadow-xl">
+      <div class="flex items-center justify-between"><h2 id="modalTitle" class="text-xl font-semibold tracking-tight">Create a lesson</h2><button onclick="closeModal()" aria-label="Close dialog" class="flex h-8 w-8 items-center justify-center rounded-lg text-[#9B91AC] hover:bg-[#F5F1FC]"><iconify-icon icon="solar:close-circle-linear" class="text-xl"></iconify-icon></button></div>
+      <p class="mt-2 text-xs text-[#A096AF]">Plan something wonderful for your students.</p>
+      <form id="lessonForm" onsubmit="createLesson(event)" class="mt-6 space-y-4">
+        <label class="block text-xs font-medium text-[#746980]">Lesson title<input id="lessonTitle" required placeholder="e.g. Exploring fractions" class="mt-2 w-full rounded-lg border border-[#E8E1F0] bg-[#FCFBFE] px-3 py-2.5 text-sm font-normal outline-none focus:border-[#AC97D8]"></label>
+        <label class="block text-xs font-medium text-[#746980]">Class & room<input id="lessonClass" required placeholder="e.g. Grade 8 · Room 204" class="mt-2 w-full rounded-lg border border-[#E8E1F0] bg-[#FCFBFE] px-3 py-2.5 text-sm font-normal outline-none focus:border-[#AC97D8]"></label>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block text-xs font-medium text-[#746980]">Date<input id="lessonDate" type="date" value="2026-10-05" required class="mt-2 w-full rounded-lg border border-[#E8E1F0] bg-[#FCFBFE] px-3 py-2.5 text-xs font-normal outline-none focus:border-[#AC97D8]"></label>
+          <label class="block text-xs font-medium text-[#746980]">Start time<input id="lessonTime" type="time" value="13:00" required class="mt-2 w-full rounded-lg border border-[#E8E1F0] bg-[#FCFBFE] px-3 py-2.5 text-xs font-normal outline-none focus:border-[#AC97D8]"></label>
+        </div>
+        <button type="submit" class="w-full rounded-lg bg-[#7964D4] py-3 text-xs font-medium text-white hover:bg-[#6B56C6]">Create lesson</button>
+      </form>
+      <div id="lessonDetails" class="mt-6 hidden"></div>
+    </div>
+  </div>
+
+  <div id="toast" role="status" class="fixed bottom-6 left-1/2 z-[60] hidden w-max max-w-[90%] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-[#E8E1F0] bg-white px-5 py-3 text-xs text-[#7D6C94] shadow-lg shadow-purple-100/70">
+    <iconify-icon icon="solar:check-circle-linear" class="shrink-0 text-lg text-[#93AF9B]"></iconify-icon><span id="toastText"></span>
+  </div>
+
+  <script>
+    let weekOffset = 0;
+    let toastTimer;
+    const $ = id => document.getElementById(id);
+
+    function toggleSidebar() {
+      $('sidebar').classList.toggle('-translate-x-full');
+      $('sidebarOverlay').classList.toggle('hidden');
+    }
+
+    function showToast(message) {
+      clearTimeout(toastTimer);
+      $('toastText').textContent = message;
+      $('toast').classList.remove('hidden');
+      $('toast').classList.add('flex');
+      toastTimer = setTimeout(() => {
+        $('toast').classList.add('hidden');
+        $('toast').classList.remove('flex');
+      }, 4000);
+    }
+
+    function navigate(button) {
+      const target = button.dataset.nav;
+      const sections = { 'Dashboard': null, 'My Classes': 'classes', 'Schedule': 'schedule', 'Assignments': 'assignments' };
+      if (Object.prototype.hasOwnProperty.call(sections, target)) {
+        if (sections[target]) $(sections[target]).scrollIntoView({ behavior: 'smooth', block: 'center' });
+        else window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        showToast(target === 'Messages' ? '3 unread messages: your next parent meeting is on Friday.' : '128 students are enrolled across your 6 classes.');
+      }
+      if (window.innerWidth < 1024) toggleSidebar();
+    }
+
+    function toggleNotifications() {
+      $('notifications').classList.toggle('hidden');
+    }
+
+    function searchDashboard(query) {
+      document.querySelectorAll('[data-search]').forEach(card => {
+        card.classList.toggle('hidden', !card.dataset.search.includes(query.toLowerCase().trim()));
+      });
+      if (query.trim()) $('classes').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function changeWeek(direction) {
+      weekOffset = direction === 0 ? 0 : weekOffset + direction;
+      const monday = new Date(2026, 9, 5 + weekOffset * 7);
+      const friday = new Date(2026, 9, 9 + weekOffset * 7);
+      const format = { month: 'long', day: 'numeric' };
+      $('weekLabel').textContent = `${monday.toLocaleDateString('en-US', format)} – ${friday.toLocaleDateString('en-US', format)}, ${friday.getFullYear()}`;
+      document.querySelectorAll('[data-day]').forEach((day, i) => {
+        const date = new Date(2026, 9, 5 + weekOffset * 7 + i);
+        day.textContent = date.getDate();
+        if (i === 0) {
+          day.classList.toggle('bg-[#7B66D3]', weekOffset === 0);
+          day.classList.toggle('text-white', weekOffset === 0);
+          day.classList.toggle('text-[#514B66]', weekOffset !== 0);
+        }
+      });
+    }
+
+    function openLessonModal() {
+      $('modalTitle').textContent = 'Create a lesson';
+      $('lessonForm').classList.remove('hidden');
+      $('lessonDetails').classList.add('hidden');
+      $('lessonModal').classList.remove('hidden');
+      $('lessonModal').classList.add('flex');
+      document.body.style.overflow = 'hidden';
+      setTimeout(() => $('lessonTitle').focus(), 50);
+    }
+
+    function closeModal() {
+      $('lessonModal').classList.add('hidden');
+      $('lessonModal').classList.remove('flex');
+      document.body.style.overflow = '';
+    }
+
+    function lessonDetails(title, room, time) {
+      $('modalTitle').textContent = title;
+      $('lessonForm').classList.add('hidden');
+      const details = $('lessonDetails');
+      details.replaceChildren();
+      const roomText = document.createElement('p');
+      roomText.className = 'text-sm text-[#8D7DA4]';
+      roomText.textContent = room;
+      const timeText = document.createElement('p');
+      timeText.className = 'mt-3 text-xs text-[#A69AB5]';
+      timeText.textContent = time;
+      const note = document.createElement('div');
+      note.className = 'mt-5 rounded-xl bg-[#F5F1FC] p-4 text-xs leading-relaxed text-[#9684AF]';
+      note.textContent = 'Lesson materials are ready. Remember to take attendance and share your learning objectives with the class.';
+      const button = document.createElement('button');
+      button.className = 'mt-5 w-full rounded-lg bg-[#7964D4] py-3 text-xs font-medium text-white';
+      button.textContent = 'Mark lesson as ready';
+      button.onclick = () => { closeModal(); showToast(`${title} is ready for your students.`); };
+      details.append(roomText, timeText, note, button);
+      details.classList.remove('hidden');
+      $('lessonModal').classList.remove('hidden');
+      $('lessonModal').classList.add('flex');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function createLesson(event) {
+      event.preventDefault();
+      const title = $('lessonTitle').value.trim();
+      const room = $('lessonClass').value.trim();
+      const time = $('lessonTime').value;
+      const date = $('lessonDate').value;
+      if (!title || !room) return;
+      const item = document.createElement('div');
+      item.className = 'relative ml-1 mt-6 border-t border-[#EEE9F6] pl-5 pt-4';
+      const heading = document.createElement('h3');
+      heading.className = 'mt-2 text-sm font-medium';
+      heading.textContent = title;
+      const metadata = document.createElement('p');
+      metadata.className = 'mt-1 text-xs text-[#A69CAD]';
+      metadata.textContent = room;
+      const schedule = document.createElement('p');
+      schedule.className = 'text-xs text-[#A89CB7]';
+      schedule.textContent = `${new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${time}`;
+      item.append(schedule, heading, metadata);
+      $('agendaList').append(item);
+      closeModal();
+      $('lessonForm').reset();
+      showToast(`“${title}” has been added to your agenda.`);
+    }
+
+    function reviewAssignment(button, title) {
+      lessonDetails(title, 'Assignment review', 'Submitted work is ready for your feedback.');
+      const action = $('lessonDetails').querySelector('button');
+      action.textContent = 'Mark submissions reviewed';
+      action.onclick = () => {
+        button.style.opacity = '0.5';
+        button.disabled = true;
+        closeModal();
+        showToast(`${title}: submissions marked as reviewed.`);
+      };
+    }
+
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        closeModal();
+        $('notifications').classList.add('hidden');
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+        event.preventDefault();
+        $('searchInput').focus();
+      }
+    });
+  </script>
+  <!-- Ready for your next inspiring lesson. -->
+</body>
+</html>

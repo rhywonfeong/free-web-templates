@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Interactive 3D Room</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js"></script>
+<script type="importmap">
+{
+"imports": {
+"three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+}
+}
+</script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body
+    class="m-0 h-screen overflow-hidden bg-slate-950 font-sans text-white antialiased"
+  >
+    <main id="game" class="relative h-full w-full select-none overflow-hidden">
+      <div
+        id="scene"
+        class="absolute inset-0"
+        style="background-color: rgb(17, 24, 39);"
+      ></div>
+
+      <div
+        class="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-4 p-4 sm:p-6"
+      >
+        <div
+          class="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 shadow-2xl shadow-black/20 backdrop-blur-xl"
+        >
+          <div class="flex items-center gap-2">
+            <span class="relative flex h-2.5 w-2.5">
+              <span
+                class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"
+              ></span>
+              <span
+                class="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400"
+              ></span>
+            </span>
+            <span class="text-sm font-medium tracking-tight text-white">
+              ROOM_01
+            </span>
+          </div>
+          <p id="status" class="mt-1 text-xs text-slate-400">Click to enter</p>
+        </div>
+
+        <div
+          class="hidden rounded-2xl border border-white/10 bg-slate-950/70 p-2 shadow-2xl shadow-black/20 backdrop-blur-xl sm:block"
+        >
+          <div
+            class="grid grid-cols-3 gap-1 text-center text-xs text-slate-300"
+          >
+            <span></span>
+            <kbd
+              class="rounded-lg border border-white/10 bg-white/10 px-3 py-1.5"
+            >
+              W
+            </kbd>
+            <span></span>
+            <kbd
+              class="rounded-lg border border-white/10 bg-white/10 px-3 py-1.5"
+            >
+              A
+            </kbd>
+            <kbd
+              class="rounded-lg border border-white/10 bg-white/10 px-3 py-1.5"
+            >
+              S
+            </kbd>
+            <kbd
+              class="rounded-lg border border-white/10 bg-white/10 px-3 py-1.5"
+            >
+              D
+            </kbd>
+          </div>
+        </div>
+      </div>
+
+      <div
+        class="pointer-events-none absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2"
+      >
+        <div
+          class="h-1.5 w-1.5 rounded-full border border-white/80 bg-white/20 shadow-lg shadow-black"
+        ></div>
+      </div>
+
+      <div
+        id="interaction"
+        class="pointer-events-none absolute bottom-24 left-1/2 z-30 hidden -translate-x-1/2 items-center gap-2 rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white shadow-2xl backdrop-blur-xl sm:bottom-8"
+      >
+        <kbd
+          class="rounded-md border border-white/15 bg-white/10 px-2 py-0.5 text-xs"
+        >
+          E
+        </kbd>
+        <span id="interactionText">Interact</span>
+      </div>
+
+      <section
+        id="welcome"
+        class="absolute inset-0 z-40 flex items-center justify-center bg-slate-950/45 p-5 backdrop-blur-sm"
+      >
+        <div
+          class="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950/85 p-6 shadow-2xl shadow-black/50 backdrop-blur-2xl sm:p-8"
+        >
+          <div
+            class="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-300"
+          >
+            <iconify-icon
+              icon="solar:gamepad-minimalistic-linear"
+              stroke-width="1.5"
+              class="text-2xl"
+            ></iconify-icon>
+          </div>
+          <p
+            class="text-xs font-medium uppercase tracking-widest text-cyan-300"
+          >
+            Interactive space
+          </p>
+          <h1
+            class="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl"
+          >
+            Explore your room.
+          </h1>
+          <p class="mt-3 text-sm leading-6 text-slate-400">
+            Walk around with W / A / S / D or the arrow keys, inspect the desk
+            setup, open the door, and switch the computer display.
+          </p>
+
+          <div class="mt-6 grid grid-cols-2 gap-3">
+            <div class="rounded-xl border border-white/10 bg-white/5 p-3">
+              <iconify-icon
+                icon="solar:keyboard-linear"
+                stroke-width="1.5"
+                class="text-xl text-slate-300"
+              ></iconify-icon>
+              <p class="mt-2 text-xs text-slate-400">
+                W / A / S / D or arrow keys to move
+              </p>
+            </div>
+            <div class="rounded-xl border border-white/10 bg-white/5 p-3">
+              <iconify-icon
+                icon="solar:mouse-linear"
+                stroke-width="1.5"
+                class="text-xl text-slate-300"
+              ></iconify-icon>
+              <p class="mt-2 text-xs text-slate-400">Mouse to look</p>
+            </div>
+          </div>
+
+          <button
+            id="enterButton"
+            type="button"
+            class="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-100 active:scale-[0.98]"
+          >
+            Enter room
+            <iconify-icon
+              icon="solar:arrow-right-linear"
+              stroke-width="1.5"
+              class="text-lg"
+            ></iconify-icon>
+          </button>
+        </div>
+      </section>
+
+      <div
+        class="absolute bottom-5 left-5 z-30 grid grid-cols-3 gap-2 sm:hidden"
+      >
+        <span></span>
+        <button
+          data-move="forward"
+          class="touch-none rounded-xl border border-white/10 bg-slate-950/70 p-3 text-white backdrop-blur-xl"
+        >
+          <iconify-icon
+            icon="solar:alt-arrow-up-linear"
+            stroke-width="1.5"
+            class="text-xl"
+          ></iconify-icon>
+        </button>
+        <span></span>
+        <button
+          data-move="left"
+          class="touch-none rounded-xl border border-white/10 bg-slate-950/70 p-3 text-white backdrop-blur-xl"
+        >
+          <iconify-icon
+            icon="solar:alt-arrow-left-linear"
+            stroke-width="1.5"
+            class="text-xl"
+          ></iconify-icon>
+        </button>
+        <button
+          data-move="backward"
+          class="touch-none rounded-xl border border-white/10 bg-slate-950/70 p-3 text-white backdrop-blur-xl"
+        >
+          <iconify-icon
+            icon="solar:alt-arrow-down-linear"
+            stroke-width="1.5"
+            class="text-xl"
+          ></iconify-icon>
+        </button>
+        <button
+          data-move="right"
+          class="touch-none rounded-xl border border-white/10 bg-slate-950/70 p-3 text-white backdrop-blur-xl"
+        >
+          <iconify-icon
+            icon="solar:alt-arrow-right-linear"
+            stroke-width="1.5"
+            class="text-xl"
+          ></iconify-icon>
+        </button>
+      </div>
+
+      <button
+        id="mobileInteract"
+        class="absolute bottom-5 right-5 z-30 hidden rounded-xl border border-cyan-300/20 bg-cyan-300/15 px-4 py-3 text-sm font-medium text-cyan-100 backdrop-blur-xl sm:hidden"
+      >
+        Interact
+      </button>
+      <script>
+        window.addEventListener("keydown",function(event){if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(event.code)){event.preventDefault();}}, {passive:false});
+      </script>
+    </main>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
+
+      const container = document.getElementById("scene");
+      const welcome = document.getElementById("welcome");
+      const enterButton = document.getElementById("enterButton");
+      const status = document.getElementById("status");
+      const interaction = document.getElementById("interaction");
+      const interactionText = document.getElementById("interactionText");
+      const mobileInteract = document.getElementById("mobileInteract");
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x111827);
+      scene.fog = new THREE.Fog(0x111827, 12, 25);
+
+      const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 60);
+      camera.position.set(0, 1.7, 4.7);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.08;
+      container.appendChild(renderer.domElement);
+
+      const controls = new PointerLockControls(camera, renderer.domElement);
+      controls.pointerSpeed = 0.75;
+
+      const mat = (color, roughness = 0.75, metalness = 0) =>
+        new THREE.MeshStandardMaterial({ color, roughness, metalness });
+
+      const materials = {
+        wall: mat(0xd8d7d2, 0.95),
+        floor: mat(0x675344, 0.78),
+        wood: mat(0x7a5238, 0.72),
+        darkWood: mat(0x352b2a, 0.68),
+        black: mat(0x111317, 0.42, 0.25),
+        fabric: mat(0x2b4053, 1),
+        white: mat(0xe8e9e6, 0.82),
+        metal: mat(0x777d86, 0.3, 0.75),
+        green: mat(0x3f6b52, 0.92),
+        pot: mat(0xb9684d, 0.8),
+        cyan: new THREE.MeshStandardMaterial({
+          color: 0x62d9ea,
+          emissive: 0x1a7b8a,
+          emissiveIntensity: 1.8,
+          roughness: 0.25
+        })
+      };
+
+      const colliders = [];
+      const interactive = [];
+
+      function box(name, size, position, material, options = {}) {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
+        mesh.name = name;
+        mesh.position.set(...position);
+        if (options.rotation) mesh.rotation.set(...options.rotation);
+        mesh.castShadow = options.castShadow !== false;
+        mesh.receiveShadow = options.receiveShadow !== false;
+        scene.add(mesh);
+
+        if (options.collider) {
+          colliders.push(new THREE.Box3().setFromObject(mesh));
+        }
+        return mesh;
+      }
+
+      function cylinder(name, radiusTop, radiusBottom, height, position, material, segments = 24) {
+        const mesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(radiusTop, radiusBottom, height, segments),
+          material
+        );
+        mesh.name = name;
+        mesh.position.set(...position);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+        return mesh;
+      }
+
+      const floor = box("Floor", [10, 0.18, 12], [0, -0.09, 0], materials.floor);
+      box("Ceiling", [10, 0.12, 12], [0, 3.85, 0], materials.white, { castShadow: false });
+      box("Left wall", [0.16, 4, 12], [-5, 1.9, 0], materials.wall);
+      box("Right wall", [0.16, 4, 12], [5, 1.9, 0], materials.wall);
+      box("Back wall", [10, 4, 0.16], [0, 1.9, -6], materials.wall);
+      box("Front wall left", [6.1, 4, 0.16], [-1.95, 1.9, 6], materials.wall);
+      box("Front wall right", [1.7, 4, 0.16], [4.15, 1.9, 6], materials.wall);
+      box("Door header", [2.2, 1.2, 0.16], [2.25, 3.4, 6], materials.wall);
+
+      const rug = box("Rug", [4.4, 0.035, 3.2], [0.3, 0.025, 0.6], mat(0x53677c, 1), { castShadow: false });
+
+      const deskTop = box("Desk", [4.3, 0.18, 1.45], [-2.35, 1.02, -4.55], materials.wood, { collider: true });
+      box("Desk leg", [0.16, 1, 0.16], [-4.2, 0.5, -5.05], materials.black);
+      box("Desk leg", [0.16, 1, 0.16], [-0.5, 0.5, -5.05], materials.black);
+      box("Desk leg", [0.16, 1, 0.16], [-4.2, 0.5, -4.05], materials.black);
+      box("Desk leg", [0.16, 1, 0.16], [-0.5, 0.5, -4.05], materials.black);
+
+      box("Drawer unit", [0.75, 0.92, 1.18], [-3.72, 0.5, -4.55], materials.darkWood, { collider: true });
+      for (let i = 0; i < 3; i++) {
+        box("Drawer", [0.68, 0.04, 0.3], [-3.72, 0.72 - i * 0.27, -3.945], materials.black);
+      }
+
+      const monitorStand = cylinder("Monitor stand", 0.06, 0.08, 0.72, [-2.1, 1.43, -4.85], materials.metal, 18);
+      box("Monitor base", [0.85, 0.06, 0.45], [-2.1, 1.08, -4.72], materials.black);
+
+      const monitor = box("PC display", [2.15, 1.25, 0.12], [-2.1, 1.92, -4.88], materials.black);
+      const screenCanvas = document.createElement("canvas");
+      screenCanvas.width = 640;
+      screenCanvas.height = 360;
+      const screenContext = screenCanvas.getContext("2d");
+      const screenTexture = new THREE.CanvasTexture(screenCanvas);
+      screenTexture.colorSpace = THREE.SRGBColorSpace;
+      const screenMaterial = new THREE.MeshBasicMaterial({ map: screenTexture });
+      const screen = box("Computer screen", [1.95, 1.06, 0.025], [-2.1, 1.92, -4.81], screenMaterial);
+      screen.userData.type = "monitor";
+      interactive.push(screen);
+
+      box("Keyboard", [1.25, 0.06, 0.42], [-2.15, 1.15, -4.2], materials.black, {
+        rotation: [-0.07, 0, 0]
+      });
+      const mouse = new THREE.Mesh(new THREE.SphereGeometry(0.12, 18, 12), materials.black);
+      mouse.scale.set(0.9, 0.45, 1.25);
+      mouse.position.set(-1.25, 1.15, -4.18);
+      mouse.castShadow = true;
+      scene.add(mouse);
+
+      const tower = box("PC tower", [0.72, 1.35, 1.05], [-4.38, 0.76, -4.62], materials.black, { collider: true });
+      box("PC light", [0.04, 0.8, 0.65], [-4.0, 0.78, -4.62], materials.cyan);
+      for (let i = 0; i < 3; i++) {
+        const fan = cylinder("PC fan", 0.16, 0.16, 0.025, [-3.995, 0.45 + i * 0.32, -4.62], materials.black, 24);
+        fan.rotation.z = Math.PI / 2;
+      }
+
+      const chairSeat = box("Chair", [1.1, 0.18, 1.1], [-2.25, 0.72, -2.85], materials.fabric, { collider: true });
+      box("Chair back", [1.12, 1.25, 0.16], [-2.25, 1.35, -3.32], materials.fabric, { rotation: [-0.12, 0, 0] });
+      cylinder("Chair stem", 0.08, 0.1, 0.62, [-2.25, 0.34, -2.85], materials.metal);
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2;
+        box("Chair wheel arm", [0.65, 0.06, 0.07], [
+          -2.25 + Math.cos(angle) * 0.25,
+          0.08,
+          -2.85 + Math.sin(angle) * 0.25
+        ], materials.black, { rotation: [0, -angle, 0] });
+      }
+
+      const bed = box("Bed frame", [3.2, 0.55, 5.15], [3.05, 0.42, -2.65], materials.darkWood, { collider: true });
+      box("Mattress", [3.05, 0.52, 4.9], [3.05, 0.88, -2.65], materials.white);
+      box("Blanket", [3.08, 0.18, 2.85], [3.05, 1.18, -2.03], materials.fabric);
+      box("Pillow left", [1.25, 0.25, 0.75], [2.35, 1.2, -4.35], materials.white, { rotation: [0.08, 0.12, 0] });
+      box("Pillow right", [1.25, 0.25, 0.75], [3.75, 1.2, -4.35], materials.white, { rotation: [0.08, -0.12, 0] });
+      box("Headboard", [3.25, 1.45, 0.18], [3.05, 1.08, -5.27], materials.darkWood);
+
+      box("Nightstand", [1.05, 0.78, 1.05], [0.85, 0.42, -4.7], materials.wood, { collider: true });
+      cylinder("Lamp base", 0.22, 0.26, 0.08, [0.85, 0.86, -4.7], materials.metal);
+      cylinder("Lamp stem", 0.035, 0.035, 0.65, [0.85, 1.18, -4.7], materials.metal, 12);
+      const lampShade = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.28, 0.42, 0.5, 24, 1, true),
+        new THREE.MeshStandardMaterial({ color: 0xf2d6a2, side: THREE.DoubleSide, roughness: 0.9 })
+      );
+      lampShade.position.set(0.85, 1.55, -4.7);
+      lampShade.castShadow = true;
+      scene.add(lampShade);
+
+      const lampLight = new THREE.PointLight(0xffc77d, 2.2, 5, 2);
+      lampLight.position.set(0.85, 1.55, -4.7);
+      lampLight.castShadow = true;
+      scene.add(lampLight);
+
+      box("Shelf", [0.25, 2.4, 2.5], [-4.72, 1.5, 2.6], materials.darkWood, { collider: true });
+      for (let y = 0.45; y < 2.7; y += 0.7) {
+        box("Shelf board", [0.65, 0.08, 2.45], [-4.4, y, 2.6], materials.wood);
+      }
+      const bookColors = [0x9b4f4f, 0x4e7394, 0xb28a52, 0x4f765b, 0x765c89];
+      for (let i = 0; i < 10; i++) {
+        box("Book", [0.38, 0.52 + Math.random() * 0.16, 0.12], [
+          -4.05,
+          0.76 + Math.floor(i / 5) * 0.7,
+          1.75 + (i % 5) * 0.3
+        ], mat(bookColors[i % bookColors.length], 0.85));
+      }
+
+      cylinder("Plant pot", 0.34, 0.28, 0.55, [4.25, 0.28, 4.7], materials.pot);
+      for (let i = 0; i < 9; i++) {
+        const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8), materials.green);
+        const angle = (i / 9) * Math.PI * 2;
+        leaf.scale.set(0.55, 1.6, 0.55);
+        leaf.position.set(4.25 + Math.cos(angle) * 0.24, 0.82 + (i % 3) * 0.16, 4.7 + Math.sin(angle) * 0.24);
+        leaf.rotation.z = Math.cos(angle) * 0.55;
+        leaf.rotation.x = Math.sin(angle) * 0.55;
+        leaf.castShadow = true;
+        scene.add(leaf);
+      }
+
+      const windowFrame = box("Window frame", [3.2, 1.85, 0.14], [0.7, 2.35, -5.86], materials.darkWood);
+      const windowGlass = box("Window glass", [2.9, 1.55, 0.03], [0.7, 2.35, -5.77],
+        new THREE.MeshPhysicalMaterial({
+          color: 0x6fa4bb,
+          transparent: true,
+          opacity: 0.55,
+          roughness: 0.15,
+          transmission: 0.25
+        })
+      );
+      box("Window cross", [0.08, 1.6, 0.08], [0.7, 2.35, -5.7], materials.darkWood);
+      box("Window cross", [3, 0.08, 0.08], [0.7, 2.35, -5.7], materials.darkWood);
+
+      box("Poster one", [1.15, 1.55, 0.04], [-4.88, 2.45, -1.3], mat(0xcc745d), { rotation: [0, Math.PI / 2, 0] });
+      box("Poster two", [1.15, 1.55, 0.04], [-4.88, 2.45, 0.2], mat(0x4c8294), { rotation: [0, Math.PI / 2, 0] });
+
+      const doorPivot = new THREE.Group();
+      doorPivot.position.set(1.18, 0, 5.86);
+      scene.add(doorPivot);
+      const door = new THREE.Mesh(new THREE.BoxGeometry(2.08, 2.85, 0.13), materials.darkWood);
+      door.position.set(1.04, 1.425, 0);
+      door.castShadow = true;
+      door.receiveShadow = true;
+      door.userData.type = "door";
+      doorPivot.add(door);
+      const handle = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 12), materials.metal);
+      handle.position.set(1.78, 1.45, -0.1);
+      door.add(handle);
+      interactive.push(door);
+
+      const ambient = new THREE.HemisphereLight(0xb9dcff, 0x40372f, 1.45);
+      scene.add(ambient);
+
+      const ceilingLight = new THREE.PointLight(0xfff3df, 3.2, 14, 1.4);
+      ceilingLight.position.set(0, 3.45, 0);
+      ceilingLight.castShadow = true;
+      ceilingLight.shadow.mapSize.set(1024, 1024);
+      scene.add(ceilingLight);
+
+      const sun = new THREE.DirectionalLight(0x9cdcff, 2.1);
+      sun.position.set(1, 3, -5);
+      sun.target.position.set(0, 0, 1);
+      sun.castShadow = true;
+      scene.add(sun, sun.target);
+
+      let monitorMode = 0;
+      function drawScreen(time = 0) {
+        const ctx = screenContext;
+        const gradient = ctx.createLinearGradient(0, 0, 640, 360);
+        gradient.addColorStop(0, monitorMode ? "#082f49" : "#07111f");
+        gradient.addColorStop(1, monitorMode ? "#164e63" : "#111827");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 640, 360);
+
+        ctx.fillStyle = "rgba(255,255,255,.08)";
+        ctx.fillRect(24, 22, 592, 42);
+        ctx.fillStyle = "#67e8f9";
+        ctx.font = "600 20px system-ui";
+        ctx.fillText("ROOM OS", 46, 50);
+
+        ctx.fillStyle = "#e2e8f0";
+        ctx.font = "600 34px system-ui";
+        ctx.fillText(monitorMode ? "Ambient mode" : "Welcome back.", 46, 128);
+
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = "18px system-ui";
+        ctx.fillText(monitorMode ? "Focus session in progress" : "Your workspace is ready.", 46, 164);
+
+        for (let i = 0; i < 18; i++) {
+          const height = 18 + Math.sin(time * 2 + i * 0.65) * 18;
+          ctx.fillStyle = i % 3 === 0 ? "#67e8f9" : "rgba(103,232,249,.28)";
+          ctx.fillRect(46 + i * 28, 285 - height, 14, height);
+        }
+
+        ctx.fillStyle = "#cbd5e1";
+        ctx.font = "16px ui-monospace, monospace";
+        ctx.fillText(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), 516, 48);
+        screenTexture.needsUpdate = true;
+      }
+      drawScreen();
+
+      const keys = { forward: false, backward: false, left: false, right: false };
+      const keyMap = {
+        KeyW: "forward",
+        ArrowUp: "forward",
+        KeyS: "backward",
+        ArrowDown: "backward",
+        KeyA: "left",
+        ArrowLeft: "left",
+        KeyD: "right",
+        ArrowRight: "right"
+      };
+
+      addEventListener("keydown", event => {
+        if (keyMap[event.code]) keys[keyMap[event.code]] = true;
+        if (event.code === "KeyE") useInteraction();
+      });
+
+      addEventListener("keyup", event => {
+        if (keyMap[event.code]) keys[keyMap[event.code]] = false;
+      });
+
+      document.querySelectorAll("[data-move]").forEach(button => {
+        const direction = button.dataset.move;
+        const start = event => {
+          event.preventDefault();
+          keys[direction] = true;
+        };
+        const stop = event => {
+          event.preventDefault();
+          keys[direction] = false;
+        };
+        button.addEventListener("pointerdown", start);
+        button.addEventListener("pointerup", stop);
+        button.addEventListener("pointercancel", stop);
+        button.addEventListener("pointerleave", stop);
+      });
+
+      enterButton.addEventListener("click", () => {
+        welcome.classList.add("hidden");
+        if (matchMedia("(pointer:fine)").matches) controls.lock();
+        status.textContent = matchMedia("(pointer:fine)").matches ? "Exploring room" : "Touch controls active";
+      });
+
+      renderer.domElement.addEventListener("click", () => {
+        if (!controls.isLocked && matchMedia("(pointer:fine)").matches && welcome.classList.contains("hidden")) {
+          controls.lock();
+        }
+      });
+
+      controls.addEventListener("lock", () => {
+        welcome.classList.add("hidden");
+        status.textContent = "Exploring room";
+      });
+
+      controls.addEventListener("unlock", () => {
+        if (matchMedia("(pointer:fine)").matches) {
+          status.textContent = "Click to resume";
+        }
+      });
+
+      let doorOpen = false;
+      let currentInteraction = null;
+
+      function useInteraction() {
+        if (!currentInteraction) return;
+        if (currentInteraction.userData.type === "door") {
+          doorOpen = !doorOpen;
+        }
+        if (currentInteraction.userData.type === "monitor") {
+          monitorMode = monitorMode ? 0 : 1;
+          drawScreen();
+        }
+      }
+
+      mobileInteract.addEventListener("click", useInteraction);
+
+      const raycaster = new THREE.Raycaster();
+      function updateInteraction() {
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+        const hits = raycaster.intersectObjects(interactive, true);
+        const hit = hits.find(item => item.distance < 2.6);
+        currentInteraction = hit ? hit.object : null;
+
+        while (currentInteraction && !currentInteraction.userData.type && currentInteraction.parent) {
+          currentInteraction = currentInteraction.parent;
+        }
+
+        if (currentInteraction?.userData.type) {
+          interaction.classList.remove("hidden");
+          interaction.classList.add("flex");
+          mobileInteract.classList.remove("hidden");
+          interactionText.textContent =
+            currentInteraction.userData.type === "door"
+              ? doorOpen ? "Close door" : "Open door"
+              : "Switch display";
+        } else {
+          currentInteraction = null;
+          interaction.classList.add("hidden");
+          interaction.classList.remove("flex");
+          mobileInteract.classList.add("hidden");
+        }
+      }
+
+      function canMoveTo(position) {
+        if (position.x < -4.65 || position.x > 4.65 || position.z < -5.65 || position.z > 5.65) return false;
+        const player = new THREE.Box3(
+          new THREE.Vector3(position.x - 0.24, 0.15, position.z - 0.24),
+          new THREE.Vector3(position.x + 0.24, 1.8, position.z + 0.24)
+        );
+        return !colliders.some(collider => collider.intersectsBox(player));
+      }
+
+      const velocity = new THREE.Vector3();
+      const direction = new THREE.Vector3();
+      const clock = new THREE.Clock();
+
+      function updateMovement(delta) {
+        const movingAllowed = controls.isLocked || !matchMedia("(pointer:fine)").matches;
+        if (!movingAllowed) return;
+
+        velocity.x -= velocity.x * 9 * delta;
+        velocity.z -= velocity.z * 9 * delta;
+
+        direction.z = Number(keys.forward) - Number(keys.backward);
+        direction.x = Number(keys.right) - Number(keys.left);
+        direction.normalize();
+
+        const speed = 4.1;
+        if (keys.forward || keys.backward) velocity.z -= direction.z * speed * delta * 11;
+        if (keys.left || keys.right) velocity.x -= direction.x * speed * delta * 11;
+
+        const previous = camera.position.clone();
+        controls.moveRight(-velocity.x * delta);
+        if (!canMoveTo(camera.position)) camera.position.copy(previous);
+
+        const afterX = camera.position.clone();
+        controls.moveForward(-velocity.z * delta);
+        if (!canMoveTo(camera.position)) camera.position.copy(afterX);
+
+        camera.position.y = 1.7;
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+        const delta = Math.min(clock.getDelta(), 0.05);
+        const elapsed = clock.elapsedTime;
+
+        updateMovement(delta);
+        updateInteraction();
+
+        const targetDoorRotation = doorOpen ? -Math.PI * 0.48 : 0;
+        doorPivot.rotation.y = THREE.MathUtils.lerp(
+          doorPivot.rotation.y,
+          targetDoorRotation,
+          1 - Math.exp(-5 * delta)
+        );
+
+        lampLight.intensity = 2.15 + Math.sin(elapsed * 2.4) * 0.05;
+        drawScreen(elapsed);
+
+        renderer.render(scene, camera);
+      }
+
+      addEventListener("resize", () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      });
+
+      animate();
+    </script>
+  </body>
+</html>

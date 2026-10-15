@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="sk">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IT Ticketing System</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link
+href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap"
+rel="stylesheet"
+/>
+<style>
+body {
+font-family: 'Inter', sans-serif;
+-webkit-font-smoothing: antialiased;
+}
+</style>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body class="bg-gray-50 text-gray-900 min-h-screen flex flex-col">
+    <!-- Header -->
+    <header
+      class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10"
+    >
+      <div class="font-semibold tracking-tighter text-xl">
+        EDUIT
+        <span class="text-gray-400">DESK</span>
+      </div>
+      <nav class="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
+        <a
+          href="#"
+          class="px-4 py-1.5 text-sm font-medium bg-white text-gray-900 rounded-lg shadow-sm flex items-center gap-2"
+          id="nav-btn-form"
+        >
+          <iconify-icon
+            icon="lucide:file-edit"
+            class="text-base"
+          ></iconify-icon>
+          Verejný formulár
+        </a>
+        <a
+          href="#"
+          class="px-4 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-200/50 rounded-lg transition-colors flex items-center gap-2"
+          id="nav-btn-admin"
+        >
+          <iconify-icon icon="lucide:lock" class="text-base"></iconify-icon>
+          Admin Dashboard
+        </a>
+      </nav>
+    </header>
+
+    <!-- Main Layout -->
+    <main
+      class="flex-1 flex flex-col max-w-[1600px] w-full mx-auto p-4 md:p-6 lg:p-8"
+    >
+      <!-- Teacher View (Left Panel) -->
+      <aside class="max-w-xl w-full mx-auto flex flex-col gap-6" id="view-form">
+        <div>
+          <h1 class="text-2xl tracking-tight font-semibold mb-1">
+            Nahlásiť poruchu
+          </h1>
+          <p class="text-sm text-gray-500">
+            Vyplňte formulár pre privolanie IT podpory.
+          </p>
+        </div>
+
+        <form
+          class="bg-white p-5 sm:p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col gap-6"
+        >
+          <!-- Classroom -->
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-medium text-gray-700">
+              Meno nahlasovateľa
+            </label>
+            <div class="relative">
+              <input
+                type="text"
+                id="reporter-name"
+                placeholder="Zadajte meno a priezvisko..."
+                class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 transition-colors text-gray-800"
+              />
+              <iconify-icon
+                icon="solar:user-linear"
+                stroke-width="1.5"
+                class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-lg"
+              ></iconify-icon>
+            </div>
+            <p id="name-error" class="text-xs text-red-500 hidden mt-1">
+              Nedá sa odoslať, zadajte vaše meno.
+            </p>
+          </div>
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-medium text-gray-700">
+              Učebňa / Miestnosť
+            </label>
+            <div class="relative">
+              <select
+                class="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 transition-colors cursor-pointer text-gray-800"
+              >
+                <option value="" disabled="" selected="">
+                  Vyberte učebňu...
+                </option>
+                <option>1.A</option>
+                <option>2.B</option>
+                <option>Fyzikálna učebňa</option>
+                <option>Kabinet informatiky</option>
+                <option>Zborovňa</option>
+              </select>
+              <iconify-icon
+                icon="solar:alt-arrow-down-linear"
+                stroke-width="1.5"
+                class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-lg"
+              ></iconify-icon>
+            </div>
+            <p id="room-error" class="text-xs text-red-500 hidden mt-1">
+              Nedá sa odoslať, vyberte učebňu / miestnosť.
+            </p>
+          </div>
+
+          <!-- Device Category -->
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-medium text-gray-700">
+              Kategória zariadenia
+            </label>
+            <div class="grid grid-cols-3 gap-2">
+              <!-- Selected state -->
+              <div
+                class="rounded-xl border border-gray-900 bg-gray-50 flex flex-col items-center justify-center p-3 gap-2 cursor-pointer shadow-sm"
+              >
+                <iconify-icon
+                  icon="solar:videocamera-linear"
+                  stroke-width="1.5"
+                  class="text-xl text-gray-900"
+                ></iconify-icon>
+                <span class="text-xs font-medium text-gray-900">Projektor</span>
+              </div>
+              <!-- Unselected states -->
+              <div
+                class="rounded-xl border border-gray-200 hover:border-gray-300 bg-white flex flex-col items-center justify-center p-3 gap-2 cursor-pointer transition-colors"
+              >
+                <iconify-icon
+                  icon="solar:monitor-linear"
+                  stroke-width="1.5"
+                  class="text-xl text-gray-500"
+                ></iconify-icon>
+                <span class="text-xs font-medium text-gray-600">PC</span>
+              </div>
+              <div
+                class="rounded-xl border border-gray-200 hover:border-gray-300 bg-white flex flex-col items-center justify-center p-3 gap-2 cursor-pointer transition-colors"
+              >
+                <iconify-icon
+                  icon="solar:global-linear"
+                  stroke-width="1.5"
+                  class="text-xl text-gray-500"
+                ></iconify-icon>
+                <span class="text-xs font-medium text-gray-600">Internet</span>
+              </div>
+              <div
+                class="rounded-xl border border-gray-200 hover:border-gray-300 bg-white flex flex-col items-center justify-center p-3 gap-2 cursor-pointer transition-colors"
+              >
+                <iconify-icon
+                  icon="lucide:presentation"
+                  stroke-width="1.5"
+                  class="text-xl text-gray-500"
+                ></iconify-icon>
+                <span class="text-xs font-medium text-gray-600">Tabuľa</span>
+              </div>
+              <div
+                class="col-span-2 rounded-xl border border-gray-200 hover:border-gray-300 bg-white flex flex-row items-center justify-center p-3 gap-2 cursor-pointer transition-colors"
+              >
+                <iconify-icon
+                  icon="solar:menu-dots-circle-linear"
+                  stroke-width="1.5"
+                  class="text-xl text-gray-500"
+                ></iconify-icon>
+                <span class="text-xs font-medium text-gray-600">Iné</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Description -->
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-medium text-gray-700">
+              Opis problému
+            </label>
+            <textarea
+              rows="3"
+              placeholder="Napr. Projektor sa nezapne, bliká červená kontrolka..."
+              class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 transition-colors resize-none placeholder:text-gray-400 text-gray-800"
+            ></textarea>
+            <p id="form-error" class="text-xs text-red-500 hidden mt-1">
+              Nedá sa odoslať, opíšte problém.
+            </p>
+          </div>
+
+          <!-- Urgent Toggle -->
+          <div
+            class="flex items-center justify-between p-4 rounded-xl bg-gray-50 border border-gray-100"
+          >
+            <div class="flex flex-col">
+              <span class="text-sm font-medium text-gray-900">
+                Blokuje to aktuálnu hodinu?
+              </span>
+              <span class="text-xs text-gray-500 mt-0.5">
+                Požiadavka dostane prioritnú značku
+              </span>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" value="" class="sr-only peer" checked="" />
+              <div
+                class="w-10 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-500"
+              ></div>
+            </label>
+          </div>
+
+          <!-- Submit -->
+          <button
+            type="button"
+            class="w-full bg-gray-900 hover:bg-gray-800 text-white font-medium text-sm py-3.5 px-4 rounded-xl transition-colors flex items-center justify-center gap-2 mt-2 shadow-sm"
+          >
+            <iconify-icon
+              icon="solar:plain-linear"
+              stroke-width="1.5"
+              class="text-lg"
+            ></iconify-icon>
+            Odoslať požiadavku
+          </button>
+        </form>
+      </aside>
+
+      <!-- Admin Dashboard (Right Panel) -->
+      <section
+        class="w-full mx-auto flex flex-col min-w-0 flex-1 max-w-7xl"
+        id="view-admin"
+        style="display: none;"
+      >
+        <!-- Dashboard Header & Filters -->
+        <div
+          class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6"
+        >
+          <div>
+            <h2 class="text-2xl tracking-tight font-semibold mb-1">
+              Admin Dashboard
+            </h2>
+            <p class="text-sm text-gray-500">
+              Prehľad všetkých požiadaviek z učební.
+            </p>
+          </div>
+
+          <div
+            class="flex flex-col sm:flex-row items-center gap-3 self-start sm:self-auto w-full sm:w-auto"
+          >
+            <button
+              id="btn-logout"
+              class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-gray-600 bg-white hover:bg-gray-50 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm order-last sm:order-none"
+            >
+              <iconify-icon
+                icon="lucide:log-out"
+                class="text-base"
+              ></iconify-icon>
+              Odhlásiť sa
+            </button>
+            <select
+              class="w-full sm:w-auto bg-white border border-gray-200 text-gray-700 text-sm rounded-xl focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 block py-2 px-3 shadow-sm cursor-pointer outline-none transition-colors"
+            >
+              <option selected="">Všetky učebne</option>
+              <option>1.A</option>
+              <option>2.B</option>
+              <option>Fyzikálna učebňa</option>
+              <option>Kabinet informatiky</option>
+              <option>Zborovňa</option>
+            </select>
+            <select
+              class="w-full sm:w-auto bg-white border border-gray-200 text-gray-700 text-sm rounded-xl focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 block py-2 px-3 shadow-sm cursor-pointer outline-none transition-colors"
+            >
+              <option selected="">Všetky zariadenia</option>
+              <option>Projektor</option>
+              <option>PC</option>
+              <option>Internet</option>
+              <option>Tabuľa</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Ticket List -->
+        <div
+          class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 items-start"
+        >
+          <div class="flex flex-col gap-4" id="col-new">
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="text-sm font-semibold text-gray-900">Nové</h3>
+              <span
+                class="bg-gray-100 text-gray-600 text-xs font-medium px-2.5 py-0.5 rounded-full"
+                id="cnt-new"
+              >
+                0
+              </span>
+            </div>
+
+            <div
+              class="border-2 border-dashed border-gray-200 rounded-2xl h-32 flex items-center justify-center text-gray-400 text-sm font-medium"
+              id="new-empty"
+            >
+              Aktuálne nie sú nahlásené žiadne nové poruchy.
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-4" id="col-progress">
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="text-sm font-semibold text-gray-900">Rieši sa</h3>
+              <span
+                class="bg-blue-100 text-blue-700 text-xs font-medium px-2.5 py-0.5 rounded-full"
+                id="cnt-progress"
+              >
+                0
+              </span>
+            </div>
+
+            <div
+              class="border-2 border-dashed border-gray-200 rounded-2xl h-32 flex items-center justify-center text-gray-400 text-sm font-medium"
+              id="progress-empty"
+              style="display: none;"
+            >
+              Žiadne požiadavky v riešení
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-4" id="col-closed">
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="text-sm font-semibold text-gray-900">Uzavreté</h3>
+              <span
+                class="bg-gray-100 text-gray-600 text-xs font-medium px-2.5 py-0.5 rounded-full"
+                id="cnt-closed"
+              >
+                0
+              </span>
+            </div>
+
+            <div
+              class="border-2 border-dashed border-gray-200 rounded-2xl h-32 flex items-center justify-center text-gray-400 text-sm font-medium"
+              id="closed-empty"
+            >
+              Žiadne uzavreté požiadavky
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div
+      id="auth-modal"
+      class="fixed inset-0 z-50 bg-gray-900/50 backdrop-blur-sm hidden items-center justify-center p-4"
+    >
+      <div
+        class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl flex flex-col gap-4"
+      >
+        <div class="flex items-center gap-3 mb-2">
+          <div
+            class="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-900"
+          >
+            <iconify-icon icon="lucide:lock" class="text-xl"></iconify-icon>
+          </div>
+          <div>
+            <h3 class="font-semibold text-gray-900 tracking-tight">
+              Vyžaduje sa heslo
+            </h3>
+            <p class="text-xs text-gray-500">Zadajte administrátorské heslo.</p>
+          </div>
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <input
+            type="password"
+            id="pwd-input"
+            placeholder="Heslo (admin123)"
+            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 transition-colors"
+          />
+          <p
+            id="pwd-error"
+            class="text-xs text-red-500 hidden font-medium px-1"
+          >
+            Nesprávne heslo, skúste to znova.
+          </p>
+        </div>
+        <div class="flex items-center justify-end gap-2 mt-2">
+          <button
+            id="btn-cancel"
+            class="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+          >
+            Zrušiť
+          </button>
+          <button
+            id="btn-login"
+            class="px-4 py-2 text-sm font-medium bg-gray-900 text-white hover:bg-gray-800 rounded-xl transition-colors shadow-sm"
+          >
+            Prihlásiť sa
+          </button>
+        </div>
+      </div>
+    </div>
+    <div
+      id="confirm-modal"
+      class="fixed inset-0 z-50 bg-gray-900/50 backdrop-blur-sm hidden items-center justify-center p-4"
+    >
+      <div
+        class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl flex flex-col gap-4"
+      >
+        <div class="flex flex-col gap-2 mb-2 text-center items-center">
+          <div
+            class="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 mb-2"
+          >
+            <iconify-icon
+              icon="solar:question-circle-linear"
+              class="text-2xl"
+            ></iconify-icon>
+          </div>
+          <h3 class="font-semibold text-gray-900 tracking-tight text-lg">
+            Sú všetky údaje správne?
+          </h3>
+          <p class="text-sm text-gray-500">
+            Naozaj chcete odoslať túto požiadavku? V prípade potreby kontaktujte
+            správu siete.
+          </p>
+        </div>
+        <div class="flex items-center justify-center gap-3 mt-2 w-full">
+          <button
+            id="btn-confirm-cancel"
+            class="flex-1 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+          >
+            Zrušiť
+          </button>
+          <button
+            id="btn-confirm-submit"
+            class="flex-1 px-4 py-2.5 text-sm font-medium bg-gray-900 text-white hover:bg-gray-800 rounded-xl transition-colors shadow-sm"
+          >
+            Potvrdiť a odoslať
+          </button>
+        </div>
+      </div>
+    </div>
+    <div
+      id="success-modal"
+      class="fixed inset-0 z-50 bg-gray-900/50 backdrop-blur-sm hidden items-center justify-center p-4"
+    >
+      <div
+        class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl flex flex-col gap-4"
+      >
+        <div class="flex flex-col gap-2 mb-2 text-center items-center">
+          <div
+            class="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center text-green-600 mb-2"
+          >
+            <iconify-icon
+              icon="solar:check-circle-linear"
+              class="text-2xl"
+            ></iconify-icon>
+          </div>
+          <h3 class="font-semibold text-gray-900 tracking-tight text-lg">
+            Požiadavka bola úspešne odoslaná.
+          </h3>
+          <p class="text-sm text-gray-500">
+            V prípade potreby kontaktujte správu siete.
+          </p>
+        </div>
+        <div class="flex items-center justify-center gap-3 mt-2 w-full">
+          <button
+            id="btn-success-close"
+            class="w-full px-4 py-2.5 text-sm font-medium bg-gray-900 text-white hover:bg-gray-800 rounded-xl transition-colors shadow-sm"
+          >
+            Zavrieť
+          </button>
+        </div>
+      </div>
+    </div>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+          // --- REALTIME DATABASE (Firebase) ---
+          const firebaseConfig = {
+              apiKey: "YOUR_API_KEY",
+              authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+              projectId: "YOUR_PROJECT_ID",
+              storageBucket: "YOUR_PROJECT_ID.appspot.com",
+              messagingSenderId: "YOUR_SENDER_ID",
+              appId: "YOUR_APP_ID"
+          };
+
+          if (!firebase.apps.length) {
+              firebase.initializeApp(firebaseConfig);
+          }
+          const firestore = firebase.firestore();
+
+          const db = {
+              onSnapshot: (callback) => {
+                  firestore.collection('tickets').orderBy('createdAt', 'asc').onSnapshot(snapshot => {
+                      const tickets = [];
+                      snapshot.forEach(doc => tickets.push({ id: doc.id, ...doc.data() }));
+                      callback(tickets);
+                  });
+              },
+              add: (ticket) => {
+                  firestore.collection('tickets').add({...ticket, status: 'new', createdAt: Date.now()});
+              },
+              update: (id, updates) => {
+                  firestore.collection('tickets').doc(id).update(updates);
+              }
+          };
+
+          const btnForm = document.getElementById('nav-btn-form');
+          const btnAdmin = document.getElementById('nav-btn-admin');
+          const viewForm = document.getElementById('view-form');
+          const viewAdmin = document.getElementById('view-admin');
+          const modal = document.getElementById('auth-modal');
+          const pwdInput = document.getElementById('pwd-input');
+          const btnLogin = document.getElementById('btn-login');
+          const btnCancel = document.getElementById('btn-cancel');
+          const errorMsg = document.getElementById('pwd-error');
+          const btnLogout = document.getElementById('btn-logout');
+
+          let isAuthenticated = sessionStorage.getItem('isAdmin') === 'true';
+          let previousTicketsCount = 0;
+
+          function showAdminToast(room, reporterName) {
+              if (!isAuthenticated) return;
+              if (!viewAdmin || viewAdmin.style.display === 'none') return;
+
+              new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(()=>{});
+              let container = document.getElementById('admin-toast-container');
+              if (!container) {
+                  container = document.createElement('div');
+                  container.id = 'admin-toast-container';
+                  container.className = 'fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none';
+                  document.body.appendChild(container);
+              }
+              const toast = document.createElement('div');
+              toast.className = 'bg-gray-900 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 transition-all duration-300 transform translate-y-10 opacity-0';
+              toast.innerHTML = `
+                  <div class="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-400">
+                      <iconify-icon icon="solar:bell-bing-linear" class="text-lg"></iconify-icon>
+                  </div>
+                  <div class="flex flex-col">
+                      <span class="text-sm font-semibold">Nová požiadavka od: ${reporterName || 'Neznámy'}</span>
+                      <span class="text-xs text-gray-300">Učebňa: ${room}</span>
+                  </div>
+              `;
+              container.appendChild(toast);
+              requestAnimationFrame(() => {
+                  toast.classList.remove('translate-y-10', 'opacity-0');
+              });
+              setTimeout(() => {
+                  toast.classList.add('opacity-0', 'translate-y-2');
+                  setTimeout(() => toast.remove(), 300);
+              }, 5000);
+          }
+
+          function setNavState(activeBtn, inactiveBtn) {
+              if(activeBtn && inactiveBtn) {
+                  activeBtn.className = 'px-4 py-1.5 text-sm font-medium bg-white text-gray-900 rounded-lg shadow-sm flex items-center gap-2 transition-all';
+                  inactiveBtn.className = 'px-4 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-200/50 rounded-lg transition-all flex items-center gap-2';
+              }
+          }
+
+          function showForm() {
+              if(viewForm) viewForm.style.display = 'flex';
+              if(viewAdmin) viewAdmin.style.display = 'none';
+              setNavState(btnForm, btnAdmin);
+          }
+
+          function showAdmin() {
+              if(viewForm) viewForm.style.display = 'none';
+              if(viewAdmin) viewAdmin.style.display = 'flex';
+              setNavState(btnAdmin, btnForm);
+          }
+
+          if(btnForm) btnForm.addEventListener('click', (e) => { e.preventDefault(); showForm(); });
+
+          if(btnAdmin) btnAdmin.addEventListener('click', (e) => {
+              e.preventDefault();
+              if (isAuthenticated) { showAdmin(); } else {
+                  modal.classList.remove('hidden'); modal.classList.add('flex');
+                  pwdInput.value = ''; errorMsg.classList.add('hidden'); pwdInput.focus();
+              }
+          });
+
+          function doLogin() {
+              if (pwdInput.value === 'admin123') {
+                  isAuthenticated = true; sessionStorage.setItem('isAdmin', 'true');
+                  modal.classList.add('hidden'); modal.classList.remove('flex'); showAdmin();
+              } else { errorMsg.classList.remove('hidden'); }
+          }
+
+          if(btnLogin) btnLogin.addEventListener('click', doLogin);
+          if(pwdInput) pwdInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') doLogin(); });
+          if(btnCancel) btnCancel.addEventListener('click', () => { modal.classList.add('hidden'); modal.classList.remove('flex'); });
+
+          if (btnLogout) {
+              btnLogout.addEventListener('click', () => {
+                  isAuthenticated = false; sessionStorage.removeItem('isAdmin'); showForm();
+              });
+          }
+
+          if (isAuthenticated) showAdmin(); else showForm();
+
+          const filters = document.querySelectorAll('#view-admin select');
+          const roomFilter = filters[0];
+          const catFilter = filters[1];
+
+          let allTickets = [];
+
+          if(roomFilter) roomFilter.addEventListener('change', () => renderTickets(allTickets));
+          if(catFilter) catFilter.addEventListener('change', () => renderTickets(allTickets));
+
+          const iconMap = {
+              'Projektor': 'solar:videocamera-linear',
+              'PC': 'solar:monitor-linear',
+              'Internet': 'solar:global-linear',
+              'Tabuľa': 'lucide:presentation',
+              'Iné': 'solar:menu-dots-circle-linear'
+          };
+
+          function renderTickets(tickets) {
+              document.querySelectorAll('.ticket-card').forEach(c => c.remove());
+
+              let newCount = 0, progCount = 0, closedCount = 0;
+              const roomVal = roomFilter ? roomFilter.value : '';
+              const catVal = catFilter ? catFilter.value : '';
+
+              const colNew = document.getElementById('col-new');
+              const colProgress = document.getElementById('col-progress');
+              const colClosed = document.getElementById('col-closed');
+
+              tickets.forEach(data => {
+                  const matchRoom = !roomVal || roomVal === 'Všetky učebne' || data.room === roomVal;
+                  const matchCat = !catVal || catVal === 'Všetky zariadenia' || data.cat === catVal;
+                  if (!matchRoom || !matchCat) return;
+
+                  const iconName = iconMap[data.cat] || 'solar:menu-dots-circle-linear';
+                  const card = document.createElement('div');
+
+                  let borderColor, bgClass, statusHtml, buttonsHtml;
+
+                  if (data.status === 'new') {
+                      newCount++;
+                      borderColor = data.urgent ? 'border-red-200' : 'border-gray-200';
+                      bgClass = 'bg-white opacity-100';
+                      statusHtml = data.urgent ? '<div class="absolute top-0 left-0 w-1 h-full bg-red-500"></div>' : '';
+                      buttonsHtml = `<button class="btn-take flex items-center gap-2 text-xs font-medium px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg transition-colors shadow-sm" onclick="updateTicketStatus('${data.id}', 'progress')"><iconify-icon icon="solar:play-circle-linear" stroke-width="1.5" class="text-base"></iconify-icon>Prevziať na riešenie</button>`;
+                  } else if (data.status === 'progress') {
+                      progCount++;
+                      borderColor = 'border-blue-200';
+                      bgClass = 'bg-white opacity-100';
+                      statusHtml = '<div class="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>';
+                      buttonsHtml = `<button class="btn-resolve flex items-center gap-2 text-xs font-medium px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-lg transition-colors shadow-sm" onclick="updateTicketStatus('${data.id}', 'closed')"><iconify-icon icon="solar:check-circle-linear" stroke-width="1.5" class="text-base"></iconify-icon>Označiť ako vyriešené</button>`;
+                  } else {
+                      closedCount++;
+                      borderColor = 'border-gray-200';
+                      bgClass = 'bg-gray-50 opacity-75';
+                      statusHtml = '<div class="absolute top-0 left-0 w-1 h-full bg-gray-300"></div>';
+                      buttonsHtml = `<button class="btn-return flex items-center gap-2 text-xs font-medium px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-lg transition-colors shadow-sm" onclick="updateTicketStatus('${data.id}', 'progress')"><iconify-icon icon="solar:refresh-circle-linear" stroke-width="1.5" class="text-base"></iconify-icon>Vrátiť do riešenia</button>`;
+                  }
+
+                  card.className = `ticket-card ${bgClass} rounded-2xl border ${borderColor} shadow-sm relative overflow-hidden group mb-4`;
+
+                  const timeString = new Date(data.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+                  card.innerHTML = `
+                      ${statusHtml}
+                      <div class="p-4 sm:p-5 flex flex-col gap-3">
+                          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0">
+                              <div class="flex flex-wrap items-center gap-2">
+                                  ${data.status === 'new' && data.urgent ? '<span class="bg-red-50 border border-red-100 text-red-600 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 uppercase tracking-wider"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Urgentné</span>' : ''}
+                                  <span class="bg-gray-100 border border-gray-200/60 text-gray-700 text-xs font-medium px-2 py-1 rounded">${data.room}</span>
+                                  <span class="bg-gray-100 border border-gray-200/60 text-gray-700 text-xs font-medium px-2 py-1 rounded flex items-center gap-1"><iconify-icon icon="${iconName}" stroke-width="1.5"></iconify-icon>${data.cat}</span>
+                                  <span class="bg-gray-100 border border-gray-200/60 text-gray-700 text-xs font-medium px-2 py-1 rounded flex items-center gap-1"><iconify-icon icon="solar:user-linear" stroke-width="1.5"></iconify-icon>${data.reporterName || 'Neznámy'}</span>
+                              </div>
+                              <span class="text-xs text-gray-400 font-medium whitespace-nowrap">${timeString}</span>
+                          </div>
+                          <p class="text-sm text-gray-800 leading-relaxed line-clamp-3">${data.desc.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+                          <div class="flex justify-end mt-1 border-t border-gray-100 pt-3">${buttonsHtml}</div>
+                      </div>
+                  `;
+
+                  if (data.status === 'new') colNew?.appendChild(card);
+                  else if (data.status === 'progress') colProgress?.appendChild(card);
+                  else colClosed?.appendChild(card);
+              });
+
+              const cntNewEl = document.getElementById('cnt-new');
+              const cntProgEl = document.getElementById('cnt-progress');
+              const cntClosedEl = document.getElementById('cnt-closed');
+              const emptyNew = document.getElementById('new-empty');
+              const emptyProg = document.getElementById('progress-empty');
+              const emptyClosed = document.getElementById('closed-empty');
+
+              if(cntNewEl) cntNewEl.textContent = newCount;
+              if(cntProgEl) cntProgEl.textContent = progCount;
+              if(cntClosedEl) cntClosedEl.textContent = closedCount;
+
+              if(emptyNew) emptyNew.style.display = newCount === 0 ? 'flex' : 'none';
+              if(emptyProg) emptyProg.style.display = progCount === 0 ? 'flex' : 'none';
+              if(emptyClosed) emptyClosed.style.display = closedCount === 0 ? 'flex' : 'none';
+
+              if (previousTicketsCount > 0 && tickets.length > previousTicketsCount) {
+                  const latestTicket = tickets[tickets.length - 1];
+                  if (latestTicket && latestTicket.status === 'new') {
+                      showAdminToast(latestTicket.room, latestTicket.reporterName);
+                  }
+              }
+              previousTicketsCount = tickets.length;
+          }
+
+          window.updateTicketStatus = (id, newStatus) => {
+              db.update(id, { status: newStatus });
+          };
+
+          db.onSnapshot((tickets) => {
+              allTickets = tickets;
+              renderTickets(tickets);
+          });
+
+          const formSubmitBtn = document.querySelector('#view-form button[type="button"]');
+          const problemDesc = document.querySelector('textarea');
+          const formError = document.getElementById('form-error');
+          const confirmModal = document.getElementById('confirm-modal');
+          const successModal = document.getElementById('success-modal');
+          const btnConfirmCancel = document.getElementById('btn-confirm-cancel');
+          const btnConfirmSubmit = document.getElementById('btn-confirm-submit');
+          const btnSuccessClose = document.getElementById('btn-success-close');
+
+          const roomSelectEl = document.querySelector('#view-form select');
+          const roomErrorEl = document.getElementById('room-error');
+          const reporterNameEl = document.getElementById('reporter-name');
+          const nameErrorEl = document.getElementById('name-error');
+
+          if(formSubmitBtn && problemDesc && formError && confirmModal && successModal) {
+              formSubmitBtn.addEventListener('click', () => {
+                  const isRoomValid = roomSelectEl && roomSelectEl.value !== '';
+                  const isDescValid = problemDesc.value.trim() !== '';
+                  const isNameValid = reporterNameEl && reporterNameEl.value.trim() !== '';
+
+                  if (roomErrorEl) {
+                      if (!isRoomValid) roomErrorEl.classList.remove('hidden');
+                      else roomErrorEl.classList.add('hidden');
+                  }
+                  if (nameErrorEl) {
+                      if (!isNameValid) nameErrorEl.classList.remove('hidden');
+                      else nameErrorEl.classList.add('hidden');
+                  }
+                  if (!isDescValid) formError.classList.remove('hidden');
+                  else formError.classList.add('hidden');
+
+                  if (isRoomValid && isDescValid && isNameValid) {
+                      confirmModal.classList.remove('hidden');
+                      confirmModal.classList.add('flex');
+                  }
+              });
+
+              btnConfirmCancel.addEventListener('click', () => {
+                  confirmModal.classList.add('hidden');
+                  confirmModal.classList.remove('flex');
+              });
+
+              btnConfirmSubmit.addEventListener('click', () => {
+                  confirmModal.classList.add('hidden');
+                  confirmModal.classList.remove('flex');
+
+                  successModal.classList.remove('hidden');
+                  successModal.classList.add('flex');
+
+                  const room = roomSelectEl && roomSelectEl.value ? roomSelectEl.value : 'Neznáma';
+                  const catEl = document.querySelector('#view-form .grid > div.border-gray-900 span');
+                  const cat = catEl ? catEl.textContent.trim() : 'Iné';
+                  const desc = problemDesc.value;
+                  const urgentEl = document.querySelector('#view-form input[type="checkbox"]');
+                  const urgent = urgentEl ? urgentEl.checked : false;
+                  const reporterName = reporterNameEl ? reporterNameEl.value.trim() : 'Neznámy';
+
+                  db.add({ room, cat, desc, urgent, reporterName });
+
+                  problemDesc.value = '';
+                  if (roomSelectEl) roomSelectEl.value = '';
+                  if (reporterNameEl) reporterNameEl.value = '';
+                  if (urgentEl) urgentEl.checked = false;
+
+                  const categoryBtns = document.querySelectorAll('#view-form .grid > div');
+                  categoryBtns.forEach(b => {
+                      const isOther = b.querySelector('span').textContent.trim() === 'Iné';
+                      b.className = 'rounded-xl border border-gray-200 hover:border-gray-300 bg-white flex items-center justify-center p-3 gap-2 cursor-pointer transition-colors ' + (isOther ? 'flex-row col-span-2' : 'flex-col');
+                      const icon = b.querySelector('iconify-icon');
+                      const text = b.querySelector('span');
+                      if(icon) icon.className = 'text-xl text-gray-500';
+                      if(text) text.className = 'text-xs font-medium text-gray-600';
+                  });
+                  const firstBtn = categoryBtns[0];
+                  if(firstBtn) {
+                      firstBtn.className = 'rounded-xl border border-gray-900 bg-gray-50 flex flex-col items-center justify-center p-3 gap-2 cursor-pointer shadow-sm';
+                      const icon = firstBtn.querySelector('iconify-icon');
+                      const text = firstBtn.querySelector('span');
+                      if(icon) icon.className = 'text-xl text-gray-900';
+                      if(text) text.className = 'text-xs font-medium text-gray-900';
+                  }
+              });
+
+              btnSuccessClose.addEventListener('click', () => {
+                  successModal.classList.add('hidden');
+                  successModal.classList.remove('flex');
+              });
+
+              problemDesc.addEventListener('input', () => {
+                  if (problemDesc.value.trim()) formError.classList.add('hidden');
+              });
+              if (roomSelectEl) {
+                  roomSelectEl.addEventListener('change', () => {
+                      if (roomSelectEl.value !== '') {
+                          if (roomErrorEl) roomErrorEl.classList.add('hidden');
+                      }
+                  });
+              }
+              if (reporterNameEl) {
+                  reporterNameEl.addEventListener('input', () => {
+                      if (reporterNameEl.value.trim() !== '') {
+                          if (nameErrorEl) nameErrorEl.classList.add('hidden');
+                      }
+                  });
+              }
+          }
+
+          const categoryBtns = document.querySelectorAll('#view-form .grid > div');
+          categoryBtns.forEach(btn => {
+              btn.addEventListener('click', () => {
+                  categoryBtns.forEach(b => {
+                      const isOther = b.querySelector('span').textContent.trim() === 'Iné';
+                      b.className = 'rounded-xl border border-gray-200 hover:border-gray-300 bg-white flex items-center justify-center p-3 gap-2 cursor-pointer transition-colors ' + (isOther ? 'flex-row col-span-2' : 'flex-col');
+                      const icon = b.querySelector('iconify-icon');
+                      const text = b.querySelector('span');
+                      if(icon) icon.className = 'text-xl text-gray-500';
+                      if(text) text.className = 'text-xs font-medium text-gray-600';
+                  });
+                  const isOther = btn.querySelector('span').textContent.trim() === 'Iné';
+                  btn.className = 'rounded-xl border border-gray-900 bg-gray-50 flex items-center justify-center p-3 gap-2 cursor-pointer shadow-sm ' + (isOther ? 'flex-row col-span-2' : 'flex-col');
+                  const icon = btn.querySelector('iconify-icon');
+                  const text = btn.querySelector('span');
+                  if(icon) icon.className = 'text-xl text-gray-900';
+                  if(text) text.className = 'text-xs font-medium text-gray-900';
+              });
+          });
+      });
+    </script>
+  </body>
+</html>

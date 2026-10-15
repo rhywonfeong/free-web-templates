@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebGL Button - Verd Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
+<script src="https://code.iconify.design/3/3.1.0/iconify.min.js"></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{font-family:var(--font-body);background:var(--color-bg);color:var(--color-text);line-height:1.6;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}
+a{color:inherit;text-decoration:none}
+
+:root{
+--color-bg:#0F0F0E;
+--color-bg-elevated:#1A1917;
+--color-copper:#C17F59;
+--color-copper-light:#D4A07A;
+--color-copper-bright:#E8B894;
+--color-terracotta:#C4704E;
+--color-gold:#C9A96E;
+--color-cream:#F5F0EB;
+--color-text:#F5F0EB;
+--color-text-muted:#9C9789;
+--font-display:'Playfair Display',Georgia,serif;
+--font-body:'Inter',system-ui,-apple-system,sans-serif;
+--ease-out-expo:cubic-bezier(0.16,1,0.3,1);
+}
+
+/* WebGL Hero Button */
+.btn-hero-webgl{
+position:relative;
+display:inline-flex;align-items:center;justify-content:center;
+padding:1.1rem 2.8rem;
+border-radius:100px;
+cursor:pointer;
+text-decoration:none;
+overflow:hidden;
+border:1px solid rgba(193,127,89,0.25);
+box-shadow:0 2px 20px rgba(0,0,0,0.3);
+transition:transform 0.6s var(--ease-out-expo),box-shadow 0.6s var(--ease-out-expo),border-color 0.6s;
+}
+.btn-hero-webgl:hover{
+transform:translateY(-2px);
+border-color:rgba(193,127,89,0.5);
+box-shadow:0 8px 40px rgba(193,127,89,0.25),0 0 0 1px rgba(193,127,89,0.15);
+}
+.btn-hero-webgl canvas{
+position:absolute;inset:0;width:100%;height:100%;
+border-radius:100px;
+pointer-events:none;
+z-index:1;
+}
+.btn-hero-webgl-text{
+position:relative;z-index:2;
+display:flex;align-items:center;gap:0.6rem;
+font-family:var(--font-body);
+font-size:0.8rem;letter-spacing:0.14em;text-transform:uppercase;font-weight:600;
+color:var(--color-cream);
+text-shadow:0 1px 3px rgba(0,0,0,0.4);
+transition:letter-spacing 0.6s var(--ease-out-expo);
+}
+.btn-hero-webgl:hover .btn-hero-webgl-text{
+letter-spacing:0.2em;
+}
+</style>
+</head>
+<body>
+
+<a href="#" class="btn-hero-webgl" id="heroBtn">
+  <canvas id="heroBtnCanvas"></canvas>
+  <span class="btn-hero-webgl-text">View Our Work<span class="iconify" data-icon="solar:arrow-right-linear"></span></span>
+</a>
+
+<script>
+(function(){
+'use strict';
+
+const canvas=document.getElementById('heroBtnCanvas');
+if(!canvas)return;
+const gl=canvas.getContext('webgl',{alpha:true,premultipliedAlpha:false});
+if(!gl)return;
+
+function resize(){
+  const btn=canvas.parentElement;
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  canvas.width=btn.offsetWidth*dpr;
+  canvas.height=btn.offsetHeight*dpr;
+  gl.viewport(0,0,canvas.width,canvas.height);
+}
+resize();
+window.addEventListener('resize',resize);
+
+const vsrc=`attribute vec2 a_pos;void main(){gl_Position=vec4(a_pos,0,1);}`;
+const fsrc=`
+precision mediump float;
+uniform vec2 u_res;
+uniform float u_time;
+uniform vec2 u_mouse;
+uniform float u_hover;
+
+// Simplex-ish noise
+vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec2 mod289(vec2 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec3 permute(vec3 x){return mod289(((x*34.0)+1.0)*x);}
+float snoise(vec2 v){
+  const vec4 C=vec4(0.211324865405187,0.366025403784439,-0.577350269189626,0.024390243902439);
+  vec2 i=floor(v+dot(v,C.yy));
+  vec2 x0=v-i+dot(i,C.xx);
+  vec2 i1;i1=(x0.x>x0.y)?vec2(1.0,0.0):vec2(0.0,1.0);
+  vec4 x12=x0.xyxy+C.xxzz;x12.xy-=i1;
+  i=mod289(i);
+  vec3 p=permute(permute(i.y+vec3(0.0,i1.y,1.0))+i.x+vec3(0.0,i1.x,1.0));
+  vec3 m=max(0.5-vec3(dot(x0,x0),dot(x12.xy,x12.xy),dot(x12.zw,x12.zw)),0.0);
+  m=m*m;m=m*m;
+  vec3 x=2.0*fract(p*C.www)-1.0;
+  vec3 h=abs(x)-0.5;
+  vec3 ox=floor(x+0.5);
+  vec3 a0=x-ox;
+  m*=1.79284291400159-0.85373472095314*(a0*a0+h*h);
+  vec3 g;
+  g.x=a0.x*x0.x+h.x*x0.y;
+  g.yz=a0.yz*x12.xz+h.yz*x12.yw;
+  return 130.0*dot(m,g);
+}
+
+void main(){
+  vec2 uv=gl_FragCoord.xy/u_res;
+  float aspect=u_res.x/u_res.y;
+  vec2 p=uv;
+  p.x*=aspect;
+
+  float t=u_time*0.15;
+
+  // Very subtle slow noise — barely perceptible motion at rest
+  float n1=snoise(p*1.8+vec2(t*0.6,-t*0.4))*0.5;
+  float n2=snoise(p*3.0+vec2(-t*0.3,t*0.5)+n1*0.2)*0.3;
+  float n=n1+n2;
+
+  // Dark base palette
+  vec3 dark=vec3(0.08,0.06,0.05);        // near-black
+  vec3 copper=vec3(0.60,0.38,0.22);      // muted copper
+  vec3 warmHL=vec3(0.85,0.62,0.40);      // warm highlight
+
+  // At rest: almost solid dark with a hint of slow-moving warmth
+  float blend=n*0.5+0.5;
+  vec3 col=mix(dark,dark+vec3(0.06,0.04,0.02),blend);
+
+  // Subtle ambient shimmer — very faint copper veins
+  float shimmer=smoothstep(0.62,0.75,blend)*0.15;
+  col=mix(col,copper*0.4,shimmer);
+
+  // === HOVER: magnetic liquid light following cursor ===
+  vec2 mp=u_mouse;
+  mp.x*=aspect;
+  float md=length(p-mp);
+
+  // Smooth radial light centered on cursor
+  float light=exp(-md*md*6.0)*u_hover;
+
+  // Flowing distortion around cursor
+  float warp=snoise(p*4.0+vec2(u_time*0.5))*0.15*u_hover;
+  float light2=exp(-(md+warp)*(md+warp)*8.0)*u_hover;
+
+  // Combine into warm bloom
+  float bloom=max(light,light2*0.7);
+  vec3 bloomCol=mix(copper,warmHL,smoothstep(0.0,0.7,bloom));
+  col=mix(col,bloomCol,bloom*0.85);
+
+  // Soft edge ring around cursor on hover
+  float ring=smoothstep(0.02,0.0,abs(md-0.18-warp*0.5))*u_hover*0.3;
+  col+=warmHL*ring;
+
+  // Edge vignette
+  float vig=smoothstep(0.0,0.1,uv.x)*smoothstep(0.0,0.1,1.0-uv.x)*
+            smoothstep(0.0,0.15,uv.y)*smoothstep(0.0,0.15,1.0-uv.y);
+  col*=0.8+0.2*vig;
+
+  gl_FragColor=vec4(col,1.0);
+}`;
+
+function compile(type,src){
+  const s=gl.createShader(type);
+  gl.shaderSource(s,src);gl.compileShader(s);
+  return s;
+}
+const prog=gl.createProgram();
+gl.attachShader(prog,compile(gl.VERTEX_SHADER,vsrc));
+gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,fsrc));
+gl.linkProgram(prog);gl.useProgram(prog);
+
+const buf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+const aPos=gl.getAttribLocation(prog,'a_pos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
+
+const uRes=gl.getUniformLocation(prog,'u_res');
+const uTime=gl.getUniformLocation(prog,'u_time');
+const uMouse=gl.getUniformLocation(prog,'u_mouse');
+const uHover=gl.getUniformLocation(prog,'u_hover');
+
+let mx=0.5,my=0.5,smx=0.5,smy=0.5,hover=0,hoverTarget=0;
+const btn=canvas.parentElement;
+btn.addEventListener('mouseenter',()=>{hoverTarget=1;});
+btn.addEventListener('mouseleave',()=>{hoverTarget=0;});
+btn.addEventListener('mousemove',e=>{
+  const r=btn.getBoundingClientRect();
+  mx=(e.clientX-r.left)/r.width;
+  my=1.0-(e.clientY-r.top)/r.height;
+});
+
+function render(t){
+  t*=0.001;
+  // Smooth interpolation for premium feel
+  hover+=(hoverTarget-hover)*0.045;
+  smx+=(mx-smx)*0.08;
+  smy+=(my-smy)*0.08;
+  gl.uniform2f(uRes,canvas.width,canvas.height);
+  gl.uniform1f(uTime,t);
+  gl.uniform2f(uMouse,smx,smy);
+  gl.uniform1f(uHover,hover);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+
+})();
+</script>
+</body>
+</html>

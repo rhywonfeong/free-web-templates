@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nebula — The everything platform for data teams</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@studio-freight/lenis@1.1.13/bundled/lenis.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+:root{--bg:#090a0c;--accent:#6b7cff;--accent-2:#8e7bff;--accent-3:#4fd1e0;--muted:#9598a3}
+*{box-sizing:border-box}
+html{background:var(--bg);scroll-behavior:auto}
+body{margin:0;background:var(--bg);color:#f5f6f8;font-family:Inter,Arial,sans-serif;overflow-x:hidden}
+#bgGL{position:fixed;inset:0;width:100%;height:100%;z-index:-3}
+.bg-fx{position:fixed;inset:0;z-index:-2;pointer-events:none;background:radial-gradient(circle at 72% 12%,rgba(107,124,255,.16),transparent 29%),radial-gradient(circle at 16% 50%,rgba(79,209,224,.075),transparent 30%),radial-gradient(circle at 65% 80%,rgba(142,123,255,.08),transparent 28%)}
+.grid-bg{position:fixed;inset:0;z-index:-1;pointer-events:none;background-image:linear-gradient(rgba(180,192,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(180,192,255,.04) 1px,transparent 1px);background-size:64px 64px;mask-image:radial-gradient(ellipse 75% 58% at 50% 35%,#000 0%,rgba(0,0,0,.7) 43%,transparent 100%)}
+.reveal{opacity:0;transform:translateY(26px)}
+.grad-text{background:linear-gradient(100deg,#fff 10%,#9aa6ff 54%,#67d6e6 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.logo-mark{width:1.6rem;height:1.6rem;border-radius:8px;background:linear-gradient(145deg,#9da9ff,#5b72fc 52%,#4fd1e0);position:relative;box-shadow:0 0 24px rgba(107,124,255,.5)}
+.logo-mark:after{content:"";position:absolute;width:.48rem;height:.48rem;border-radius:99px;background:white;left:.56rem;top:.56rem;box-shadow:0 0 10px #fff}
+header.scrolled{background:rgba(9,10,12,.72);backdrop-filter:blur(16px);border-color:rgba(255,255,255,.08)}
+.glass{background:linear-gradient(125deg,rgba(28,30,39,.84),rgba(11,12,16,.72));border:1px solid rgba(182,191,255,.14);box-shadow:0 30px 90px rgba(0,0,0,.35),inset 0 1px rgba(255,255,255,.05)}
+.frame{overflow:hidden;border:1px solid rgba(187,198,255,.2);background:#101116;border-radius:1rem;box-shadow:0 0 0 1px rgba(255,255,255,.03),0 38px 100px rgba(0,0,0,.52),0 0 90px rgba(103,124,255,.13)}
+.app-side{width:188px;flex-shrink:0;border-right:1px solid rgba(255,255,255,.07);background:rgba(5,6,9,.56)}
+.dot{width:.36rem;height:.36rem;border-radius:999px;background:currentColor}
+.hide-scrollbar{-ms-overflow-style:none;scrollbar-width:none}
+.hide-scrollbar::-webkit-scrollbar{display:none}
+.visual{position:relative;z-index:1;overflow:hidden}
+.visual:before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 0%,rgba(122,137,255,.17),transparent 52%)}
+.module-card{width:min(76vw,31rem);height:27rem;flex:none;border:1px solid rgba(177,190,255,.14);border-radius:1.25rem;padding:1.5rem;background:linear-gradient(145deg,rgba(23,25,34,.9),rgba(10,11,15,.83));overflow:hidden}
+.mini{border:1px solid rgba(255,255,255,.09);background:rgba(4,5,8,.56);border-radius:.8rem}
+.after{clip-path:inset(0 100% 0 0)}
+.handle{left:0}
+.live-badge .ld{width:.4rem;height:.4rem;border-radius:50%;background:#67e8f9;display:inline-block;animation:blink 1.4s infinite}
+.live-badge .ld:nth-child(2){animation-delay:.18s}.live-badge .ld:nth-child(3){animation-delay:.36s}
+@keyframes blink{0%,100%{opacity:.2;transform:scale(.75)}50%{opacity:1;transform:scale(1.15)}}
+@keyframes scrollx{to{transform:translateX(-50%)}}
+.marquee-inner{animation:scrollx 32s linear infinite;width:max-content}
+.sat{position:absolute;width:3.9rem;height:3.9rem;border:2px solid rgba(255,255,255,.33);border-radius:999px;object-fit:cover;cursor:pointer;transition:filter .25s,transform .25s;box-shadow:0 12px 28px rgba(0,0,0,.45)}
+.sat:hover{filter:brightness(1.25);transform:scale(1.1)!important}
+.kinetic-char{display:inline-block;transform:rotateX(-95deg);transform-origin:bottom;opacity:0}
+.path-draw{stroke-dasharray:900;stroke-dashoffset:900}
+@media(max-width:767px){.app-side{display:none}.module-card{width:84vw;height:24rem}.workflow-wrap{overflow-x:auto}.workflow-wrap #htrack{width:max-content}.after{clip-path:inset(0 0 0 0)!important}.handle{display:none}}
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="antialiased">
+
+
+
+
+<!-- Background (component) added by Aura -->
+<div class="aura-background-component fixed top-0 w-full h-screen -z-10" data-alpha-mask="80" style="; mask-image: linear-gradient(to bottom, transparent, black 0%, black 80%, transparent); -webkit-mask-image: linear-gradient(to bottom, transparent, black 0%, black 80%, transparent)"><div class="aura-background-component top-0 w-full -z-10 absolute h-full">
+  <div data-us-project="HzcaAbRLaALMhHJp8gLY" class="absolute w-full h-full left-0 top-0 -z-10"></div>
+  <script type="text/javascript">
+    !function(){if(!window.UnicornStudio){window.UnicornStudio={isInitialized:!1};var i=document.createElement("script");i.src="https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v1.4.29/dist/unicornStudio.umd.js",i.onload=function(){window.UnicornStudio.isInitialized||(UnicornStudio.init(),window.UnicornStudio.isInitialized=!0)},(document.head || document.body).appendChild(i)}}();
+  </script>
+</div></div>
+  <!-- Nebula -->
+  <canvas id="bgGL"></canvas>
+  <div class="bg-fx"></div>
+  <div class="grid-bg"></div>
+
+  <header id="header" class="fixed inset-x-0 top-0 z-[100] border-b border-transparent transition-all duration-300">
+    <div class="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 lg:px-8">
+      <a href="#" class="flex items-center gap-3">
+        <span class="logo-mark"></span>
+        <span class="font-semibold tracking-[-0.08em] text-lg">NEBULA</span>
+      </a>
+      <nav class="hidden items-center gap-7 text-sm md:flex text-neutral-400">
+        <a href="#workflow" class="transition hover:text-white">Platform</a>
+        <a href="#manifesto" class="transition hover:text-white">Why Nebula</a>
+        <a href="#customers" class="transition hover:text-white">Customers</a>
+        <a href="#stats" class="transition hover:text-white">Company</a>
+      </nav>
+      <div class="flex items-center gap-4 text-sm">
+        <a href="#" class="hidden sm:block text-neutral-400">Sign in</a>
+        <a href="#cta" class="rounded-lg px-4 py-2 font-medium transition bg-white text-neutral-950 hover:bg-neutral-200">Get started <span class="ml-1">→</span></a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="relative flex min-h-screen items-center overflow-hidden pt-24">
+      <div class="mx-auto w-full max-w-7xl px-5 pb-16 pt-24 lg:px-8">
+        <div class="mx-auto max-w-4xl text-center">
+          <div class="hero-badge inline-flex items-center gap-2 rounded-full border bg-indigo-300/[.07] px-3 py-1.5 text-xs border-indigo-300/15 text-indigo-100">
+            <span class="h-1.5 w-1.5 rounded-full shadow-[0_0_12px_#67d6e6] bg-blue-300"></span>
+            The intelligence layer for modern data
+            <iconify-icon icon="solar:arrow-right-linear" width="14" stroke-width="1.5"></iconify-icon>
+          </div>
+          <h1 class="hero-title mt-7 text-balance text-[clamp(2.375rem,7vw,4.5rem)] font-semibold leading-[1.03] tracking-tight">The everything platform for your <span class="grad-text">data teams</span></h1>
+          <p class="hero-lead mx-auto mt-6 max-w-2xl text-pretty text-base leading-7 sm:text-lg text-neutral-400">Build trusted data products faster. Connect your stack, model your world, and turn every signal into an action.</p>
+          <div class="hero-cta mt-8 flex flex-wrap justify-center gap-3">
+            <a href="#workflow" class="rounded-lg bg-[#7888ff] px-5 py-3 text-sm font-medium shadow-[0_0_28px_rgba(107,124,255,.38)] transition hover:bg-[#8c99ff] text-white">Start building free</a>
+            <a href="#" class="flex items-center gap-2 rounded-lg border bg-white/[.04] px-5 py-3 text-sm font-medium transition hover:bg-white/[.08] border-white/10 text-neutral-200"><iconify-icon icon="solar:play-circle-linear" width="18" stroke-width="1.5"></iconify-icon> Watch overview</a>
+          </div>
+        </div>
+
+        <div class="hero-shot frame mx-auto mt-14 max-w-6xl">
+          <div class="flex h-[29rem] sm:h-[34rem]">
+            <aside class="app-side p-4">
+              <div class="flex items-center gap-2 border-b border-white/[.07] pb-5 text-xs font-medium text-white"><span class="logo-mark scale-75"></span> Nebula OS</div>
+              <div class="mt-5 space-y-1 text-xs text-neutral-500">
+                <div class="flex items-center gap-2 rounded-md bg-indigo-400/[.12] px-3 py-2 text-indigo-200"><iconify-icon icon="solar:widget-5-linear" width="15"></iconify-icon> Overview</div>
+                <div class="flex items-center gap-2 px-3 py-2"><iconify-icon icon="solar:database-linear" width="15"></iconify-icon> Sources</div>
+                <div class="flex items-center gap-2 px-3 py-2"><iconify-icon icon="solar:diagram-up-linear" width="15"></iconify-icon> Lineage</div>
+                <div class="flex items-center gap-2 px-3 py-2"><iconify-icon icon="solar:chart-2-linear" width="15"></iconify-icon> Observability</div>
+                <div class="flex items-center gap-2 px-3 py-2"><iconify-icon icon="solar:bolt-linear" width="15"></iconify-icon> Automations</div>
+              </div>
+              <div class="mt-32 rounded-lg border border-white/[.07] bg-white/[.03] p-3 text-xs"><p class="text-neutral-500">Workspace</p><p class="mt-1 text-neutral-200">Acme Analytics</p></div>
+            </aside>
+            <div class="min-w-0 flex-1 p-4 sm:p-7">
+              <div class="flex items-center justify-between">
+                <div><p class="text-xs text-neutral-500">Overview / production</p><h2 class="mt-1 text-lg font-medium">Data health</h2></div>
+                <div class="live-badge flex items-center gap-1.5 rounded-full border bg-blue-300/[.07] px-3 py-1.5 text-xs border-blue-300/15 text-blue-200"><span class="ld"></span><span class="ld"></span><span class="ld"></span> Live</div>
+              </div>
+              <div class="mt-6 grid gap-3 sm:grid-cols-3">
+                <div class="mini p-4"><p class="text-xs text-neutral-500">Healthy assets</p><p class="mt-3 text-2xl font-medium">1,248 <span class="text-xs font-normal text-cyan-300">+8.4%</span></p></div>
+                <div class="mini p-4"><p class="text-xs text-neutral-500">Freshness SLA</p><p class="mt-3 text-2xl font-medium">99.98<span class="text-sm">%</span></p></div>
+                <div class="mini p-4"><p class="text-xs text-neutral-500">Open incidents</p><p class="mt-3 text-2xl font-medium">03 <span class="text-xs font-normal text-amber-300">−2 today</span></p></div>
+              </div>
+              <div class="mini relative mt-4 h-56 overflow-hidden p-5">
+                <div class="relative z-10 flex justify-between"><div><p class="text-sm font-medium">Pipeline reliability</p><p class="mt-1 text-xs text-neutral-500">Last 30 days · 99.98% successful runs</p></div><button class="rounded border px-2 py-1 text-xs border-white/10 text-neutral-400">30 days</button></div>
+                <svg class="absolute inset-x-4 bottom-3 h-36 w-[calc(100%-2rem)]" viewBox="0 0 700 150" fill="none">
+                  <defs><linearGradient id="areaG" x1="0" x2="0" y1="0" y2="1"><stop stop-color="#7181ff" stop-opacity=".32"></stop><stop offset="1" stop-color="#7181ff" stop-opacity="0"></stop></linearGradient><linearGradient id="lineG"><stop stop-color="#8e7bff"></stop><stop offset="1" stop-color="#4fd1e0"></stop></linearGradient></defs>
+                  <path d="M0 113 C50 100 64 111 111 87 S180 111 220 71 S292 97 341 61 S411 79 454 48 S522 68 568 35 S644 55 700 14 L700 150 L0 150Z" fill="url(#areaG)"></path>
+                  <path class="path-draw" d="M0 113 C50 100 64 111 111 87 S180 111 220 71 S292 97 341 61 S411 79 454 48 S522 68 568 35 S644 55 700 14" stroke="url(#lineG)" stroke-width="3" stroke-linecap="round"></path>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="manifesto" class="relative border-y border-white/[.06] py-28 sm:py-40">
+      <div class="mx-auto max-w-5xl px-5 text-center lg:px-8">
+        <p class="reveal text-xs font-medium uppercase tracking-[.2em] text-indigo-300">One connected system</p>
+        <h2 id="scrubText" class="mt-6 text-balance text-[clamp(2rem,5vw,4rem)] font-medium leading-[1.12] tracking-tight">Your data stack should not make your team work harder. Nebula gives every team a shared, living understanding of the data that moves your business.</h2>
+      </div>
+    </section>
+
+    <section id="workflow" class="py-24 sm:py-32">
+      <div class="mx-auto max-w-7xl px-5 lg:px-8">
+        <div class="reveal flex flex-col justify-between gap-5 md:flex-row md:items-end">
+          <div><p class="text-xs font-medium uppercase tracking-[.2em] text-indigo-300">How it works</p><h2 class="mt-4 text-[clamp(2.2rem,5vw,4rem)] font-medium tracking-tight">The workflow, <span class="grad-text">unfragmented.</span></h2></div>
+          <p class="max-w-sm text-sm leading-6 text-neutral-400">Move from raw signal to confident action in one continuous, intelligent loop.</p>
+        </div>
+      </div>
+      <div id="modules" class="workflow-wrap mt-12 overflow-hidden">
+        <div id="htrack" class="flex gap-5 px-[max(1.25rem,calc((100vw-80rem)/2))]">
+          <article class="module-card visual">
+            <span class="relative text-xs font-medium text-indigo-300">01 / CONNECT</span><h3 class="relative mt-4 text-2xl font-medium tracking-tight">Every source. One surface.</h3><p class="relative mt-3 max-w-sm text-sm leading-6 text-neutral-400">Bring warehouse, SaaS, and streaming data together without brittle connectors.</p>
+            <div class="mini relative mt-8 p-4"><div class="flex items-center justify-between"><div class="flex items-center gap-3"><span class="grid h-8 w-8 place-items-center rounded-md bg-[#336791] text-sm font-bold">▣</span><div><p class="text-sm">PostgreSQL</p><p class="text-xs text-neutral-500">production</p></div></div><span class="h-5 w-9 rounded-full p-0.5 bg-indigo-400"><span class="block h-4 w-4 translate-x-4 rounded-full bg-white"></span></span></div><div class="mt-5 flex items-center gap-2 text-xs text-cyan-300"><iconify-icon icon="solar:check-circle-linear" width="16"></iconify-icon> Syncing · 12s ago</div></div>
+          </article>
+          <article class="module-card visual">
+            <span class="relative text-xs font-medium text-violet-300">02 / MODEL</span><h3 class="relative mt-4 text-2xl font-medium tracking-tight">Meaning, mapped.</h3><p class="relative mt-3 max-w-sm text-sm leading-6 text-neutral-400">See how every metric, model, and dashboard is connected.</p>
+            <div class="relative mt-7 h-52"><svg class="absolute inset-0 h-full w-full" viewBox="0 0 460 220" fill="none"><path d="M75,72 C150,72 150,146 220,146 M220,146 C295,146 300,82 384,82 M220,146 C290,146 297,184 385,184" stroke="#6d7dff" stroke-opacity=".6" stroke-width="2"></path><circle cx="75" cy="72" r="7" fill="#4fd1e0"></circle><circle cx="220" cy="146" r="8" fill="#8e7bff"></circle><circle cx="384" cy="82" r="7" fill="#6b7cff"></circle><circle cx="385" cy="184" r="7" fill="#4fd1e0"></circle></svg><div class="absolute left-4 top-5 rounded bg-[#152128] px-2 py-1 text-xs">orders_raw</div><div class="absolute left-[39%] top-[57%] rounded bg-[#211d36] px-2 py-1 text-xs">revenue_model</div><div class="absolute right-1 top-7 rounded bg-[#172035] px-2 py-1 text-xs">MRR</div><div class="absolute bottom-1 right-0 rounded bg-[#152b2e] px-2 py-1 text-xs">Executive BI</div></div>
+          </article>
+          <article class="module-card visual">
+            <span class="relative text-xs font-medium text-blue-300">03 / OBSERVE</span><h3 class="relative mt-4 text-2xl font-medium tracking-tight">Know before they ask.</h3><p class="relative mt-3 max-w-sm text-sm leading-6 text-neutral-400">Monitor freshness, volume, quality and lineage in real time.</p>
+            <div class="mini relative mt-8 flex h-40 items-end gap-3 p-5"><i class="bar w-full rounded-t bg-indigo-400/45" style="height:38%"></i><i class="bar w-full rounded-t bg-indigo-400/55" style="height:61%"></i><i class="bar w-full rounded-t bg-blue-300/65" style="height:78%"></i><i class="bar w-full rounded-t bg-indigo-400/50" style="height:49%"></i><i class="bar w-full rounded-t bg-violet-400/70" style="height:92%"></i><i class="bar w-full rounded-t bg-blue-300/60" style="height:69%"></i></div>
+          </article>
+          <article class="module-card visual">
+            <span class="relative text-xs font-medium text-amber-200">04 / DETECT</span><h3 class="relative mt-4 text-2xl font-medium tracking-tight">Anomalies, surfaced.</h3><p class="relative mt-3 max-w-sm text-sm leading-6 text-neutral-400">Turn subtle drift into clear, explainable incidents automatically.</p>
+            <div class="mini relative mt-8 grid h-40 place-items-center overflow-hidden"><span class="absolute h-28 w-28 rounded-full border border-blue-300/20"></span><span class="absolute h-16 w-16 rounded-full border border-blue-300/35"></span><span class="absolute h-3 w-3 rounded-full shadow-[0_0_25px_#4fd1e0] bg-blue-300"></span><span class="live-badge absolute right-4 top-4 flex items-center gap-1 text-xs text-blue-200"><i class="ld"></i><i class="ld"></i><i class="ld"></i> scanning</span></div>
+          </article>
+          <article class="module-card visual">
+            <span class="relative text-xs font-medium text-cyan-300">05 / ACT</span><h3 class="relative mt-4 text-2xl font-medium tracking-tight">Close the loop.</h3><p class="relative mt-3 max-w-sm text-sm leading-6 text-neutral-400">Route intelligence to the people and systems that can do something with it.</p>
+            <div class="mini relative mt-7 space-y-3 p-4 text-xs"><div class="flex items-center gap-3"><span class="grid h-7 w-7 place-items-center rounded bg-indigo-400/20"><iconify-icon icon="solar:bell-linear"></iconify-icon></span><span>Incident detected</span></div><div class="ml-3 h-4 border-l border-dashed border-white/20"></div><div class="flex items-center gap-3"><span class="grid h-7 w-7 place-items-center rounded bg-blue-400/20"><iconify-icon icon="solar:users-group-rounded-linear"></iconify-icon></span><span>Notify #data-oncall</span></div><div class="ml-3 h-4 border-l border-dashed border-white/20"></div><div class="flex items-center gap-3"><span class="grid h-7 w-7 place-items-center rounded bg-cyan-400/20"><iconify-icon icon="solar:check-circle-linear"></iconify-icon></span><span>Open remediation runbook</span></div></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="py-24 sm:py-32">
+      <div class="mx-auto max-w-7xl px-5 lg:px-8">
+        <div class="reveal mb-10 max-w-2xl"><p class="text-xs font-medium uppercase tracking-[.2em] text-indigo-300">From noise to clarity</p><h2 class="mt-4 text-[clamp(2.2rem,5vw,4rem)] font-medium tracking-tight">A system your team can <span class="grad-text">trust.</span></h2></div>
+        <div id="wipe" class="reveal relative h-[31rem] overflow-hidden rounded-2xl border border-white/10 bg-slate-950">
+          <div class="absolute inset-0 p-6 sm:p-10 bg-slate-950">
+            <div class="flex items-center justify-between"><span class="rounded-full border px-3 py-1 text-xs text-neutral-500 border-white/10">Before Nebula</span><span class="text-xs text-neutral-600">Disconnected, delayed, unclear</span></div>
+            <div class="mt-12 grid gap-4 opacity-60 grayscale sm:grid-cols-3"><div class="rounded-xl border bg-white/[.03] p-5 border-white/10"><p class="text-xs text-neutral-500">Data incident</p><p class="mt-5 text-lg">Revenue pipeline failed</p><p class="mt-3 text-xs text-neutral-500">Owner unknown · 43 min ago</p></div><div class="rounded-xl border bg-white/[.03] p-5 border-white/10"><p class="text-xs text-neutral-500">Slack thread</p><p class="mt-5 text-lg">Does anyone know why...</p><p class="mt-3 text-xs text-neutral-500">17 replies</p></div><div class="rounded-xl border bg-white/[.03] p-5 border-white/10"><p class="text-xs text-neutral-500">Dashboard</p><p class="mt-5 text-lg">Metric discrepancy</p><p class="mt-3 text-xs text-neutral-500">Last refreshed yesterday</p></div></div>
+          </div>
+          <div class="after absolute inset-0 bg-[#0a0f1c] p-6 sm:p-10">
+            <div class="flex items-center justify-between"><span class="rounded-full border px-3 py-1 text-xs border-blue-300/25 bg-blue-300/10 text-blue-100">With Nebula</span><span class="text-xs text-blue-200/60">Connected, instant, actionable</span></div>
+            <div class="relative mt-10 h-72 overflow-hidden rounded-xl border bg-[#0b1521] border-blue-300/15">
+              <svg class="absolute inset-0 h-full w-full" viewBox="0 0 900 300" fill="none"><defs><linearGradient id="cyanline"><stop stop-color="#6b7cff"></stop><stop offset="1" stop-color="#4fd1e0"></stop></linearGradient></defs><path d="M0 225 C120 225 120 90 250 90 S380 211 490 160 S590 45 720 90 S802 140 900 45" stroke="url(#cyanline)" stroke-width="3"></path><path d="M0 252 C90 240 125 185 215 209 S347 281 447 224 S582 111 661 166 S802 227 900 181" stroke="#4fd1e0" stroke-opacity=".35" stroke-width="2"></path></svg>
+              <div class="absolute left-[25%] top-[19%] rounded-lg border bg-[#101e2e] px-3 py-2 text-xs shadow-lg shadow-blue-500/10 border-blue-300/30">Root cause identified</div><div class="absolute bottom-7 right-[13%] rounded-lg border bg-[#171a38] px-3 py-2 text-xs border-indigo-300/30">Owner notified · 2m</div>
+            </div>
+          </div>
+          <div class="handle absolute top-0 z-20 h-full w-px shadow-[0_0_20px_#4fd1e0] bg-blue-200"><span class="absolute left-1/2 top-1/2 grid h-10 w-10 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border bg-[#10202b] border-blue-200/60 text-blue-100"><iconify-icon icon="solar:round-alt-arrow-left-linear" width="15"></iconify-icon><iconify-icon icon="solar:round-alt-arrow-right-linear" width="15"></iconify-icon></span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="customers" class="overflow-hidden border-y border-white/[.06] py-24 sm:py-32">
+      <div class="mx-auto max-w-5xl px-5 text-center">
+        <p class="reveal text-xs font-medium uppercase tracking-[.2em] text-indigo-300">Built with data leaders</p>
+        <div class="reveal mt-10">
+          <div id="orbit" class="relative mx-auto h-72 w-72">
+            <div class="absolute left-1/2 top-1/2 h-[15rem] w-[15rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[.08]"></div>
+            <div class="absolute left-1/2 top-1/2 h-[10rem] w-[10rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-indigo-300/[.08]"></div>
+            <img id="activeAvatar" src="https://i.pravatar.cc/200?img=47" alt="Customer" class="absolute left-1/2 top-1/2 z-10 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 object-cover shadow-[0_0_45px_rgba(107,124,255,.45)] border-indigo-200/70">
+            <img class="sat" data-i="0" src="https://i.pravatar.cc/200?img=47" alt="Customer">
+            <img class="sat" data-i="1" src="https://i.pravatar.cc/200?img=12" alt="Customer">
+            <img class="sat" data-i="2" src="https://i.pravatar.cc/200?img=32" alt="Customer">
+            <img class="sat" data-i="0" src="https://i.pravatar.cc/200?img=47" alt="Customer">
+            <img class="sat" data-i="1" src="https://i.pravatar.cc/200?img=12" alt="Customer">
+          </div>
+          <blockquote id="quote" class="mx-auto mt-8 max-w-3xl text-balance text-xl font-medium leading-8 tracking-tight sm:text-2xl">“Nebula gave us one place to understand what is happening across our entire data estate.”</blockquote>
+          <p id="quoteName" class="mt-5 text-sm text-neutral-400">Maya Chen <span class="mx-1 text-neutral-700">·</span> VP Data, Arc</p>
+        </div>
+      </div>
+      <div class="mt-20 flex overflow-hidden border-y border-white/[.05] py-5"><div class="marquee-inner flex items-center gap-16 pr-16 text-lg font-semibold tracking-[-.06em] text-neutral-600"><span>northstar</span><span>HORIZON</span><span>meridian</span><span>ARC SYSTEMS</span><span>kora</span><span>northstar</span><span>HORIZON</span><span>meridian</span><span>ARC SYSTEMS</span><span>kora</span></div></div>
+    </section>
+
+    <section class="kinetic overflow-hidden py-28 sm:py-40">
+      <div class="mx-auto max-w-7xl px-5 lg:px-8">
+        <p class="text-xs font-medium uppercase tracking-[.2em] text-indigo-300">Designed for momentum</p>
+        <h2 class="mt-5 max-w-5xl text-[clamp(2.6rem,8vw,7rem)] font-semibold leading-[.94] tracking-tight"><span class="kinetic-char">Move</span> <span class="kinetic-char grad-text">at</span> <span class="kinetic-char">the</span> <span class="kinetic-char">speed</span> <span class="kinetic-char">of</span> <span class="kinetic-char grad-text">certainty.</span></h2>
+      </div>
+    </section>
+
+    <section id="particleSection" class="relative min-h-[33rem] overflow-hidden border-y border-white/[.06]">
+      <canvas id="particleCanvas" class="absolute inset-0 h-full w-full"></canvas>
+      <div class="relative z-10 mx-auto flex min-h-[33rem] max-w-5xl items-end justify-center px-5 pb-16 text-center"><p class="text-sm text-neutral-400">Signals become patterns. Patterns become progress.</p></div>
+    </section>
+
+    <section id="stats" class="py-24 sm:py-32">
+      <div class="mx-auto max-w-7xl px-5 lg:px-8">
+        <div class="grid gap-px overflow-hidden rounded-2xl border border-white/[.09] bg-white/[.09] sm:grid-cols-3">
+          <div class="bg-[#0c0d11] p-8 sm:p-10"><p class="text-xs uppercase tracking-[.15em] text-neutral-500">Assets observed</p><p class="mt-5 text-4xl font-medium tracking-tight"><span data-count="24.8" data-decimal="1">0</span><span class="text-indigo-300">B+</span></p></div>
+          <div class="bg-[#0c0d11] p-8 sm:p-10"><p class="text-xs uppercase tracking-[.15em] text-neutral-500">Queries understood</p><p class="mt-5 text-4xl font-medium tracking-tight"><span data-count="1.6" data-decimal="1">0</span><span class="text-blue-300">T+</span></p></div>
+          <div class="bg-[#0c0d11] p-8 sm:p-10"><p class="text-xs uppercase tracking-[.15em] text-neutral-500">Hours returned</p><p class="mt-5 text-4xl font-medium tracking-tight"><span data-count="640" data-decimal="0">0</span><span class="text-violet-300">K</span></p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="cta" class="pb-24 pt-10 sm:pb-32">
+      <div class="mx-auto max-w-5xl px-5">
+        <div class="reveal relative overflow-hidden rounded-2xl border bg-[#10121e] px-6 py-16 text-center sm:px-12 sm:py-24 border-indigo-300/20">
+          <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(107,124,255,.26),transparent_55%)]"></div>
+          <div class="relative"><span class="logo-mark mx-auto block"></span><h2 class="mt-7 text-[clamp(2.2rem,5vw,4.2rem)] font-medium tracking-tight">Your data has more to say.</h2><p class="mx-auto mt-5 max-w-xl text-base leading-7 text-neutral-400">Bring every signal into focus with the platform built for teams that move.</p><a href="#" class="mt-8 inline-flex rounded-lg px-5 py-3 text-sm font-medium transition bg-white text-neutral-950 hover:bg-neutral-200">Build with Nebula <span class="ml-2">→</span></a></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-white/[.06] py-9">
+    <div class="mx-auto flex max-w-7xl flex-col justify-between gap-5 px-5 text-xs text-neutral-500 sm:flex-row lg:px-8"><span>© 2025 Nebula, Inc.</span><div class="flex gap-5"><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Security</a></div></div>
+  </footer>
+
+  <script>
+    gsap.registerPlugin(ScrollTrigger);
+
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!reduced && window.Lenis) {
+      const lenis = new Lenis({lerp:.085, smoothWheel:true});
+      lenis.on("scroll", ScrollTrigger.update);
+      gsap.ticker.add(t => lenis.raf(t * 1000));
+      gsap.ticker.lagSmoothing(0);
+    }
+
+    const header=document.querySelector("#header");
+    window.addEventListener("scroll",()=>header.classList.toggle("scrolled",scrollY>40));
+
+    gsap.utils.toArray(".reveal").forEach(el=>gsap.to(el,{opacity:1,y:0,duration:.85,ease:"power3.out",scrollTrigger:{trigger:el,start:"top 86%"}}));
+    const hero=gsap.timeline({defaults:{ease:"power3.out"}});
+    hero.from(".hero-badge",{opacity:0,y:15,duration:.55}).from(".hero-title",{opacity:0,y:26,duration:.8},"-=.22").from(".hero-lead",{opacity:0,y:18,duration:.65},"-=.5").from(".hero-cta",{opacity:0,y:18,duration:.6},"-=.45").from(".hero-shot",{opacity:0,y:35,scale:.97,duration:1},"-=.25").to(".path-draw",{strokeDashoffset:0,duration:1.8,ease:"power2.inOut"},"-=.7");
+
+    const scrub=document.querySelector("#scrubText"), words=scrub.textContent.trim().split(/\s+/);
+    scrub.innerHTML=words.map(x=>`<span style="color:#33353d;display:inline-block;margin-right:.22em">${x}</span>`).join("");
+    gsap.to("#scrubText span",{color:"#f4f5f7",stagger:.06,ease:"none",scrollTrigger:{trigger:"#manifesto",start:"top 72%",end:"bottom 58%",scrub:true}});
+
+    ScrollTrigger.matchMedia({
+      "(min-width: 768px)":function(){
+        const track=document.querySelector("#htrack");
+        const amount=()=>-(track.scrollWidth-window.innerWidth+80);
+        gsap.to(track,{x:amount,ease:"none",scrollTrigger:{trigger:"#modules",start:"top 11%",end:()=>"+="+(track.scrollWidth-window.innerWidth+260),pin:true,scrub:1,invalidateOnRefresh:true}});
+      }
+    });
+
+    gsap.utils.toArray(".bar").forEach((bar,i)=>gsap.to(bar,{scaleY:.48+Math.random()*.8,transformOrigin:"bottom",repeat:-1,yoyo:true,duration:.75+i*.15,ease:"sine.inOut"}));
+    gsap.to(".after",{clipPath:"inset(0 0% 0 0)",ease:"none",scrollTrigger:{trigger:"#wipe",start:"top 72%",end:"bottom 35%",scrub:true}});
+    gsap.to(".handle",{left:"100%",ease:"none",scrollTrigger:{trigger:"#wipe",start:"top 72%",end:"bottom 35%",scrub:true}});
+
+    const people=[
+      {img:"https://i.pravatar.cc/200?img=47",q:"“Nebula gave us one place to understand what is happening across our entire data estate.”",n:"Maya Chen · VP Data, Arc"},
+      {img:"https://i.pravatar.cc/200?img=12",q:"“We replaced five disconnected workflows with a single source of confidence.”",n:"Jon Bell · Head of Analytics, Northstar"},
+      {img:"https://i.pravatar.cc/200?img=32",q:"“Our data team now spends time building instead of chasing answers.”",n:"Elena Torres · Director of Data, Meridian"}
+    ];
+    const sats=[...document.querySelectorAll(".sat")], avatar=document.querySelector("#activeAvatar"), quote=document.querySelector("#quote"), qname=document.querySelector("#quoteName");
+    let ang=0, active=0;
+    function orbit(){ang+=.0042;sats.forEach((s,i)=>{let a=ang+i*(Math.PI*2/sats.length),r=118;s.style.left=`calc(50% + ${Math.cos(a)*r}px - 31px)`;s.style.top=`calc(50% + ${Math.sin(a)*r}px - 31px)`});requestAnimationFrame(orbit)} orbit();
+    function swap(i){active=i;const p=people[i];gsap.to([avatar,quote,qname],{opacity:0,duration:.18,onComplete(){avatar.src=p.img;quote.textContent=p.q;qname.textContent=p.n;gsap.to([avatar,quote,qname],{opacity:1,duration:.35})}})}
+    sats.forEach(s=>s.addEventListener("click",()=>swap(+s.dataset.i)));
+    setInterval(()=>swap((active+1)%people.length),4200);
+
+    gsap.to(".kinetic-char",{rotateX:0,opacity:1,stagger:.075,ease:"power3.out",scrollTrigger:{trigger:".kinetic",start:"top 65%"}});
+
+    document.querySelectorAll("[data-count]").forEach(el=>{
+      ScrollTrigger.create({trigger:el,start:"top 86%",once:true,onEnter:()=>{
+        const target=parseFloat(el.dataset.count), decimals=+el.dataset.decimal, obj={n:0};
+        gsap.to(obj,{n:target,duration:1.6,delay:.18,ease:"power2.out",onUpdate:()=>el.textContent=obj.n.toFixed(decimals)});
+      }});
+    });
+
+    const pc=document.querySelector("#particleCanvas"), pctx=pc.getContext("2d");let particles=[];
+    function makeParticles(){
+      const rect=pc.getBoundingClientRect(), dpr=Math.min(devicePixelRatio,2);pc.width=rect.width*dpr;pc.height=rect.height*dpr;pctx.scale(dpr,dpr);
+      const off=document.createElement("canvas"), c=off.getContext("2d");off.width=rect.width;off.height=rect.height;c.fillStyle="white";c.font=`700 ${Math.min(rect.width*.16,110)}px Inter`;c.textAlign="center";c.textBaseline="middle";c.fillText("NEBULA",rect.width/2,rect.height/2);
+      const data=c.getImageData(0,0,off.width,off.height).data;particles=[];for(let y=0;y<off.height;y+=5)for(let x=0;x<off.width;x+=5)if(data[(y*off.width+x)*4+3]>100)particles.push({tx:x,ty:y,sx:Math.random()*rect.width,sy:Math.random()*rect.height});
+    }
+    function drawParticles(progress=.15){const r=pc.getBoundingClientRect();pctx.clearRect(0,0,r.width,r.height);const e=1-Math.pow(1-progress,4);particles.forEach((p,i)=>{const x=p.sx+(p.tx-p.sx)*e,y=p.sy+(p.ty-p.sy)*e;pctx.fillStyle=i%4===0?"#4fd1e0":i%3===0?"#8e7bff":"#8794ff";pctx.globalAlpha=.25+e*.7;pctx.fillRect(x,y,1.6,1.6)});pctx.globalAlpha=1}
+    makeParticles();drawParticles();window.addEventListener("resize",()=>{makeParticles();drawParticles()});
+    ScrollTrigger.create({trigger:"#particleSection",start:"top bottom",end:"bottom top",scrub:true,onUpdate:self=>drawParticles(Math.max(.05,Math.min(1,self.progress*1.35)))});
+
+    // MagicRings-inspired Three.js background shader
+    const renderer=new THREE.WebGLRenderer({canvas:document.querySelector("#bgGL"),alpha:true,antialias:false});
+    renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));const scene=new THREE.Scene(),cam=new THREE.Camera();let mouse=new THREE.Vector2(.5,.5);
+    const mat=new THREE.ShaderMaterial({transparent:true,uniforms:{time:{value:0},res:{value:new THREE.Vector2()},mouse:{value:mouse},attenuation:{value:10},lineThickness:{value:2},baseRadius:{value:.35},scaleRate:{value:.1}},vertexShader:"void main(){gl_Position=vec4(position,1.0);}",fragmentShader:`precision highp float;uniform float time;uniform vec2 res;uniform vec2 mouse;uniform float attenuation,lineThickness,baseRadius,scaleRate;void main(){vec2 uv=(gl_FragCoord.xy-.5*res.xy)/res.y;vec2 m=(mouse-.5)*.25;float col=0.;for(int i=0;i<5;i++){float fi=float(i);vec2 p=uv-m*(fi*.32);float r=length(p);float radius=baseRadius+fi*.115+sin(time*.35+fi)*.018;float ring=pow(max(.0,1.-abs(r-radius)*attenuation),lineThickness);float waves=.55+.45*sin(atan(p.y,p.x)*5.+time*(.6+fi*.08)+r*20.);col+=ring*waves*(1.-fi*.13);}vec3 a=vec3(.25,.32,1.),b=vec3(.15,.82,.88);vec3 color=mix(a,b,uv.y+.5);gl_FragColor=vec4(color*col*.24,col*.52);}`});
+    scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),mat));
+    function resize(){renderer.setSize(innerWidth,innerHeight);mat.uniforms.res.value.set(innerWidth,innerHeight)}resize();addEventListener("resize",resize);addEventListener("pointermove",e=>mouse.set(e.clientX/innerWidth,1-e.clientY/innerHeight));
+    function render(t){mat.uniforms.time.value=t*.001;renderer.render(scene,cam);requestAnimationFrame(render)}requestAnimationFrame(render);
+  </script>
+
+</body></html>

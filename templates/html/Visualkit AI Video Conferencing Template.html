@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visualkit Meet</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body {
+font-family: 'Inter', sans-serif;
+}
+.font-mono {
+font-family: 'JetBrains Mono', monospace;
+}
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+width: 6px;
+height: 6px;
+}
+::-webkit-scrollbar-track {
+background: transparent;
+}
+::-webkit-scrollbar-thumb {
+background: #262626;
+border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+background: #404040;
+}
+/* Custom Toggle */
+.toggle-checkbox:checked ~ .toggle-label {
+background-color: #ededed;
+border-color: #ededed;
+}
+.toggle-checkbox:checked ~ .dot {
+transform: translateX(14px);
+background-color: #0A0A0A;
+}
+/* Pulse Animation */
+@keyframes agent-pulse {
+0%, 100% { opacity: 1; transform: scale(1); }
+50% { opacity: 0.6; transform: scale(0.95); }
+}
+.animate-agent-pulse {
+animation: agent-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes scanline {
+0% { transform: translateY(-100%); }
+100% { transform: translateY(100%); }
+}
+.animate-scanline {
+animation: scanline 3s linear infinite;
+}
+</style></head>
+<body class="bg-[#0A0A0A] text-neutral-100 h-screen w-screen overflow-hidden flex flex-col font-sans selection:bg-neutral-800 selection:text-neutral-50 antialiased text-sm">
+
+    <!-- Top Header -->
+    <header class="h-14 shrink-0 border-b border-neutral-900 flex items-center justify-between px-5 bg-[#0A0A0A]/80 backdrop-blur-md z-10">
+        <div class="flex items-center gap-4">
+            <!-- Logo -->
+            <div class="text-neutral-100 tracking-tighter font-medium text-sm flex items-center gap-2">
+                <div class="w-4 h-4 bg-neutral-100 rounded-[3px] flex items-center justify-center">
+                    <div class="w-1 h-1 bg-black rounded-full"></div>
+                </div>
+                VISUALKIT
+            </div>
+            
+            <div class="h-4 w-[1px] bg-neutral-800"></div>
+            
+            <!-- Meeting Info -->
+            <div class="flex items-center gap-2">
+                <h1 class="text-neutral-200 font-medium text-sm tracking-tight">Enterprise Architecture Sync</h1>
+                <span class="bg-neutral-900 border border-neutral-800 text-neutral-400 px-1.5 py-0.5 rounded text-xs">Meet</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-6">
+            <!-- AI Vision Status -->
+            <label class="flex items-center gap-2.5 cursor-pointer group hover:bg-neutral-900/50 px-2.5 py-1.5 rounded-lg transition-colors">
+                <div class="relative flex items-center">
+                    <input type="checkbox" class="sr-only toggle-checkbox" checked>
+                    <div class="block bg-neutral-800 border border-neutral-700 w-8 h-4.5 rounded-full toggle-label transition-colors duration-200"></div>
+                    <div class="dot absolute left-0.5 bg-neutral-400 w-3.5 h-3.5 rounded-full transition-all duration-200 shadow-sm"></div>
+                </div>
+                <div class="flex items-center gap-1.5 text-xs text-neutral-400 group-hover:text-neutral-300">
+                    <iconify-icon icon="solar:eye-linear" style="stroke-width: 1.5;"></iconify-icon>
+                    AI Screen Vision
+                </div>
+            </label>
+
+            <!-- Network & Timer -->
+            <div class="flex items-center gap-4 text-xs font-medium text-neutral-500 tracking-tight">
+                <div class="flex items-center gap-1.5" title="Free TURN/STUN via VK-ICE">
+                    <iconify-icon icon="solar:shield-check-linear" class="text-green-500/70" style="stroke-width: 1.5;"></iconify-icon>
+                    VK-ICE Relay
+                </div>
+                <div class="h-3 w-[1px] bg-neutral-800"></div>
+                <div class="flex items-center gap-1.5 w-16 tabular-nums">
+                    <div class="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
+                    45:21
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 flex overflow-hidden p-4 gap-4">
+        
+        <!-- Center Stage (Screen Share & Video Grid) -->
+        <div class="flex-1 flex flex-col gap-4 relative min-w-0">
+            
+            <!-- Main Featured Video (Screen Share) -->
+            <div class="flex-1 bg-[#111] border border-neutral-800/60 rounded-2xl relative overflow-hidden flex flex-col shadow-sm group">
+                
+                <!-- Presenter Badge -->
+                <div class="absolute top-4 left-4 z-10 flex items-center gap-2 bg-neutral-950/80 backdrop-blur-md border border-neutral-800/80 rounded-lg px-3 py-1.5 shadow-sm">
+                    <div class="w-5 h-5 rounded bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xs font-medium border border-indigo-500/30">
+                        E
+                    </div>
+                    <span class="text-xs text-neutral-300 font-medium">Elena is presenting</span>
+                </div>
+
+                <!-- Fake Screen Share Content (Code IDE) -->
+                <div class="m-12 mt-16 flex-1 bg-[#050505] border border-neutral-800/80 rounded-xl overflow-hidden flex flex-col shadow-xl">
+                    <!-- IDE Header -->
+                    <div class="h-10 bg-[#0A0A0A] border-b border-neutral-800 flex items-center px-4 gap-4">
+                        <div class="flex gap-1.5">
+                            <div class="w-2.5 h-2.5 rounded-full bg-neutral-800"></div>
+                            <div class="w-2.5 h-2.5 rounded-full bg-neutral-800"></div>
+                            <div class="w-2.5 h-2.5 rounded-full bg-neutral-800"></div>
+                        </div>
+                        <div class="flex items-center gap-2 text-xs font-medium text-neutral-500 bg-[#050505] px-3 py-1 rounded-md border border-neutral-800/50">
+                            <iconify-icon icon="solar:document-text-linear" style="stroke-width: 1.5;"></iconify-icon>
+                            a00000000001_add_visualkit_tables.py
+                        </div>
+                    </div>
+                    <!-- Code Body -->
+                    <div class="flex-1 p-6 font-mono text-xs leading-relaxed text-neutral-400 relative overflow-hidden">
+                        <div class="text-neutral-500 mb-2"># backend/alembic/versions/a00000000001_add_visualkit_tables.py</div>
+                        <div class="text-neutral-500 mb-4"># Appendix B: Tenant Isolation Architecture Enforcement</div>
+                        <div><span class="text-pink-400">def</span> <span class="text-blue-400">upgrade</span>():</div>
+                        <div class="pl-4 mt-1"><span class="text-neutral-500"># 1. Create table with mandatory tenant_id</span></div>
+                        <div class="pl-4">op.create_table(</div>
+                        <div class="pl-8"><span class="text-green-400">'vk_escalation'</span>,</div>
+                        <div class="pl-8">sa.Column(<span class="text-green-400">'id'</span>, sa.String(), primary_key=<span class="text-orange-400">True</span>),</div>
+                        <div class="pl-8 bg-indigo-500/10 border-l-2 border-indigo-500 -ml-[2px] pl-[30px] py-0.5 text-neutral-200">sa.Column(<span class="text-green-400">'tenant_id'</span>, sa.String(), nullable=<span class="text-orange-400">False</span>), <span class="text-indigo-400/70"># Crucial for isolation</span></div>
+                        <div class="pl-8">sa.Column(<span class="text-green-400">'status'</span>, sa.String()),</div>
+                        <div class="pl-4">)</div>
+                        <div class="pl-4 mt-3"><span class="text-neutral-500"># 2. Enable and Force RLS</span></div>
+                        <div class="pl-4 text-neutral-300">op.execute(<span class="text-green-400">"""</span></div>
+                        <div class="pl-8 text-neutral-300">ALTER TABLE vk_escalation ENABLE ROW LEVEL SECURITY;</div>
+                        <div class="pl-8 text-neutral-300">ALTER TABLE vk_escalation FORCE ROW LEVEL SECURITY;</div>
+                        <div class="pl-8 text-neutral-300">CREATE POLICY tenant_isolation ON vk_escalation</div>
+                        <div class="pl-12 text-neutral-300">USING (tenant_id = current_tenant_id())</div>
+                        <div class="pl-12 text-neutral-300">WITH CHECK (tenant_id = current_tenant_id());</div>
+                        <div class="pl-4 text-neutral-300"><span class="text-green-400">"""</span>)</div>
+
+                        <!-- AI Vision Highlight Box -->
+                        <div class="absolute top-[138px] left-4 right-24 h-[120px] border border-indigo-500/40 bg-indigo-500/5 rounded pointer-events-none z-10 flex flex-col justify-end">
+                            <div class="absolute inset-0 overflow-hidden rounded">
+                                <div class="w-full h-1 bg-indigo-400/20 shadow-[0_0_10px_rgba(99,102,241,0.5)] animate-scanline"></div>
+                            </div>
+                            <div class="absolute -top-3 -right-3">
+                                <div class="bg-[#111] text-indigo-300 border border-indigo-500/30 shadow-lg px-2 py-1 rounded text-[10px] font-sans flex items-center gap-1.5 font-medium">
+                                    <iconify-icon icon="solar:stars-linear" style="stroke-width: 1.5;"></iconify-icon>
+                                    Visualkit AI Viewing
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom PIP Bar -->
+            <div class="h-[120px] shrink-0 grid grid-cols-4 gap-4">
+                <!-- Human Participant 1 -->
+                <div class="bg-[#111] border border-neutral-800/60 rounded-xl relative overflow-hidden group">
+                    <img src="https://i.pravatar.cc/300?img=68" class="w-full h-full object-cover opacity-80" alt="User">
+                    <div class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-medium text-neutral-200">Elena (You)</span>
+                            <div class="w-5 h-5 rounded-md bg-neutral-900/80 backdrop-blur border border-neutral-700/50 flex items-center justify-center">
+                                <iconify-icon icon="solar:microphone-2-linear" class="text-neutral-400 text-xs" style="stroke-width: 1.5;"></iconify-icon>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Human Participant 2 -->
+                <div class="bg-[#111] border border-neutral-800/60 rounded-xl relative overflow-hidden group border-indigo-500/50">
+                    <img src="https://i.pravatar.cc/300?img=11" class="w-full h-full object-cover opacity-80" alt="User">
+                    <div class="absolute top-2 right-2 flex gap-1">
+                        <div class="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></div>
+                    </div>
+                    <div class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-medium text-neutral-200">Marcus</span>
+                            <div class="w-5 h-5 rounded-md bg-indigo-500/20 backdrop-blur border border-indigo-500/30 flex items-center justify-center">
+                                <iconify-icon icon="solar:microphone-2-linear" class="text-indigo-400 text-xs" style="stroke-width: 1.5;"></iconify-icon>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Human Participant 3 -->
+                <div class="bg-[#111] border border-neutral-800/60 rounded-xl relative overflow-hidden flex items-center justify-center group">
+                    <div class="w-12 h-12 rounded-full bg-neutral-800 text-neutral-400 flex items-center justify-center font-medium text-sm">
+                        JD
+                    </div>
+                    <div class="absolute inset-x-0 bottom-0 p-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-medium text-neutral-400">James D.</span>
+                            <div class="w-5 h-5 rounded-md bg-red-500/10 backdrop-blur border border-red-500/20 flex items-center justify-center">
+                                <iconify-icon icon="solar:muted-linear" class="text-red-400 text-xs" style="stroke-width: 1.5;"></iconify-icon>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Agent Participant -->
+                <div class="bg-gradient-to-b from-[#161616] to-[#0A0A0A] border border-neutral-800 rounded-xl relative overflow-hidden flex items-center justify-center ring-1 ring-indigo-500/20 shadow-[inset_0_0_20px_rgba(99,102,241,0.05)]">
+                    
+                    <!-- Abstract AI Visualization -->
+                    <div class="relative w-16 h-16 flex items-center justify-center">
+                        <div class="absolute inset-0 border border-indigo-500/20 rounded-full animate-agent-pulse"></div>
+                        <div class="absolute inset-2 border border-indigo-500/40 rounded-full animate-agent-pulse" style="animation-delay: -0.5s"></div>
+                        <div class="w-8 h-8 bg-indigo-500/10 rounded-full border border-indigo-500/50 flex items-center justify-center z-10 backdrop-blur-sm">
+                            <iconify-icon icon="solar:stars-linear" class="text-indigo-400 text-lg" style="stroke-width: 1.5;"></iconify-icon>
+                        </div>
+                    </div>
+
+                    <div class="absolute inset-x-0 bottom-0 p-2">
+                        <div class="flex items-center justify-between bg-[#0A0A0A]/80 backdrop-blur border border-neutral-800/80 rounded-md px-2 py-1">
+                            <div class="flex items-center gap-1.5">
+                                <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
+                                <span class="text-xs font-medium text-neutral-200">Visualkit AI</span>
+                            </div>
+                            <span class="text-[10px] text-neutral-500">Gemini Live</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Meeting Controls (Floating Pill) -->
+            <div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 p-1.5 bg-[#111]/90 backdrop-blur-xl border border-neutral-800 shadow-2xl rounded-2xl z-20">
+                
+                <!-- Audio Select Group -->
+                <div class="flex items-center bg-neutral-900 rounded-xl border border-neutral-800 hover:border-neutral-700 transition-colors">
+                    <button class="px-4 h-10 flex items-center justify-center text-neutral-200 hover:text-white border-r border-neutral-800 transition-colors">
+                        <iconify-icon icon="solar:microphone-2-linear" class="text-xl" style="stroke-width: 1.5;"></iconify-icon>
+                    </button>
+                    <button class="px-2 h-10 flex items-center justify-center text-neutral-500 hover:text-neutral-300 transition-colors">
+                        <iconify-icon icon="solar:alt-arrow-down-linear" style="stroke-width: 1.5;"></iconify-icon>
+                    </button>
+                </div>
+
+                <!-- Video Select Group -->
+                <div class="flex items-center bg-neutral-900 rounded-xl border border-neutral-800 hover:border-neutral-700 transition-colors">
+                    <button class="px-4 h-10 flex items-center justify-center text-neutral-200 hover:text-white border-r border-neutral-800 transition-colors">
+                        <iconify-icon icon="solar:videocamera-linear" class="text-xl" style="stroke-width: 1.5;"></iconify-icon>
+                    </button>
+                    <button class="px-2 h-10 flex items-center justify-center text-neutral-500 hover:text-neutral-300 transition-colors">
+                        <iconify-icon icon="solar:alt-arrow-down-linear" style="stroke-width: 1.5;"></iconify-icon>
+                    </button>
+                </div>
+
+                <div class="w-[1px] h-6 bg-neutral-800 mx-1"></div>
+
+                <!-- Screen Share (Active) -->
+                <button class="px-4 h-10 rounded-xl flex items-center gap-2 bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/20 transition-colors font-medium text-xs tracking-tight">
+                    <iconify-icon icon="solar:monitor-linear" class="text-lg" style="stroke-width: 1.5;"></iconify-icon>
+                    Sharing
+                </button>
+
+                <!-- Agent Toolbox -->
+                <button class="w-10 h-10 rounded-xl flex items-center justify-center bg-neutral-900 text-neutral-400 border border-neutral-800 hover:text-neutral-200 hover:border-neutral-700 transition-colors">
+                    <iconify-icon icon="solar:magic-stick-3-linear" class="text-lg" style="stroke-width: 1.5;"></iconify-icon>
+                </button>
+
+                <!-- Settings -->
+                <button class="w-10 h-10 rounded-xl flex items-center justify-center bg-neutral-900 text-neutral-400 border border-neutral-800 hover:text-neutral-200 hover:border-neutral-700 transition-colors">
+                    <iconify-icon icon="solar:settings-linear" class="text-lg" style="stroke-width: 1.5;"></iconify-icon>
+                </button>
+
+                <div class="w-[1px] h-6 bg-neutral-800 mx-1"></div>
+
+                <!-- Leave -->
+                <button class="px-5 h-10 rounded-xl flex items-center gap-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors font-medium text-xs tracking-tight">
+                    <iconify-icon icon="solar:end-call-linear" class="text-lg" style="stroke-width: 1.5;"></iconify-icon>
+                    Leave
+                </button>
+            </div>
+        </div>
+
+        <!-- Right Sidebar (RAG Engine / AI Agent) -->
+        <div class="w-96 bg-[#111] border border-neutral-800/60 rounded-2xl flex flex-col shadow-sm overflow-hidden shrink-0">
+            
+            <!-- Sidebar Header -->
+            <div class="h-14 border-b border-neutral-800/80 px-1 flex items-end">
+                <div class="flex items-center w-full">
+                    <button class="flex-1 pb-3 pt-4 text-xs font-medium text-neutral-500 hover:text-neutral-300 border-b-2 border-transparent transition-colors tracking-tight">Transcript</button>
+                    <button class="flex-1 pb-3 pt-4 text-xs font-medium text-neutral-100 border-b-2 border-neutral-200 tracking-tight flex items-center justify-center gap-1.5">
+                        <iconify-icon icon="solar:stars-linear" style="stroke-width: 1.5;"></iconify-icon>
+                        AI RAG Agent
+                    </button>
+                    <button class="flex-1 pb-3 pt-4 text-xs font-medium text-neutral-500 hover:text-neutral-300 border-b-2 border-transparent transition-colors tracking-tight">Connectors</button>
+                </div>
+            </div>
+
+            <!-- Agent Body (Chat / Reasoning) -->
+            <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
+                
+                <!-- Status Header -->
+                <div class="flex justify-center">
+                    <div class="bg-neutral-900 border border-neutral-800 text-neutral-400 text-[11px] font-medium px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                        <iconify-icon icon="solar:database-linear" style="stroke-width: 1.5;"></iconify-icon>
+                        Connected to Vespa Index & 52 Sources
+                    </div>
+                </div>
+
+                <!-- Human Message -->
+                <div class="flex gap-3">
+                    <div class="w-7 h-7 rounded border border-neutral-800 flex items-center justify-center shrink-0 overflow-hidden bg-neutral-900">
+                        <img src="https://i.pravatar.cc/300?img=11" class="w-full h-full object-cover" alt="Marcus">
+                    </div>
+                    <div class="flex-1 mt-1">
+                        <div class="flex items-baseline gap-2 mb-1">
+                            <span class="text-xs font-medium text-neutral-200">Marcus</span>
+                            <span class="text-[10px] text-neutral-500">11:42 AM</span>
+                        </div>
+                        <div class="text-xs text-neutral-400 leading-relaxed">
+                            Hey Visualkit, can you review the screen Elena is sharing? Are we enforcing tenant isolation correctly for the new escalation tables according to the architecture spec?
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Agent Thinking / Status -->
+                <div class="pl-10">
+                    <div class="border-l border-neutral-800 pl-4 py-1 flex flex-col gap-2">
+                        <div class="flex items-center gap-2 text-xs text-neutral-500">
+                            <iconify-icon icon="solar:eye-linear" class="animate-pulse"></iconify-icon>
+                            Capturing Gemini Live frame...
+                        </div>
+                        <div class="flex items-center gap-2 text-xs text-neutral-500">
+                            <iconify-icon icon="solar:magnifer-linear"></iconify-icon>
+                            Searching Vespa (BM25 + Vector)...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Response -->
+                <div class="flex gap-3">
+                    <div class="w-7 h-7 rounded border border-indigo-500/30 bg-indigo-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                        <iconify-icon icon="solar:stars-linear" class="text-indigo-400 text-sm" style="stroke-width: 1.5;"></iconify-icon>
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex items-baseline gap-2 mb-1">
+                            <span class="text-xs font-medium text-indigo-100">Visualkit AI</span>
+                            <span class="text-[10px] text-neutral-500">11:42 AM</span>
+                        </div>
+                        
+                        <div class="text-xs text-neutral-300 leading-relaxed space-y-3">
+                            <p>
+                                I can see the code snippet Elena is sharing. Yes, the implementation is correct and aligns with <strong>Section 16.3</strong> of the Enterprise Architecture Document.
+                            </p>
+                            <p>
+                                The schema correctly implements the <span class="text-neutral-100 bg-neutral-800 px-1 py-0.5 rounded font-mono text-[10px]">FORCE ROW LEVEL SECURITY</span> directive alongside the <span class="text-neutral-100 bg-neutral-800 px-1 py-0.5 rounded font-mono text-[10px]">tenant_id</span> column creation. This guarantees that the table owner is not exempted from the policy.
+                            </p>
+                        </div>
+                        
+                        <!-- RAG Citations -->
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <button class="flex items-center gap-1.5 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded py-1 px-2 text-[11px] text-neutral-400 transition-colors">
+                                <iconify-icon icon="solar:document-linear" class="text-neutral-500" style="stroke-width: 1.5;"></iconify-icon>
+                                Architecture_v2.1.0.md
+                            </button>
+                            <button class="flex items-center gap-1.5 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded py-1 px-2 text-[11px] text-neutral-400 transition-colors">
+                                <iconify-icon icon="solar:code-file-linear" class="text-neutral-500" style="stroke-width: 1.5;"></iconify-icon>
+                                GitHub / Onyx Core
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Agent Chat Input -->
+            <div class="p-3 border-t border-neutral-800/80 bg-[#111]">
+                <div class="bg-[#0A0A0A] border border-neutral-800 rounded-xl relative focus-within:border-neutral-600 transition-colors shadow-sm">
+                    <textarea 
+                        rows="1"
+                        placeholder="Ask Visualkit AI about the meeting..." 
+                        class="w-full bg-transparent text-xs text-neutral-200 placeholder:text-neutral-600 outline-none resize-none px-3 py-3 rounded-xl block min-h-[44px]"
+                    ></textarea>
+                    
+                    <div class="absolute right-2 bottom-2 flex items-center gap-1">
+                        <button class="w-7 h-7 rounded-lg flex items-center justify-center text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 transition-colors">
+                            <iconify-icon icon="solar:paperclip-linear" style="stroke-width: 1.5;"></iconify-icon>
+                        </button>
+                        <button class="w-7 h-7 rounded-lg flex items-center justify-center text-neutral-900 bg-neutral-200 hover:bg-white transition-colors">
+                            <iconify-icon icon="solar:arrow-right-linear" style="stroke-width: 1.5;"></iconify-icon>
+                        </button>
+                    </div>
+                </div>
+                <div class="text-[10px] text-center text-neutral-600 mt-2">
+                    Visualkit AI answers from your 52 connected data sources.
+                </div>
+            </div>
+
+        </div>
+    </main>
+</body>
+</html>

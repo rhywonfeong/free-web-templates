@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=430, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>MUSD Wallet - Fast Crypto Payments</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <style>
+        body{background:#f5f7fa;}
+        .bill {
+            cursor: grab;
+            transition: all 0.3s ease;
+            background-color: #85bb65;
+            background-image: 
+                radial-gradient(circle at 15% 25%, rgba(255,255,255,0.2) 1px, transparent 1px),
+                radial-gradient(circle at 85% 25%, rgba(255,255,255,0.2) 1px, transparent 1px),
+                radial-gradient(circle at 15% 75%, rgba(255,255,255,0.2) 1px, transparent 1px),
+                radial-gradient(circle at 85% 75%, rgba(255,255,255,0.2) 1px, transparent 1px),
+                linear-gradient(0deg, rgba(0,0,0,0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px);
+            background-size: 30px 30px, 30px 30px, 30px 30px, 30px 30px, 100% 8px, 8px 100%;
+            border: 2px solid rgba(0,0,0,0.15);
+            position: relative;
+            overflow: hidden;
+            color: #1a472a;
+            font-family: 'Times New Roman', serif;
+        }
+        .bill:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.5s;
+        }
+        .bill:hover:before {
+            left: 100%;
+        }
+        .bill:active {
+            cursor: grabbing;
+            transform: scale(1.02) rotate(1deg);
+        }
+        .bill.dragging {
+            transform: scale(0.95) rotate(3deg);
+            z-index: 1000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            opacity: 0.8;
+        }
+        .coin {
+            cursor: grab;
+            background: radial-gradient(circle at 30% 30%, #ffd700, #ffb300, #ff8f00);
+            border: 3px solid #fff;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2), inset 0 2px 5px rgba(255,255,255,0.3);
+            position: relative;
+        }
+        .coin:before {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            right: 2px;
+            bottom: 2px;
+            border: 1px solid rgba(255,255,255,0.5);
+            border-radius: 50%;
+        }
+        .coin:active {
+            cursor: grabbing;
+            transform: scale(1.1);
+        }
+        .coin.dragging {
+            transform: scale(0.9);
+            z-index: 1000;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+        .payment-zone {
+            min-height: 120px;
+            border: 3px dashed #10b981;
+            background: 
+                radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.1) 0%, transparent 70%),
+                linear-gradient(45deg, rgba(16, 185, 129, 0.05) 25%, transparent 25%),
+                linear-gradient(-45deg, rgba(16, 185, 129, 0.05) 25%, transparent 25%);
+            background-size: 50px 50px, 20px 20px, 20px 20px;
+            transition: all 0.3s ease;
+        }
+        .payment-zone.drag-over {
+            background-color: rgba(16, 185, 129, 0.15);
+            border-color: #059669;
+            transform: scale(1.02);
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+        }
+        
+        .payment-bill {
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+        
+        .payment-bill:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        
+        .payment-bill:hover .remove-btn {
+            opacity: 1;
+        }
+        
+        .remove-btn {
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: #ef4444;
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .serial-number {
+            font-family: 'Courier New', monospace;
+            font-size: 7px;
+            opacity: 0.8;
+            color: #2d5a3d;
+        }
+        
+        .denomination-large {
+            font-size: 2.5rem;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+            color: #1a472a;
+        }
+        
+        .denomination-medium {
+            font-size: 2rem;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+            color: #1a472a;
+        }
+        
+        .denomination-small {
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+            color: #1a472a;
+        }
+        
+        .bill-ornament {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            opacity: 0.3;
+            font-size: 4rem;
+            font-weight: bold;
+            color: #2d5a3d;
+        }
+        
+        .bill-text {
+            font-size: 9px;
+            font-weight: bold;
+            color: #2d5a3d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .president-name {
+            font-size: 7px;
+            color: #2d5a3d;
+            font-style: italic;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Serif:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Serif:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600;700&family=Inter&display=swap" rel="stylesheet">
+</head>
+<body class="min-h-screen flex items-center justify-center bg-[#f5f7fa] text-gray-800">
+    <div class="relative w-[390px] max-w-full h-[844px] bg-gradient-to-b from-[#ffffff] to-[#f0f2f5] shadow-xl rounded-[40px] overflow-hidden border-4 border-[#e1e4e8] flex flex-col mx-auto">
+        
+        <!-- Notch -->
+        <div class="absolute left-1/2 -top-1.5 -translate-x-1/2 z-10 flex items-center justify-center" style="height:44px;">
+            <div class="w-24 h-4 bg-black/80 rounded-b-3xl mt-2"></div>
+        </div>
+
+        <div class="flex-1 flex flex-col">
+            <!-- Status Bar -->
+            <div class="flex justify-between items-center p-2 text-xs mt-2">
+                <span id="clock">9:41</span>
+                <div class="flex space-x-1">
+                    <i class="fas fa-signal"></i>
+                    <i class="fas fa-wifi"></i>
+                    <i class="fas fa-battery-three-quarters"></i>
+                </div>
+            </div>
+
+            <!-- Header -->
+            <header class="px-6 py-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h1 class="text-2xl font-bold">MUSD Wallet</h1>
+                        <p class="text-sm text-gray-500">Balance: $<span id="total-balance">186.75</span></p>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xs text-gray-500">BCH Gas</div>
+                        <div class="text-sm font-semibold text-green-500">0.00234 BCH</div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Payment Zone -->
+            <div id="payment-zone" class="mx-4 mb-4 payment-zone rounded-2xl p-6 hidden">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="font-semibold text-green-600 flex items-center">
+                        <i class="fas fa-hand-holding-usd mr-2"></i>
+                        Drop Money Here
+                    </h3>
+                    <button id="clear-payment" class="text-red-500 text-sm hover:bg-red-50 px-2 py-1 rounded">
+                        <i class="fas fa-times"></i> Clear All
+                    </button>
+                </div>
+                <div class="text-3xl font-bold text-green-600 mb-3">$<span id="payment-total">0.00</span></div>
+                <div id="payment-bills" class="flex flex-wrap gap-2 mb-4 min-h-[40px]"></div>
+                <button id="send-payment" class="w-full bg-gradient-to-r from-green-500 to-green-600 text-white py-3 rounded-xl font-semibold shadow-lg">
+                    <i class="fas fa-paper-plane mr-2"></i>Send Payment
+                </button>
+            </div>
+
+            <!-- Main Content -->
+            <main class="px-4 pb-24 flex-1 overflow-y-auto hide-scrollbar">
+                
+                <!-- Instructions -->
+                <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
+                    <p class="text-sm text-blue-700 flex items-center">
+                        <i class="fas fa-info-circle mr-2"></i>
+                        Drag and drop bills to make payments. Click bills in payment zone to remove them.
+                    </p>
+                </div>
+
+                <!-- Virtual Money Wallet -->
+                <div class="mb-6">
+                    <h3 class="font-bold mb-4 flex justify-between items-center">
+                        <span>Your Digital Cash</span>
+                        <span class="text-sm text-gray-500">Drag to pay</span>
+                    </h3>
+                    
+                    <!-- Bills organized by denomination -->
+                    <div class="space-y-3" id="bills-container">
+                        <!-- $100 Bills -->
+                        <div class="bill rounded-lg p-4 shadow-lg" draggable="true" data-value="100" data-bill-id="bill-100">
+                            <div class="flex justify-between items-start relative">
+                                <div>
+                                    <div class="bill-text mb-1">The United States of America</div>
+                                    <div class="denomination-large">$100</div>
+                                    <div class="bill-text mt-2">One Hundred Dollars</div>
+                                    <div class="serial-number mt-1">MU24789456A</div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="w-12 h-12 border-2 border-green-800/30 rounded-full flex items-center justify-center mb-2">
+                                        <span class="text-lg font-bold">B</span>
+                                    </div>
+                                    <div class="president-name">Benjamin<br>Franklin</div>
+                                </div>
+                                <div class="bill-ornament">100</div>
+                            </div>
+                        </div>
+
+                        <!-- $50 Bill -->
+                        <div class="bill rounded-lg p-4 shadow-lg" draggable="true" data-value="50" data-bill-id="bill-50">
+                            <div class="flex justify-between items-start relative">
+                                <div>
+                                    <div class="bill-text mb-1">The United States of America</div>
+                                    <div class="denomination-large">$50</div>
+                                    <div class="bill-text mt-2">Fifty Dollars</div>
+                                    <div class="serial-number mt-1">MU24123789B</div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="w-10 h-10 border-2 border-green-800/30 rounded-full flex items-center justify-center mb-2">
+                                        <span class="text-sm font-bold">U</span>
+                                    </div>
+                                    <div class="president-name">Ulysses<br>Grant</div>
+                                </div>
+                                <div class="bill-ornament">50</div>
+                            </div>
+                        </div>
+
+                        <!-- $20 Bill -->
+                        <div class="bill rounded-lg p-3 shadow-lg" draggable="true" data-value="20" data-bill-id="bill-20">
+                            <div class="flex justify-between items-start relative">
+                                <div>
+                                    <div class="bill-text mb-1">United States of America</div>
+                                    <div class="denomination-medium">$20</div>
+                                    <div class="bill-text mt-1">Twenty Dollars</div>
+                                    <div class="serial-number mt-1">MU24567890C</div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="w-8 h-8 border border-green-800/30 rounded-full flex items-center justify-center">
+                                        <span class="text-xs font-bold">A</span>
+                                    </div>
+                                    <div class="president-name text-xs">Jackson</div>
+                                </div>
+                                <div class="bill-ornament text-3xl">20</div>
+                            </div>
+                        </div>
+
+                        <!-- $10 Bill -->
+                        <div class="bill rounded-lg p-3 shadow-lg" draggable="true" data-value="10" data-bill-id="bill-10">
+                            <div class="flex justify-between items-start relative">
+                                <div>
+                                    <div class="bill-text mb-1">United States of America</div>
+                                    <div class="denomination-medium">$10</div>
+                                    <div class="bill-text mt-1">Ten Dollars</div>
+                                    <div class="serial-number mt-1">MU24345678D</div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="w-8 h-8 border border-green-800/30 rounded-full flex items-center justify-center">
+                                        <span class="text-xs font-bold">H</span>
+                                    </div>
+                                    <div class="president-name text-xs">Hamilton</div>
+                                </div>
+                                <div class="bill-ornament text-3xl">10</div>
+                            </div>
+                        </div>
+
+                        <!-- $5 Bill -->
+                        <div class="bill rounded-lg p-3 shadow-lg" draggable="true" data-value="5" data-bill-id="bill-5">
+                            <div class="flex justify-between items-start relative">
+                                <div>
+                                    <div class="bill-text mb-1">United States</div>
+                                    <div class="denomination-small">$5</div>
+                                    <div class="bill-text mt-1">Five Dollars</div>
+                                    <div class="serial-number mt-1">MU24987654E</div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="w-6 h-6 border border-green-800/30 rounded-full flex items-center justify-center">
+                                        <span class="text-xs font-bold">L</span>
+                                    </div>
+                                    <div class="president-name text-xs">Lincoln</div>
+                                </div>
+                                <div class="bill-ornament text-2xl">5</div>
+                            </div>
+                        </div>
+
+                        <!-- $1 Bill -->
+                        <div class="bill rounded-lg p-3 shadow-lg" draggable="true" data-value="1" data-bill-id="bill-1">
+                            <div class="flex justify-between items-start relative">
+                                <div>
+                                    <div class="bill-text mb-1">United States</div>
+                                    <div class="denomination-small">$1</div>
+                                    <div class="bill-text mt-1">One Dollar</div>
+                                    <div class="serial-number mt-1">MU24456789F</div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="w-6 h-6 border border-green-800/30 rounded-full flex items-center justify-center">
+                                        <span class="text-xs font-bold">W</span>
+                                    </div>
+                                    <div class="president-name text-xs">Washington</div>
+                                </div>
+                                <div class="bill-ornament text-2xl">1</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Coins -->
+                    <div class="mt-4">
+                        <h4 class="font-semibold mb-2 text-sm text-gray-600">Coins</h4>
+                        <div class="flex gap-3" id="coins-container">
+                            <div class="coin w-14 h-14 rounded-full flex flex-col items-center justify-center text-white font-bold shadow-lg text-xs" draggable="true" data-value="0.75" data-bill-id="coin-75">
+                                <div>75¢</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Transactions -->
+                <div>
+                    <h3 class="font-bold mb-4">Recent Transactions</h3>
+                    <div class="space-y-3">
+                        <div class="bg-white rounded-2xl p-4 shadow-sm flex items-center justify-between">
+                            <div class="flex items-center">
+                                <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mr-3">
+                                    <i class="fas fa-store text-green-500"></i>
+                                </div>
+                                <div>
+                                    <p class="font-medium">Coffee Shop</p>
+                                    <p class="text-xs text-gray-500">2 mins ago • Drag & Drop</p>
+                                </div>
+                            </div>
+                            <p class="font-bold text-red-500">-$4.50</p>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Navigation Bar -->
+            <nav class="absolute bottom-0 left-0 right-0 bg-[#ffffff]/95 rounded-t-3xl py-4 px-6 backdrop-blur-sm border-t border-gray-200" style="z-index:20;">
+                <div class="flex justify-between items-center">
+                    <div class="nav-item flex flex-col items-center cursor-pointer">
+                        <i class="fas fa-wallet text-green-500"></i>
+                        <span class="text-xs text-green-500 mt-1">Wallet</span>
+                        <div class="w-1 h-1 bg-green-500 rounded-full mt-1"></div>
+                    </div>
+                    <div class="nav-item flex flex-col items-center cursor-pointer">
+                        <i class="fas fa-exchange-alt text-gray-400"></i>
+                        <span class="text-xs text-gray-400 mt-1">Exchange</span>
+                    </div>
+                    <div class="relative -mt-8">
+                        <button id="quick-pay" class="w-14 h-14 rounded-full bg-gradient-to-r from-green-500 to-green-400 flex items-center justify-center shadow-lg shadow-green-500/20">
+                            <i class="fas fa-bolt text-white text-xl"></i>
+                        </button>
+                    </div>
+                    <div class="nav-item flex flex-col items-center cursor-pointer">
+                        <i class="fas fa-history text-gray-400"></i>
+                        <span class="text-xs text-gray-400 mt-1">History</span>
+                    </div>
+                    <div class="nav-item flex flex-col items-center cursor-pointer">
+                        <i class="fas fa-cog text-gray-400"></i>
+                        <span class="text-xs text-gray-400 mt-1">Settings</span>
+                    </div>
+                </div>
+            </nav>
+        </div>
+    </div>
+
+    <script>
+        let paymentTotal = 0;
+        let paymentBills = [];
+        let removedBills = new Set();
+
+        // Update clock
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock').textContent = now.toLocaleTimeString('en-US', { 
+                hour: '2-digit', minute: '2-digit', hour12: false 
+            });
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Drag and drop functionality
+        function initializeBills() {
+            const bills = document.querySelectorAll('.bill, .coin');
+            
+            bills.forEach(bill => {
+                bill.addEventListener('dragstart', function(e) {
+                    this.classList.add('dragging');
+                    e.dataTransfer.setData('text/plain', JSON.stringify({
+                        value: this.dataset.value,
+                        billId: this.dataset.billId
+                    }));
+                    e.dataTransfer.effectAllowed = 'move';
+                    
+                    // Show payment zone if hidden
+                    const paymentZone = document.getElementById('payment-zone');
+                    if (paymentZone.classList.contains('hidden')) {
+                        paymentZone.classList.remove('hidden');
+                    }
+                });
+
+                bill.addEventListener('dragend', function(e) {
+                    this.classList.remove('dragging');
+                });
+            });
+        }
+
+        // Initialize bills on load
+        initializeBills();
+
+        const paymentZone = document.getElementById('payment-zone');
+
+        // Payment zone drop handling
+        paymentZone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            this.classList.add('drag-over');
+        });
+
+        paymentZone.addEventListener('dragleave', function(e) {
+            if (!this.contains(e.relatedTarget)) {
+                this.classList.remove('drag-over');
+            }
+        });
+
+        paymentZone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            this.classList.remove('drag-over');
+            
+            const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+            const value = parseFloat(data.value);
+            const billId = data.billId;
+            
+            addToPayment(value, billId);
+            removeBillFromWallet(billId);
+        });
+
+        function addToPayment(value, billId) {
+            paymentTotal += value;
+            paymentBills.push({ value: value, billId: billId });
+            updatePaymentDisplay();
+        }
+
+        function removeBillFromWallet(billId) {
+            const billElement = document.querySelector(`[data-bill-id="${billId}"]`);
+            if (billElement) {
+                billElement.style.transition = 'all 0.3s ease';
+                billElement.style.transform = 'scale(0)';
+                billElement.style.opacity = '0';
+                setTimeout(() => {
+                    billElement.style.display = 'none';
+                    removedBills.add(billId);
+                }, 300);
+            }
+        }
+
+        function restoreBillToWallet(billId) {
+            const billElement = document.querySelector(`[data-bill-id="${billId}"]`);
+            if (billElement && removedBills.has(billId)) {
+                billElement.style.display = 'block';
+                setTimeout(() => {
+                    billElement.style.transform = 'scale(1)';
+                    billElement.style.opacity = '1';
+                }, 10);
+                removedBills.delete(billId);
+            }
+        }
+
+        function removeFromPayment(billId) {
+            const billIndex = paymentBills.findIndex(bill => bill.billId === billId);
+            if (billIndex !== -1) {
+                const removedBill = paymentBills.splice(billIndex, 1)[0];
+                paymentTotal -= removedBill.value;
+                restoreBillToWallet(billId);
+                updatePaymentDisplay();
+                
+                // Hide payment zone if no bills left
+                if (paymentBills.length === 0) {
+                    paymentZone.classList.add('hidden');
+                }
+            }
+        }
+
+        function updatePaymentDisplay() {
+            document.getElementById('payment-total').textContent = paymentTotal.toFixed(2);
+            
+            const paymentBillsDiv = document.getElementById('payment-bills');
+            paymentBillsDiv.innerHTML = paymentBills.map((bill, index) => 
+                `<div class="payment-bill bg-green-100 text-green-700 px-3 py-2 rounded-full text-sm font-medium border border-green-200 relative" 
+                      data-bill-id="${bill.billId}" 
+                      title="Click to remove">
+                    $${bill.value}
+                    <div class="remove-btn">
+                        <i class="fas fa-times"></i>
+                    </div>
+                </div>`
+            ).join('');
+            
+            // Add click handlers to payment bills
+            const paymentBillElements = paymentBillsDiv.querySelectorAll('.payment-bill');
+            paymentBillElements.forEach(billElement => {
+                billElement.addEventListener('click', function() {
+                    const billId = this.dataset.billId;
+                    removeFromPayment(billId);
+                });
+            });
+        }
+
+        // Clear payment
+        document.getElementById('clear-payment').addEventListener('click', function() {
+            // Restore all bills to wallet
+            paymentBills.forEach(bill => {
+                restoreBillToWallet(bill.billId);
+            });
+            
+            paymentTotal = 0;
+            paymentBills = [];
+            updatePaymentDisplay();
+            paymentZone.classList.add('hidden');
+        });
+
+        // Send payment
+        document.getElementById('send-payment').addEventListener('click', function() {
+            if (paymentTotal > 0) {
+                alert(`💰 Payment of $${paymentTotal.toFixed(2)} sent successfully!\n\nBills used: ${paymentBills.length} denomination(s)`);
+                
+                // Update balance
+                const currentBalance = parseFloat(document.getElementById('total-balance').textContent);
+                document.getElementById('total-balance').textContent = (currentBalance - paymentTotal).toFixed(2);
+                
+                // Clear payment without restoring bills (they're spent)
+                paymentTotal = 0;
+                paymentBills = [];
+                updatePaymentDisplay();
+                paymentZone.classList.add('hidden');
+            }
+        });
+
+        // Quick pay button
+        document.getElementById('quick-pay').addEventListener('click', function() {
+            if (paymentZone.classList.contains('hidden')) {
+                paymentZone.classList.remove('hidden');
+            } else {
+                paymentZone.classList.add('hidden');
+            }
+        });
+    </script>
+
+    <style>
+        .hide-scrollbar::-webkit-scrollbar { display:none;}
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none;}
+    </style>
+</body>
+</html>

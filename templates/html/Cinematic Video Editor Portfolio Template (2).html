@@ -1,0 +1,812 @@
+<html lang="en" class="scroll-smooth"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hemesh Editor | Cinematic Video Editor</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Inter', sans-serif; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+@keyframes subtlePan {
+0% { background-position: 0% 50%; }
+50% { background-position: 100% 50%; }
+100% { background-position: 0% 50%; }
+}
+@keyframes fadeIn {
+from { opacity: 0; transform: translateY(10px); }
+to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 1s ease-out forwards; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-400 { animation-delay: 0.4s; }
+.delay-600 { animation-delay: 0.6s; }
+.delay-800 { animation-delay: 0.8s; }
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="bg-[#050807] text-[#FFFFFF] antialiased selection:bg-[#B6FF3C] selection:text-black min-h-screen flex flex-col relative">
+
+    <!-- Floating UI Elements -->
+    <div class="fixed top-6 right-6 z-50 flex flex-col gap-4 items-end">
+        <!-- Three-dot menu -->
+        <div class="relative group">
+            <button class="w-10 h-10 rounded-full bg-[#0a1912]/60 backdrop-blur-md border border-white/10 hover:border-[#B6FF3C]/50 flex items-center justify-center text-white hover:text-[#B6FF3C] transition-colors">
+                <iconify-icon icon="solar:menu-dots-linear" width="20" stroke-width="1.5"></iconify-icon>
+            </button>
+            <div class="absolute right-0 top-12 w-64 bg-[#0a1912]/80 backdrop-blur-xl border border-white/10 rounded-xl p-4 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 translate-y-2 group-hover:translate-y-0 shadow-2xl shadow-black">
+                <p class="text-xs text-[#A0B3A8] uppercase tracking-wide mb-2">Admin Access</p>
+                <div class="space-y-2">
+                    <div class="flex items-center gap-2 text-sm text-white/80 font-light">
+                        <iconify-icon icon="solar:letter-linear" class="text-[#B6FF3C]" stroke-width="1.5"></iconify-icon>
+                        <span class="truncate">rtfriderm@gmail.com</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-sm text-white/80 font-light">
+                        <iconify-icon icon="solar:lock-password-linear" class="text-[#B6FF3C]" stroke-width="1.5"></iconify-icon>
+                        <span>xxxxxxxx</span>
+                    </div>
+                    <a href="#contact" class="mt-3 block w-full text-center py-2 text-xs bg-[#B6FF3C]/10 text-[#B6FF3C] rounded-lg border border-[#B6FF3C]/20 hover:bg-[#B6FF3C]/20 transition-colors font-medium">Login to Dashboard</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- WhatsApp Floating -->
+        <a href="https://wa.me/918475046358" target="_blank" class="w-12 h-12 rounded-full bg-[#25D366] flex items-center justify-center text-white [box-shadow:0_0_15px_rgba(37,211,102,0.5)] hover:[box-shadow:0_0_25px_rgba(37,211,102,0.8)] hover:scale-105 transition-all duration-300 relative group">
+            <iconify-icon icon="solar:phone-calling-linear" width="24" stroke-width="1.5"></iconify-icon>
+            <span class="absolute right-14 bg-[#050807]/90 backdrop-blur-md text-white text-xs px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-white/10 font-light">Chat on WhatsApp</span>
+        </a>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 w-full z-40 bg-[#050807]/80 backdrop-blur-md border-b border-white/5">
+        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <a href="#" class="text-xl font-medium tracking-tight text-[#B6FF3C] flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-[#B6FF3C] [box-shadow:0_0_10px_rgba(182,255,60,0.6)]"></span>
+                HEMESH EDITOR
+            </a>
+            <div class="hidden md:flex items-center gap-8 text-sm font-light text-[#A0B3A8]">
+                <a href="#about" class="hover:text-[#B6FF3C] transition-colors">About</a>
+                <a href="#services" class="hover:text-[#B6FF3C] transition-colors">Services</a>
+                <a href="#portfolio" class="hover:text-[#B6FF3C] transition-colors">Portfolio</a>
+                <a href="#pricing" class="hover:text-[#B6FF3C] transition-colors">Pricing</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="relative min-h-screen flex items-center justify-center pt-16 overflow-hidden bg-[radial-gradient(circle_at_center,#0B1410_0%,#050807_100%)] [background-size:200%_200%] [animation:subtlePan_20s_ease_infinite]">
+        <!-- Ambient Glow -->
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#B6FF3C] rounded-full blur-[150px] opacity-10 pointer-events-none"></div>
+        
+        <div class="max-w-4xl mx-auto px-6 text-center relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#0a1912]/60 backdrop-blur-md border border-[#b6ff3c]/15 text-xs text-[#B6FF3C] mb-8 font-medium animate-fade-in opacity-0">
+                <span class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#B6FF3C] opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-[#B6FF3C]"></span>
+                </span>
+                Available for freelance work
+            </div>
+            
+            <h1 class="text-5xl md:text-7xl lg:text-8xl font-medium tracking-tight leading-tight mb-6 animate-fade-in delay-200 opacity-0">
+                Hemesh Editor <br>
+                <span class="text-transparent bg-clip-text bg-gradient-to-r from-white via-[#A0B3A8] to-white text-4xl md:text-6xl lg:text-7xl [text-shadow:0_0_30px_rgba(255,255,255,0.1)]">Cinematic Video Editor</span>
+            </h1>
+            
+            <p class="text-lg md:text-xl text-[#A0B3A8] max-w-2xl mx-auto mb-10 font-light tracking-wide animate-fade-in delay-400 opacity-0">
+                Turning your vision into cinematic reality. Elevating brands and creators through high-end motion graphics, editing, and typography.
+            </p>
+            
+            <div class="flex flex-wrap items-center justify-center gap-4 mb-16 animate-fade-in delay-600 opacity-0">
+                <a href="#portfolio" class="group relative px-6 py-3 rounded-full border border-white/10 bg-white/[0.02] text-white text-sm hover:bg-white/5 transition-all overflow-hidden flex items-center gap-2">
+                    <iconify-icon icon="solar:play-circle-linear" class="text-lg" stroke-width="1.5"></iconify-icon>
+                    <span>View Portfolio</span>
+                </a>
+                
+                <a href="#contact" class="group relative px-6 py-3 rounded-full bg-[#B6FF3C] text-[#050807] text-sm font-medium hover:scale-[1.02] transition-all [box-shadow:0_0_20px_rgba(182,255,60,0.2)] hover:[box-shadow:0_0_30px_rgba(182,255,60,0.4)] overflow-hidden flex items-center gap-2">
+                    <iconify-icon icon="solar:bolt-linear" class="text-lg" stroke-width="1.5"></iconify-icon>
+                    <span>Hire Me</span>
+                </a>
+            </div>
+
+            <div class="flex flex-wrap justify-center gap-4 animate-fade-in delay-800 opacity-0">
+                <a href="https://youtube.com/@sb.tech.ax7?si=0VIsodl7vmKYDq9P" target="_blank" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/[0.03] border border-white/5 text-white/80 text-xs hover:bg-white/10 hover:text-white transition-all font-light">
+                    <iconify-icon icon="solar:play-stream-linear" class="text-base" stroke-width="1.5"></iconify-icon>
+                    YouTube
+                </a>
+                <a href="https://instagram.com/__ankit_777r" target="_blank" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/[0.03] border border-white/5 text-white/80 text-xs hover:bg-white/10 hover:text-white transition-all font-light">
+                    <iconify-icon icon="solar:camera-linear" class="text-base" stroke-width="1.5"></iconify-icon>
+                    Instagram
+                </a>
+                <a href="mailto:rtfriderm@gmail.com" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/[0.03] border border-white/5 text-white/80 text-xs hover:bg-white/10 hover:text-white transition-all font-light">
+                    <iconify-icon icon="solar:letter-linear" class="text-base" stroke-width="1.5"></iconify-icon>
+                    Email
+                </a>
+            </div>
+        </div>
+        
+        <div class="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 opacity-40">
+            <span class="text-xs font-light tracking-widest text-[#A0B3A8] uppercase">Scroll</span>
+            <iconify-icon icon="solar:arrow-down-linear" class="animate-bounce text-[#B6FF3C]" stroke-width="1.5"></iconify-icon>
+        </div>
+    </section>
+
+    <!-- About Me -->
+    <section id="about" class="py-24 relative z-10 border-t border-white/5">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="grid md:grid-cols-2 gap-16 items-center">
+                <!-- Image Side -->
+                <div class="relative group">
+                    <div class="absolute inset-0 bg-gradient-to-tr from-[#00FFC6]/10 to-[#B6FF3C]/10 rounded-2xl blur-2xl group-hover:blur-3xl transition-all duration-500"></div>
+                    <div class="relative aspect-[4/5] rounded-2xl overflow-hidden bg-white/[0.02] border border-white/5 p-2">
+                        <div class="w-full h-full rounded-xl bg-[#0B1410] relative overflow-hidden flex items-center justify-center">
+                             <div class="absolute inset-0 opacity-40 mix-blend-luminosity bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?q=80&amp;w=2070&amp;auto=format&amp;fit=crop');"></div>
+                             <div class="absolute inset-0 bg-gradient-to-t from-[#050807] via-transparent to-transparent"></div>
+                             <iconify-icon icon="solar:user-id-linear" class="text-6xl text-[#A0B3A8] opacity-20" stroke-width="1.5"></iconify-icon>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Content Side -->
+                <div class="space-y-10">
+                    <div>
+                        <h2 class="text-3xl md:text-5xl font-medium tracking-tight mb-4">Architect of <span class="text-[#B6FF3C]">Visuals</span></h2>
+                        <p class="text-[#A0B3A8] text-base font-light">Crafting stories through lenses and timelines.</p>
+                    </div>
+
+                    <div class="bg-white/[0.02] border border-white/5 rounded-2xl p-6 space-y-4">
+                        <div class="flex justify-between items-center border-b border-white/5 pb-4">
+                            <span class="text-xs text-[#6B7F75] uppercase tracking-wide">Name</span>
+                            <span class="text-sm font-medium">Hemesh Kumar</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-white/5 pb-4">
+                            <span class="text-xs text-[#6B7F75] uppercase tracking-wide">Education</span>
+                            <span class="text-sm font-medium">BBA (F&amp;T), ADCA</span>
+                        </div>
+                        <div class="flex justify-between items-center pb-2">
+                            <span class="text-xs text-[#6B7F75] uppercase tracking-wide">Highlights</span>
+                            <span class="text-sm font-medium text-right max-w-[240px]">Worked with global creators &amp; emerging brands</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <p class="text-xs text-[#6B7F75] uppercase tracking-wide mb-4">Core Expertise</p>
+                        <div class="flex flex-wrap gap-3">
+                            <div class="px-4 py-2 rounded-lg bg-[#0a1912]/40 border border-[#b6ff3c]/10 text-xs font-light flex items-center gap-2">
+                                <iconify-icon icon="solar:video-frame-linear" class="text-[#B6FF3C]" stroke-width="1.5"></iconify-icon> Video Editing
+                            </div>
+                            <div class="px-4 py-2 rounded-lg bg-[#001916]/40 border border-[#00FFC6]/10 text-xs font-light flex items-center gap-2">
+                                <iconify-icon icon="solar:camera-add-linear" class="text-[#00FFC6]" stroke-width="1.5"></iconify-icon> Photography
+                            </div>
+                            <div class="px-4 py-2 rounded-lg bg-[#0a1912]/40 border border-[#b6ff3c]/10 text-xs font-light flex items-center gap-2">
+                                <iconify-icon icon="solar:magic-stick-3-linear" class="text-[#B6FF3C]" stroke-width="1.5"></iconify-icon> Motion Graphics
+                            </div>
+                            <div class="px-4 py-2 rounded-lg bg-[#001916]/40 border border-[#00FFC6]/10 text-xs font-light flex items-center gap-2">
+                                <iconify-icon icon="solar:text-field-focus-linear" class="text-[#00FFC6]" stroke-width="1.5"></iconify-icon> Typography
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Services & Specializations -->
+    <section id="services" class="py-24 relative bg-[#0B1410] border-t border-white/5">
+        <div class="absolute inset-0 bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[size:32px_32px]"></div>
+        
+        <div class="max-w-7xl mx-auto px-6 relative z-10">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-5xl font-medium tracking-tight mb-4">Professional <span class="text-[#B6FF3C]">Services</span></h2>
+                <p class="text-base font-light text-[#A0B3A8] max-w-xl mx-auto">High-end deliverables tailored for modern digital platforms.</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Service Card 1 -->
+                <div class="group relative bg-[#050807]/50 backdrop-blur-sm border border-white/5 rounded-2xl p-6 overflow-hidden hover:bg-[#0a1912]/40 hover:border-[#b6ff3c]/20 transition-all duration-300 flex flex-col h-full">
+                    <div class="mb-6 w-12 h-12 rounded-xl bg-white/[0.02] border border-[#B6FF3C]/20 flex items-center justify-center text-[#B6FF3C] group-hover:scale-105 transition-transform">
+                        <iconify-icon icon="solar:clapperboard-edit-linear" width="24" stroke-width="1.5"></iconify-icon>
+                    </div>
+                    <h3 class="text-lg font-medium tracking-tight mb-2">Cinematic Editing</h3>
+                    <p class="text-sm font-light text-[#A0B3A8] mb-8 flex-grow">Color grading, seamless transitions, and narrative-driven cuts for YouTube &amp; Ads.</p>
+                    <div class="flex items-center justify-between mt-auto">
+                        <span class="text-xl font-medium text-white">₹400</span>
+                        <a href="upi://pay?pa=8475046358@upi&amp;pn=Hemesh&amp;cu=INR&amp;am=400" class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-xs font-medium hover:bg-[#B6FF3C] hover:text-[#050807] hover:border-[#B6FF3C] transition-all">
+                            Order Now
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Service Card 2 -->
+                <div class="group relative bg-[#050807]/50 backdrop-blur-sm border border-white/5 rounded-2xl p-6 overflow-hidden hover:bg-[#001916]/40 hover:border-[#00FFC6]/20 transition-all duration-300 flex flex-col h-full">
+                    <div class="mb-6 w-12 h-12 rounded-xl bg-white/[0.02] border border-[#00FFC6]/20 flex items-center justify-center text-[#00FFC6] group-hover:scale-105 transition-transform">
+                        <iconify-icon icon="solar:layers-linear" width="24" stroke-width="1.5"></iconify-icon>
+                    </div>
+                    <h3 class="text-lg font-medium tracking-tight mb-2">Motion Graphics</h3>
+                    <p class="text-sm font-light text-[#A0B3A8] mb-8 flex-grow">Custom animations, lower thirds, and dynamic visual effects to elevate your content.</p>
+                    <div class="flex items-center justify-between mt-auto">
+                        <span class="text-xl font-medium text-white">₹500</span>
+                        <a href="upi://pay?pa=8475046358@upi&amp;pn=Hemesh&amp;cu=INR&amp;am=500" class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-xs font-medium hover:bg-[#00FFC6] hover:text-[#050807] hover:border-[#00FFC6] transition-all">
+                            Order Now
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Service Card 3 -->
+                <div class="group relative bg-[#050807]/50 backdrop-blur-sm border border-white/5 rounded-2xl p-6 overflow-hidden hover:bg-[#0a1912]/40 hover:border-[#b6ff3c]/20 transition-all duration-300 flex flex-col h-full">
+                    <div class="mb-6 w-12 h-12 rounded-xl bg-white/[0.02] border border-[#B6FF3C]/20 flex items-center justify-center text-[#B6FF3C] group-hover:scale-105 transition-transform">
+                        <iconify-icon icon="solar:text-underline-linear" width="24" stroke-width="1.5"></iconify-icon>
+                    </div>
+                    <h3 class="text-lg font-medium tracking-tight mb-2">Typography</h3>
+                    <p class="text-sm font-light text-[#A0B3A8] mb-8 flex-grow">Kinetic typography, animated subtitles, and stylish text overlays for maximum retention.</p>
+                    <div class="flex items-center justify-between mt-auto">
+                        <span class="text-xl font-medium text-white">₹250</span>
+                        <a href="upi://pay?pa=8475046358@upi&amp;pn=Hemesh&amp;cu=INR&amp;am=250" class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-xs font-medium hover:bg-[#B6FF3C] hover:text-[#050807] hover:border-[#B6FF3C] transition-all">
+                            Order Now
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Service Card 4 -->
+                <div class="group relative bg-[#050807]/50 backdrop-blur-sm border border-white/5 rounded-2xl p-6 overflow-hidden hover:bg-[#001916]/40 hover:border-[#00FFC6]/20 transition-all duration-300 flex flex-col h-full">
+                    <div class="mb-6 w-12 h-12 rounded-xl bg-white/[0.02] border border-[#00FFC6]/20 flex items-center justify-center text-[#00FFC6] group-hover:scale-105 transition-transform">
+                        <iconify-icon icon="solar:gallery-wide-linear" width="24" stroke-width="1.5"></iconify-icon>
+                    </div>
+                    <h3 class="text-lg font-medium tracking-tight mb-2">Thumbnail Design</h3>
+                    <p class="text-sm font-light text-[#A0B3A8] mb-8 flex-grow">High-CTR, eye-catching thumbnails designed to dominate algorithms and drive clicks.</p>
+                    <div class="flex items-center justify-between mt-auto">
+                        <span class="text-xl font-medium text-white">₹100</span>
+                        <a href="upi://pay?pa=8475046358@upi&amp;pn=Hemesh&amp;cu=INR&amp;am=100" class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-xs font-medium hover:bg-[#00FFC6] hover:text-[#050807] hover:border-[#00FFC6] transition-all">
+                            Order Now
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-12 text-center">
+                <p class="text-xs font-light text-[#6B7F75]">* Intro / Outro creation available upon request</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Portfolio -->
+    <section id="portfolio" class="py-24 relative border-t border-white/5">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
+                <div>
+                    <h2 class="text-3xl md:text-5xl font-medium tracking-tight mb-4">Selected <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#B6FF3C] to-[#00FFC6]">Works</span></h2>
+                    <p class="text-base font-light text-[#A0B3A8]">A glimpse into recent cinematic projects.</p>
+                </div>
+                
+                <div class="flex flex-wrap gap-2">
+                    <button class="px-4 py-1.5 rounded-full bg-[#B6FF3C]/10 text-[#B6FF3C] border border-[#B6FF3C]/20 text-xs font-medium transition-colors">All</button>
+                    <button class="px-4 py-1.5 rounded-full bg-white/5 text-[#A0B3A8] border border-white/5 text-xs hover:text-white transition-colors font-light">Editing</button>
+                    <button class="px-4 py-1.5 rounded-full bg-white/5 text-[#A0B3A8] border border-white/5 text-xs hover:text-white transition-colors font-light">Motion</button>
+                    <button class="px-4 py-1.5 rounded-full bg-white/5 text-[#A0B3A8] border border-white/5 text-xs hover:text-white transition-colors font-light">Ads</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Portfolio Item 1 -->
+                <div class="group relative aspect-video rounded-2xl overflow-hidden bg-[#0a1912]/20 border border-white/5 cursor-pointer">
+                    <div class="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105 opacity-50 mix-blend-luminosity group-hover:mix-blend-normal group-hover:opacity-90" style="background-image: url('https://images.unsplash.com/photo-1536240478700-b869070f9279?q=80&amp;w=2000&amp;auto=format&amp;fit=crop');"></div>
+                    <div class="absolute inset-0 bg-gradient-to-t from-[#050807] via-transparent to-transparent opacity-80"></div>
+                    
+                    <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div class="w-14 h-14 rounded-full bg-black/40 backdrop-blur-md border border-[#B6FF3C]/30 flex items-center justify-center text-[#B6FF3C]">
+                            <iconify-icon icon="solar:play-linear" width="24" stroke-width="1.5"></iconify-icon>
+                        </div>
+                    </div>
+                    
+                    <div class="absolute bottom-0 left-0 p-6 w-full">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-xs font-medium text-[#B6FF3C]">Cinematic</span>
+                        </div>
+                        <h3 class="text-white font-medium text-lg tracking-tight">Urban Tech Brand Ad</h3>
+                    </div>
+                </div>
+
+                <!-- Portfolio Item 2 -->
+                <div class="group relative aspect-video rounded-2xl overflow-hidden bg-[#001916]/20 border border-white/5 cursor-pointer lg:col-span-2">
+                    <div class="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105 opacity-50 mix-blend-luminosity group-hover:mix-blend-normal group-hover:opacity-90" style="background-image: url('https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&amp;w=2000&amp;auto=format&amp;fit=crop');"></div>
+                    <div class="absolute inset-0 bg-gradient-to-t from-[#050807] via-transparent to-transparent opacity-80"></div>
+                    
+                    <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div class="w-14 h-14 rounded-full bg-black/40 backdrop-blur-md border border-[#00FFC6]/30 flex items-center justify-center text-[#00FFC6]">
+                            <iconify-icon icon="solar:play-linear" width="24" stroke-width="1.5"></iconify-icon>
+                        </div>
+                    </div>
+                    
+                    <div class="absolute bottom-0 left-0 p-6 w-full">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-xs font-medium text-[#00FFC6]">Motion Graphics</span>
+                        </div>
+                        <h3 class="text-white font-medium text-lg tracking-tight">Fintech App Explainer</h3>
+                    </div>
+                </div>
+
+                <!-- Portfolio Item 3 -->
+                <div class="group relative aspect-video rounded-2xl overflow-hidden bg-[#0a1912]/20 border border-white/5 cursor-pointer">
+                    <div class="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105 opacity-50 mix-blend-luminosity group-hover:mix-blend-normal group-hover:opacity-90" style="background-image: url('https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?q=80&amp;w=2000&amp;auto=format&amp;fit=crop');"></div>
+                    <div class="absolute inset-0 bg-gradient-to-t from-[#050807] via-transparent to-transparent opacity-80"></div>
+                    
+                    <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div class="w-14 h-14 rounded-full bg-black/40 backdrop-blur-md border border-[#B6FF3C]/30 flex items-center justify-center text-[#B6FF3C]">
+                            <iconify-icon icon="solar:play-linear" width="24" stroke-width="1.5"></iconify-icon>
+                        </div>
+                    </div>
+                    
+                    <div class="absolute bottom-0 left-0 p-6 w-full">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-xs font-medium text-[#B6FF3C]">Vlog Edit</span>
+                        </div>
+                        <h3 class="text-white font-medium text-lg tracking-tight">Travel Series - Tokyo</h3>
+                    </div>
+                </div>
+
+                 <!-- Portfolio Item 4 -->
+                 <div class="group relative aspect-video rounded-2xl overflow-hidden bg-[#0a1912]/20 border border-white/5 cursor-pointer">
+                    <div class="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105 opacity-50 mix-blend-luminosity group-hover:mix-blend-normal group-hover:opacity-90" style="background-image: url('https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?q=80&amp;w=2000&amp;auto=format&amp;fit=crop');"></div>
+                    <div class="absolute inset-0 bg-gradient-to-t from-[#050807] via-transparent to-transparent opacity-80"></div>
+                    
+                    <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div class="w-14 h-14 rounded-full bg-black/40 backdrop-blur-md border border-[#B6FF3C]/30 flex items-center justify-center text-[#B6FF3C]">
+                            <iconify-icon icon="solar:gallery-wide-linear" width="24" stroke-width="1.5"></iconify-icon>
+                        </div>
+                    </div>
+                    
+                    <div class="absolute bottom-0 left-0 p-6 w-full">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-xs font-medium text-[#B6FF3C]">Thumbnail</span>
+                        </div>
+                        <h3 class="text-white font-medium text-lg tracking-tight">High CTR Designs</h3>
+                    </div>
+                </div>
+
+                 <!-- Portfolio Item 5 -->
+                 <div class="group relative aspect-video rounded-2xl overflow-hidden bg-[#0a1912]/20 border border-white/5 cursor-pointer">
+                    <div class="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105 opacity-50 mix-blend-luminosity group-hover:mix-blend-normal group-hover:opacity-90" style="background-image: url('https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&amp;w=2000&amp;auto=format&amp;fit=crop');"></div>
+                    <div class="absolute inset-0 bg-gradient-to-t from-[#050807] via-transparent to-transparent opacity-80"></div>
+                    
+                    <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div class="w-14 h-14 rounded-full bg-black/40 backdrop-blur-md border border-[#B6FF3C]/30 flex items-center justify-center text-[#B6FF3C]">
+                            <iconify-icon icon="solar:play-linear" width="24" stroke-width="1.5"></iconify-icon>
+                        </div>
+                    </div>
+                    
+                    <div class="absolute bottom-0 left-0 p-6 w-full">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-xs font-medium text-[#B6FF3C]">Effects</span>
+                        </div>
+                        <h3 class="text-white font-medium text-lg tracking-tight">Gaming Montage VFX</h3>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-16 text-center">
+                 <a href="https://youtube.com/@sb.tech.ax7?si=0VIsodl7vmKYDq9P" target="_blank" class="inline-flex items-center gap-2 px-6 py-3 rounded-full border border-white/10 bg-white/[0.02] text-sm hover:bg-white/5 transition-colors font-light">
+                    View More on YouTube <iconify-icon icon="solar:arrow-right-linear" stroke-width="1.5"></iconify-icon>
+                 </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing -->
+    <section id="pricing" class="py-24 relative bg-[#0B1410] border-t border-white/5">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-5xl font-medium tracking-tight mb-4">Transparent <span class="text-[#B6FF3C]">Pricing</span></h2>
+                <p class="text-base font-light text-[#A0B3A8] max-w-xl mx-auto">Straightforward tiers for standard projects. For custom requirements, contact directly.</p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-6 items-center">
+                <!-- Basic -->
+                <div class="bg-white/[0.02] border border-white/5 rounded-2xl p-8">
+                    <h3 class="text-lg font-medium tracking-tight text-[#A0B3A8] mb-2">Basic Editing</h3>
+                    <div class="flex items-baseline gap-1 mb-6">
+                        <span class="text-4xl font-medium tracking-tight">₹400</span>
+                        <span class="text-sm font-light text-[#6B7F75]">/video</span>
+                    </div>
+                    <ul class="space-y-4 mb-8 text-sm font-light text-[#A0B3A8]">
+                        <li class="flex items-center gap-3"><iconify-icon icon="solar:check-circle-linear" class="text-[#00FFC6] text-lg" stroke-width="1.5"></iconify-icon> Basic Cuts &amp; Trims</li>
+                        <li class="flex items-center gap-3"><iconify-icon icon="solar:check-circle-linear" class="text-[#00FFC6] text-lg" stroke-width="1.5"></iconify-icon> Standard Color Grading</li>
+                        <li class="flex items-center gap-3"><iconify-icon icon="solar:check-circle-linear" class="text-[#00FFC6] text-lg" stroke-width="1.5"></iconify-icon> Simple Text Overlays</li>
+                        <li class="flex items-center gap-3"><iconify-icon icon="solar:check-circle-linear" class="text-[#00FFC6] text-lg" stroke-width="1.5"></iconify-icon> 1 Revision</li>
+                    </ul>
+                    <a href="upi://pay?pa=8475046358@upi&amp;pn=Hemesh&amp;cu=INR&amp;am=400" class="block w-full text-center py-3 rounded-xl border border-white/10 hover:bg-white/5 transition-colors text-sm font-medium">Pay Now</a>
+                </div>
+
+                <!-- Pro -->
+                <div class="bg-[#0a1912]/40 backdrop-blur-md border border-[#B6FF3C]/30 rounded-2xl p-8 relative transform md:-translate-y-4 [box-shadow:0_0_40px_-10px_rgba(182,255,60,0.1)]">
+                    <div class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-4 py-1 bg-[#B6FF3C] text-[#050807] text-xs uppercase tracking-wide font-medium rounded-full">Most Popular</div>
+                    <h3 class="text-lg font-medium tracking-tight text-white mb-2">Advanced Editing</h3>
+                    <div class="flex items-baseline gap-1 mb-6">
+                        <span class="text-4xl font-medium tracking-tight text-[#B6FF3C]">₹800+</span>
+                        <span class="text-sm font-light text-[#6B7F75]">/project</span>
+                    </div>
+                    <ul class="space-y-4 mb-8 text-sm font-light text-white/90">
+                        <li class="flex items-center gap-3"><iconify-icon icon="solar:check-circle-linear" class="text-[#B6FF3C] text-lg" stroke-width="1.5"></iconify-icon> Cinematic Color Grading</li>
+                        <li class="flex items-center gap-3"><iconify-icon icon="solar:check-circle-linear" class="text-[#B6FF3C] text-lg" stroke-width="1.5"></iconify-icon> Motion Graphics &amp; VFX</li>
+                        <li class="flex items-center gap-3"><iconify-icon icon="solar:check-circle-linear" class="text-[#B6FF3C] text-lg" stroke-width="1.5"></iconify-icon> Advanced Audio Mixing</li>
+                        <li class="flex items-center gap-3"><iconify-icon icon="solar:check-circle-linear" class="text-[#B6FF3C] text-lg" stroke-width="1.5"></iconify-icon> 3 Revisions included</li>
+                    </ul>
+                    <a href="upi://pay?pa=8475046358@upi&amp;pn=Hemesh&amp;cu=INR" class="block w-full text-center py-3 rounded-xl bg-[#B6FF3C] text-[#050807] hover:scale-[1.02] transition-transform text-sm font-medium [box-shadow:0_0_15px_rgba(182,255,60,0.3)]">Pay Now</a>
+                </div>
+
+                <!-- Add-on -->
+                <div class="bg-white/[0.02] border border-white/5 rounded-2xl p-8">
+                    <h3 class="text-lg font-medium tracking-tight text-[#A0B3A8] mb-2">Thumbnail Design</h3>
+                    <div class="flex items-baseline gap-1 mb-6">
+                        <span class="text-4xl font-medium tracking-tight">₹100</span>
+                        <span class="text-sm font-light text-[#6B7F75]">/design</span>
+                    </div>
+                    <ul class="space-y-4 mb-8 text-sm font-light text-[#A0B3A8]">
+                        <li class="flex items-center gap-3"><iconify-icon icon="solar:check-circle-linear" class="text-[#00FFC6] text-lg" stroke-width="1.5"></iconify-icon> High CTR Focus</li>
+                        <li class="flex items-center gap-3"><iconify-icon icon="solar:check-circle-linear" class="text-[#00FFC6] text-lg" stroke-width="1.5"></iconify-icon> Custom Typography</li>
+                        <li class="flex items-center gap-3"><iconify-icon icon="solar:check-circle-linear" class="text-[#00FFC6] text-lg" stroke-width="1.5"></iconify-icon> Image Manipulation</li>
+                        <li class="flex items-center gap-3"><iconify-icon icon="solar:check-circle-linear" class="text-[#00FFC6] text-lg" stroke-width="1.5"></iconify-icon> Source File included</li>
+                    </ul>
+                    <a href="upi://pay?pa=8475046358@upi&amp;pn=Hemesh&amp;cu=INR&amp;am=100" class="block w-full text-center py-3 rounded-xl border border-white/10 hover:bg-white/5 transition-colors text-sm font-medium">Pay Now</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials -->
+    <section class="py-24 relative overflow-hidden border-t border-white/5">
+        <div class="max-w-7xl mx-auto px-6 mb-12">
+            <h2 class="text-3xl md:text-5xl font-medium tracking-tight">Client <span class="text-[#B6FF3C]">Trust</span></h2>
+            <p class="text-base font-light text-[#A0B3A8] mt-4">What creators are saying.</p>
+        </div>
+
+        <div class="flex overflow-x-auto gap-6 px-6 pb-8 snap-x no-scrollbar">
+            <!-- 10 Testimonial Cards -->
+            <div class="min-w-[300px] md:min-w-[400px] bg-white/[0.02] border border-white/5 p-8 rounded-2xl snap-center shrink-0 hover:border-[#B6FF3C]/20 transition-colors">
+                <div class="flex text-[#B6FF3C] mb-6 gap-1">
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                </div>
+                <p class="text-base font-light text-white/90 mb-8">"Hemesh completely transformed my vlog. The cinematic grading and subtle motion graphics retained viewers 30% longer!"</p>
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-xs font-medium text-[#A0B3A8]">AJ</div>
+                    <div><p class="text-sm font-medium tracking-tight">Arjun J.</p><p class="text-xs font-light text-[#6B7F75]">Tech YouTuber</p></div>
+                </div>
+            </div>
+
+            <div class="min-w-[300px] md:min-w-[400px] bg-white/[0.02] border border-white/5 p-8 rounded-2xl snap-center shrink-0 hover:border-[#B6FF3C]/20 transition-colors">
+                <div class="flex text-[#B6FF3C] mb-6 gap-1">
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                </div>
+                <p class="text-base font-light text-white/90 mb-8">"The thumbnails alone paid for the service. Impressions skyrocketed. Highly recommend his typography skills."</p>
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-xs font-medium text-[#A0B3A8]">SR</div>
+                    <div><p class="text-sm font-medium tracking-tight">Sarah R.</p><p class="text-xs font-light text-[#6B7F75]">Finance Creator</p></div>
+                </div>
+            </div>
+
+            <div class="min-w-[300px] md:min-w-[400px] bg-white/[0.02] border border-white/5 p-8 rounded-2xl snap-center shrink-0 hover:border-[#B6FF3C]/20 transition-colors">
+                <div class="flex text-[#B6FF3C] mb-6 gap-1">
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                </div>
+                <p class="text-base font-light text-white/90 mb-8">"Fast turnaround, incredible quality. Hemesh understands exactly what pacing is needed for modern social media ads."</p>
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-xs font-medium text-[#A0B3A8]">MK</div>
+                    <div><p class="text-sm font-medium tracking-tight">Mike K.</p><p class="text-xs font-light text-[#6B7F75]">E-com Brand Owner</p></div>
+                </div>
+            </div>
+
+            <div class="min-w-[300px] md:min-w-[400px] bg-white/[0.02] border border-white/5 p-8 rounded-2xl snap-center shrink-0 hover:border-[#B6FF3C]/20 transition-colors">
+                <div class="flex text-[#B6FF3C] mb-6 gap-1">
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                </div>
+                <p class="text-base font-light text-white/90 mb-8">"I've worked with many editors, but the cinematic vibe Hemesh brings is on another international level. Pure art."</p>
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-xs font-medium text-[#A0B3A8]">DP</div>
+                    <div><p class="text-sm font-medium tracking-tight">David P.</p><p class="text-xs font-light text-[#6B7F75]">Filmmaker</p></div>
+                </div>
+            </div>
+            
+            <div class="min-w-[300px] md:min-w-[400px] bg-white/[0.02] border border-white/5 p-8 rounded-2xl snap-center shrink-0 hover:border-[#B6FF3C]/20 transition-colors">
+                <div class="flex text-[#B6FF3C] mb-6 gap-1">
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                </div>
+                <p class="text-base font-light text-white/90 mb-8">"He took raw, shaky footage and made it look like a high-budget documentary. Simply mind-blowing."</p>
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-xs font-medium text-[#A0B3A8]">NT</div>
+                    <div><p class="text-sm font-medium tracking-tight">Nina T.</p><p class="text-xs font-light text-[#6B7F75]">Travel Blogger</p></div>
+                </div>
+            </div>
+
+            <div class="min-w-[300px] md:min-w-[400px] bg-white/[0.02] border border-white/5 p-8 rounded-2xl snap-center shrink-0 hover:border-[#B6FF3C]/20 transition-colors">
+                <div class="flex text-[#B6FF3C] mb-6 gap-1">
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                </div>
+                <p class="text-base font-light text-white/90 mb-8">"Great communication and nailed the brief on the first draft. The motion graphics were crisp and modern."</p>
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-xs font-medium text-[#A0B3A8]">RJ</div>
+                    <div><p class="text-sm font-medium tracking-tight">Rahul J.</p><p class="text-xs font-light text-[#6B7F75]">Agency Director</p></div>
+                </div>
+            </div>
+
+            <div class="min-w-[300px] md:min-w-[400px] bg-white/[0.02] border border-white/5 p-8 rounded-2xl snap-center shrink-0 hover:border-[#B6FF3C]/20 transition-colors">
+                <div class="flex text-[#B6FF3C] mb-6 gap-1">
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                </div>
+                <p class="text-base font-light text-white/90 mb-8">"Very professional. The pricing is completely justified by the premium output. My go-to editor now."</p>
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-xs font-medium text-[#A0B3A8]">KL</div>
+                    <div><p class="text-sm font-medium tracking-tight">Kevin L.</p><p class="text-xs font-light text-[#6B7F75]">Podcast Host</p></div>
+                </div>
+            </div>
+
+            <div class="min-w-[300px] md:min-w-[400px] bg-white/[0.02] border border-white/5 p-8 rounded-2xl snap-center shrink-0 hover:border-[#B6FF3C]/20 transition-colors">
+                <div class="flex text-[#B6FF3C] mb-6 gap-1">
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                </div>
+                <p class="text-base font-light text-white/90 mb-8">"Hemesh's typography edits made my boring educational videos dynamic and engaging. Audience retention is up!"</p>
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-xs font-medium text-[#A0B3A8]">SM</div>
+                    <div><p class="text-sm font-medium tracking-tight">Sneha M.</p><p class="text-xs font-light text-[#6B7F75]">Educator</p></div>
+                </div>
+            </div>
+
+            <div class="min-w-[300px] md:min-w-[400px] bg-white/[0.02] border border-white/5 p-8 rounded-2xl snap-center shrink-0 hover:border-[#B6FF3C]/20 transition-colors">
+                <div class="flex text-[#B6FF3C] mb-6 gap-1">
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                </div>
+                <p class="text-base font-light text-white/90 mb-8">"10/10 for creativity. He added a specular sweep effect to my intro that I didn't even know I needed. Brilliant."</p>
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-xs font-medium text-[#A0B3A8]">CH</div>
+                    <div><p class="text-sm font-medium tracking-tight">Chris H.</p><p class="text-xs font-light text-[#6B7F75]">Gaming Creator</p></div>
+                </div>
+            </div>
+
+            <div class="min-w-[300px] md:min-w-[400px] bg-white/[0.02] border border-white/5 p-8 rounded-2xl snap-center shrink-0 hover:border-[#B6FF3C]/20 transition-colors">
+                <div class="flex text-[#B6FF3C] mb-6 gap-1">
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                    <iconify-icon icon="solar:star-linear" width="16" stroke-width="1.5"></iconify-icon>
+                </div>
+                <p class="text-base font-light text-white/90 mb-8">"Reliable, incredibly skilled, and has a true eye for cinematic aesthetics. Best investment for my channel."</p>
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-xs font-medium text-[#A0B3A8]">AM</div>
+                    <div><p class="text-sm font-medium tracking-tight">Ali M.</p><p class="text-xs font-light text-[#6B7F75]">Lifestyle Vlogger</p></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section id="contact" class="py-24 relative bg-[#0B1410] border-t border-white/5">
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,#00FFC60a,transparent_40%)]"></div>
+        
+        <div class="max-w-6xl mx-auto px-6 relative z-10">
+            <div class="grid lg:grid-cols-2 gap-16">
+                <!-- Info -->
+                <div>
+                    <h2 class="text-4xl md:text-5xl font-medium tracking-tight mb-6">Let's build something <span class="text-[#B6FF3C]">cinematic</span>.</h2>
+                    <p class="text-base font-light text-[#A0B3A8] mb-12 max-w-md">Ready to elevate your content? Drop a message or reach out directly through any of the channels below.</p>
+                    
+                    <div class="space-y-4">
+                        <a href="mailto:rtfriderm@gmail.com" class="group flex items-center gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:border-[#B6FF3C]/30 transition-colors">
+                            <div class="w-12 h-12 rounded-full bg-[#0a1912]/40 border border-[#b6ff3c]/10 flex items-center justify-center text-[#B6FF3C] group-hover:bg-[#B6FF3C] group-hover:text-[#050807] transition-colors">
+                                <iconify-icon icon="solar:letter-linear" width="24" stroke-width="1.5"></iconify-icon>
+                            </div>
+                            <div>
+                                <p class="text-xs text-[#A0B3A8] uppercase tracking-wide">Email</p>
+                                <p class="text-sm font-medium tracking-tight">rtfriderm@gmail.com</p>
+                            </div>
+                        </a>
+                        
+                        <a href="tel:8475046358" class="group flex items-center gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:border-[#00FFC6]/30 transition-colors">
+                            <div class="w-12 h-12 rounded-full bg-[#001916]/40 border border-[#00FFC6]/10 flex items-center justify-center text-[#00FFC6] group-hover:bg-[#00FFC6] group-hover:text-[#050807] transition-colors">
+                                <iconify-icon icon="solar:phone-calling-linear" width="24" stroke-width="1.5"></iconify-icon>
+                            </div>
+                            <div>
+                                <p class="text-xs text-[#A0B3A8] uppercase tracking-wide">Phone / WhatsApp</p>
+                                <p class="text-sm font-medium tracking-tight">+91 8475046358</p>
+                            </div>
+                        </a>
+
+                        <a href="https://instagram.com/__ankit_777r" target="_blank" class="group flex items-center gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:border-[#B6FF3C]/30 transition-colors">
+                            <div class="w-12 h-12 rounded-full bg-[#0a1912]/40 border border-[#b6ff3c]/10 flex items-center justify-center text-[#B6FF3C] group-hover:bg-[#B6FF3C] group-hover:text-[#050807] transition-colors">
+                                <iconify-icon icon="solar:camera-linear" width="24" stroke-width="1.5"></iconify-icon>
+                            </div>
+                            <div>
+                                <p class="text-xs text-[#A0B3A8] uppercase tracking-wide">Instagram</p>
+                                <p class="text-sm font-medium tracking-tight">@__ankit_777r</p>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Form -->
+                <div class="bg-white/[0.02] border border-white/5 p-8 rounded-2xl">
+                    <form class="space-y-6">
+                        <div>
+                            <label class="block text-xs font-light text-[#A0B3A8] mb-2 uppercase tracking-wide">Name</label>
+                            <input type="text" class="w-full bg-[#050807]/50 border border-white/10 rounded-xl px-4 py-3 text-sm font-light focus:outline-none focus:border-[#B6FF3C] focus:ring-1 focus:ring-[#B6FF3C] transition-all placeholder:text-white/20" placeholder="John Doe">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-light text-[#A0B3A8] mb-2 uppercase tracking-wide">Email</label>
+                            <input type="email" class="w-full bg-[#050807]/50 border border-white/10 rounded-xl px-4 py-3 text-sm font-light focus:outline-none focus:border-[#B6FF3C] focus:ring-1 focus:ring-[#B6FF3C] transition-all placeholder:text-white/20" placeholder="john@example.com">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-light text-[#A0B3A8] mb-2 uppercase tracking-wide">Project Details</label>
+                            <textarea rows="4" class="w-full bg-[#050807]/50 border border-white/10 rounded-xl px-4 py-3 text-sm font-light focus:outline-none focus:border-[#B6FF3C] focus:ring-1 focus:ring-[#B6FF3C] transition-all placeholder:text-white/20 resize-none" placeholder="Tell me about your vision..."></textarea>
+                        </div>
+                        <button type="button" class="w-full py-4 rounded-xl bg-[#B6FF3C] text-[#050807] font-medium hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 [box-shadow:0_0_20px_rgba(182,255,60,0.2)]">
+                            <span>Let's Work Together</span>
+                            <iconify-icon icon="solar:arrow-right-linear" stroke-width="1.5"></iconify-icon>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="border-t border-white/5 bg-[#050807] py-12">
+        <div class="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div class="flex items-center gap-2 text-xl font-medium tracking-tight text-[#B6FF3C]">
+                <span class="w-2 h-2 rounded-full bg-[#B6FF3C] [box-shadow:0_0_10px_rgba(182,255,60,0.6)]"></span>
+                HEMESH EDITOR
+            </div>
+            
+            <div class="flex gap-6 text-sm font-light text-[#A0B3A8]">
+                <a href="#about" class="hover:text-white transition-colors">About</a>
+                <a href="#services" class="hover:text-white transition-colors">Services</a>
+                <a href="#portfolio" class="hover:text-white transition-colors">Work</a>
+                <a href="#pricing" class="hover:text-white transition-colors">Pricing</a>
+            </div>
+
+            <div class="flex gap-4">
+                <a href="https://youtube.com/@sb.tech.ax7?si=0VIsodl7vmKYDq9P" target="_blank" class="w-10 h-10 rounded-full border border-white/5 flex items-center justify-center text-[#A0B3A8] hover:text-[#B6FF3C] hover:border-[#B6FF3C]/30 hover:bg-[#0a1912]/40 transition-colors">
+                    <iconify-icon icon="solar:play-stream-linear" width="20" stroke-width="1.5"></iconify-icon>
+                </a>
+                <a href="https://instagram.com/__ankit_777r" target="_blank" class="w-10 h-10 rounded-full border border-white/5 flex items-center justify-center text-[#A0B3A8] hover:text-[#B6FF3C] hover:border-[#B6FF3C]/30 hover:bg-[#0a1912]/40 transition-colors">
+                    <iconify-icon icon="solar:camera-linear" width="20" stroke-width="1.5"></iconify-icon>
+                </a>
+            </div>
+        </div>
+        <div class="text-center text-xs font-light text-[#6B7F75] mt-12">
+            © 2024 Hemesh Kumar. All cinematic rights reserved.
+        </div>
+    </footer>
+
+
+</body></html>

@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="en" class="dark"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fabric - The Commerce Layer</title>
+<!-- Fonts: Inter and Newsreader -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&display=swap" rel="stylesheet">
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+darkMode: 'class',
+theme: {
+extend: {
+fontFamily: {
+sans: ['Inter', 'sans-serif'],
+serif: ['Newsreader', 'serif'],
+},
+colors: {
+neutral: {
+925: '#0a0a0a',
+950: '#050505',
+}
+},
+letterSpacing: {
+tighter: '-0.04em',
+},
+animation: {
+'marquee': 'marquee 40s linear infinite',
+'beam': 'beam 8s linear infinite',
+},
+keyframes: {
+marquee: {
+'0%': { transform: 'translateX(0)' },
+'100%': { transform: 'translateX(-100%)' },
+},
+beam: {
+'0%': { top: '-200px', opacity: '0' },
+'10%': { opacity: '1' },
+'90%': { opacity: '1' },
+'100%': { top: '100%', opacity: '0' },
+}
+}
+}
+}
+}
+</script>
+<!-- Iconify -->
+<script src="https://code.iconify.design/3/3.1.0/iconify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/iconify-icon@2.1.0/dist/iconify-icon.min.js"></script>
+<!-- Animation Keyframe -->
+<style>
+/*
+Sequence animation intro.
+*/
+@keyframes animationIn {
+0% {
+opacity: 0;
+transform: translateY(30px);
+filter: blur(8px);
+}
+100% {
+opacity: 1;
+transform: translateY(0);
+filter: blur(0px);
+}
+}
+</style>
+<!-- Animation on Scroll Script -->
+<script>
+/*
+Sequence animation on scroll when visible.
+*/
+(function () {
+// Inject CSS for paused/running states
+const style = document.createElement("style");
+style.textContent = `
+/* Default: paused */
+.animate-on-scroll { animation-play-state: paused !important; }
+/* Activated by JS */
+.animate-on-scroll.animate { animation-play-state: running !important; }
+`;
+document.head.appendChild(style);
+const once = true;
+if (!window.__inViewIO) {
+window.__inViewIO = new IntersectionObserver((entries) => {
+entries.forEach((entry) => {
+if (entry.isIntersecting) {
+entry.target.classList.add("animate");
+if (once) window.__inViewIO.unobserve(entry.target);
+}
+});
+}, { threshold: 0.1, rootMargin: "0px 0px -5% 0px" });
+}
+window.initInViewAnimations = function (selector = ".animate-on-scroll") {
+document.querySelectorAll(selector).forEach((el) => {
+window.__inViewIO.observe(el); // observing twice is a no-op
+});
+};
+document.addEventListener("DOMContentLoaded", () => initInViewAnimations());
+})();
+</script>
+<style>
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 0px; }
+::selection { background-color: rgba(34, 211, 238, 0.2); color: white; }
+/* Vertical Line Clip Animation for initial load */
+.animate-line {
+opacity: 0;
+animation: reveal-vertical 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes reveal-vertical {
+0% { clip-path: inset(0 0 100% 0); opacity: 0; }
+1% { opacity: 1; }
+100% { clip-path: inset(0 0 0 0); opacity: 1; }
+}
+/* Spotlight Effect Utilities */
+.spotlight-group:hover .spotlight-border { opacity: 1; }
+.spotlight-card {
+background: radial-gradient(
+800px circle at var(--mouse-x) var(--mouse-y),
+rgba(34, 211, 238, 0.06),
+transparent 40%
+);
+}
+/* Marquee Mask */
+.marquee-mask {
+mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+-webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+}
+/* Border Gradient for Pill Button */
+[style*="--border-gradient"]::before {
+content: "";
+position: absolute;
+inset: 0;
+padding: 1px;
+border-radius: var(--border-radius-before, inherit);
+-webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+-webkit-mask-composite: xor;
+mask-composite: exclude;
+background: var(--border-gradient);
+pointer-events: none;
+}
+</style>
+<link id="all-fonts-link-font-geist" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-geist">.font-geist { font-family: 'Geist', sans-serif !important; }</style><link id="all-fonts-link-font-roboto" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-roboto">.font-roboto { font-family: 'Roboto', sans-serif !important; }</style><link id="all-fonts-link-font-montserrat" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-montserrat">.font-montserrat { font-family: 'Montserrat', sans-serif !important; }</style><link id="all-fonts-link-font-poppins" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-poppins">.font-poppins { font-family: 'Poppins', sans-serif !important; }</style><link id="all-fonts-link-font-playfair" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;900&display=swap"><style id="all-fonts-style-font-playfair">.font-playfair { font-family: 'Playfair Display', serif !important; }</style><link id="all-fonts-link-font-instrument-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:wght@400;500;600;700&display=swap"><style id="all-fonts-style-font-instrument-serif">.font-instrument-serif { font-family: 'Instrument Serif', serif !important; }</style><link id="all-fonts-link-font-merriweather" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700;900&display=swap"><style id="all-fonts-style-font-merriweather">.font-merriweather { font-family: 'Merriweather', serif !important; }</style><link id="all-fonts-link-font-bricolage" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-bricolage">.font-bricolage { font-family: 'Bricolage Grotesque', sans-serif !important; }</style><link id="all-fonts-link-font-jakarta" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-jakarta">.font-jakarta { font-family: 'Plus Jakarta Sans', sans-serif !important; }</style><link id="all-fonts-link-font-manrope" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-manrope">.font-manrope { font-family: 'Manrope', sans-serif !important; }</style><link id="all-fonts-link-font-space-grotesk" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-space-grotesk">.font-space-grotesk { font-family: 'Space Grotesk', sans-serif !important; }</style><link id="all-fonts-link-font-work-sans" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-work-sans">.font-work-sans { font-family: 'Work Sans', sans-serif !important; }</style><link id="all-fonts-link-font-pt-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Serif:wght@400;700&display=swap"><style id="all-fonts-style-font-pt-serif">.font-pt-serif { font-family: 'PT Serif', serif !important; }</style><link id="all-fonts-link-font-geist-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-geist-mono">.font-geist-mono { font-family: 'Geist Mono', monospace !important; }</style><link id="all-fonts-link-font-space-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap"><style id="all-fonts-style-font-space-mono">.font-space-mono { font-family: 'Space Mono', monospace !important; }</style><link id="all-fonts-link-font-quicksand" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-quicksand">.font-quicksand { font-family: 'Quicksand', sans-serif !important; }</style><link id="all-fonts-link-font-nunito" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-nunito">.font-nunito { font-family: 'Nunito', sans-serif !important; }</style><style id="border-gradient-shared-style">
+[style*="--border-gradient"]::before {
+content: "";
+position: absolute;
+inset: 0;
+padding: 1px;
+border-radius: var(--border-radius-before, inherit);
+-webkit-mask: linear-gradient(#fff 0 0) content-box,
+linear-gradient(#fff 0 0);
+-webkit-mask-composite: xor;
+mask-composite: exclude;
+background: var(--border-gradient);
+pointer-events: none;
+}</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="bg-black text-gray-300 font-sans antialiased min-h-screen w-full overflow-x-hidden flex flex-col selection:bg-cyan-500/20" id="main-body">
+
+    <!-- Background (component) added by Aura -->
+    <div class="aura-background-component fixed top-0 w-full h-screen -z-10" data-alpha-mask="80" style="; mask-image: linear-gradient(to bottom, transparent, black 0%, black 80%, transparent); -webkit-mask-image: linear-gradient(to bottom, transparent, black 0%, black 80%, transparent)"><div class="aura-background-component top-0 w-full -z-10 absolute h-full">
+    <div data-us-project="UtvhDctN8AjL6tvf1yKd" class="absolute w-full h-full left-0 top-0 -z-10"></div>
+    <script type="text/javascript">
+        !function(){if(!window.UnicornStudio){window.UnicornStudio={isInitialized:!1};var i=document.createElement("script");i.src="https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v1.4.29/dist/unicornStudio.umd.js",i.onload=function(){window.UnicornStudio.isInitialized||(UnicornStudio.init(),window.UnicornStudio.isInitialized=!0)},(document.head || document.body).appendChild(i)}}();
+    </script>
+    </div></div>
+
+    <!-- Global Mouse Spotlight Background (Fixed) -->
+    <div class="pointer-events-none fixed inset-0 z-0 transition-opacity duration-300" style="background: radial-gradient(800px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(34,211,238,0.04), transparent 40%);">
+    </div>
+
+    <!-- Top Gradient Line (Fixed) -->
+    <div class="fixed top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-cyan-500 via-sky-500 to-blue-500 z-50 opacity-60"></div>
+
+    <!-- Background Grid Lines with Beams (Fixed to viewport) -->
+    <div class="fixed inset-0 pointer-events-none z-0 grid grid-cols-6 md:grid-cols-12 max-w-7xl mx-auto border-x border-white/5 h-full">
+        <!-- Line 1 with Beam -->
+        <div class="border-r border-white/5 h-full hidden md:block animate-line relative overflow-hidden" style="animation-delay: 0.1s">
+            <div class="absolute -top-40 -right-[1px] w-[1px] h-40 bg-gradient-to-b from-transparent via-cyan-400 to-transparent animate-beam" style="animation-duration: 7s; animation-delay: 1.5s;"></div>
+        </div>
+        
+        <!-- Line 2 -->
+        <div class="border-r border-white/5 h-full hidden md:block animate-line relative overflow-hidden" style="animation-delay: 0.3s"></div>
+        
+        <!-- Line 3 with Beam -->
+        <div class="border-r border-white/5 h-full hidden md:block animate-line relative overflow-hidden" style="animation-delay: 0.15s">
+             <div class="absolute -top-52 -right-[1px] w-[1px] h-52 bg-gradient-to-b from-transparent via-sky-500 to-transparent animate-beam" style="animation-duration: 11s; animation-delay: 4s;"></div>
+        </div>
+        
+        <!-- Line 4 -->
+        <div class="border-r border-white/5 h-full hidden md:block animate-line relative overflow-hidden" style="animation-delay: 0.4s"></div>
+        
+        <!-- Line 5 with Beam -->
+        <div class="border-r border-white/5 h-full hidden md:block animate-line relative overflow-hidden" style="animation-delay: 0.25s">
+             <div class="absolute -top-32 -right-[1px] w-[1px] h-32 bg-gradient-to-b from-transparent via-cyan-300 to-transparent animate-beam" style="animation-duration: 6s; animation-delay: 0.5s;"></div>
+        </div>
+        
+        <!-- Line 6 -->
+        <div class="border-r border-white/5 h-full hidden md:block animate-line relative overflow-hidden" style="animation-delay: 0.1s"></div>
+        
+        <!-- Line 7 with Beam -->
+        <div class="border-r border-white/5 h-full hidden md:block animate-line relative overflow-hidden" style="animation-delay: 0.35s">
+             <div class="absolute -top-64 -right-[1px] w-[1px] h-64 bg-gradient-to-b from-transparent via-blue-400 to-transparent animate-beam" style="animation-duration: 9s; animation-delay: 2.5s;"></div>
+        </div>
+        
+        <!-- Line 8 -->
+        <div class="border-r border-white/5 h-full hidden md:block animate-line relative overflow-hidden" style="animation-delay: 0.2s"></div>
+        
+        <!-- Line 9 with Beam -->
+        <div class="border-r border-white/5 h-full hidden md:block animate-line relative overflow-hidden" style="animation-delay: 0.45s">
+             <div class="absolute -top-40 -right-[1px] w-[1px] h-40 bg-gradient-to-b from-transparent via-cyan-500 to-transparent animate-beam" style="animation-duration: 8s; animation-delay: 5s;"></div>
+        </div>
+        
+        <!-- Line 10 -->
+        <div class="border-r border-white/5 h-full hidden md:block animate-line relative overflow-hidden" style="animation-delay: 0.15s"></div>
+        
+        <!-- Line 11 -->
+        <div class="border-r border-white/5 h-full hidden md:block animate-line relative overflow-hidden" style="animation-delay: 0.3s"></div>
+    </div>
+
+    <!-- Navigation (Sticky) -->
+    <nav class="sticky top-0 z-40 w-full border-b border-white/5 bg-black/60 backdrop-blur-md shrink-0">
+        <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+            <!-- Logo Area -->
+            <div class="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="1em" height="1em" viewBox="0 0 24 24" data-icon="solar:infinity-bold" class="iconify text-cyan-400 text-3xl iconify--solar"><path fill="currentColor" fill-rule="evenodd" d="M7 7.75a4.25 4.25 0 0 0 0 8.5c.597 0 1.045-.107 1.407-.284c.362-.176.679-.442.986-.816c.54-.66.983-1.558 1.567-2.741q.175-.355.37-.744l.34-.69c.581-1.181 1.117-2.27 1.777-3.075c.41-.501.89-.923 1.49-1.215S16.216 6.25 17 6.25a5.75 5.75 0 1 1-3.45 10.35a.75.75 0 0 1 .9-1.2A4.25 4.25 0 1 0 17 7.75c-.597 0-1.045.107-1.407.284c-.362.176-.679.442-.986.816c-.54.66-.983 1.558-1.567 2.741q-.175.355-.37.744l-.34.69c-.581 1.181-1.117 2.27-1.777 3.076c-.41.5-.89.922-1.49 1.214s-1.28.435-2.063.435A5.75 5.75 0 1 1 10.451 7.4a.75.75 0 1 1-.901 1.2A4.23 4.23 0 0 0 7 7.75" clip-rule="evenodd" class=""></path></svg>
+                <span class="text-xl font-semibold tracking-tight text-white">Fabric</span>
+            </div>
+
+            <!-- Desktop Nav -->
+            <div class="hidden md:flex items-center gap-8">
+                <a href="#" class="text-sm font-normal text-gray-400 hover:text-white transition-colors flex items-center gap-1 group">
+                    Platform 
+                    <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="1em" height="1em" viewBox="0 0 24 24" data-icon="lucide:chevron-down" style="width: 12px; height: 12px;" class="iconify text-gray-600 group-hover:text-white transition-colors iconify--lucide"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9l6 6l6-6"></path></svg>
+                </a>
+                <a href="#" class="text-sm font-normal text-gray-400 hover:text-white transition-colors">Solutions</a>
+                <a href="#" class="text-sm font-normal text-gray-400 hover:text-white transition-colors">Developers</a>
+                <a href="#" class="text-sm font-normal text-gray-400 hover:text-white transition-colors">Pricing</a>
+            </div>
+
+            <!-- Right Actions -->
+            <div class="flex items-center gap-6">
+                <a href="#" class="hidden md:flex items-center gap-1 text-sm font-normal text-gray-300 hover:text-white">
+                    Sign In
+                </a>
+                <button class="relative rounded-full bg-white/5 border border-white/10 px-5 py-2 text-xs font-semibold tracking-wide text-white hover:bg-white/10 transition-all duration-300 overflow-hidden group">
+                    <span class="relative z-10 uppercase">Contact Sales</span>
+                    <div class="absolute inset-0 bg-gradient-to-r from-transparent via-cyan-500/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="relative pt-12">
+        
+        <!-- HERO SECTION -->
+        <section class="flex flex-col w-full max-w-7xl z-10 mt-24 mr-auto mb-32 ml-auto px-6 relative" id="hero">
+            <!-- Top Badge -->
+            <div class="w-full flex justify-start mb-8 spotlight-group relative [animation:animationIn_0.8s_ease-out_0.1s_both] animate-on-scroll animate" style="--mouse-x-rel: 1149.5px; --mouse-y-rel: 1701.5px;">
+                <div class="-inset-px spotlight-border transition-opacity duration-300 opacity-0 w-fit rounded-full absolute" style="background: radial-gradient(120px circle at var(--mouse-x-rel) var(--mouse-y-rel), rgba(34,211,238,0.4), transparent)"></div>
+                
+                <a href="#" class="relative z-10 group flex items-center gap-4 rounded-full border border-white/10 bg-black/40 pr-4 pl-1.5 py-1.5 hover:border-white/20 transition-all overflow-hidden">
+                    <span class="rounded-full bg-cyan-950/50 border border-cyan-500/30 px-3 py-1 text-[10px] font-semibold text-cyan-300 tracking-wide uppercase">
+                        New
+                    </span>
+                    <span class="text-sm font-light text-gray-300">Fabric 2.0: The Agent Economy</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="1em" height="1em" viewBox="0 0 24 24" data-icon="lucide:arrow-right" style="width: 14px;" class="iconify text-gray-500 group-hover:translate-x-1 transition-transform iconify--lucide"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14m-7-7l7 7l-7 7"></path></svg>
+                </a>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-24 items-center w-full">
+                
+                <!-- Left Side: Headline 1 -->
+                <div class="relative z-20 [animation:animationIn_0.8s_ease-out_0.3s_both] animate-on-scroll animate">
+                    <div class="flex flex-col gap-2">
+                        <div class="text-white/30 font-mono text-xs mb-3 flex items-center gap-2">
+                            01_PROTOCOL <div class="w-1.5 h-1.5 rounded-full bg-cyan-500/80 animate-pulse"></div>
+                        </div>
+                        <h1 class="md:text-6xl lg:text-[78px] leading-[0.9] text-5xl italic text-white tracking-tight font-serif">
+                            <span class="block">The liquidity layer</span>
+                            <span class="block not-italic font-light text-gray-500 tracking-tighter">for AI agents.</span>
+                        </h1>
+                    </div>
+                </div>
+
+                <!-- Right Side: Headline 2 -->
+                <div class="relative z-20 md:text-right [animation:animationIn_0.8s_ease-out_0.5s_both] animate-on-scroll animate">
+                    <div class="flex flex-col gap-2 md:items-end">
+                        <div class="text-white/30 font-mono text-xs mb-3 flex items-center gap-2 justify-start md:justify-end">
+                        <div class="w-1.5 h-1.5 rounded-full bg-sky-500/80 animate-pulse"></div> 02_TREASURY
+                        </div>
+                        <h2 class="md:text-6xl lg:text-[78px] leading-[0.9] text-5xl italic text-white tracking-tight font-serif">
+                            <span class="block not-italic md:text-6xl text-4xl font-light text-gray-500 tracking-tighter mb-3">Global treasury</span>
+                            <span class="block">at code speed.</span>
+                        </h2>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Middle Content / CTA Area -->
+            <div class="mt-12 md:mt-16 w-full grid grid-cols-1 md:grid-cols-2 gap-8 items-end [animation:animationIn_0.8s_ease-out_0.7s_both] animate-on-scroll animate">
+                
+                <!-- Description Card -->
+                <div class="group relative rounded-2xl bg-white/[0.02] p-6 md:p-8 spotlight-group spotlight-card overflow-hidden" style="--mouse-x-rel: 1149.5px; --mouse-y-rel: 1374.5px;">
+                    <div class="absolute inset-0 pointer-events-none border border-white/5 rounded-2xl"></div>
+                    <div class="absolute inset-0 pointer-events-none rounded-2xl opacity-0 spotlight-border transition-opacity duration-300 border border-transparent" style="background: border-box radial-gradient(300px circle at var(--mouse-x-rel) var(--mouse-y-rel), rgba(34,211,238,0.15), transparent) border-box; -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude;"></div>
+                    
+                    <div class="absolute left-0 top-6 w-0.5 h-10 bg-gradient-to-b from-cyan-500 to-sky-600 rounded-r-full"></div>
+                    <p class="text-base md:text-lg text-gray-300 font-serif italic leading-relaxed z-10 relative max-w-lg">
+                        "Issue cards, generate IBANs, and manage treasury with a single API call. The financial stack designed for autonomous commerce."
+                    </p>
+                    <div class="mt-6 flex gap-3 items-center">
+                        <div class="flex -space-x-2">
+                            <div class="h-6 w-6 rounded-full border border-black bg-gray-800 flex items-center justify-center text-[8px] text-white">F</div>
+                            <div class="h-6 w-6 rounded-full border border-black bg-cyan-900 flex items-center justify-center text-[8px] text-white">A</div>
+                            <div class="h-6 w-6 rounded-full border border-black bg-sky-900 flex items-center justify-center text-[8px] text-white">B</div>
+                        </div>
+                        <span class="text-[10px] text-gray-500 font-mono tracking-wider">TRUSTED_BY_AGENTS</span>
+                    </div>
+                </div>
+
+                <!-- Buttons -->
+                <div class="flex flex-col md:flex-row md:items-center gap-5 z-10 pl-2 relative justify-end">
+                    
+                    <!-- Primary Button -->
+                    <button class="group/btn rounded-full relative">
+                        <div class="-inset-1 group-hover/btn:opacity-75 transition duration-500 bg-cyan-500/40 opacity-40 rounded-full absolute blur"></div>
+                        <div class="flex gap-3 active:translate-y-[2px] active:shadow-[0_0_0_1px_rgba(34,211,238,0.5),0_2px_0_#0e7490] transition-all duration-150 text-cyan-950 bg-gradient-to-b from-cyan-200 via-cyan-300 to-cyan-500 h-14 rounded-full px-8 relative shadow-[0_0_0_1px_rgba(34,211,238,0.5),0_4px_0_#0e7490,0_10px_15px_-3px_rgba(0,0,0,0.5)] items-center">
+                            <span class="text-lg font-semibold tracking-tight">Get Started</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="1em" height="1em" viewBox="0 0 24 24" data-icon="lucide:zap" style="width: 20px; height: 20px; stroke-width: 2;" class="iconify text-cyan-950/60 iconify--lucide"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"></path></svg>
+                        </div>
+                    </button>
+
+                    <!-- Secondary Button -->
+                    <button class="hover:bg-white/5 transition-all flex h-14 text-sm font-medium text-gray-200 bg-white/[0.03] rounded-full px-8 items-center justify-center group relative overflow-hidden" style="--border-gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05)); --border-radius-before: 9999px">
+                        <span class="text-base font-medium text-gray-300 tracking-tight group-hover:text-white transition-colors">Documentation</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" width="1em" height="1em" viewBox="0 0 24 24" data-icon="lucide:arrow-right" style="width: 16px; height: 16px;" class="iconify ml-2 text-gray-500 group-hover:text-white transition-colors group-hover:translate-x-0.5 duration-200 iconify--lucide"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14m-7-7l7 7l-7 7"></path></svg>
+                    </button>
+
+                </div>
+            </div>
+
+            <!-- Infinite Marquee Section -->
+            <div class="z-20 w-full mt-16 relative [animation:animationIn_0.8s_ease-out_0.9s_both] animate-on-scroll animate">
+                <p class="uppercase text-xs font-semibold text-gray-600 tracking-widest font-mono text-center mb-8">Powering the next generation</p>
+
+                <div class="relative flex overflow-hidden group marquee-mask opacity-70 hover:opacity-100 transition-opacity duration-500">
+                    <div class="flex animate-marquee whitespace-nowrap min-w-full gap-x-20 gap-y-20 items-center">
+                        <iconify-icon icon="simple-icons:openai" width="96" height="36" class="text-gray-500"></iconify-icon>
+                        <iconify-icon icon="simple-icons:stripe" width="96" height="36" class="text-gray-500"></iconify-icon>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="96" height="36" viewBox="0 0 24 24" class="text-gray-500" style="" data-icon-set="simple-icons" data-simple-icons="vercel">
+                            <path fill="currentColor" d="m12 1.608l12 20.784H0Z"></path>
+                        </svg>
+                        <iconify-icon icon="simple-icons:ycombinator" width="96" height="36" class="text-gray-500"></iconify-icon>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="96" height="36" viewBox="0 0 24 24" class="text-gray-500" style="" data-icon-set="simple-icons" data-simple-icons="coinbase"><path fill="currentColor" d="M4.844 11.053c-.872 0-1.553.662-1.553 1.548s.664 1.542 1.553 1.542s1.564-.667 1.564-1.547c0-.875-.664-1.543-1.564-1.543m.006 2.452c-.497 0-.86-.386-.86-.904c0-.523.357-.909.854-.909c.502 0 .866.392.866.91c0 .517-.364.903-.86.903m1.749-1.778h.433v2.36h.693V11.11H6.599zm-5.052-.035c.364 0 .653.224.762.558h.734c-.133-.713-.722-1.197-1.49-1.197c-.872 0-1.553.662-1.553 1.548c0 .887.664 1.543 1.553 1.543c.75 0 1.351-.484 1.484-1.203h-.728a.78.78 0 0 1-.756.564c-.502 0-.855-.386-.855-.904c0-.523.347-.909.85-.909zm18.215.622l-.508-.075c-.242-.035-.415-.115-.415-.305c0-.207.225-.31.53-.31c.336 0 .55.143.595.379h.67c-.075-.599-.537-.95-1.247-.95c-.733 0-1.218.375-1.218.904c0 .506.317.8.958.892l.508.075c.249.034.387.132.387.316c0 .236-.242.334-.577.334c-.41 0-.641-.167-.676-.42h-.681c.064.581.52.99 1.35.99c.757 0 1.26-.346 1.26-.938c0-.53-.364-.806-.936-.892M7.378 9.885a.43.43 0 0 0-.444.437c0 .254.19.438.444.438a.43.43 0 0 0 .445-.438a.43.43 0 0 0-.445-.437m10.167 2.245c0-.645-.392-1.076-1.224-1.076c-.785 0-1.224.397-1.31 1.007h.687c.035-.236.22-.432.612-.432c.352 0 .525.155.525.345c0 .248-.317.311-.71.351c-.531.058-1.19.242-1.19.933c0 .535.4.88 1.034.88c.497 0 .809-.207.965-.535c.023.293.242.483.548.483h.404v-.616h-.34zm-.68.748c0 .397-.347.69-.769.69c-.26 0-.48-.11-.48-.34c0-.293.353-.373.676-.408c.312-.028.485-.097.572-.23zm-3.679-1.825c-.386 0-.71.162-.94.432V9.856h-.693v4.23h.68v-.391c.232.282.56.449.953.449c.832 0 1.461-.656 1.461-1.543s-.64-1.548-1.46-1.548zm-.103 2.452c-.497 0-.86-.386-.86-.904c0-.517.369-.909.865-.909c.503 0 .855.386.855.91c0 .517-.364.903-.86.903m-3.187-2.452c-.45 0-.745.184-.919.443v-.385H8.29v2.975h.693v-1.617c0-.455.289-.777.716-.777c.398 0 .647.282.647.69v1.704h.692v-1.755c0-.748-.386-1.278-1.142-1.278M24 12.503c0-.851-.624-1.45-1.46-1.45c-.89 0-1.542.668-1.542 1.548c0 .927.698 1.543 1.553 1.543c.722 0 1.287-.426 1.432-1.03h-.722c-.104.264-.358.414-.699.414c-.445 0-.78-.276-.854-.76H24v-.264zm-2.252-.23c.11-.414.422-.615.78-.615c.392 0 .693.224.762.615Z"></path></svg>
+                        <iconify-icon icon="simple-icons:linear" width="96" height="36" class="text-gray-500"></iconify-icon>
+                    </div>
+
+                    <div class="flex gap-20 animate-marquee whitespace-nowrap items-center min-w-full absolute top-0 left-full pl-20" aria-hidden="true">
+                        <iconify-icon icon="simple-icons:openai" width="96" height="36" class="text-gray-500"></iconify-icon>
+                        <iconify-icon icon="simple-icons:stripe" width="96" height="36" class="text-gray-500"></iconify-icon>
+                        <iconify-icon icon="simple-icons:vercel" width="96" height="36" class="text-gray-500"></iconify-icon>
+                        <iconify-icon icon="simple-icons:ycombinator" width="96" height="36" class="text-gray-500"></iconify-icon>
+                        <iconify-icon icon="simple-icons:coinbase" width="96" height="36" class="text-gray-500"></iconify-icon>
+                        <iconify-icon icon="simple-icons:linear" width="96" height="36" class="text-gray-500"></iconify-icon>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- FEATURES SECTION -->
+        <section class="flex flex-col w-full max-w-7xl z-20 mt-44 mr-auto mb-44 ml-auto px-6 relative items-center" id="features">
+            <!-- Section Header -->
+            <div class="text-center max-w-2xl mx-auto px-6 mb-16 [animation:animationIn_0.8s_ease-out_0.2s_both] animate-on-scroll animate">
+                <h2 class="text-4xl md:text-5xl font-serif italic text-white tracking-tight mb-4">
+                    <span class="bg-clip-text text-transparent bg-gradient-to-r from-white via-white to-gray-500">Full Spectrum</span>
+                    <span class="text-cyan-400">Financial Infrastructure</span>
+                </h2>
+                <p class="text-gray-400 text-lg font-light leading-relaxed">
+                    Offering a suite of advanced primitives designed to elevate your autonomous commerce capabilities with pixel-perfect precision.
+                </p>
+            </div>
+
+            <!-- Features Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 w-full relative">
+                
+                <!-- Card 01 -->
+                <div class="group relative rounded-2xl bg-white/[0.02] border border-white/5 p-6 spotlight-group overflow-hidden hover:bg-white/[0.04] transition-colors duration-500 flex flex-col h-full [animation:animationIn_0.8s_ease-out_0.4s_both] animate-on-scroll" style="--mouse-x-rel: 1149.5px; --mouse-y-rel: 648px;">
+                    <!-- Spotlight Effect -->
+                    <div class="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" style="background: radial-gradient(600px circle at var(--mouse-x-rel) var(--mouse-y-rel), rgba(34,211,238,0.06), transparent 40%);"></div>
+                    
+                    <!-- Mock UI Visual -->
+                    <div class="h-48 w-full mb-8 rounded-xl bg-black/40 border border-white/5 relative overflow-hidden flex flex-col p-4 gap-3 select-none">
+                        <div class="w-full h-full absolute top-0 left-0"></div>
+                        
+                        <!-- Mock Row 1 -->
+                        <div class="flex items-center justify-between p-2 rounded bg-white/5 border border-white/5 relative z-10">
+                            <div class="flex items-center gap-2">
+                                <div class="w-2 h-2 rounded-full bg-cyan-500"></div>
+                                <div class="h-1.5 w-12 bg-white/20 rounded"></div>
+                            </div>
+                            <div class="h-1.5 w-8 bg-white/10 rounded"></div>
+                        </div>
+                        <!-- Mock Row 2 -->
+                        <div class="flex items-center justify-between p-2 rounded bg-transparent border border-white/5 relative z-10 opacity-60">
+                            <div class="flex items-center gap-2">
+                                <div class="w-2 h-2 rounded-full bg-gray-600"></div>
+                                <div class="h-1.5 w-16 bg-white/20 rounded"></div>
+                            </div>
+                            <div class="h-1.5 w-6 bg-white/10 rounded"></div>
+                        </div>
+                        <!-- Mock Row 3 -->
+                        <div class="flex items-center justify-between p-2 rounded bg-transparent border border-white/5 relative z-10 opacity-40">
+                            <div class="flex items-center gap-2">
+                                <div class="w-2 h-2 rounded-full bg-gray-600"></div>
+                                <div class="h-1.5 w-10 bg-white/20 rounded"></div>
+                            </div>
+                            <div class="h-1.5 w-8 bg-white/10 rounded"></div>
+                        </div>
+
+                        <!-- Floating Badge -->
+                        <div class="absolute bottom-4 right-4 bg-cyan-950/80 border border-cyan-500/30 backdrop-blur-md px-3 py-1.5 rounded-lg flex items-center gap-2 z-20 shadow-xl">
+                            <iconify-icon icon="solar:verified-check-linear" class="text-cyan-400"></iconify-icon>
+                            <span class="text-[10px] font-mono text-cyan-200">SETTLED</span>
+                        </div>
+                    </div>
+
+                    <!-- Content -->
+                    <div class="mt-auto relative z-10">
+                        <div class="flex items-center gap-3 mb-3">
+                            <span class="text-xs font-mono text-cyan-500 border border-cyan-500/20 bg-cyan-500/5 px-2 py-0.5 rounded">01</span>
+                            <iconify-icon icon="solar:transfer-horizontal-linear" width="20" class="text-gray-400 group-hover:text-cyan-400 transition-colors"></iconify-icon>
+                        </div>
+                        <h3 class="text-xl text-white font-medium mb-2 tracking-tight">Sophisticated Ledgers</h3>
+                        <p class="text-sm text-gray-500 leading-relaxed">
+                            Dynamism refined. Model your financial data to fit your application's specific settlement needs with immutable logging.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Card 02 -->
+                <div class="group relative rounded-2xl bg-white/[0.02] border border-white/5 p-6 spotlight-group overflow-hidden hover:bg-white/[0.04] transition-colors duration-500 flex flex-col h-full [animation:animationIn_0.8s_ease-out_0.6s_both] animate-on-scroll" style="--mouse-x-rel: 730.8359375px; --mouse-y-rel: 648px;">
+                    <div class="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" style="background: radial-gradient(600px circle at var(--mouse-x-rel) var(--mouse-y-rel), rgba(14,165,233,0.06), transparent 40%);"></div>
+                    
+                    <!-- Mock UI Visual -->
+                    <div class="h-48 w-full mb-8 rounded-xl bg-black/40 border border-white/5 relative overflow-hidden flex items-center justify-center p-4 select-none">
+                        <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(56,189,248,0.1),transparent_70%)]"></div>
+                        
+                        <div class="w-full max-w-[180px] space-y-3 relative z-10">
+                            <!-- Dropdown Mock -->
+                            <div class="flex items-center justify-between px-3 py-2 bg-white/5 border border-white/10 rounded-lg backdrop-blur-sm">
+                                <div class="flex items-center gap-2">
+                                    <iconify-icon icon="solar:graph-new-linear" class="text-gray-400 text-xs"></iconify-icon>
+                                    <div class="h-1.5 w-12 bg-white/30 rounded"></div>
+                                </div>
+                                <div class="text-[10px] text-sky-400 font-mono">+2.44%</div>
+                            </div>
+                            <!-- Pivot Controls -->
+                            <div class="flex gap-2">
+                                <div class="h-6 w-full bg-white/5 border border-white/5 rounded-md flex items-center px-2">
+                                    <div class="h-1 w-8 bg-white/10 rounded"></div>
+                                </div>
+                                <div class="h-6 w-8 bg-sky-500/20 border border-sky-500/30 rounded-md flex items-center justify-center">
+                                    <iconify-icon icon="solar:tuning-2-linear" class="text-sky-400 text-xs"></iconify-icon>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Content -->
+                    <div class="mt-auto relative z-10">
+                        <div class="flex items-center gap-3 mb-3">
+                            <span class="text-xs font-mono text-sky-500 border border-sky-500/20 bg-sky-500/5 px-2 py-0.5 rounded">02</span>
+                            <iconify-icon icon="solar:chart-square-linear" width="20" class="text-gray-400 group-hover:text-sky-400 transition-colors"></iconify-icon>
+                        </div>
+                        <h3 class="text-xl text-white font-medium mb-2 tracking-tight">Powerful Pivots</h3>
+                        <p class="text-sm text-gray-500 leading-relaxed">
+                            Aggregate and group treasury data to discern patterns and gain valuable insights into your autonomous cash flows.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Card 03 -->
+                <div class="group relative rounded-2xl bg-white/[0.02] border border-white/5 p-6 spotlight-group overflow-hidden hover:bg-white/[0.04] transition-colors duration-500 flex flex-col h-full [animation:animationIn_0.8s_ease-out_0.8s_both] animate-on-scroll" style="--mouse-x-rel: 312.171875px; --mouse-y-rel: 648px;">
+                    <div class="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" style="background: radial-gradient(600px circle at var(--mouse-x-rel) var(--mouse-y-rel), rgba(99,102,241,0.06), transparent 40%);"></div>
+                    
+                    <!-- Mock UI Visual -->
+                    <div class="h-48 w-full mb-8 rounded-xl bg-black/40 border border-white/5 relative overflow-hidden flex items-center justify-center p-6 select-none">
+                        <!-- Grid Lines -->
+                        <div class="absolute top-0 right-0 bottom-0 left-0" style="background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px); background-size: 50px 100px">
+</div>
+                        
+                        <div class="relative w-full h-full border border-dashed border-white/10 rounded-lg flex flex-col justify-between p-3">
+                            <div class="flex justify-between w-full">
+                                <div class="w-2 h-2 rounded-full border border-indigo-400"></div>
+                                <div class="w-2 h-2 rounded-full border border-indigo-400"></div>
+                            </div>
+                            
+                            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
+                                <div class="px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-mono mb-2">
+                                    Select Range
+                                </div>
+                            </div>
+
+                            <div class="flex justify-between w-full">
+                                <div class="w-2 h-2 rounded-full border border-indigo-400"></div>
+                                <div class="w-2 h-2 rounded-full border border-indigo-400"></div>
+                            </div>
+                            
+                            <!-- Selection Rect -->
+                            <div class="absolute top-4 left-4 right-8 bottom-8 bg-indigo-500/5 border border-indigo-500/30 rounded border-dashed animate-pulse"></div>
+                        </div>
+                    </div>
+
+                    <!-- Content -->
+                    <div class="mt-auto relative z-10">
+                        <div class="flex items-center gap-3 mb-3">
+                            <span class="text-xs font-mono text-indigo-400 border border-indigo-400/20 bg-indigo-400/5 px-2 py-0.5 rounded">03</span>
+                            <iconify-icon icon="solar:box-minimalistic-linear" width="20" class="text-gray-400 group-hover:text-indigo-400 transition-colors"></iconify-icon>
+                        </div>
+                        <h3 class="text-xl text-white font-medium mb-2 tracking-tight">Adaptable Selection</h3>
+                        <p class="text-sm text-gray-500 leading-relaxed">
+                            Graphite Grid includes a customizable row selection API that is tailored to your specific data interaction needs.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+        </section><section class="flex flex-col w-full max-w-7xl z-20 mt-32 mr-auto mb-32 ml-auto px-6 relative items-center" id="workflow">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-24 w-full">
+        <!-- Left Content -->
+        <div class="flex flex-col justify-center [animation:animationIn_0.8s_ease-out_0.2s_both] animate-on-scroll">
+            <!-- Label -->
+            <div class="flex items-center gap-2 mb-6">
+                 <iconify-icon icon="solar:layers-minimalistic-linear" class="text-cyan-400 text-lg"></iconify-icon>
+                 <span class="text-xs font-mono tracking-widest uppercase text-cyan-400">Autonomous Treasury</span>
+            </div>
+            
+            <!-- Heading -->
+            <h2 class="text-5xl md:text-6xl font-serif text-white tracking-tight mb-6 leading-[0.95]">
+                <span class="italic block text-gray-500 font-light">Financial logic</span>
+                <span class="font-medium">without the chaos.</span>
+            </h2>
+            
+            <!-- Paragraph -->
+            <p class="text-lg text-gray-400 font-light leading-relaxed mb-12 max-w-lg">
+                Deterministic, auditable, and instant. Fabric provides the primitive rails for machine-to-machine value transfer, designed specifically for the agent economy.
+            </p>
+
+            <!-- Features Grid -->
+            <div class="grid grid-cols-2 gap-y-8 gap-x-4 mb-16">
+                <div class="flex items-start gap-3 group">
+                    <div class="mt-0.5 text-cyan-400 group-hover:text-white transition-colors">
+                        <iconify-icon icon="solar:bolt-linear" width="24"></iconify-icon>
+                    </div>
+                    <div>
+                        <div class="text-sm font-medium text-gray-200 mb-1">Instant Settlement</div>
+                        <div class="text-xs text-gray-500 font-light">Optimized for high-frequency</div>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3 group">
+                     <div class="mt-0.5 text-cyan-400 group-hover:text-white transition-colors">
+                        <iconify-icon icon="solar:code-circle-linear" width="24"></iconify-icon>
+                    </div>
+                    <div>
+                        <div class="text-sm font-medium text-gray-200 mb-1">SDK Native</div>
+                        <div class="text-xs text-gray-500 font-light">Type-safe integration</div>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3 group">
+                     <div class="mt-0.5 text-cyan-400 group-hover:text-white transition-colors">
+                        <iconify-icon icon="solar:shield-check-linear" width="24"></iconify-icon>
+                    </div>
+                    <div>
+                        <div class="text-sm font-medium text-gray-200 mb-1">Audit-Ready</div>
+                        <div class="text-xs text-gray-500 font-light">Cryptographically secure</div>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3 group">
+                     <div class="mt-0.5 text-cyan-400 group-hover:text-white transition-colors">
+                        <iconify-icon icon="solar:cpu-bolt-linear" width="24"></iconify-icon>
+                    </div>
+                    <div>
+                        <div class="text-sm font-medium text-gray-200 mb-1">Multi-Agent Sig</div>
+                        <div class="text-xs text-gray-500 font-light">Built for autonomy</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="border-t border-white/10 pt-10">
+                <p class="text-sm text-gray-500 mb-8 font-light">
+                    Teams building on Fabric scale operations with zero overhead
+                    <iconify-icon icon="solar:info-circle-linear" class="inline align-text-bottom ml-1 opacity-50"></iconify-icon>
+                </p>
+                <div class="flex gap-16">
+                    <div>
+                        <div class="text-5xl font-serif italic text-white mb-2 tracking-tight">&lt; 50ms</div>
+                        <div class="text-xs text-gray-500 font-mono uppercase tracking-widest">Latency</div>
+                    </div>
+                    <div>
+                        <div class="text-5xl font-serif italic text-white mb-2 tracking-tight">$40B+</div>
+                        <div class="text-xs text-gray-500 font-mono uppercase tracking-widest">Volume</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Content: Mock UI & Testimonial -->
+        <div class="flex flex-col gap-12 [animation:animationIn_0.8s_ease-out_0.4s_both] animate-on-scroll">
+            
+            <!-- Mock UI Container -->
+            <div class="w-full rounded-xl bg-[#050505] border border-white/10 p-1 relative shadow-2xl overflow-hidden group/ui">
+                <!-- Top sheen -->
+                <div class="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent"></div>
+                
+                <!-- Inner Board -->
+                <div class="flex overflow-hidden bg-black/40 w-full h-[500px] rounded-lg">
+                    
+                    <!-- Column 1: Pending -->
+                    <div class="flex-1 border-r border-white/5 bg-white/[0.01] p-5 flex flex-col gap-4">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-2">
+                                <iconify-icon icon="solar:clock-circle-linear" class="text-gray-500"></iconify-icon>
+                                <span class="text-sm font-medium text-gray-200">Pending</span>
+                                <span class="text-xs font-mono text-gray-600">4</span>
+                            </div>
+                            <iconify-icon icon="solar:add-circle-linear" class="text-gray-600 hover:text-white transition-colors cursor-pointer"></iconify-icon>
+                        </div>
+
+                        <!-- Card 1 -->
+                        <div class="p-4 rounded-lg bg-[#0F0F0F] border border-white/5 hover:border-white/10 hover:bg-white/5 transition-all cursor-pointer group/card shadow-lg">
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="text-[10px] font-mono text-gray-600 group-hover/card:text-gray-500 transition-colors">TX-944</span>
+                                <div class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center">
+                                     <iconify-icon icon="solar:user-circle-linear" class="text-gray-500 text-xs"></iconify-icon>
+                                </div>
+                            </div>
+                            <div class="text-sm text-gray-200 font-medium mb-3 leading-snug">Rebalance Liquidity Pool A</div>
+                            <div class="flex gap-2">
+                                <span class="px-2 py-0.5 rounded-[4px] text-[10px] font-medium bg-amber-500/10 text- &lt;div class=" w-1="" h-1="" rounded-full="" bg-amber-500"=""></span></div> High Priority
+                                
+                            </div>
+                        </div>
+
+                        <!-- Card 2 -->
+                        <div class="hover:border-white/10 hover:bg-white/5 transition-all cursor-pointer group/card bg-[#0F0F0F] border-white/5 border rounded-lg mx-2 my-2 px-4 py-4 shadow-lg">
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="text-[10px] font-mono text-gray-600 group-hover/card:text-gray-500 transition-colors">TX-948</span>
+                                <div class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center">
+                                     <iconify-icon icon="solar:user-circle-linear" class="text-gray-500 text-xs"></iconify-icon>
+                                </div>
+                            </div>
+                            <div class="text-sm text-gray-200 font-medium mb-3 leading-snug">Yield Harvest: USDC Vault</div>
+                            <div class="flex gap-2">
+                                <span class="px-2 py-0.5 rounded-[4px] text-[10px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center gap-1">
+                                    <iconify-icon icon="solar:graph-up-linear" width="10"></iconify-icon> Auto
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <!-- Card 3 (Fade) -->
+                        <div class="bg-[#0F0F0F] opacity-40 border-white/5 border rounded-lg mx-2 my-2 pt-4 pr-4 pb-4 pl-4">
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="text-[10px] font-mono text-gray-600">TX-951</span>
+                            </div>
+                            <div class="h-2 w-2/3 bg-white/10 rounded mb-2"></div>
+                            <div class="h-2 w-1/2 bg-white/10 rounded"></div>
+                        </div>
+                    </div>
+
+                    <!-- Column 2: Settled -->
+                    <div class="flex-1 p-5 flex flex-col gap-4 bg-black/20">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-2">
+                                <iconify-icon icon="solar:check-circle-linear" class="text-cyan-500"></iconify-icon>
+                                <span class="text-sm font-medium text-gray-200">Settled</span>
+                                <span class="text-xs font-mono text-gray-600">824</span>
+                            </div>
+                            <iconify-icon icon="solar:menu-dots-linear" class="text-gray-600 hover:text-white transition-colors cursor-pointer"></iconify-icon>
+                        </div>
+
+                        <!-- Card 1 -->
+                        <div class="p-4 rounded-lg bg-[#0F0F0F] border border-white/5 hover:border-white/10 hover:bg-white/5 transition-all cursor-pointer group/card shadow-lg opacity-80 hover:opacity-100">
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="text-[10px] font-mono text-gray-600 group-hover/card:text-gray-500 transition-colors">TX-902</span>
+                                <div class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center">
+                                     <iconify-icon icon="solar:user-circle-linear" class="text-gray-500 text-xs"></iconify-icon>
+                                </div>
+                            </div>
+                            <div class="text-sm text-gray-500 font-medium mb-3 leading-snug line-through group-hover/card:text-gray-400 transition-colors">Settle Batch #2891</div>
+                            <div class="flex gap-2">
+                                <span class="px-2 py-0.5 rounded-[4px] text-[10px] font-medium bg-cyan-950/30 text-cyan-400 border border-cyan-500/20 flex items-center gap-1">
+                                    <iconify-icon icon="solar:verified-check-linear" width="10"></iconify-icon> Finalized
+                                </span>
+                                <span class="px-2 py-0.5 rounded-[4px] text-[10px] font-mono bg-white/5 text-gray-500 border border-white/5">
+                                    #2891
+                                </span>
+                            </div>
+                        </div>
+
+                         <!-- Card 2 -->
+                        <div class="p-4 rounded-lg bg-[#0F0F0F] border border-white/5 hover:border-white/10 hover:bg-white/5 transition-all cursor-pointer group/card shadow-lg opacity-60 hover:opacity-100">
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="text-[10px] font-mono text-gray-600">TX-402</span>
+                                <div class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center">
+                                     <iconify-icon icon="solar:user-circle-linear" class="text-gray-500 text-xs"></iconify-icon>
+                                </div>
+                            </div>
+                            <div class="text-sm text-gray-500 font-medium mb-3 leading-snug line-through">Update Risk Parameters</div>
+                            <div class="flex gap-2">
+                                <span class="px-2 py-0.5 rounded-[4px] text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                    Governance
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Testimonial -->
+            <div class="pl-2 relative">
+                 <div class="absolute -left-6 top-0 text-6xl font-serif text-white/5 -z-10 select-none">“</div>
+                <blockquote class="text-2xl font-serif text-gray-300 leading-relaxed mb-8 italic">
+                    "Fabric is the only infrastructure reliable enough for our autonomous trading swarms. It's not just faster; it's mathematically verified."
+                </blockquote>
+                <div class="flex items-center gap-5">
+                    <div class="flex flex-col">
+                        <span class="text-sm text-white font-medium">Elena K.</span>
+                        <span class="text-sm text-gray-500">Lead Architect</span>
+                    </div>
+                    <div class="h-8 w-px bg-white/10"></div>
+                     <iconify-icon icon="simple-icons:coinbase" width="96" height="36" class="text-gray-500 opacity-80 hover:opacity-100 transition-opacity"></iconify-icon>
+                </div>
+            </div>
+        </div>
+    
+</section><section class="flex flex-col w-full max-w-7xl z-20 mt-32 mr-auto mb-32 ml-auto px-6 relative" id="pricing">
+    
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row justify-between items-end mb-16 gap-8 [animation:animationIn_0.8s_ease-out_0.2s_both] animate-on-scroll">
+        <div class="max-w-2xl">
+            <div class="flex items-center gap-2 mb-6">
+                 <iconify-icon icon="solar:tag-price-linear" class="text-cyan-400 text-lg"></iconify-icon>
+                 <span class="text-xs font-mono tracking-widest uppercase text-cyan-400">Transparent Pricing</span>
+            </div>
+            <h2 class="text-5xl md:text-6xl font-serif text-white tracking-tight mb-6 leading-[0.95]">
+                <span class="italic block text-gray-500 font-light">Predictable costs</span>
+                <span class="font-medium">for infinite scale.</span>
+            </h2>
+            <p class="text-lg text-gray-400 font-light leading-relaxed max-w-lg">
+                Pay only for the compute and settlement resources your agents consume. No hidden gas fees, no surprise overages.
+            </p>
+        </div>
+        
+        <button class="group flex items-center gap-2 px-6 py-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-all">
+            <span class="text-sm font-medium text-white">Contact Sales</span>
+            <iconify-icon icon="solar:arrow-right-linear" class="text-gray-400 group-hover:translate-x-1 transition-transform"></iconify-icon>
+        </button>
+    </div>
+
+    <!-- Pricing Grid Container -->
+    <div class="w-full overflow-x-auto pb-8 [animation:animationIn_0.8s_ease-out_0.4s_both] animate-on-scroll">
+        <div class="min-w-[900px]">
+            <!-- Cards Row -->
+            <div class="grid grid-cols-4 gap-4 mb-4 items-end">
+                <!-- Spacer for labels column -->
+                <div class="p-6">
+                    <span class="text-xs font-mono text-gray-500 uppercase tracking-widest">Core Features</span>
+                </div>
+
+                <!-- Plan 1: Settlement (Highlighted) -->
+                <div class="relative group">
+                    <div class="absolute inset-0 bg-gradient-to-b from-cyan-500/20 to-cyan-900/10 rounded-t-2xl blur-xl opacity-50"></div>
+                    <div class="relative bg-[#0A0A0A] border border-cyan-500/30 border-b-0 rounded-t-2xl p-8 pb-12 flex flex-col gap-6 shadow-[0_-10px_40px_-10px_rgba(34,211,238,0.15)]">
+                        <div class="flex items-center gap-2 mb-2">
+                            <div class="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.8)]"></div>
+                            <span class="text-sm font-medium text-cyan-200">Settlement</span>
+                        </div>
+                        <div>
+                            <div class="flex items-baseline gap-1">
+                                <span class="text-4xl font-serif text-white">$0.002</span>
+                                <span class="text-xs text-gray-500 font-mono">/ TX</span>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-2 font-light">Per validated state transition</p>
+                        </div>
+                        <button class="w-full py-3 rounded-lg bg-cyan-500 text-black font-semibold text-sm hover:bg-cyan-400 transition-colors flex items-center justify-center gap-2">
+                            Start Building <iconify-icon icon="solar:play-circle-linear" class="text-lg"></iconify-icon>
+                        </button>
+                        
+                        <!-- Decorative connector to table -->
+                        <div class="absolute -bottom-4 left-0 w-full h-8 bg-[#0A0A0A] z-10"></div>
+                        <div class="absolute bottom-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent"></div>
+                    </div>
+                </div>
+
+                <!-- Plan 2: Intelligence -->
+                <div class="bg-[#0A0A0A] border border-white/5 border-b-0 rounded-t-2xl p-8 pb-12 flex flex-col gap-6 opacity-60 hover:opacity-100 transition-opacity">
+                    <div class="flex items-center gap-2 mb-2">
+                        <div class="w-2 h-2 rounded-full border border-gray-500"></div>
+                        <span class="text-sm font-medium text-gray-200">Intelligence</span>
+                    </div>
+                    <div>
+                        <div class="flex items-baseline gap-1">
+                            <span class="text-4xl font-serif text-white">$0.04</span>
+                            <span class="text-xs text-gray-500 font-mono">/ REQ</span>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2 font-light">Per inference request</p>
+                    </div>
+                    <button class="w-full py-3 rounded-lg bg-white/5 border border-white/10 text-gray-300 font-medium text-sm hover:bg-white/10 transition-colors">
+                        Enable Access
+                    </button>
+                </div>
+
+                <!-- Plan 3: Governance -->
+                <div class="bg-[#0A0A0A] border border-white/5 border-b-0 rounded-t-2xl p-8 pb-12 flex flex-col gap-6 opacity-60 hover:opacity-100 transition-opacity">
+                     <div class="flex items-center gap-2 mb-2">
+                        <div class="w-2 h-2 rounded-full border border-gray-500"></div>
+                        <span class="text-sm font-medium text-gray-200">Governance</span>
+                    </div>
+                    <div>
+                        <div class="flex items-baseline gap-1">
+                            <span class="text-4xl font-serif text-white">$299</span>
+                            <span class="text-xs text-gray-500 font-mono">/ MO</span>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2 font-light">Fixed protocol fee</p>
+                    </div>
+                    <button class="w-full py-3 rounded-lg bg-white/5 border border-white/10 text-gray-300 font-medium text-sm hover:bg-white/10 transition-colors">
+                        Deploy DAO
+                    </button>
+                </div>
+            </div>
+
+            <!-- Comparison Table Rows -->
+            <div class="bg-[#0A0A0A]/50 backdrop-blur-sm border-t border-white/10">
+                <!-- Row 1 -->
+                <div class="grid grid-cols-4 border-b border-white/5 hover:bg-white/[0.02] transition-colors group/row">
+                    <div class="p-6 text-sm text-gray-400 font-medium flex items-center gap-2">
+                        Throughput
+                        <iconify-icon icon="solar:info-circle-linear" class="text-gray-600 cursor-help"></iconify-icon>
+                    </div>
+                    <div class="p-6 text-sm text-cyan-300 bg-cyan-950/[0.1] border-x border-cyan-500/10 font-mono">
+                        120k TPS
+                    </div>
+                    <div class="p-6 text-sm text-gray-400 font-mono">
+                        On-Demand
+                    </div>
+                    <div class="p-6 text-sm text-gray-400 font-mono">
+                        Unlimited
+                    </div>
+                </div>
+
+                <!-- Row 2 -->
+                <div class="grid grid-cols-4 border-b border-white/5 hover:bg-white/[0.02] transition-colors group/row">
+                    <div class="p-6 text-sm text-gray-400 font-medium">Finality Time</div>
+                    <div class="p-6 text-sm text-gray-200 bg-cyan-950/[0.1] border-x border-cyan-500/10 font-mono">
+                        &lt; 50ms
+                    </div>
+                    <div class="p-6 text-sm text-gray-400 font-mono">
+                        ~200ms
+                    </div>
+                    <div class="p-6 text-sm text-gray-400 font-mono">
+                        1 block
+                    </div>
+                </div>
+
+                <!-- Row 3 -->
+                <div class="grid grid-cols-4 border-b border-white/5 hover:bg-white/[0.02] transition-colors group/row">
+                    <div class="p-6 text-sm text-gray-400 font-medium">Encryption</div>
+                    <div class="p-6 text-sm text-gray-200 bg-cyan-950/[0.1] border-x border-cyan-500/10">
+                        zk-SNARKs
+                    </div>
+                    <div class="p-6 text-sm text-gray-400">
+                        TLS 1.3
+                    </div>
+                    <div class="p-6 text-sm text-gray-400">
+                        Multi-Sig
+                    </div>
+                </div>
+
+                <!-- Row 4 -->
+                <div class="grid grid-cols-4 border-b border-white/5 hover:bg-white/[0.02] transition-colors group/row">
+                    <div class="p-6 text-sm text-gray-400 font-medium">Audit Trail</div>
+                    <div class="p-6 flex justify-center bg-cyan-950/[0.1] border-x border-cyan-500/10">
+                        <iconify-icon icon="solar:check-circle-bold" class="text-cyan-400 text-xl"></iconify-icon>
+                    </div>
+                    <div class="p-6 flex justify-center">
+                        <iconify-icon icon="solar:check-circle-linear" class="text-gray-600 text-xl"></iconify-icon>
+                    </div>
+                    <div class="p-6 flex justify-center">
+                         <iconify-icon icon="solar:check-circle-bold" class="text-gray-200 text-xl"></iconify-icon>
+                    </div>
+                </div>
+                
+                 <!-- Row 5 -->
+                <div class="grid grid-cols-4 border-b border-white/5 hover:bg-white/[0.02] transition-colors group/row">
+                    <div class="p-6 text-sm text-gray-400 font-medium">Network Access</div>
+                    <div class="p-6 text-sm text-gray-200 bg-cyan-950/[0.1] border-x border-cyan-500/10">
+                        Global
+                    </div>
+                    <div class="p-6 text-sm text-gray-400">
+                        Regional
+                    </div>
+                    <div class="p-6 text-sm text-gray-400">
+                        Private
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section><section class="w-full relative py-32 overflow-hidden">
+    <!-- Background Effects -->
+    <div class="absolute inset-0 bg-gradient-to-t from-cyan-950/20 to-black pointer-events-none"></div>
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[500px] bg-cyan-500/10 blur-[120px] rounded-full pointer-events-none"></div>
+    
+    <div class="relative max-w-7xl mx-auto px-6 flex flex-col items-center text-center z-10 [animation:animationIn_0.8s_ease-out_0.2s_both] animate-on-scroll">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs font-mono mb-8">
+            <span class="relative flex h-2 w-2">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+            </span>
+            Fabric Mainnet is Live
+        </div>
+        
+        <h2 class="text-6xl md:text-[80px] font-serif text-white tracking-tight leading-none mb-8">
+            Start the <span class="italic text-transparent bg-clip-text bg-gradient-to-br from-cyan-300 to-blue-600">revolution.</span>
+        </h2>
+        
+        <p class="text-xl text-gray-400 font-light max-w-2xl mb-12">
+            Join the network of over 4,000 autonomous agents processing $40B+ in volume. The infrastructure for the machine economy is here.
+        </p>
+        
+        <div class="flex flex-col md:flex-row gap-4 items-center">
+            <button class="h-14 px-8 rounded-full bg-white text-black font-semibold text-lg hover:bg-gray-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.3)] flex items-center gap-2">
+                Get API Keys
+                <iconify-icon icon="solar:key-minimalistic-square-linear" class="text-xl"></iconify-icon>
+            </button>
+            <button class="h-14 px-8 rounded-full bg-black border border-white/20 text-white font-medium text-lg hover:bg-white/5 transition-colors flex items-center gap-2">
+                Read Documentation
+                <iconify-icon icon="solar:documents-minimalistic-linear" class="text-xl text-gray-400"></iconify-icon>
+            </button>
+        </div>
+    </div>
+</section><footer class="w-full border-t border-white/10 bg-black pt-20 pb-12 relative z-20">
+    <div class="max-w-7xl mx-auto px-6">
+        <div class="grid grid-cols-2 md:grid-cols-12 gap-12 md:gap-8 mb-20">
+            <!-- Brand Column -->
+            <div class="col-span-2 md:col-span-4 flex flex-col gap-6">
+                <div class="flex items-center gap-2 text-white">
+                    <iconify-icon icon="solar:infinity-bold" class="text-cyan-400 text-2xl"></iconify-icon>
+                    <span class="text-lg font-semibold tracking-tight">Fabric</span>
+                </div>
+                <p class="text-sm text-gray-500 leading-relaxed max-w-xs">
+                    The deterministic liquidity layer designed for the autonomous agent economy. Built for speed, verified by math.
+                </p>
+                <div class="flex gap-4 mt-2">
+                    <a href="#" class="text-gray-500 hover:text-white transition-colors">
+                        <iconify-icon icon="simple-icons:x" width="20"></iconify-icon>
+                    </a>
+                    <a href="#" class="text-gray-500 hover:text-white transition-colors">
+                        <iconify-icon icon="simple-icons:github" width="20"></iconify-icon>
+                    </a>
+                    <a href="#" class="text-gray-500 hover:text-white transition-colors">
+                        <iconify-icon icon="simple-icons:discord" width="20"></iconify-icon>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Links Column 1 -->
+            <div class="col-span-1 md:col-span-2 md:col-start-7">
+                <h4 class="text-sm font-medium text-white mb-6">Product</h4>
+                <ul class="flex flex-col gap-4 text-sm text-gray-500">
+                    <li><a href="#" class="hover:text-cyan-400 transition-colors">Settlement</a></li>
+                    <li><a href="#" class="hover:text-cyan-400 transition-colors">Intelligence</a></li>
+                    <li><a href="#" class="hover:text-cyan-400 transition-colors">Governance</a></li>
+                    <li><a href="#" class="hover:text-cyan-400 transition-colors">Pricing</a></li>
+                </ul>
+            </div>
+
+            <!-- Links Column 2 -->
+            <div class="col-span-1 md:col-span-2">
+                <h4 class="text-sm font-medium text-white mb-6">Resources</h4>
+                <ul class="flex flex-col gap-4 text-sm text-gray-500">
+                    <li><a href="#" class="hover:text-cyan-400 transition-colors">Documentation</a></li>
+                    <li><a href="#" class="hover:text-cyan-400 transition-colors">API Reference</a></li>
+                    <li><a href="#" class="hover:text-cyan-400 transition-colors">Status</a></li>
+                    <li><a href="#" class="hover:text-cyan-400 transition-colors">Audit Reports</a></li>
+                </ul>
+            </div>
+
+            <!-- Links Column 3 -->
+            <div class="col-span-1 md:col-span-2">
+                <h4 class="text-sm font-medium text-white mb-6">Company</h4>
+                <ul class="flex flex-col gap-4 text-sm text-gray-500">
+                    <li><a href="#" class="hover:text-cyan-400 transition-colors">About</a></li>
+                    <li><a href="#" class="hover:text-cyan-400 transition-colors">Blog</a></li>
+                    <li><a href="#" class="hover:text-cyan-400 transition-colors">Careers</a></li>
+                    <li><a href="#" class="hover:text-cyan-400 transition-colors">Contact</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Bottom Bar -->
+        <div class="border-t border-white/5 pt-8 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="text-xs text-gray-600 font-mono">
+                © 2024 Fabric Protocol Inc. All rights reserved.
+            </div>
+            
+            <div class="flex items-center gap-8 opacity-40 hover:opacity-100 transition-opacity grayscale hover:grayscale-0">
+                 <iconify-icon icon="simple-icons:ycombinator" width="24" class="text-gray-400"></iconify-icon>
+                 <iconify-icon icon="simple-icons:soc" width="24" class="text-gray-400"></iconify-icon>
+                 <iconify-icon icon="simple-icons:gdpr" width="24" class="text-gray-400"></iconify-icon>
+            </div>
+        </div>
+    </div>
+</footer>
+
+    </main>
+    
+    <!-- Bottom Fade (Fixed) -->
+    <div class="fixed bottom-0 left-0 w-full h-32 bg-gradient-to-t from-black via-black/90 to-transparent pointer-events-none z-20"></div>
+
+    <script>
+        const body = document.getElementById('main-body');
+        const spotlightGroups = document.querySelectorAll('.spotlight-group');
+
+        document.addEventListener('mousemove', (e) => {
+            const x = e.clientX;
+            const y = e.clientY;
+            
+            body.style.setProperty('--mouse-x', `${x}px`);
+            body.style.setProperty('--mouse-y', `${y}px`);
+
+            spotlightGroups.forEach(group => {
+                const rect = group.getBoundingClientRect();
+                const relX = x - rect.left;
+                const relY = y - rect.top;
+                
+                group.style.setProperty('--mouse-x-rel', `${relX}px`);
+                group.style.setProperty('--mouse-y-rel', `${relY}px`);
+            });
+        });
+    </script>
+
+
+</body></html>

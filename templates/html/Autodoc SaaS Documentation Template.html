@@ -1,0 +1,1610 @@
+<!DOCTYPE html>
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Autonomous Documentation Platform</title>
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+theme: {
+extend: {
+fontFamily: {
+sans: ['Plus Jakarta Sans', 'sans-serif'],
+},
+colors: {
+brand: {
+50: '#EEF2FF',
+100: '#E0E7FF',
+500: '#4F46E5',
+600: '#4338CA',
+700: '#3730A3',
+950: '#09090B',
+}
+}
+}
+}
+}
+</script>
+<!-- Iconify -->
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<style>
+body {
+font-family: 'Plus Jakarta Sans', sans-serif;
+-webkit-font-smoothing: antialiased;
+background-color: #FAFAFB;
+}
+/* Custom scrollbar styling for terminal and sidebar */
+.custom-scrollbar::-webkit-scrollbar {
+width: 4px;
+height: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+background: #E5E7EB;
+border-radius: 2px;
+}
+/* Pulse scan animation */
+@keyframes scanline {
+0% { top: 0%; }
+50% { top: 100%; }
+100% { top: 0%; }
+}
+.scanning-line {
+animation: scanline 6s infinite linear;
+}
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="text-neutral-800 antialiased selection:bg-indigo-100 selection:text-indigo-950">
+
+    <!-- Top Master Control & Demo Navigation (For quick review of all 8 screens) -->
+    <div class="bg-brand-950 text-white py-2 px-4 sticky top-0 z-50 flex flex-wrap items-center justify-between border-b border-neutral-800 text-xs gap-2">
+        <div class="flex items-center gap-2">
+            <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span class="font-medium text-neutral-300 tracking-wide">PROTOTYPE CONTROLLER</span>
+        </div>
+        <div class="flex flex-wrap items-center gap-1">
+            <button onclick="goToScreen('dashboard')" class="nav-btn bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded transition text-neutral-300 font-medium">1. Home</button>
+            <button onclick="goToScreen('connect')" class="nav-btn bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded transition text-neutral-300 font-medium">2. Connect</button>
+            <button onclick="goToScreen('scan')" class="nav-btn bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded transition text-neutral-300 font-medium">3. Quick Scan</button>
+            <button onclick="goToScreen('catalog')" class="nav-btn bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded transition text-neutral-300 font-medium">4. Catalog</button>
+            <button onclick="goToScreen('capture')" class="nav-btn bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded transition text-neutral-300 font-medium">5. Capture</button>
+            <button onclick="goToScreen('gallery')" class="nav-btn bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded transition text-neutral-300 font-medium">6. Gallery</button>
+            <button onclick="goToScreen('generation')" class="nav-btn bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded transition text-neutral-300 font-medium">7. Generating</button>
+            <button onclick="goToScreen('output')" class="nav-btn bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded transition text-neutral-300 font-medium">8. Review</button>
+        </div>
+    </div>
+
+    <!-- Master Header -->
+    <header class="border-b border-neutral-200/60 bg-white/80 backdrop-blur-md sticky top-10 z-40 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+            <div class="h-8 w-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-semibold shadow-sm shadow-indigo-200">
+                <iconify-icon icon="solar:globus-linear" class="text-xl"></iconify-icon>
+            </div>
+            <span class="font-semibold text-lg tracking-tight text-neutral-900">autodoc<span class="text-indigo-600">.ai</span></span>
+        </div>
+        <nav class="hidden md:flex items-center gap-6 text-sm text-neutral-500 font-medium">
+            <a href="#" class="hover:text-neutral-900 transition" onclick="goToScreen('dashboard')">Projects</a>
+            <a href="#" class="hover:text-neutral-900 transition">Integrations</a>
+            <a href="#" class="hover:text-neutral-900 transition">Team</a>
+            <a href="#" class="hover:text-neutral-900 transition">API</a>
+        </nav>
+        <div class="flex items-center gap-4">
+            <div class="h-8 w-8 rounded-full bg-neutral-100 border border-neutral-200/60 flex items-center justify-center cursor-pointer hover:bg-neutral-50 transition">
+                <iconify-icon icon="solar:bell-linear" class="text-neutral-600 text-lg"></iconify-icon>
+            </div>
+            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=256&auto=format&fit=crop" alt="Avatar" class="h-8 w-8 rounded-full object-cover border border-neutral-200/60 cursor-pointer">
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 md:px-8 py-8 min-h-[calc(100vh-140px)]">
+
+        <!-- ==================== SCREEN 1: DASHBOARD ==================== -->
+        <div id="screen-dashboard" class="screen-view space-y-8">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl font-semibold tracking-tight text-neutral-900">Documentation Projects</h1>
+                    <p class="text-sm text-neutral-500 mt-1">Manage and audit automatic system processes across your connected platforms.</p>
+                </div>
+                <button onclick="goToScreen('connect')" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all duration-200 inline-flex items-center gap-2 shadow-sm shadow-indigo-100">
+                    <iconify-icon icon="solar:add-circle-linear" class="text-lg"></iconify-icon>
+                    Connect your first app
+                </button>
+            </div>
+
+            <!-- Empty State (First Time Users) -->
+            <div class="border border-dashed border-neutral-200 rounded-xl p-12 text-center bg-white">
+                <div class="h-12 w-12 rounded-xl bg-indigo-50 flex items-center justify-center mx-auto mb-4">
+                    <iconify-icon icon="solar:share-circle-linear" class="text-indigo-600 text-2xl"></iconify-icon>
+                </div>
+                <h3 class="text-base font-medium text-neutral-900">No applications connected</h3>
+                <p class="text-sm text-neutral-500 max-w-sm mx-auto mt-1 mb-6">Connect your workspace to let our AI scan pathways, extract structures, and construct dynamic learning platforms instantly.</p>
+                <button onclick="goToScreen('connect')" class="border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-800 text-sm font-medium px-4 py-2 rounded-lg transition inline-flex items-center gap-2 shadow-sm">
+                    <iconify-icon icon="solar:plug-linear" class="text-lg text-neutral-600"></iconify-icon>
+                    Browse App Catalog
+                </button>
+            </div>
+
+            <!-- Populated Projects Grid (Returning Users) -->
+            <div>
+                <h2 class="text-sm font-semibold tracking-wide text-neutral-400 uppercase mb-4">Active Deployments</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Gmail Card -->
+                    <div class="border border-neutral-200/60 rounded-xl p-5 bg-white shadow-sm hover:border-neutral-300 transition-all flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-start justify-between">
+                                <div class="h-10 w-10 bg-red-50 text-red-600 rounded-lg flex items-center justify-center">
+                                    <iconify-icon icon="solar:letter-linear" class="text-2xl"></iconify-icon>
+                                </div>
+                                <span class="bg-indigo-50 text-indigo-700 text-xs font-medium px-2.5 py-1 rounded-full">Ready</span>
+                            </div>
+                            <h3 class="font-medium text-base text-neutral-900 mt-4">Gmail Workflow Engine</h3>
+                            <p class="text-xs text-neutral-500 mt-1">Autonomous user guides for email actions.</p>
+                        </div>
+                        <div class="border-t border-neutral-100 mt-5 pt-4 flex items-center justify-between text-xs text-neutral-500">
+                            <span>17 dynamic guides</span>
+                            <span class="flex items-center gap-1"><iconify-icon icon="solar:history-linear"></iconify-icon> 2 hrs ago</span>
+                        </div>
+                    </div>
+                    <!-- Stripe Card -->
+                    <div class="border border-neutral-200/60 rounded-xl p-5 bg-white shadow-sm hover:border-neutral-300 transition-all flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-start justify-between">
+                                <div class="h-10 w-10 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center">
+                                    <iconify-icon icon="solar:card-linear" class="text-2xl"></iconify-icon>
+                                </div>
+                                <span class="bg-amber-50 text-amber-700 text-xs font-medium px-2.5 py-1 rounded-full">Scanning</span>
+                            </div>
+                            <h3 class="font-medium text-base text-neutral-900 mt-4">Stripe Billing Panel</h3>
+                            <p class="text-xs text-neutral-500 mt-1">Tracking subscription mapping workflows.</p>
+                        </div>
+                        <div class="border-t border-neutral-100 mt-5 pt-4 flex items-center justify-between text-xs text-neutral-500">
+                            <span>Scanning paths...</span>
+                            <span class="flex items-center gap-1 text-amber-600 animate-pulse"><iconify-icon icon="solar:refresh-linear"></iconify-icon> Live</span>
+                        </div>
+                    </div>
+                    <!-- Slack Card -->
+                    <div class="border border-neutral-200/60 rounded-xl p-5 bg-white shadow-sm hover:border-neutral-300 transition-all flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-start justify-between">
+                                <div class="h-10 w-10 bg-yellow-50 text-yellow-600 rounded-lg flex items-center justify-center">
+                                    <iconify-icon icon="solar:chat-line-linear" class="text-2xl"></iconify-icon>
+                                </div>
+                                <span class="bg-emerald-50 text-emerald-700 text-xs font-medium px-2.5 py-1 rounded-full">Needs review</span>
+                            </div>
+                            <h3 class="font-medium text-base text-neutral-900 mt-4">Slack Enterprise Connect</h3>
+                            <p class="text-xs text-neutral-500 mt-1">Interactive bot permissions capture logs.</p>
+                        </div>
+                        <div class="border-t border-neutral-100 mt-5 pt-4 flex items-center justify-between text-xs text-neutral-500">
+                            <span>8 manual reviews pending</span>
+                            <span class="flex items-center gap-1"><iconify-icon icon="solar:calendar-linear"></iconify-icon> 1 day ago</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== SCREEN 2: CONNECT APP ==================== -->
+        <div id="screen-connect" class="screen-view hidden max-w-4xl mx-auto space-y-8">
+            <div>
+                <h1 class="text-2xl font-semibold tracking-tight text-neutral-900">Connect a SaaS Environment</h1>
+                <p class="text-sm text-neutral-500 mt-1">Select a popular platform configuration template or establish custom browser tunneling protocols.</p>
+            </div>
+
+            <!-- Templates Grid -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <button onclick="triggerConnect('Gmail')" class="group border border-neutral-200/60 p-4 rounded-xl bg-white hover:border-indigo-500/50 hover:shadow-sm text-left transition duration-200">
+                    <div class="h-10 w-10 bg-red-50 text-red-600 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
+                        <iconify-icon icon="solar:letter-linear" class="text-2xl"></iconify-icon>
+                    </div>
+                    <h3 class="font-medium text-sm text-neutral-900 mt-4">Gmail</h3>
+                    <p class="text-xs text-neutral-400 mt-1">Cloud email &amp; settings</p>
+                </button>
+                <button class="group border border-neutral-200/60 p-4 rounded-xl bg-white hover:border-neutral-300 text-left transition duration-200">
+                    <div class="h-10 w-10 bg-yellow-50 text-yellow-600 rounded-lg flex items-center justify-center">
+                        <iconify-icon icon="solar:chat-line-linear" class="text-2xl"></iconify-icon>
+                    </div>
+                    <h3 class="font-medium text-sm text-neutral-900 mt-4">Slack Workspace</h3>
+                    <p class="text-xs text-neutral-400 mt-1">Chat &amp; workspace ops</p>
+                </button>
+                <button class="group border border-neutral-200/60 p-4 rounded-xl bg-white hover:border-neutral-300 text-left transition duration-200">
+                    <div class="h-10 w-10 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center">
+                        <iconify-icon icon="solar:bill-list-linear" class="text-2xl"></iconify-icon>
+                    </div>
+                    <h3 class="font-medium text-sm text-neutral-900 mt-4">Notion</h3>
+                    <p class="text-xs text-neutral-400 mt-1">Knowledge base &amp; tables</p>
+                </button>
+                <button class="group border border-neutral-200/60 p-4 rounded-xl bg-white hover:border-neutral-300 text-left transition duration-200">
+                    <div class="h-10 w-10 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center">
+                        <iconify-icon icon="solar:users-group-two-rounded-linear" class="text-2xl"></iconify-icon>
+                    </div>
+                    <h3 class="font-medium text-sm text-neutral-900 mt-4">Salesforce</h3>
+                    <p class="text-xs text-neutral-400 mt-1">Enterprise CRM setups</p>
+                </button>
+            </div>
+
+            <div class="relative flex py-2 items-center">
+                <div class="flex-grow border-t border-neutral-200/60"></div>
+                <span class="flex-shrink mx-4 text-neutral-400 text-xs">Or connect directly via direct remote browser tunnel</span>
+                <div class="flex-grow border-t border-neutral-200/60"></div>
+            </div>
+
+            <!-- Custom URL Input -->
+            <div class="border border-neutral-200/60 p-5 rounded-xl bg-white flex flex-col md:flex-row gap-3">
+                <div class="flex-grow relative">
+                    <span class="absolute left-3 top-2.5 text-neutral-400 text-sm">https://</span>
+                    <input type="text" placeholder="workspace-subdomain.yoursaas.com" class="w-full pl-16 pr-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:border-indigo-500">
+                </div>
+                <button onclick="triggerConnect('Custom SaaS')" class="bg-neutral-900 hover:bg-neutral-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-all">Start Direct Session</button>
+            </div>
+
+            <!-- Embedded Sandbox simulation modal popup (Integrated inside) -->
+            <div id="connection-flow-dialog" class="hidden border border-neutral-200/60 bg-white rounded-xl p-6 shadow-md transition-all">
+                <div id="connect-state-loading" class="text-center py-8 space-y-4">
+                    <div class="relative w-16 h-16 mx-auto">
+                        <div class="absolute inset-0 rounded-full border-2 border-indigo-200 animate-pulse"></div>
+                        <div class="absolute inset-0 rounded-full border-t-2 border-indigo-600 animate-spin"></div>
+                    </div>
+                    <div>
+                        <h3 class="font-medium text-base text-neutral-900">Establishing Secure Sandbox Session...</h3>
+                        <p class="text-xs text-neutral-400 mt-1">Spinning up isolated chromium virtual runner instances...</p>
+                    </div>
+                </div>
+
+                <div id="connect-state-oauth" class="hidden space-y-6 max-w-md mx-auto py-4">
+                    <div class="border border-neutral-150 rounded-xl p-5 bg-neutral-50 shadow-sm space-y-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="h-2 w-2 rounded-full bg-red-500"></span>
+                            <span class="text-xs text-neutral-400 font-semibold tracking-wide uppercase">Sandbox Google Identity Gateway</span>
+                        </div>
+                        <h2 class="text-lg font-medium tracking-tight text-neutral-800">Sign in to Sandbox Gmail</h2>
+                        <div class="space-y-2">
+                            <input type="email" placeholder="demo.user@gmail.com" value="demo.user@gmail.com" class="w-full p-2.5 text-sm border border-neutral-200 rounded-lg bg-white" readonly="">
+                            <input type="password" value="••••••••••••••" class="w-full p-2.5 text-sm border border-neutral-200 rounded-lg bg-white" readonly="">
+                        </div>
+                        <button onclick="completeConnect()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-2.5 rounded-lg transition">Grant Read-Only Sandbox Access</button>
+                    </div>
+                </div>
+
+                <div id="connect-state-success" class="hidden text-center py-6 space-y-4">
+                    <div class="h-12 w-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto text-2xl">
+                        <iconify-icon icon="solar:check-circle-linear"></iconify-icon>
+                    </div>
+                    <div>
+                        <h3 class="font-medium text-base text-neutral-900">Securely Linked to Gmail sandbox</h3>
+                        <p class="text-xs text-emerald-600 font-medium">Session Active: logged in as demo.user@gmail.com</p>
+                    </div>
+                    <button onclick="startAutoScan()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-6 py-2 rounded-lg shadow-sm transition inline-flex items-center gap-2">
+                        <iconify-icon icon="solar:shield-up-linear"></iconify-icon>
+                        Initiate Autonomous Deep Scan
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== SCREEN 3: QUICK SCAN (THE HERO SCREEN) ==================== -->
+        <div id="screen-scan" class="screen-view hidden space-y-6">
+            <div class="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                    <h1 class="text-2xl font-semibold tracking-tight text-neutral-900 flex items-center gap-2">
+                        <span class="relative flex h-3 w-3">
+                          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                          <span class="relative inline-flex rounded-full h-3 w-3 bg-indigo-600"></span>
+                        </span>
+                        Scanning Gmail App Model...
+                    </h1>
+                    <p class="text-sm text-neutral-500 mt-1">Autonomous crawler explores app structures, identifies DOM interactions, and models pathways.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-indigo-100 flex items-center gap-1">
+                        <iconify-icon icon="solar:shield-check-linear"></iconify-icon> Safe scan active (Read Only)
+                    </span>
+                    <button onclick="pauseScan()" id="pause-scan-btn" class="border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-700 text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
+                        <iconify-icon icon="solar:pause-linear"></iconify-icon> Pause
+                    </button>
+                    <button onclick="goToScreen('catalog')" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 shadow-sm">
+                        Skip to Catalog <iconify-icon icon="solar:arrow-right-linear"></iconify-icon>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Split Panel Container -->
+            <div class="grid grid-cols-1 lg:grid-cols-10 gap-6">
+                <!-- Left Panel: Live Browser Preview (60% width) -->
+                <div class="lg:col-span-6 border border-neutral-200/60 rounded-xl overflow-hidden bg-white shadow-sm flex flex-col h-[520px] relative">
+                    <!-- Browser Window Mock bar -->
+                    <div class="bg-neutral-50 border-b border-neutral-200/60 px-4 py-2.5 flex items-center gap-2">
+                        <div class="flex gap-1.5">
+                            <span class="w-3 h-3 rounded-full bg-red-400/80 inline-block"></span>
+                            <span class="w-3 h-3 rounded-full bg-yellow-400/80 inline-block"></span>
+                            <span class="w-3 h-3 rounded-full bg-green-400/80 inline-block"></span>
+                        </div>
+                        <div class="flex-grow max-w-md mx-auto bg-white border border-neutral-200 rounded-md py-1 px-3 text-xs text-neutral-500 flex items-center gap-1.5">
+                            <iconify-icon icon="solar:lock-keyhole-linear" class="text-emerald-600"></iconify-icon>
+                            <span>mail.google.com/mail/u/0/</span>
+                        </div>
+                    </div>
+
+                    <!-- Sandbox Workspace Simulator Workspace Area -->
+                    <div class="flex-grow relative overflow-hidden bg-neutral-100 p-4 select-none">
+                        <!-- Redrawn Gmail Layout Simulation -->
+                        <div class="h-full bg-white rounded-lg shadow-sm border border-neutral-200/60 flex flex-col text-xs text-neutral-700 relative">
+                            <!-- Gmail Header -->
+                            <div class="border-b border-neutral-200 px-4 py-2 flex items-center justify-between">
+                                <div class="flex items-center gap-4">
+                                    <iconify-icon icon="solar:hamburger-menu-linear" class="text-lg text-neutral-400"></iconify-icon>
+                                    <span class="font-bold text-red-600 tracking-tight text-base">Gmail</span>
+                                </div>
+                                <div id="gmail-search" class="flex-grow max-w-md mx-6 border border-neutral-200/60 bg-neutral-50 rounded-md py-1 px-3 flex items-center justify-between">
+                                    <span class="text-neutral-400">Search mail</span>
+                                    <iconify-icon icon="solar:magnifer-linear" class="text-neutral-400"></iconify-icon>
+                                </div>
+                                <div id="gmail-settings" class="flex items-center gap-3">
+                                    <iconify-icon icon="solar:settings-linear" class="text-lg text-neutral-400"></iconify-icon>
+                                    <div class="w-6 h-6 rounded-full bg-neutral-200"></div>
+                                </div>
+                            </div>
+                            <!-- Side & Main Area -->
+                            <div class="flex-grow flex">
+                                <!-- Sidebar -->
+                                <div class="w-44 border-r border-neutral-100 p-2 space-y-1 bg-neutral-50/50">
+                                    <button id="gmail-compose" class="w-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 text-indigo-600 font-medium py-2 rounded-lg flex items-center justify-center gap-1.5 mb-2 transition">
+                                        <iconify-icon icon="solar:pen-linear"></iconify-icon> Compose
+                                    </button>
+                                    <div class="space-y-1">
+                                        <a href="#" class="flex items-center justify-between px-2.5 py-1.5 rounded bg-neutral-100 text-neutral-900 font-medium">
+                                            <span class="flex items-center gap-2"><iconify-icon icon="solar:letter-linear" class="text-indigo-600"></iconify-icon> Inbox</span>
+                                            <span class="text-neutral-500 text-xs">4</span>
+                                        </a>
+                                        <a href="#" class="flex items-center gap-2 px-2.5 py-1.5 rounded text-neutral-500">
+                                            <iconify-icon icon="solar:star-linear"></iconify-icon> Starred
+                                        </a>
+                                        <a href="#" class="flex items-center gap-2 px-2.5 py-1.5 rounded text-neutral-500">
+                                            <iconify-icon icon="solar:alarm-linear"></iconify-icon> Snoozed
+                                        </a>
+                                        <a href="#" class="flex items-center gap-2 px-2.5 py-1.5 rounded text-neutral-500">
+                                            <iconify-icon icon="solar:share-circle-linear"></iconify-icon> Sent
+                                        </a>
+                                    </div>
+                                </div>
+                                <!-- Content Pane -->
+                                <div class="flex-grow p-4 space-y-3">
+                                    <div class="flex items-center justify-between text-neutral-400 border-b border-neutral-100 pb-2">
+                                        <div class="flex items-center gap-4">
+                                            <input type="checkbox" class="rounded border-neutral-300">
+                                            <iconify-icon icon="solar:refresh-linear"></iconify-icon>
+                                        </div>
+                                        <div>1-4 of 4</div>
+                                    </div>
+                                    <!-- List -->
+                                    <div class="space-y-1">
+                                        <div id="gmail-row-1" class="flex items-center justify-between p-2 hover:bg-neutral-50 border-b border-neutral-100 cursor-pointer">
+                                            <div class="flex items-center gap-3">
+                                                <input type="checkbox" class="rounded border-neutral-300">
+                                                <iconify-icon icon="solar:star-linear" class="text-neutral-400"></iconify-icon>
+                                                <span class="font-medium">Stripe Billing</span>
+                                            </div>
+                                            <span class="text-neutral-500 truncate max-w-xs">Your payout of $12,450.00 is in progress</span>
+                                            <span class="text-neutral-400 text-[10px]">10:45 AM</span>
+                                        </div>
+                                        <div id="gmail-row-2" class="flex items-center justify-between p-2 hover:bg-neutral-50 border-b border-neutral-100 cursor-pointer">
+                                            <div class="flex items-center gap-3">
+                                                <input type="checkbox" class="rounded border-neutral-300">
+                                                <iconify-icon icon="solar:star-linear" class="text-amber-500"></iconify-icon>
+                                                <span class="font-medium">Linear Dev</span>
+                                            </div>
+                                            <span class="text-neutral-500 truncate max-w-xs">New issue assigned: AUT-390 UI Overhaul</span>
+                                            <span class="text-neutral-400 text-[10px]">09:15 AM</span>
+                                        </div>
+                                        <div id="gmail-row-3" class="flex items-center justify-between p-2 hover:bg-neutral-50 border-b border-neutral-100 cursor-pointer">
+                                            <div class="flex items-center gap-3">
+                                                <input type="checkbox" class="rounded border-neutral-300">
+                                                <iconify-icon icon="solar:star-linear" class="text-neutral-400"></iconify-icon>
+                                                <span class="font-medium">Notion HQ</span>
+                                            </div>
+                                            <span class="text-neutral-500 truncate max-w-xs">Team updates in Shared Marketing Roadmap</span>
+                                            <span class="text-neutral-400 text-[10px]">Yesterday</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Scan Horizontal Line Sweep Effect -->
+                        <div class="absolute left-0 right-0 h-0.5 bg-indigo-500/50 shadow-md shadow-indigo-500/80 scanning-line pointer-events-none"></div>
+
+                        <!-- Active Element Highlighting Box (Controlled by Script) -->
+                        <div id="scan-element-overlay" class="absolute hidden border-2 border-indigo-500 bg-indigo-500/10 pointer-events-none transition-all duration-300 rounded-md z-20">
+                            <span id="scan-element-label" class="absolute -top-6 left-0 bg-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded font-medium shadow-sm whitespace-nowrap">Element</span>
+                        </div>
+
+                        <!-- Simulated AI Pointer/Cursor -->
+                        <div id="scan-ai-cursor" class="absolute top-1/2 left-1/2 w-6 h-6 pointer-events-none z-30 transition-all duration-300 ease-out transform -translate-x-1/2 -translate-y-1/2">
+                            <iconify-icon icon="solar:cursor-linear" class="text-indigo-600 text-3xl"></iconify-icon>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Dynamic Live Terminal / Discovery Log Feed (40% width) -->
+                <div class="lg:col-span-4 border border-neutral-200/60 rounded-xl p-5 bg-neutral-900 text-white shadow-sm flex flex-col h-[520px]">
+                    <div class="flex items-center justify-between border-b border-neutral-800 pb-3 mb-4">
+                        <div class="flex items-center gap-2">
+                            <iconify-icon icon="solar:clapperboard-play-linear" class="text-indigo-400"></iconify-icon>
+                            <span class="text-xs font-semibold tracking-wider text-neutral-400 uppercase">Interactive Diagnostics</span>
+                        </div>
+                        <span id="discovered-counter" class="bg-indigo-950 text-indigo-300 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-indigo-800/60">0 Actions Discovered</span>
+                    </div>
+
+                    <!-- Terminal Output Window -->
+                    <div id="terminal-feed" class="flex-grow overflow-y-auto font-mono text-xs space-y-2.5 pr-2 custom-scrollbar">
+                        <!-- Dynamically filled by script -->
+                    </div>
+
+                    <!-- Progress Bar Footer -->
+                    <div class="border-t border-neutral-800 pt-4 mt-4 space-y-2">
+                        <div class="flex justify-between text-xs text-neutral-400">
+                            <span>Scanning depth...</span>
+                            <span id="scan-depth-val">0%</span>
+                        </div>
+                        <div class="w-full bg-neutral-800 h-1.5 rounded-full overflow-hidden">
+                            <div id="scan-depth-bar" class="bg-indigo-500 h-full w-[0%] transition-all duration-300"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== SCREEN 4: ACTION CATALOG ==================== -->
+        <div id="screen-catalog" class="screen-view hidden space-y-8">
+            <div class="border-b border-neutral-200/60 pb-6">
+                <h1 class="text-2xl font-semibold tracking-tight text-neutral-900">We discovered 17 documentable actions in Gmail</h1>
+                <p class="text-sm text-neutral-500 mt-1">Select the operational workflows you want our autonomous engine to perform and capture.</p>
+            </div>
+
+            <!-- Categories Tabs -->
+            <div class="flex flex-wrap items-center gap-2">
+                <button onclick="filterCatalog('all')" class="cat-tab bg-indigo-600 text-white px-3.5 py-1.5 rounded-full text-xs font-medium transition">All Actions</button>
+                <button onclick="filterCatalog('Email basics')" class="cat-tab bg-white hover:bg-neutral-50 border border-neutral-200 text-neutral-700 px-3.5 py-1.5 rounded-full text-xs font-medium transition">Email basics</button>
+                <button onclick="filterCatalog('Organization')" class="cat-tab bg-white hover:bg-neutral-50 border border-neutral-200 text-neutral-700 px-3.5 py-1.5 rounded-full text-xs font-medium transition">Organization</button>
+                <button onclick="filterCatalog('Settings')" class="cat-tab bg-white hover:bg-neutral-50 border border-neutral-200 text-neutral-700 px-3.5 py-1.5 rounded-full text-xs font-medium transition">Settings</button>
+                <button onclick="filterCatalog('Advanced')" class="cat-tab bg-white hover:bg-neutral-50 border border-neutral-200 text-neutral-700 px-3.5 py-1.5 rounded-full text-xs font-medium transition">Advanced</button>
+            </div>
+
+            <!-- Grid of Cards -->
+            <div id="catalog-grid" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Dynamically Rendered by Javascript based on JSON data -->
+            </div>
+
+            <!-- Sticky Bottom Action Bar -->
+            <div class="sticky bottom-4 z-40 bg-white border border-neutral-200/80 rounded-xl p-4 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div class="flex items-center gap-4">
+                    <span class="text-sm text-neutral-500 font-medium">Selected Actions: <span id="selected-count-badge" class="text-neutral-950 font-semibold bg-neutral-100 px-2 py-1 rounded">3</span></span>
+                    <div class="h-4 w-px bg-neutral-200"></div>
+                    <div class="flex items-center gap-2">
+                        <label for="output-format" class="text-xs text-neutral-500 font-medium">Capture format:</label>
+                        <select id="output-format" class="text-xs border border-neutral-200 rounded-lg px-2.5 py-1.5 bg-neutral-50 font-medium focus:outline-none">
+                            <option value="all">Complete Suite (Manual, Video &amp; KB Article)</option>
+                            <option value="manual">PDF Manual Only</option>
+                            <option value="video">Interactive Video Only</option>
+                            <option value="kb">Knowledge Base Article Only</option>
+                        </select>
+                    </div>
+                </div>
+                <button onclick="startDeepCapture()" class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-6 py-2.5 rounded-lg transition shadow-sm inline-flex items-center justify-center gap-2">
+                    <iconify-icon icon="solar:magic-stick-linear"></iconify-icon>
+                    Generate Selected Documentation
+                </button>
+            </div>
+        </div>
+
+        <!-- ==================== SCREEN 5: DEEP CAPTURE IN PROGRESS ==================== -->
+        <div id="screen-capture" class="screen-view hidden space-y-6">
+            <div class="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                    <h1 class="text-2xl font-semibold tracking-tight text-neutral-900 flex items-center gap-2">
+                        <span class="relative flex h-3 w-3">
+                          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span class="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
+                        </span>
+                        Deep Capture Engine Operating
+                    </h1>
+                    <p class="text-sm text-neutral-500 mt-1">AI virtual agent executes target actions and archives OCR coordinate screen frames dynamically.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span id="capture-overall-status" class="bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-indigo-100">
+                        Action 1 of 3: Compose new email
+                    </span>
+                    <button onclick="goToScreen('gallery')" class="border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-800 text-xs font-semibold px-3 py-1.5 rounded-lg transition">
+                        Skip capturing
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-10 gap-6">
+                <!-- Left Panel: Running Agent Action Simulator Screen (60% width) -->
+                <div class="lg:col-span-6 border border-neutral-200/60 rounded-xl overflow-hidden bg-white shadow-sm flex flex-col h-[520px] relative">
+                    <!-- Top Status Strip -->
+                    <div id="capture-shutter-flash" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-100 z-50"></div>
+                    <div class="bg-neutral-50 border-b border-neutral-200/60 px-4 py-2 flex items-center justify-between text-xs">
+                        <span class="font-medium text-neutral-500 flex items-center gap-2">
+                            <iconify-icon icon="solar:camera-linear" class="text-indigo-600"></iconify-icon>
+                            <span id="capture-step-title">Step 1 of 5: Open Compose Dialog</span>
+                        </span>
+                        <span class="text-neutral-400">FPS: 30 · Frame Captured</span>
+                    </div>
+
+                    <!-- Sandbox Gmail Canvas -->
+                    <div class="flex-grow relative overflow-hidden bg-neutral-100 p-4">
+                        <div class="h-full bg-white rounded-lg shadow-sm border border-neutral-200/60 flex flex-col text-xs text-neutral-700 relative">
+                            <!-- Simulated Compose Window Popup (appears actively during execution simulation) -->
+                            <div id="simulated-compose-box" class="absolute bottom-0 right-4 w-72 bg-white rounded-t-lg shadow-xl border border-neutral-200 flex flex-col text-xs z-30 transition-all duration-300 transform translate-y-full">
+                                <div class="bg-neutral-800 text-white px-3 py-2 rounded-t-lg flex items-center justify-between font-medium">
+                                    <span>New Message</span>
+                                    <iconify-icon icon="solar:close-circle-linear" class="cursor-pointer"></iconify-icon>
+                                </div>
+                                <div class="p-3 space-y-2">
+                                    <div class="border-b border-neutral-150 py-1 flex items-center gap-2">
+                                        <span class="text-neutral-400">To:</span>
+                                        <span id="compose-field-to" class="font-medium text-neutral-800"></span>
+                                    </div>
+                                    <div class="border-b border-neutral-150 py-1 flex items-center gap-2">
+                                        <span class="text-neutral-400">Subject:</span>
+                                        <span id="compose-field-subject" class="font-medium text-neutral-800"></span>
+                                    </div>
+                                    <div class="py-1 min-h-[80px]">
+                                        <span id="compose-field-body" class="text-neutral-600 whitespace-pre-line"></span>
+                                    </div>
+                                    <div class="flex items-center justify-between pt-2 border-t border-neutral-100">
+                                        <button class="bg-indigo-600 text-white px-3 py-1 rounded font-medium">Send</button>
+                                        <iconify-icon icon="solar:paperclip-linear" class="text-neutral-400 text-lg"></iconify-icon>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Standard UI Mock structure inside capture step -->
+                            <div class="border-b border-neutral-200 px-4 py-2 flex items-center justify-between">
+                                <div class="flex items-center gap-4">
+                                    <span class="font-bold text-red-600 text-base">Gmail</span>
+                                </div>
+                                <div class="w-6 h-6 rounded-full bg-neutral-200"></div>
+                            </div>
+                            <div class="flex-grow flex">
+                                <div class="w-36 border-r border-neutral-100 p-2 space-y-2 bg-neutral-50/50">
+                                    <button id="capture-compose-btn-target" class="w-full bg-indigo-50 border border-indigo-100 text-indigo-600 font-medium py-1.5 rounded-lg flex items-center justify-center gap-1">
+                                        Compose
+                                    </button>
+                                    <div class="space-y-1.5 text-[10px] text-neutral-400 px-1">
+                                        <div>Inbox (4)</div>
+                                        <div>Sent</div>
+                                        <div>Drafts</div>
+                                    </div>
+                                </div>
+                                <div class="flex-grow p-4">
+                                    <div class="border border-neutral-150 rounded-lg p-3 bg-neutral-50 space-y-2">
+                                        <div class="h-3 bg-neutral-200 rounded w-1/4"></div>
+                                        <div class="h-3 bg-neutral-200 rounded w-2/3"></div>
+                                        <div class="h-3 bg-neutral-200 rounded w-1/2"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Pulse Indicator around targets -->
+                        <div id="capture-element-highlight" class="absolute hidden border-2 border-red-500 bg-red-500/10 pointer-events-none transition-all duration-300 rounded-md z-20"></div>
+
+                        <!-- Moving Pointer inside capturing -->
+                        <div id="capture-ai-cursor" class="absolute top-1/2 left-1/2 w-6 h-6 pointer-events-none z-30 transition-all duration-300 ease-out transform -translate-x-1/2 -translate-y-1/2">
+                            <iconify-icon icon="solar:cursor-linear" class="text-red-600 text-3xl"></iconify-icon>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Vertical Timeline Queue of Capture Operations -->
+                <div class="lg:col-span-4 border border-neutral-200/60 rounded-xl p-5 bg-white shadow-sm flex flex-col h-[520px]">
+                    <h3 class="font-semibold text-sm text-neutral-900 border-b border-neutral-150 pb-3 mb-4 flex items-center justify-between">
+                        <span>Workflow Timeline Capture</span>
+                        <span id="capture-percentage-badge" class="text-indigo-600 text-xs bg-indigo-50 px-2 py-0.5 rounded-full font-bold">20% Done</span>
+                    </h3>
+
+                    <!-- Queue list timeline -->
+                    <div class="flex-grow overflow-y-auto space-y-4 pr-1 custom-scrollbar">
+                        <div class="flex items-start gap-3">
+                            <div class="h-6 w-6 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center text-xs flex-shrink-0">
+                                <iconify-icon icon="solar:check-circle-linear"></iconify-icon>
+                            </div>
+                            <div class="flex-grow">
+                                <h4 class="text-xs font-semibold text-neutral-900">Step 1: Open Composition Frame</h4>
+                                <p class="text-[11px] text-neutral-400">OCR Coordinate bounding mapped successfully.</p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-start gap-3">
+                            <div id="timeline-step-2-icon" class="h-6 w-6 rounded-full bg-neutral-50 border border-neutral-200 text-neutral-400 flex items-center justify-center text-xs flex-shrink-0">
+                                <span class="h-2 w-2 rounded-full bg-indigo-600 animate-ping"></span>
+                            </div>
+                            <div class="flex-grow">
+                                <h4 id="timeline-step-2-title" class="text-xs font-semibold text-neutral-900">Step 2: Enter Recipient Address</h4>
+                                <p id="timeline-step-2-desc" class="text-[11px] text-neutral-400">Targeting 'To' parameter field...</p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-start gap-3 opacity-60">
+                            <div class="h-6 w-6 rounded-full bg-neutral-50 border border-neutral-200 text-neutral-400 flex items-center justify-center text-xs flex-shrink-0">3</div>
+                            <div class="flex-grow">
+                                <h4 class="text-xs font-semibold text-neutral-900">Step 3: Insert Document Subject Header</h4>
+                                <p class="text-[11px] text-neutral-400">Awaiting input execution...</p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-start gap-3 opacity-60">
+                            <div class="h-6 w-6 rounded-full bg-neutral-50 border border-neutral-200 text-neutral-400 flex items-center justify-center text-xs flex-shrink-0">4</div>
+                            <div class="flex-grow">
+                                <h4 class="text-xs font-semibold text-neutral-900">Step 4: Draft Context Message</h4>
+                                <p class="text-[11px] text-neutral-400">Structured template injection sequence...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Coming up queue info -->
+                    <div class="border-t border-neutral-150 pt-3 mt-3 text-xs text-neutral-400 space-y-1">
+                        <div class="font-medium text-neutral-700">Up Next in Generation Sequence:</div>
+                        <div class="truncate">• Reply to email (3 Steps)</div>
+                        <div class="truncate">• Set up email signature (6 Steps)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== SCREEN 6: SCREENSHOT GALLERY ==================== -->
+        <div id="screen-gallery" class="screen-view hidden space-y-8">
+            <div class="flex items-center justify-between flex-wrap gap-4 border-b border-neutral-200/60 pb-6">
+                <div>
+                    <h1 class="text-2xl font-semibold tracking-tight text-neutral-900">Audit Generated Steps &amp; Annotations</h1>
+                    <p class="text-sm text-neutral-500 mt-1">Refine interactive bounding boxes, rearrange capture steps, or polish contextual description prompts.</p>
+                </div>
+                <button class="bg-neutral-900 hover:bg-neutral-800 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition inline-flex items-center gap-2">
+                    <iconify-icon icon="solar:camera-add-linear" class="text-lg"></iconify-icon> Add manual screenshot
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                <!-- Left Action Selector Menu -->
+                <div class="space-y-2">
+                    <div class="text-xs font-bold tracking-wider text-neutral-400 uppercase px-2 mb-3">Captured Workflows</div>
+                    <button class="w-full text-left p-3 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-950 font-semibold text-xs flex items-center justify-between">
+                        <span class="flex items-center gap-2"><iconify-icon icon="solar:letter-linear" class="text-lg text-indigo-600"></iconify-icon> Compose email</span>
+                        <span class="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full text-[10px]">5 frames</span>
+                    </button>
+                    <button class="w-full text-left p-3 rounded-lg hover:bg-neutral-50 border border-transparent text-neutral-600 font-semibold text-xs flex items-center justify-between">
+                        <span class="flex items-center gap-2"><iconify-icon icon="solar:reply-left-linear" class="text-lg"></iconify-icon> Reply to email</span>
+                        <span class="bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded-full text-[10px]">3 frames</span>
+                    </button>
+                    <button class="w-full text-left p-3 rounded-lg hover:bg-neutral-50 border border-transparent text-neutral-600 font-semibold text-xs flex items-center justify-between">
+                        <span class="flex items-center gap-2"><iconify-icon icon="solar:settings-linear" class="text-lg"></iconify-icon> Set up signature</span>
+                        <span class="bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded-full text-[10px]">6 frames</span>
+                    </button>
+                </div>
+
+                <!-- Main Grid showing screenshots -->
+                <div class="lg:col-span-3 space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Frame Card 1 -->
+                        <div class="border border-neutral-200 rounded-xl p-4 bg-white space-y-4">
+                            <div class="flex items-center justify-between">
+                                <span class="bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full">Step 1</span>
+                                <div class="flex items-center gap-2 text-neutral-400">
+                                    <button class="p-1 hover:text-neutral-600 transition" title="Annotate"><iconify-icon icon="solar:pen-linear"></iconify-icon></button>
+                                    <button class="p-1 hover:text-neutral-600 transition" title="Recapture"><iconify-icon icon="solar:refresh-linear"></iconify-icon></button>
+                                    <button class="p-1 hover:text-red-600 transition" title="Delete"><iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon></button>
+                                </div>
+                            </div>
+                            <!-- Mock Annotated Screenshot -->
+                            <div class="aspect-video bg-neutral-100 rounded-lg relative overflow-hidden border border-neutral-200">
+                                <div class="absolute inset-0 bg-neutral-50 p-2 flex flex-col justify-between text-[10px]">
+                                    <div class="flex items-center justify-between border-b border-neutral-200 pb-1">
+                                        <span class="font-bold text-red-600">Gmail</span>
+                                        <div class="w-4 h-4 rounded-full bg-neutral-300"></div>
+                                    </div>
+                                    <div class="flex-grow flex items-center justify-start p-2">
+                                        <!-- Highlight Bounding Box -->
+                                        <div class="border-2 border-red-500 bg-red-500/10 h-8 w-20 rounded flex items-center justify-center font-bold text-red-600">Compose</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-xs font-bold text-neutral-400 uppercase">Interactive Caption</label>
+                                <textarea class="w-full text-xs p-2 border border-neutral-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" rows="2">Click the Compose button in the top-left sidebar coordinates panel to open a fresh communication workspace.</textarea>
+                            </div>
+                        </div>
+
+                        <!-- Frame Card 2 -->
+                        <div class="border border-neutral-200 rounded-xl p-4 bg-white space-y-4">
+                            <div class="flex items-center justify-between">
+                                <span class="bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full">Step 2</span>
+                                <div class="flex items-center gap-2 text-neutral-400">
+                                    <button class="p-1 hover:text-neutral-600 transition" title="Annotate"><iconify-icon icon="solar:pen-linear"></iconify-icon></button>
+                                    <button class="p-1 hover:text-neutral-600 transition" title="Recapture"><iconify-icon icon="solar:refresh-linear"></iconify-icon></button>
+                                    <button class="p-1 hover:text-red-600 transition" title="Delete"><iconify-icon icon="solar:trash-bin-trash-linear"></iconify-icon></button>
+                                </div>
+                            </div>
+                            <!-- Mock Annotated Screenshot -->
+                            <div class="aspect-video bg-neutral-100 rounded-lg relative overflow-hidden border border-neutral-200">
+                                <div class="absolute inset-0 bg-neutral-50 p-2 flex flex-col justify-between text-[10px]">
+                                    <div class="flex-grow flex items-end justify-end p-2">
+                                        <div class="bg-white border border-neutral-300 rounded shadow-md p-2 w-40 space-y-1">
+                                            <div class="border-b border-red-500 bg-red-500/10 p-0.5">To: user@domain.com</div>
+                                            <div class="h-2 bg-neutral-200 rounded"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-xs font-bold text-neutral-400 uppercase">Interactive Caption</label>
+                                <textarea class="w-full text-xs p-2 border border-neutral-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" rows="2">In the newly created message dialog frame, enter your primary recipient address within the To input parameter area.</textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Floating Action -->
+                    <div class="flex justify-end pt-4">
+                        <button onclick="compileDocumentation()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-6 py-2.5 rounded-lg shadow-sm transition inline-flex items-center gap-2">
+                            <iconify-icon icon="solar:magic-stick-linear" class="text-lg"></iconify-icon>
+                            Construct Final Documentation Suite
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== SCREEN 7: GENERATING IN PROGRESS ==================== -->
+        <div id="screen-generation" class="screen-view hidden max-w-xl mx-auto py-12">
+            <div class="border border-neutral-200/60 rounded-2xl p-8 bg-white shadow-md text-center space-y-8">
+                <div class="relative w-20 h-20 mx-auto">
+                    <!-- Spinning glowing background -->
+                    <div class="absolute inset-0 rounded-full border-4 border-indigo-100 animate-pulse"></div>
+                    <div class="absolute inset-0 rounded-full border-t-4 border-indigo-600 animate-spin"></div>
+                    <div class="absolute inset-0 flex items-center justify-center text-indigo-600 text-3xl">
+                        <iconify-icon icon="solar:magic-stick-linear"></iconify-icon>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <h1 class="text-xl font-semibold tracking-tight text-neutral-900">Assembling Documentation Elements</h1>
+                    <p class="text-xs text-neutral-400">Our machine learning models are polishing steps, indexing transcripts, and structuring layout pages.</p>
+                </div>
+
+                <!-- Live Generation progress lists -->
+                <div class="space-y-4 text-left max-w-md mx-auto">
+                    <!-- Progress Bar 1 -->
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between text-xs font-medium">
+                            <span class="text-neutral-700 flex items-center gap-1.5"><iconify-icon icon="solar:document-linear" class="text-indigo-600"></iconify-icon> Structured User Manual</span>
+                            <span id="gen-progress-manual-val" class="text-indigo-600">20%</span>
+                        </div>
+                        <div class="w-full bg-neutral-100 h-1.5 rounded-full overflow-hidden">
+                            <div id="gen-progress-manual-bar" class="bg-indigo-600 h-full w-[20%] transition-all duration-300"></div>
+                        </div>
+                    </div>
+                    <!-- Progress Bar 2 -->
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between text-xs font-medium">
+                            <span class="text-neutral-700 flex items-center gap-1.5"><iconify-icon icon="solar:play-linear" class="text-indigo-600"></iconify-icon> Interactive Video Tutorial</span>
+                            <span id="gen-progress-video-val" class="text-indigo-600">5%</span>
+                        </div>
+                        <div class="w-full bg-neutral-100 h-1.5 rounded-full overflow-hidden">
+                            <div id="gen-progress-video-bar" class="bg-indigo-600 h-full w-[5%] transition-all duration-300"></div>
+                        </div>
+                    </div>
+                    <!-- Progress Bar 3 -->
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between text-xs font-medium">
+                            <span class="text-neutral-700 flex items-center gap-1.5"><iconify-icon icon="solar:help-list-linear" class="text-indigo-600"></iconify-icon> Knowledge Base Articles</span>
+                            <span id="gen-progress-kb-val" class="text-indigo-600">35%</span>
+                        </div>
+                        <div class="w-full bg-neutral-100 h-1.5 rounded-full overflow-hidden">
+                            <div id="gen-progress-kb-bar" class="bg-indigo-600 h-full w-[35%] transition-all duration-300"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- dynamic commentary terminal style -->
+                <div class="bg-neutral-50 rounded-lg p-3 text-left">
+                    <span class="text-[10px] text-neutral-400 font-semibold tracking-wider uppercase block mb-1">AI Pipeline Log</span>
+                    <p id="gen-pipeline-commentary" class="font-mono text-xs text-neutral-600">Initiating language synthesis across selected steps...</p>
+                </div>
+
+                <div class="text-xs text-neutral-400">
+                    Estimated Time Remaining: <span id="gen-time-val">45</span> seconds
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== SCREEN 8: FINAL OUTPUT REVIEW ==================== -->
+        <div id="screen-output" class="screen-view hidden space-y-6">
+            <!-- Review Screen Header -->
+            <div class="flex items-center justify-between flex-wrap gap-4 border-b border-neutral-200/60 pb-6">
+                <div>
+                    <h1 class="text-2xl font-semibold tracking-tight text-neutral-900">Gmail Documentation Suite</h1>
+                    <p class="text-sm text-neutral-500 mt-1">Generated and packaged in multi-channel formats. Ready for distribution.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button class="border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-800 text-xs font-semibold px-3 py-1.5 rounded-lg transition inline-flex items-center gap-1">
+                        <iconify-icon icon="solar:download-linear"></iconify-icon> Download ZIP
+                    </button>
+                    <button class="border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-800 text-xs font-semibold px-3 py-1.5 rounded-lg transition inline-flex items-center gap-1">
+                        <iconify-icon icon="solar:share-linear"></iconify-icon> Share Link
+                    </button>
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm transition inline-flex items-center gap-1.5">
+                        <iconify-icon icon="solar:upload-linear"></iconify-icon> Sync to Zendesk
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Layout: Output switcher tabs -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <!-- Sidebar metadata & Confidence logs -->
+                <div class="lg:col-span-3 space-y-6">
+                    <div class="border border-neutral-200/60 rounded-xl p-4 bg-white space-y-4">
+                        <div class="text-xs font-bold text-neutral-400 uppercase tracking-wide">AI Quality Audit</div>
+                        <div class="space-y-3">
+                            <div>
+                                <div class="flex justify-between text-xs text-neutral-600 mb-1">
+                                    <span>Accuracy Confidence</span>
+                                    <span class="font-bold text-emerald-600">98%</span>
+                                </div>
+                                <div class="w-full bg-neutral-100 h-1 rounded-full overflow-hidden">
+                                    <div class="bg-emerald-500 h-full w-[98%]"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-xs text-neutral-600 mb-1">
+                                    <span>OCR Alignment</span>
+                                    <span class="font-bold text-emerald-600">100%</span>
+                                </div>
+                                <div class="w-full bg-neutral-100 h-1 rounded-full overflow-hidden">
+                                    <div class="bg-emerald-500 h-full w-[100%]"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border border-neutral-200/60 rounded-xl p-4 bg-white space-y-3">
+                        <div class="text-xs font-bold text-neutral-400 uppercase tracking-wide">Optimization Suggestions</div>
+                        <div class="space-y-2 text-xs">
+                            <div class="p-2.5 bg-neutral-50 rounded-lg text-neutral-600 flex items-start gap-2">
+                                <iconify-icon icon="solar:info-square-linear" class="text-indigo-600 text-base mt-0.5 flex-shrink-0"></iconify-icon>
+                                <span>No blurred sensitive emails detected. No redaction overlays required.</span>
+                            </div>
+                            <div class="p-2.5 bg-neutral-50 rounded-lg text-neutral-600 flex items-start gap-2">
+                                <iconify-icon icon="solar:check-circle-linear" class="text-emerald-600 text-base mt-0.5 flex-shrink-0"></iconify-icon>
+                                <span>Adding voiceover text transcripts to the video generated file enhances web accessibility index.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right dynamic content tab output area -->
+                <div class="lg:col-span-9 space-y-6">
+                    <!-- Format Switch Tabs -->
+                    <div class="border-b border-neutral-200/60 flex items-center gap-6 text-sm font-semibold">
+                        <button onclick="toggleOutputTab('manual')" id="out-tab-manual" class="border-b-2 border-indigo-600 text-indigo-600 pb-3 transition px-1 flex items-center gap-2">
+                            <iconify-icon icon="solar:document-linear" class="text-lg"></iconify-icon> PDF User Manual
+                        </button>
+                        <button onclick="toggleOutputTab('video')" id="out-tab-video" class="border-b-2 border-transparent text-neutral-500 hover:text-neutral-900 pb-3 transition px-1 flex items-center gap-2">
+                            <iconify-icon icon="solar:play-linear" class="text-lg"></iconify-icon> Generated Video Tutorial
+                        </button>
+                        <button onclick="toggleOutputTab('kb')" id="out-tab-kb" class="border-b-2 border-transparent text-neutral-500 hover:text-neutral-900 pb-3 transition px-1 flex items-center gap-2">
+                            <iconify-icon icon="solar:help-list-linear" class="text-lg"></iconify-icon> Help Center Article
+                        </button>
+                    </div>
+
+                    <!-- PDF User Manual Preview Tab -->
+                    <div id="out-content-manual" class="output-tab-pane border border-neutral-200 rounded-xl bg-white shadow-sm overflow-hidden min-h-[500px] flex">
+                        <!-- Navigation Outline -->
+                        <div class="w-60 bg-neutral-50/50 border-r border-neutral-200 p-4 space-y-1 hidden md:block">
+                            <span class="text-[10px] font-bold tracking-wider text-neutral-400 uppercase block mb-3">Sections &amp; Steps</span>
+                            <div class="space-y-1">
+                                <a href="#" class="block text-xs font-semibold text-neutral-900 px-2 py-1.5 rounded bg-indigo-50/60 text-indigo-950">1. Overview of Workspace</a>
+                                <a href="#" class="block text-xs font-medium text-neutral-600 hover:text-neutral-900 px-2 py-1.5 rounded">2. Initiating Composition</a>
+                                <a href="#" class="block text-xs font-medium text-neutral-600 hover:text-neutral-900 px-2 py-1.5 rounded">3. Recipient Assignment</a>
+                                <a href="#" class="block text-xs font-medium text-neutral-600 hover:text-neutral-900 px-2 py-1.5 rounded">4. Standard Subject Framing</a>
+                            </div>
+                        </div>
+
+                        <!-- Manual Content Viewer (With live inline editing instructions) -->
+                        <div class="flex-grow p-6 space-y-6">
+                            <div class="border-b border-neutral-100 pb-4">
+                                <h2 class="text-xl font-semibold tracking-tight text-neutral-900">Gmail Communication Dispatcher Manual</h2>
+                                <p class="text-xs text-neutral-400 mt-1">Written by autodoc.ai autonomous workflow system model v2.1</p>
+                            </div>
+
+                            <div class="space-y-4 text-xs text-neutral-600">
+                                <p>This technical guide illustrates the structured procedures involved in initiating and formatting standard external electronic message distributions inside Google's Mail Service workspace.</p>
+
+                                <div class="border border-neutral-150 rounded-xl p-4 bg-white space-y-4">
+                                    <div class="flex items-center justify-between">
+                                        <span class="bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded text-[10px]">Step 1: Open Composition Frame</span>
+                                        <span class="text-neutral-400 text-[10px] italic">Click elements directly to edit generated text manual</span>
+                                    </div>
+                                    <!-- Editable Inline Text -->
+                                    <p class="text-neutral-800 font-medium cursor-text p-2 hover:bg-neutral-50 rounded border border-transparent hover:border-dashed hover:border-neutral-300 transition duration-150" contenteditable="true">
+                                        In the main Gmail workspace interface, route your pointer configuration to the primary sidebar elements panel and click on the "Compose" action trigger button.
+                                    </p>
+                                    <div class="aspect-video bg-neutral-50 border border-neutral-150 rounded-lg flex items-center justify-center relative overflow-hidden">
+                                        <span class="text-[10px] text-neutral-400">[Embedded Screenshot Step 1]</span>
+                                        <div class="absolute inset-x-0 bottom-0 bg-neutral-900/80 text-white text-[10px] p-2">
+                                            Figure 1: Triggering the core Compose function inside main sidebar container
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Video Tab Preview -->
+                    <div id="out-content-video" class="output-tab-pane hidden border border-neutral-200 rounded-xl bg-white p-6 shadow-sm min-h-[500px] flex flex-col justify-between">
+                        <div class="aspect-video bg-neutral-900 rounded-lg relative overflow-hidden flex flex-col justify-between text-white p-4">
+                            <!-- Simulated Video HUD -->
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="bg-indigo-600 text-white font-semibold px-2 py-0.5 rounded text-[10px]">Autoplay Live Capture</span>
+                                <span class="text-neutral-400">00:15 / 00:48</span>
+                            </div>
+                            <!-- Mid Visual (Simulation of active video) -->
+                            <div class="text-center space-y-2">
+                                <iconify-icon icon="solar:play-circle-linear" class="text-5xl text-indigo-500 cursor-pointer hover:scale-105 transition-transform duration-200"></iconify-icon>
+                                <p class="text-xs text-neutral-300">Click to preview dynamic timeline generated voiceover play.</p>
+                            </div>
+                            <div class="bg-black/40 backdrop-blur px-3 py-2 rounded text-[11px] text-neutral-200 text-center max-w-md mx-auto">
+                                Voiceover: "We then direct our selection context directly to the recipient target parameter input address field..."
+                            </div>
+                        </div>
+
+                        <!-- Video Chapters timeline slider -->
+                        <div class="space-y-2 pt-4">
+                            <span class="text-xs font-bold text-neutral-400 uppercase tracking-wider">Generated Chapter Markers</span>
+                            <div class="grid grid-cols-4 gap-2 text-[10px]">
+                                <div class="bg-indigo-50 border border-indigo-100 p-2 rounded text-indigo-950 font-semibold cursor-pointer">
+                                    <div class="text-indigo-600">00:00 - 00:08</div>
+                                    <div>Trigger Composition Panel</div>
+                                </div>
+                                <div class="bg-neutral-50 border border-neutral-200 p-2 rounded text-neutral-600 hover:bg-neutral-100 cursor-pointer">
+                                    <div>00:08 - 00:18</div>
+                                    <div>Format Target To Field</div>
+                                </div>
+                                <div class="bg-neutral-50 border border-neutral-200 p-2 rounded text-neutral-600 hover:bg-neutral-100 cursor-pointer">
+                                    <div>00:18 - 00:32</div>
+                                    <div>Inject Standard Header</div>
+                                </div>
+                                <div class="bg-neutral-50 border border-neutral-200 p-2 rounded text-neutral-600 hover:bg-neutral-100 cursor-pointer">
+                                    <div>00:32 - 00:48</div>
+                                    <div>Compile &amp; Send Message</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Help Center Knowledge Base Article Preview Tab -->
+                    <div id="out-content-kb" class="output-tab-pane hidden border border-neutral-200 rounded-xl bg-white p-6 shadow-sm min-h-[500px] space-y-6">
+                        <div class="flex items-center gap-2">
+                            <span class="bg-neutral-100 text-neutral-700 text-xs font-bold px-2 py-0.5 rounded">Knowledge Base</span>
+                            <span class="text-neutral-400 text-xs">·</span>
+                            <span class="text-neutral-400 text-xs">Category: Communication Basics</span>
+                        </div>
+
+                        <div class="space-y-4">
+                            <h2 class="text-2xl font-semibold tracking-tight text-neutral-900">How do I draft and send electronic email messages in Gmail?</h2>
+                            <p class="text-sm text-neutral-600">This article reviews quick setup frameworks required to deploy messaging configurations securely inside your sandboxed enterprise environment.</p>
+
+                            <!-- Accordion details style -->
+                            <div class="space-y-3">
+                                <details class="group border border-neutral-200 rounded-lg p-3 bg-neutral-50/50" open="">
+                                    <summary class="font-semibold text-xs text-neutral-950 cursor-pointer list-none flex items-center justify-between">
+                                        <span>Step 1: Locate "Compose" parameters</span>
+                                        <iconify-icon icon="solar:alt-arrow-down-linear" class="group-open:rotate-180 transition-transform duration-200"></iconify-icon>
+                                    </summary>
+                                    <div class="text-xs text-neutral-600 mt-2 space-y-2">
+                                        <p>Click the Compose action button inside the Gmail interface top left control coordinates.</p>
+                                    </div>
+                                </details>
+
+                                <details class="group border border-neutral-200 rounded-lg p-3 bg-neutral-50/50">
+                                    <summary class="font-semibold text-xs text-neutral-950 cursor-pointer list-none flex items-center justify-between">
+                                        <span>Step 2: Assign parameters &amp; submit message</span>
+                                        <iconify-icon icon="solar:alt-arrow-down-linear" class="group-open:rotate-180 transition-transform duration-200"></iconify-icon>
+                                    </summary>
+                                    <div class="text-xs text-neutral-600 mt-2 space-y-2">
+                                        <p>Enter email addresses in the "To" input parameters, write subject contexts and press direct Send action triggers.</p>
+                                    </div>
+                                </details>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Interactive script management engine for simulated workflows -->
+    <script>
+        // Real-looking JSON configuration dataset requested by user
+        const GMAIL_MOCK_ACTIONS = [
+            { "name": "Compose new email", "category": "Email basics", "steps": 5, "difficulty": "Easy" },
+            { "name": "Reply to email", "category": "Email basics", "steps": 3, "difficulty": "Easy" },
+            { "name": "Forward email", "category": "Email basics", "steps": 4, "difficulty": "Easy" },
+            { "name": "Attach files", "category": "Email basics", "steps": 4, "difficulty": "Easy" },
+            { "name": "Schedule send", "category": "Email basics", "steps": 5, "difficulty": "Medium" },
+            { "name": "Undo send", "category": "Email basics", "steps": 2, "difficulty": "Easy" },
+            { "name": "Create label", "category": "Organization", "steps": 4, "difficulty": "Easy" },
+            { "name": "Apply label to email", "category": "Organization", "steps": 3, "difficulty": "Easy" },
+            { "name": "Star important emails", "category": "Organization", "steps": 2, "difficulty": "Easy" },
+            { "name": "Archive vs delete", "category": "Organization", "steps": 3, "difficulty": "Easy" },
+            { "name": "Set up email signature", "category": "Settings", "steps": 6, "difficulty": "Medium" },
+            { "name": "Vacation responder", "category": "Settings", "steps": 5, "difficulty": "Medium" },
+            { "name": "Change inbox layout", "category": "Settings", "steps": 4, "difficulty": "Easy" },
+            { "name": "Create filter", "category": "Advanced", "steps": 7, "difficulty": "Advanced" },
+            { "name": "Block sender", "category": "Advanced", "steps": 4, "difficulty": "Medium" },
+            { "name": "Confidential mode", "category": "Advanced", "steps": 5, "difficulty": "Medium" },
+            { "name": "Two-factor authentication", "category": "Advanced", "steps": 8, "difficulty": "Advanced" }
+        ];
+
+        // Diagnostic Terminal logging entries for Screen 3 simulated automation stream
+        const SIMULATED_LOGS = [
+            { "time": "00:01", "type": "system", "text": "Deploying isolated virtual engine..." },
+            { "time": "00:03", "type": "action", "text": "Parsing Gmail main interface DOM coordinate models..." },
+            { "time": "00:05", "type": "discovery", "text": "Found primary action: Compose Button [X: 120, Y: 85]" },
+            { "time": "00:07", "type": "action", "text": "Hovering compose target element context..." },
+            { "time": "00:09", "type": "discovery", "text": "Found secondary list node: Sidebar Inbox elements [X: 80, Y: 180]" },
+            { "time": "00:11", "type": "action", "text": "Simulating cursor movement to Workspace Settings gear..." },
+            { "time": "00:13", "type": "discovery", "text": "Found settings menu parameter pathways [X: 840, Y: 35]" },
+            { "time": "00:15", "type": "action", "text": "Hovering list item: Gmail Inbox Item 1 [X: 350, Y: 240]" },
+            { "time": "00:17", "type": "discovery", "text": "Discovered target path action: Star toggle parameter [X: 180, Y: 240]" },
+            { "time": "00:19", "type": "system", "text": "Extracting OCR layouts for all main active panel widgets..." },
+            { "time": "00:22", "type": "action", "text": "Testing input values validation sequences..." },
+            { "time": "00:24", "type": "discovery", "text": "Discovered action: Reply to active mail thread [3 steps]" },
+            { "time": "00:27", "type": "discovery", "text": "Discovered setting mapping: Signature rich editor [6 steps]" },
+            { "time": "00:30", "type": "system", "text": "Indexing discovered node paths in catalog structure..." }
+        ];
+
+        // Track selected actions
+        let selectedActionKeys = ["Compose new email", "Reply to email", "Set up email signature"];
+
+        // Global control state for active execution animations
+        let activeIntervals = [];
+
+        // App state manager for routing between panels
+        function goToScreen(screenId) {
+            // Clear any active interval trackers/simulators
+            activeIntervals.forEach(clearInterval);
+            activeIntervals = [];
+
+            document.querySelectorAll('.screen-view').forEach(view => {
+                view.classList.add('hidden');
+            });
+            const target = document.getElementById(`screen-${screenId}`);
+            if (target) {
+                target.classList.remove('hidden');
+            }
+
+            // Sync visual button state in the top quick manager bar
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.replace('bg-indigo-600', 'bg-neutral-800');
+                btn.classList.replace('text-white', 'text-neutral-300');
+            });
+            const matchingBtn = Array.from(document.querySelectorAll('.nav-btn')).find(b => b.textContent.toLowerCase().includes(screenId));
+            if (matchingBtn) {
+                matchingBtn.classList.replace('bg-neutral-800', 'bg-indigo-600');
+                matchingBtn.classList.replace('text-neutral-300', 'text-white');
+            }
+
+            // Route setup initializations
+            if (screenId === 'catalog') {
+                renderCatalog();
+            } else if (screenId === 'scan') {
+                runLiveScanSimulator();
+            } else if (screenId === 'capture') {
+                runLiveCaptureSimulator();
+            } else if (screenId === 'generation') {
+                runGenerationSimulator();
+            }
+        }
+
+        // Screen 2: Connect Simulation
+        function triggerConnect(appName) {
+            const dialog = document.getElementById('connection-flow-dialog');
+            dialog.classList.remove('hidden');
+            
+            const stateLoading = document.getElementById('connect-state-loading');
+            const stateOauth = document.getElementById('connect-state-oauth');
+            const stateSuccess = document.getElementById('connect-state-success');
+
+            stateLoading.classList.remove('hidden');
+            stateOauth.classList.add('hidden');
+            stateSuccess.classList.add('hidden');
+
+            // Simulate cloud allocation latency
+            setTimeout(() => {
+                stateLoading.classList.add('hidden');
+                stateOauth.classList.remove('hidden');
+            }, 1500);
+        }
+
+        function completeConnect() {
+            document.getElementById('connect-state-oauth').classList.add('hidden');
+            document.getElementById('connect-state-success').classList.remove('hidden');
+        }
+
+        function startAutoScan() {
+            goToScreen('scan');
+        }
+
+        // Screen 3: Live Quick Scan Simulation
+        function runLiveScanSimulator() {
+            const cursor = document.getElementById('scan-ai-cursor');
+            const overlay = document.getElementById('scan-element-overlay');
+            const label = document.getElementById('scan-element-label');
+            const terminal = document.getElementById('terminal-feed');
+            const counter = document.getElementById('discovered-counter');
+            const depthVal = document.getElementById('scan-depth-val');
+            const depthBar = document.getElementById('scan-depth-bar');
+
+            terminal.innerHTML = "";
+            let logIndex = 0;
+            let discoveryCount = 0;
+            let depthPercent = 0;
+
+            // Coordinates mapping elements coordinates dynamically inside sandbox box percentages
+            const elementsToFocus = [
+                { id: 'gmail-compose', name: 'Compose Mail Button', top: '15%', left: '15%', w: '110px', h: '35px' },
+                { id: 'gmail-search', name: 'Header Search input field', top: '6%', left: '45%', w: '260px', h: '28px' },
+                { id: 'gmail-settings', name: 'Application settings panel gear', top: '6%', left: '88%', w: '30px', h: '30px' },
+                { id: 'gmail-row-1', name: 'Inbox Message Line Element', top: '32%', left: '60%', w: '340px', h: '28px' },
+                { id: 'gmail-row-2', name: 'Inbox Star Trigger Node', top: '38%', left: '23%', w: '20px', h: '20px' }
+            ];
+
+            const logTimer = setInterval(() => {
+                if (logIndex < SIMULATED_LOGS.length) {
+                    const log = SIMULATED_LOGS[logIndex];
+                    
+                    // Style matching log colors based on category
+                    let logColorClass = "text-neutral-400";
+                    if (log.type === "action") logColorClass = "text-indigo-400 font-medium";
+                    if (log.type === "discovery") {
+                        logColorClass = "text-emerald-400 font-semibold";
+                        discoveryCount++;
+                        counter.textContent = `${discoveryCount} Actions Discovered`;
+                    }
+
+                    terminal.innerHTML += `<div class="animate-fade-in"><span class="text-neutral-600 font-semibold">[${log.time}]</span> <span class="${logColorClass}">${log.text}</span></div>`;
+                    terminal.scrollTop = terminal.scrollHeight;
+
+                    // Trigger mock cursor tracking focus bounding box elements
+                    if (log.type === "action" || log.type === "discovery") {
+                        const randomElement = elementsToFocus[Math.floor(Math.random() * elementsToFocus.length)];
+                        cursor.style.top = randomElement.top;
+                        cursor.style.left = randomElement.left;
+
+                        setTimeout(() => {
+                            overlay.classList.remove('hidden');
+                            overlay.style.top = `calc(${randomElement.top} - 4px)`;
+                            overlay.style.left = `calc(${randomElement.left} - 4px)`;
+                            overlay.style.width = randomElement.w;
+                            overlay.style.height = randomElement.h;
+                            label.textContent = randomElement.name;
+                        }, 200);
+                    } else {
+                        overlay.classList.add('hidden');
+                    }
+
+                    // Progress percentage increments
+                    depthPercent = Math.min(100, Math.round((logIndex / SIMULATED_LOGS.length) * 100));
+                    depthVal.textContent = `${depthPercent}%`;
+                    depthBar.style.width = `${depthPercent}%`;
+
+                    logIndex++;
+                } else {
+                    // Completed scan simulated process -> proceed automatically
+                    clearInterval(logTimer);
+                    setTimeout(() => {
+                        goToScreen('catalog');
+                    }, 1200);
+                }
+            }, 1800);
+
+            activeIntervals.push(logTimer);
+        }
+
+        function pauseScan() {
+            const btn = document.getElementById('pause-scan-btn');
+            btn.innerHTML = `<iconify-icon icon="solar:play-linear"></iconify-icon> Resuming...`;
+            setTimeout(() => {
+                btn.innerHTML = `<iconify-icon icon="solar:pause-linear"></iconify-icon> Pause`;
+            }, 1000);
+        }
+
+        // Screen 4: Catalog Action Builder Grid
+        function renderCatalog() {
+            const grid = document.getElementById('catalog-grid');
+            grid.innerHTML = "";
+
+            GMAIL_MOCK_ACTIONS.forEach(action => {
+                const isSelected = selectedActionKeys.includes(action.name);
+                const diffColor = action.difficulty === 'Easy' ? 'bg-emerald-50 text-emerald-700' : (action.difficulty === 'Medium' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700');
+                
+                const card = document.createElement('div');
+                card.className = `action-card border ${isSelected ? 'border-indigo-600 bg-indigo-50/10' : 'border-neutral-200/60 bg-white'} rounded-xl p-5 hover:border-neutral-300 transition-all flex flex-col justify-between cursor-pointer relative`;
+                card.onclick = () => toggleSelectAction(action.name);
+                card.setAttribute('data-category', action.category);
+
+                card.innerHTML = `
+                    <div class="flex items-start justify-between">
+                        <div class="h-8 w-8 bg-neutral-100 rounded-lg flex items-center justify-center text-neutral-600">
+                            <iconify-icon icon="solar:document-linear" class="text-lg"></iconify-icon>
+                        </div>
+                        <input type="checkbox" ${isSelected ? 'checked' : ''} class="rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500 pointer-events-none">
+                    </div>
+                    <div class="mt-4">
+                        <h3 class="font-medium text-sm text-neutral-900">${action.name}</h3>
+                        <p class="text-xs text-neutral-500 mt-1">Simulated operational sequences.</p>
+                    </div>
+                    <div class="flex items-center gap-2 mt-4 pt-3 border-t border-neutral-100 text-[10px]">
+                        <span class="bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded-full font-semibold">${action.steps} steps</span>
+                        <span class="${diffColor} px-2 py-0.5 rounded-full font-semibold">${action.difficulty}</span>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+            updateSelectedBadgeCount();
+        }
+
+        function toggleSelectAction(actionName) {
+            if (selectedActionKeys.includes(actionName)) {
+                selectedActionKeys = selectedActionKeys.filter(k => k !== actionName);
+            } else {
+                selectedActionKeys.push(actionName);
+            }
+            renderCatalog();
+        }
+
+        function updateSelectedBadgeCount() {
+            document.getElementById('selected-count-badge').textContent = selectedActionKeys.length;
+        }
+
+        function filterCatalog(category) {
+            // Update Tab style states
+            document.querySelectorAll('.cat-tab').forEach(t => {
+                t.className = "cat-tab bg-white hover:bg-neutral-50 border border-neutral-200 text-neutral-700 px-3.5 py-1.5 rounded-full text-xs font-medium transition";
+            });
+            event.currentTarget.className = "cat-tab bg-indigo-600 text-white px-3.5 py-1.5 rounded-full text-xs font-medium transition";
+
+            document.querySelectorAll('.action-card').forEach(card => {
+                if (category === 'all' || card.getAttribute('data-category') === category) {
+                    card.classList.remove('hidden');
+                } else {
+                    card.classList.add('hidden');
+                }
+            });
+        }
+
+        function startDeepCapture() {
+            goToScreen('capture');
+        }
+
+        // Screen 5: Simulated Deep Capture Agent Flows
+        function runLiveCaptureSimulator() {
+            const cursor = document.getElementById('capture-ai-cursor');
+            const highlight = document.getElementById('capture-element-highlight');
+            const composeBox = document.getElementById('simulated-compose-box');
+            const shutterFlash = document.getElementById('capture-shutter-flash');
+
+            // Text sequence values simulation mapping
+            const fieldTo = document.getElementById('compose-field-to');
+            const fieldSubject = document.getElementById('compose-field-subject');
+            const fieldBody = document.getElementById('compose-field-body');
+
+            const stepTitle = document.getElementById('capture-step-title');
+            const overallStatus = document.getElementById('capture-overall-status');
+            const percentBadge = document.getElementById('capture-percentage-badge');
+
+            // Set up initial state reset coordinates
+            cursor.style.top = '50%';
+            cursor.style.left = '50%';
+            composeBox.style.transform = 'translateY(100%)';
+            fieldTo.textContent = '';
+            fieldSubject.textContent = '';
+            fieldBody.textContent = '';
+
+            let step = 1;
+
+            const captureTimelineTimer = setInterval(() => {
+                if (step === 1) {
+                    // Step 1: Click compose button
+                    overallStatus.textContent = "Action 1 of 3: Compose new email";
+                    stepTitle.textContent = "Step 1 of 4: Triggering Compose Box Panel";
+                    cursor.style.top = "18%";
+                    cursor.style.left = "15%";
+
+                    setTimeout(() => {
+                        // Highlight area compose button
+                        highlight.classList.remove('hidden');
+                        highlight.style.top = "14%";
+                        highlight.style.left = "6%";
+                        highlight.style.width = "100px";
+                        highlight.style.height = "25px";
+
+                        // Shutter Snapshot capture effect
+                        triggerShutterFlash();
+                    }, 1000);
+
+                } else if (step === 2) {
+                    // Open modal, prepare recipient insertion
+                    composeBox.style.transform = 'translateY(0)';
+                    stepTitle.textContent = "Step 2 of 4: Writing recipient details parameter";
+                    cursor.style.top = "70%";
+                    cursor.style.left = "75%";
+
+                    setTimeout(() => {
+                        highlight.classList.remove('hidden');
+                        highlight.style.top = "66%";
+                        highlight.style.left = "65%";
+                        highlight.style.width = "180px";
+                        highlight.style.height = "24px";
+
+                        // Typewriter target parameters
+                        typewriteText("client@partnerdomain.com", fieldTo);
+                    }, 800);
+
+                } else if (step === 3) {
+                    // Target Subject input
+                    stepTitle.textContent = "Step 3 of 4: Formatting Header parameters";
+                    cursor.style.top = "74%";
+                    cursor.style.left = "75%";
+
+                    setTimeout(() => {
+                        highlight.classList.remove('hidden');
+                        highlight.style.top = "71%";
+                        highlight.style.left = "65%";
+                        highlight.style.width = "180px";
+                        highlight.style.height = "24px";
+
+                        typewriteText("Integration Onboarding Manual Workflow", fieldSubject, () => {
+                            triggerShutterFlash();
+                        });
+                    }, 800);
+
+                } else if (step === 4) {
+                    // Type message body context details
+                    stepTitle.textContent = "Step 4 of 4: Writing email body description text";
+                    cursor.style.top = "80%";
+                    cursor.style.left = "75%";
+
+                    setTimeout(() => {
+                        highlight.classList.remove('hidden');
+                        highlight.style.top = "76%";
+                        highlight.style.left = "65%";
+                        highlight.style.width = "180px";
+                        highlight.style.height = "80px";
+
+                        typewriteText("Hi Team,\nPlease find onboard document links mapped dynamically here.", fieldBody, () => {
+                            triggerShutterFlash();
+                        });
+                    }, 800);
+
+                } else {
+                    // End deep mapping sequences -> go to review screen gallery state
+                    clearInterval(captureTimelineTimer);
+                    setTimeout(() => {
+                        goToScreen('gallery');
+                    }, 1000);
+                }
+
+                step++;
+                percentBadge.textContent = `${Math.round((step / 5) * 100)}% Done`;
+
+            }, 4500);
+
+            activeIntervals.push(captureTimelineTimer);
+        }
+
+        function triggerShutterFlash() {
+            const shutterFlash = document.getElementById('capture-shutter-flash');
+            shutterFlash.classList.replace('opacity-0', 'opacity-80');
+            setTimeout(() => {
+                shutterFlash.classList.replace('opacity-80', 'opacity-0');
+            }, 150);
+        }
+
+        function typewriteText(text, targetElement, callback) {
+            targetElement.textContent = "";
+            let idx = 0;
+            const tTimer = setInterval(() => {
+                if (idx < text.length) {
+                    targetElement.textContent += text.charAt(idx);
+                    idx++;
+                } else {
+                    clearInterval(tTimer);
+                    if (callback) callback();
+                }
+            }, 50);
+        }
+
+        function compileDocumentation() {
+            goToScreen('generation');
+        }
+
+        // Screen 7: Parallel Suite Assembly progress
+        function runGenerationSimulator() {
+            let pManual = 20;
+            let pVideo = 5;
+            let pKb = 35;
+            let timerSec = 45;
+
+            const logs = [
+                "Synchronizing captured screenshots structural patterns...",
+                "Running OCR spatial positioning translation algorithms...",
+                "Drafting user manual instructional sequence paragraphs...",
+                "Assembling dynamic video timeline audio narration lines...",
+                "Applying annotation vectors directly on captured assets...",
+                "Building Help Desk collapsible components configurations..."
+            ];
+
+            const genTimer = setInterval(() => {
+                pManual = Math.min(100, pManual + Math.floor(Math.random() * 15));
+                pVideo = Math.min(100, pVideo + Math.floor(Math.random() * 10));
+                pKb = Math.min(100, pKb + Math.floor(Math.random() * 20));
+                timerSec = Math.max(0, timerSec - Math.floor(Math.random() * 5));
+
+                document.getElementById('gen-progress-manual-val').textContent = `${pManual}%`;
+                document.getElementById('gen-progress-manual-bar').style.width = `${pManual}%`;
+
+                document.getElementById('gen-progress-video-val').textContent = `${pVideo}%`;
+                document.getElementById('gen-progress-video-bar').style.width = `${pVideo}%`;
+
+                document.getElementById('gen-progress-kb-val').textContent = `${pKb}%`;
+                document.getElementById('gen-progress-kb-bar').style.width = `${pKb}%`;
+
+                document.getElementById('gen-time-val').textContent = timerSec;
+
+                // Update random comments pipeline
+                document.getElementById('gen-pipeline-commentary').textContent = logs[Math.floor(Math.random() * logs.length)];
+
+                if (pManual >= 100 && pVideo >= 100 && pKb >= 100) {
+                    clearInterval(genTimer);
+                    setTimeout(() => {
+                        goToScreen('output');
+                    }, 1000);
+                }
+            }, 1200);
+
+            activeIntervals.push(genTimer);
+        }
+
+        // Screen 8: Output Switcher Tabs
+        function toggleOutputTab(formatKey) {
+            document.querySelectorAll('.output-tab-pane').forEach(p => {
+                p.classList.add('hidden');
+            });
+            document.getElementById(`out-content-${formatKey}`).classList.remove('hidden');
+
+            // Tab active states style toggling
+            const tabs = ['manual', 'video', 'kb'];
+            tabs.forEach(t => {
+                const el = document.getElementById(`out-tab-${t}`);
+                if (t === formatKey) {
+                    el.className = "border-b-2 border-indigo-600 text-indigo-600 pb-3 transition px-1 flex items-center gap-2";
+                } else {
+                    el.className = "border-b-2 border-transparent text-neutral-500 hover:text-neutral-900 pb-3 transition px-1 flex items-center gap-2";
+                }
+            });
+        }
+
+        // Initial setup on window loading sequence
+        window.onload = () => {
+            goToScreen('dashboard');
+        };
+    </script>
+
+</body></html>

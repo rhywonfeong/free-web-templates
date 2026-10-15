@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lumière — Premium Makeup &amp; Cosmetics</title>
+<meta name="description" content="A cinematic XR headset landing page with motion choreography, reveal typography, and WebGL aura animation.">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet"><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+
+  <body class="min-h-screen overflow-x-hidden bg-[#faf9fa] text-[#1e1b24] antialiased" style="font-family: Poppins, sans-serif; background: radial-gradient(circle at 18% 8%, rgba(242, 184, 216, 0.2), transparent 28rem), radial-gradient(circle at 78% 30%, rgba(240, 200, 180, 0.2), transparent 34rem), linear-gradient(rgb(255, 255, 255) 0%, rgb(250, 249, 250) 100%);">
+    <div id="scroll-progress" class="fixed top-0 left-0 h-1.5 w-full bg-gradient-to-r from-[#f08bb1] to-[#e06691] z-50 origin-left scale-x-0"></div>
+    <canvas id="auraCanvas" aria-hidden="true" class="pointer-events-none fixed inset-0 z-0 h-full w-full opacity-60"></canvas>
+    <div id="webglFallback" aria-hidden="true" class="pointer-events-none fixed inset-0 z-0 hidden opacity-50" style="background: radial-gradient(circle at 30% 22%, rgba(240, 139, 177, 0.18), transparent 24rem), radial-gradient(circle at 72% 48%, rgba(255, 200, 220, 0.12), transparent 22rem);"></div>
+
+    <div class="pointer-events-none fixed inset-0 z-0 opacity-[0.03]" style="background-image: url(&quot;https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/43ba5497-e5f0-415e-ab42-6d68f152b9bd_3840w.png&quot;); background-size: cover; background-position: center center; mix-blend-mode: multiply;"></div>
+    <div class="pointer-events-none fixed inset-0 z-0 opacity-[0.16]" style="background-image: radial-gradient(rgba(0, 0, 0, 0.1) 0.0625rem, transparent 0.0625rem); background-size: 0.25rem 0.25rem;"></div>
+
+    <main class="relative z-10">
+      <header class="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-8 sm:px-10 lg:px-12">
+        <a href="#" aria-label="Immersia home" class="motion-item text-2xl font-medium tracking-tight">
+          Lumière
+        </a>
+
+        <nav aria-label="Primary navigation" class="motion-item hidden items-center gap-14 text-sm font-normal text-[#1e1b24]/90 md:flex">
+          <a class="transition hover:text-[#f08bb1]" href="#home">Home</a>
+          <a class="transition hover:text-[#f08bb1]" href="#variants">
+            Collections
+          </a>
+          <a class="transition hover:text-[#f08bb1]" href="#features">
+            Benefits
+          </a>
+        </nav>
+
+        <a href="#subscribe-form" class="motion-item rounded-md bg-[#1e1b24] px-10 py-4 text-sm font-medium text-white shadow-[0_1.25rem_4rem_rgba(0,0,0,.08)] transition hover:-translate-y-0.5 hover:bg-[#2c2836] focus:outline-none focus:ring-2 focus:ring-[#1e1b24]/70">
+          Sign Up
+        </a>
+      </header>
+
+      <section id="home" class="relative mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-12 px-6 pb-20 pt-20 sm:px-10 sm:pt-28 lg:grid-cols-[0.9fr_1.1fr] lg:px-12 lg:pb-32 lg:pt-24">
+        <div class="max-w-xl">
+          <h1 class="text-6xl font-medium leading-[1.1] tracking-tight text-[#1e1b24] sm:text-7xl lg:text-[5.5rem]" aria-label="Crafting upscale studio pages, products, marketing">
+            <span class="inline-block overflow-hidden align-bottom">
+              <span class="word inline-block">Crafting</span>
+            </span>
+            <span class="inline-block overflow-hidden align-bottom">
+              <span class="word inline-block">upscale</span>
+            </span>
+            <br>
+            <span class="inline-block overflow-hidden align-bottom">
+              <span class="word inline-block">studio</span>
+            </span>
+            <div class="inline-grid overflow-hidden align-bottom h-[1.15em] relative top-2">
+              <span class="word-rotator inline-block col-start-1 row-start-1 text-[#f08bb1] pb-2">
+                pages
+              </span>
+              <span class="word-rotator inline-block col-start-1 row-start-1 text-[#f08bb1] opacity-0 translate-y-full pb-2">
+                products
+              </span>
+              <span class="word-rotator inline-block col-start-1 row-start-1 text-[#f08bb1] opacity-0 translate-y-full pb-2">
+                marketing
+              </span>
+            </div>
+          </h1>
+          <p class="motion-item mt-8 max-w-lg text-sm font-light leading-7 text-[#1e1b24]/60">
+            Discover our premium collection of cruelty-free cosmetics,
+            formulated to nourish your skin and elevate your unique glow.
+          </p>
+          <div class="motion-item mt-10 flex flex-wrap items-center gap-7">
+            <a href="#variants" class="rounded-md bg-gradient-to-r from-[#f08bb1] to-[#e06691] px-10 py-4 text-sm font-medium text-white shadow-[0_1rem_2.5rem_rgba(240,139,177,.25)] transition hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-[#f08bb1]/60">
+              Shop Collection
+            </a>
+            <a href="#features" class="text-sm font-medium text-[#1e1b24]/90 transition hover:text-[#f08bb1]">
+              Explore Lookbook
+            </a>
+          </div>
+        </div>
+
+        <div class="motion-hero relative min-h-[29rem] lg:min-h-[34rem]">
+          <div class="absolute right-0 top-0 h-[24rem] w-full overflow-hidden bg-[#f7ebeb] shadow-[0_2rem_6rem_rgba(0,0,0,.08)] sm:h-[28rem] lg:w-[39rem]" style="clip-path: polygon(14% 0, 100% 0, 100% 100%, 0 100%, 0 16%);">
+            <video src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/generated-videos/2e815afb-cac1-4c01-90e1-cf3810246e35/1783920884919-b64517c5-5792-4255-98c0-a4c827ee1dc0.mp4" poster="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/970ba68d-1fae-4bda-a245-eaa2de8f55df_3840w.png" data-aura-generated-video="true" data-aura-video-preset="loop-in-view" muted="" playsinline="" preload="metadata" loop="" aria-label="Premium makeup products and application" class="h-full w-full object-cover opacity-90" style="filter: saturate(1.1) contrast(1.05); object-position: center 28%;"></video>
+            <div class="absolute inset-0" style="background: radial-gradient(circle at 12% 72%, rgba(240, 139, 177, 0.3), transparent 18rem), linear-gradient(90deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.2));"></div>
+            <div class="absolute inset-0 opacity-40" style="background-image: linear-gradient(120deg, transparent 0px, transparent 30%, rgba(255, 200, 220, 0.4) 31%, transparent 32%, transparent 63%, rgba(255, 230, 200, 0.2) 64%, transparent 65%);"></div>
+          </div>
+
+          <div class="gradient-panel absolute bottom-8 right-0 flex h-36 w-[85%] items-center justify-end gap-5 border border-black/5 pr-12 shadow-[0_2rem_5rem_rgba(0,0,0,.06)] sm:w-[27rem] lg:bottom-20 bg-white cursor-pointer transition-transform hover:-translate-y-1" style="background: linear-gradient(100deg, rgba(255, 255, 255, 0.95), rgba(250, 245, 247, 0.98), rgba(255, 255, 255, 0.95));">
+            <span class="flex h-10 w-10 items-center justify-center rounded-full bg-white/0">
+              <iconify-icon icon="solar:play-linear" class="text-2xl text-[#f08bb1]" style="stroke-width: 1.5;"></iconify-icon>
+            </span>
+            <span class="text-sm font-normal text-[#1e1b24]">
+              Watch Tutorials
+            </span>
+          </div>
+
+          <div class="absolute bottom-0 left-[38%] hidden h-32 w-32 animate-[spin_13s_linear_infinite] items-center justify-center rounded-full sm:flex lg:bottom-10">
+            <div class="absolute inset-0 rounded-full border border-black/10"></div>
+            <div class="relative flex h-16 w-16 items-center justify-center rounded-full bg-black/5 backdrop-blur-md">
+              <iconify-icon icon="solar:arrow-down-linear" class="text-4xl text-[#1e1b24]" style="stroke-width: 1.5;"></iconify-icon>
+            </div>
+            <span class="absolute text-xs font-medium uppercase tracking-[0.4rem] text-[#1e1b24]" style="transform: translateY(-3.3rem);">
+              Discover
+            </span>
+            <span class="absolute text-xs font-medium uppercase tracking-[0.4rem] text-[#1e1b24]" style="transform: translateY(3.3rem) rotate(180deg);">
+              Explore
+            </span>
+          </div>
+        </div>
+
+        <div class="pointer-events-none absolute left-[54%] top-[34rem] hidden h-[32rem] w-40 border-l border-dashed border-white/20 lg:block" style="border-radius: 50%; transform: rotate(-8deg);"></div>
+      </section>
+
+      <section id="features" class="relative mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-20 px-6 py-16 sm:px-10 lg:grid-cols-[1.2fr_0.8fr] lg:px-12 lg:py-20">
+        <div class="relative min-h-[34rem]">
+          <article class="reveal-card absolute left-0 top-0 w-[18rem] overflow-hidden shadow-[0_1.5rem_5rem_rgba(0,0,0,.28)] sm:w-[19rem]" style="clip-path: polygon(0px 0px, 86% 0px, 100% 12%, 100% 100%, 0px 100%); background: linear-gradient(135deg, rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.01)); padding: 0.0625rem;">
+            <div class="h-full w-full overflow-hidden bg-white">
+              <img src="https://images.unsplash.com/photo-1596462502278-27bfdc403348?ixlib=rb-4.0.3&auto=format&fit=crop&w=1600&q=80" alt="Premium headset user" class="h-72 w-full object-cover" style="filter: saturate(1.1); object-position: center 20%;">
+              <div class="p-5" style="background: linear-gradient(105deg, rgba(255, 255, 255, 0.96), rgba(250, 245, 247, 0.9), rgba(255, 255, 255, 0.9));">
+                <iconify-icon icon="solar:magic-stick-3-linear" class="text-2xl text-[#f08bb1]" style="stroke-width: 1.5;"></iconify-icon>
+                <h3 class="mt-5 text-lg font-medium tracking-tight text-[#1e1b24]">
+                  Flawless Finish
+                </h3>
+                <p class="mt-3 text-sm font-light leading-6 text-[#1e1b24]/60">
+                  Ultra-fine pigments blur imperfections for a smooth, natural
+                  complexion.
+                </p>
+              </div>
+            </div>
+          </article>
+
+          <article class="reveal-card absolute left-[42%] top-36 w-[18rem] overflow-hidden shadow-[0_1.5rem_5rem_rgba(0,0,0,.28)] sm:w-[19rem]" style="clip-path: polygon(0px 0px, 100% 0px, 100% 100%, 0px 100%); background: linear-gradient(135deg, rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.01)); padding: 0.0625rem;">
+            <div class="h-full w-full overflow-hidden bg-white">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/a5562104-7ee8-48f7-8390-59a3eb39d811_3840w.png" alt="Driving simulation in immersive device" class="h-60 w-full object-cover" style="filter: saturate(1.1); object-position: center 30%;">
+              <div class="p-5" style="background: linear-gradient(105deg, rgba(255, 255, 255, 0.96), rgba(250, 245, 247, 0.9), rgba(255, 255, 255, 0.9));">
+                <iconify-icon icon="solar:star-fall-linear" class="text-2xl text-[#f08bb1]" style="stroke-width: 1.5;"></iconify-icon>
+                <h3 class="mt-5 text-lg font-medium tracking-tight text-[#1e1b24]">
+                  Long-Lasting Wear
+                </h3>
+                <p class="mt-3 text-sm font-light leading-6 text-[#1e1b24]/60">
+                  Advanced formulas keep your look vibrant and fresh all day.
+                </p>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="max-w-md lg:pl-8">
+          <h2 class="reveal-title text-5xl font-medium leading-tight tracking-tight sm:text-6xl" aria-label="Elevating Brand Storytelling">
+            <span class="inline-block overflow-hidden align-bottom">
+              <span class="word inline-block">Elevating</span>
+            </span>
+            <span class="inline-block overflow-hidden align-bottom">
+              <span class="word inline-block">Brand</span>
+            </span>
+            <span class="inline-block overflow-hidden align-bottom">
+              <span class="word inline-block">Storytelling</span>
+            </span>
+          </h2>
+          <p class="mt-6 text-sm font-light leading-6 text-[#1e1b24]/60">
+            Seamlessly blending motion design, 3D interaction, and pristine
+            typography to craft digital experiences that leave a lasting
+            impression.
+          </p>
+          <a href="#company" class="mt-9 inline-flex rounded-md bg-[#1e1b24] px-10 py-4 text-sm font-medium text-white shadow-[0_1rem_2.5rem_rgba(0,0,0,.15)] transition hover:-translate-y-0.5 hover:bg-black">
+            View Our Work
+          </a>
+        </div>
+      </section>
+
+      <section class="relative mx-auto my-16 w-full max-w-7xl px-0 sm:px-10 lg:px-12">
+        <div class="reveal-card grid min-h-72 grid-cols-1 items-center gap-8 bg-[#f5eef1] px-8 py-12 shadow-[0_2rem_6rem_rgba(0,0,0,.05)] sm:px-20 lg:grid-cols-[16rem_1fr_18rem]" style="clip-path: polygon(0 0, 94% 0, 100% 18%, 100% 100%, 0 100%);">
+          <div class="relative mx-auto h-36 w-52">
+            <div class="absolute left-16 top-0 h-36 w-36 rounded-full bg-[#f08bb1]"></div>
+            <div class="absolute left-0 top-0 flex h-36 w-36 items-center justify-center rounded-full bg-white text-4xl font-normal tracking-tight text-[#12111f]">
+              92k+
+            </div>
+          </div>
+          <div class="text-center">
+            <h2 class="reveal-title text-3xl font-normal leading-tight tracking-tight sm:text-4xl text-[#1e1b24]" aria-label="Beautiful looks crafted for every individual.">
+              <span aria-hidden="true" class="inline-block overflow-hidden align-bottom">
+                <span class="word inline-block">Beautiful</span>
+              </span>
+              <span aria-hidden="true" class="inline-block overflow-hidden align-bottom">
+                <span class="word inline-block">looks</span>
+              </span>
+              <span aria-hidden="true" class="inline-block overflow-hidden align-bottom">
+                <span class="word inline-block">crafted</span>
+              </span>
+              <span aria-hidden="true" class="inline-block overflow-hidden align-bottom">
+                <span class="word inline-block">for</span>
+              </span>
+              <span aria-hidden="true" class="inline-block overflow-hidden align-bottom">
+                <span class="word inline-block">every</span>
+              </span>
+              <span aria-hidden="true" class="inline-block overflow-hidden align-bottom">
+                <span class="word inline-block">individual.</span>
+              </span>
+            </h2>
+            <form id="subscribe-form" class="mt-8 flex w-full max-w-xs mx-auto items-center gap-2">
+              <input type="email" placeholder="Email address" required="" class="w-full rounded-md border border-black/10 bg-white/60 px-4 py-3 text-sm outline-none focus:border-[#f08bb1] focus:ring-1 focus:ring-[#f08bb1] transition placeholder:text-gray-500">
+              <button type="submit" class="shrink-0 rounded-md bg-[#1e1b24] px-5 py-3 text-sm font-medium text-white shadow-md hover:bg-black transition focus:outline-none">
+                Subscribe
+              </button>
+            </form>
+            <p id="subscribe-msg" class="mt-2 text-xs font-medium text-[#1e1b24] opacity-0 transition-opacity">
+              Thanks for subscribing!
+            </p>
+          </div>
+          <div class="relative mx-auto h-28 w-56 overflow-hidden rounded-[3rem] bg-white/80">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/f461bb4e-f1e2-4f2d-9f33-3530a329fddd_3840w.png" alt="Minimal device preview" class="h-full w-full object-cover opacity-70" style="filter: none;">
+            <span class="absolute inset-0 flex items-center justify-center">
+              <iconify-icon icon="solar:play-linear" class="text-2xl text-white" style="stroke-width: 1.5;"></iconify-icon>
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section id="variants" class="relative mx-auto w-full max-w-7xl px-6 py-24 sm:px-10 lg:px-12">
+        <div class="mb-16 flex items-end justify-between gap-8">
+          <h2 class="reveal-title max-w-2xl text-5xl font-medium leading-tight tracking-tight sm:text-6xl" aria-label="Curated Digital Masterpieces">
+            <span class="inline-block overflow-hidden align-bottom">
+              <span class="word inline-block">Curated</span>
+            </span>
+            <span class="inline-block overflow-hidden align-bottom">
+              <span class="word inline-block">Digital</span>
+            </span>
+            <span class="inline-block overflow-hidden align-bottom">
+              <span class="word inline-block">Masterpieces</span>
+            </span>
+          </h2>
+          <a href="#variants" class="hidden rounded-md bg-gradient-to-r from-[#f08bb1] to-[#e06691] px-10 py-4 text-sm font-medium text-white shadow-[0_1rem_2.5rem_rgba(240,139,177,.18)] transition hover:-translate-y-0.5 sm:inline-flex">
+            See All
+          </a>
+        </div>
+
+        <div class="pointer-events-none absolute left-[25%] top-16 h-[52rem] w-[34rem] border-l border-dashed border-white/20" style="border-radius: 50%; transform: rotate(-16deg);"></div>
+        <div class="pointer-events-none absolute left-[39%] top-56 hidden h-44 w-44 rounded-full border-2 border-white/90 lg:block"></div>
+
+        <div class="relative mx-auto grid max-w-4xl grid-cols-1 gap-8 md:grid-cols-2">
+          <article class="product-card overflow-hidden shadow-[0_1.5rem_5rem_rgba(0,0,0,.28)]" style="clip-path: polygon(0px 0px, 86% 0px, 100% 12%, 100% 100%, 0px 100%); background: linear-gradient(135deg, rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.01)); padding: 0.0625rem;">
+            <div class="bg-white">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/5a0ebd0e-c620-494d-93a2-aabbd3123895_3840w.png" alt="XR rare edition headset" class="h-96 w-full object-cover" style="filter: saturate(1.35) hue-rotate(20deg); object-position: center 20%;">
+              <div class="p-6" style="background: linear-gradient(105deg, rgba(255, 255, 255, 0.9), rgba(250, 245, 247, 0.95), rgba(255, 255, 255, 0.9));">
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 class="text-xl font-normal tracking-tight text-[#1e1b24]">
+                      Velvet Matte Lipstick
+                    </h3>
+                    <p class="mt-3 text-2xl font-medium tracking-tight text-[#1e1b24]">
+                      $128.74
+                    </p>
+                  </div>
+                  <div class="pt-2 text-right">
+                    <div class="flex -space-x-3">
+                      <img alt="Reviewer avatar" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2f563338-39fa-47ea-9761-658d4f3f84db_1600w.jpg" class="h-8 w-8 rounded-full border-2 border-[#ffcc4f] object-cover">
+                      <img alt="Reviewer avatar" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/4f5668c5-fc4a-44e0-bc5e-a664189d3c31_1600w.jpg" class="h-8 w-8 rounded-full border-2 border-[#ffcc4f] object-cover">
+                      <img alt="Reviewer avatar" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/eca707cc-a5b7-439a-b4fd-247f6106c2e1_1600w.jpg" class="h-8 w-8 rounded-full border-2 border-[#ffcc4f] object-cover">
+                    </div>
+                    <p class="mt-2 text-xs font-normal text-[#1e1b24]/60">
+                      18k+ Reviews
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="product-card mt-0 overflow-hidden shadow-[0_1.5rem_5rem_rgba(0,0,0,.28)] md:mt-[-4rem]" style="clip-path: polygon(0px 0px, 86% 0px, 100% 12%, 100% 100%, 0px 100%); background: linear-gradient(135deg, rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.01)); padding: 0.0625rem;">
+            <div class="bg-white">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/d88153dc-622e-48d1-82ba-7d211ab47712_1600w.webp" alt="XR master edition headset" class="h-96 w-full object-cover" style="filter: saturate(1.45) hue-rotate(-10deg); object-position: center 18%;">
+              <div class="p-6" style="background: linear-gradient(105deg, rgba(255, 255, 255, 0.9), rgba(250, 245, 247, 0.95), rgba(255, 255, 255, 0.9));">
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 class="text-xl font-normal tracking-tight text-[#1e1b24]">
+                      Luminous Foundation
+                    </h3>
+                    <p class="mt-3 text-2xl font-medium tracking-tight text-[#1e1b24]">
+                      $144.19
+                    </p>
+                  </div>
+                  <div class="pt-2 text-right">
+                    <div class="flex -space-x-3">
+                      <img alt="Reviewer avatar" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/c92852bb-a510-405a-85ab-ffa0fde136a4_1600w.jpg" class="h-8 w-8 rounded-full border-2 border-[#ffcc4f] object-cover">
+                      <img alt="Reviewer avatar" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/77415a2e-dcbc-4748-a29d-fced4821881a_1600w.jpg" class="h-8 w-8 rounded-full border-2 border-[#ffcc4f] object-cover">
+                      <img alt="Reviewer avatar" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2f563338-39fa-47ea-9761-658d4f3f84db_1600w.jpg" class="h-8 w-8 rounded-full border-2 border-[#ffcc4f] object-cover">
+                    </div>
+                    <p class="mt-2 text-xs font-normal text-[#1e1b24]/60">
+                      18k+ Reviews
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="product-card overflow-hidden shadow-[0_1.5rem_5rem_rgba(0,0,0,.28)]" style="clip-path: polygon(0px 0px, 86% 0px, 100% 12%, 100% 100%, 0px 100%); background: linear-gradient(135deg, rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.01)); padding: 0.0625rem;">
+            <div class="bg-white">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2e7c2cdf-7a21-44f8-ad10-7678eeaf4297_1600w.jpg" alt="XR limited edition headset" class="h-96 w-full object-cover" style="filter: saturate(1.3) hue-rotate(16deg); object-position: center 18%;">
+              <div class="p-6" style="background: linear-gradient(105deg, rgba(255, 255, 255, 0.9), rgba(250, 245, 247, 0.95), rgba(255, 255, 255, 0.9));">
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 class="text-xl font-normal tracking-tight text-[#1e1b24]">
+                      Rose Blush Palette
+                    </h3>
+                    <p class="mt-3 text-2xl font-medium tracking-tight text-[#1e1b24]">
+                      $304.62
+                    </p>
+                  </div>
+                  <div class="pt-2 text-right">
+                    <div class="flex -space-x-3">
+                      <img alt="Reviewer avatar" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/eca707cc-a5b7-439a-b4fd-247f6106c2e1_1600w.jpg" class="h-8 w-8 rounded-full border-2 border-[#ffcc4f] object-cover">
+                      <img alt="Reviewer avatar" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/4f5668c5-fc4a-44e0-bc5e-a664189d3c31_1600w.jpg" class="h-8 w-8 rounded-full border-2 border-[#ffcc4f] object-cover">
+                      <img alt="Reviewer avatar" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/c92852bb-a510-405a-85ab-ffa0fde136a4_1600w.jpg" class="h-8 w-8 rounded-full border-2 border-[#ffcc4f] object-cover">
+                    </div>
+                    <p class="mt-2 text-xs font-normal text-[#1e1b24]/60">
+                      18k+ Reviews
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="product-card mt-0 overflow-hidden shadow-[0_1.5rem_5rem_rgba(0,0,0,.28)] md:mt-[-3rem]" style="clip-path: polygon(0px 0px, 86% 0px, 100% 12%, 100% 100%, 0px 100%); background: linear-gradient(135deg, rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.01)); padding: 0.0625rem;">
+            <div class="bg-white">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/74c36e4f-b793-47dd-b0b5-7b1d81eae698_3840w.png" alt="XR sport headset" class="h-96 w-full object-cover" style="filter: saturate(1.4) hue-rotate(18deg); object-position: center 20%;">
+              <div class="p-6" style="background: linear-gradient(105deg, rgba(255, 255, 255, 0.9), rgba(250, 245, 247, 0.95), rgba(255, 255, 255, 0.9));">
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 class="text-xl font-normal tracking-tight text-[#1e1b24]">
+                      Hydrating Setting Spray
+                    </h3>
+                    <p class="mt-3 text-2xl font-medium tracking-tight text-[#1e1b24]">
+                      $304.62
+                    </p>
+                  </div>
+                  <div class="pt-2 text-right">
+                    <div class="flex -space-x-3">
+                      <img alt="Reviewer avatar" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2f563338-39fa-47ea-9761-658d4f3f84db_1600w.jpg" class="h-8 w-8 rounded-full border-2 border-[#ffcc4f] object-cover">
+                      <img alt="Reviewer avatar" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/77415a2e-dcbc-4748-a29d-fced4821881a_1600w.jpg" class="h-8 w-8 rounded-full border-2 border-[#ffcc4f] object-cover">
+                      <img alt="Reviewer avatar" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/eca707cc-a5b7-439a-b4fd-247f6106c2e1_1600w.jpg" class="h-8 w-8 rounded-full border-2 border-[#ffcc4f] object-cover">
+                    </div>
+                    <p class="mt-2 text-xs font-normal text-[#1e1b24]/60">
+                      18k+ Reviews
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="mx-auto w-full max-w-7xl px-6 py-20 sm:px-10 lg:px-12">
+        <h2 class="reveal-title text-center text-4xl font-medium tracking-tight text-[#1e1b24]" aria-label="How It Works">
+          <span aria-hidden="true" class="inline-block overflow-hidden align-bottom">
+            <span class="word inline-block">How</span>
+          </span>
+          <span aria-hidden="true" class="inline-block overflow-hidden align-bottom">
+            <span class="word inline-block">It</span>
+          </span>
+          <span aria-hidden="true" class="inline-block overflow-hidden align-bottom">
+            <span class="word inline-block">Works</span>
+          </span>
+        </h2>
+        <div class="mt-12 grid grid-cols-1 gap-8 md:grid-cols-3">
+          <article class="reveal-card bg-white border border-black/5 p-8 shadow-[0_1.5rem_4rem_rgba(0,0,0,.04)]" style="background: white;">
+            <p class="text-4xl font-medium tracking-tight text-[#f08bb1]">01</p>
+            <h3 class="mt-8 text-xl font-normal tracking-tight text-[#1e1b24]">
+              Find Your Shade
+            </h3>
+            <p class="mt-5 text-sm font-light leading-7 text-[#1e1b24]/60">
+              Use our virtual try-on or shade matching quiz to find the perfect
+              undertone for your skin.
+            </p>
+          </article>
+          <article class="reveal-card bg-white border border-black/5 p-8 shadow-[0_1.5rem_4rem_rgba(0,0,0,.04)]" style="background: white;">
+            <p class="text-4xl font-medium tracking-tight text-[#f08bb1]">02</p>
+            <h3 class="mt-8 text-xl font-normal tracking-tight text-[#1e1b24]">
+              Select Products
+            </h3>
+            <p class="mt-5 text-sm font-light leading-7 text-[#1e1b24]/60">
+              Build your custom routine with our curated selection of palettes,
+              foundations, and lip colors.
+            </p>
+          </article>
+          <article class="reveal-card bg-white border border-black/5 p-8 shadow-[0_1.5rem_4rem_rgba(0,0,0,.04)]" style="background: white;">
+            <p class="text-4xl font-medium tracking-tight text-[#f08bb1]">03</p>
+            <h3 class="mt-8 text-xl font-normal tracking-tight text-[#1e1b24]">
+              Glam Up
+            </h3>
+            <p class="mt-5 text-sm font-light leading-7 text-[#1e1b24]/60">
+              Receive your luxurious beauty package and start transforming your
+              everyday look.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-14 px-6 py-20 sm:px-10 lg:grid-cols-[28rem_1fr] lg:px-12">
+        <div class="relative mx-auto w-full max-w-md">
+          <div class="absolute -left-14 -top-14 hidden h-28 w-28 rounded-full border-2 border-white lg:block"></div>
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/fa242a01-94d0-4056-a2ce-424c449a65bb_1600w.jpg" alt="Neon spatial world testimonial preview" class="h-72 w-full object-cover shadow-[0_1.5rem_5rem_rgba(0,0,0,.28)]">
+          <div class="absolute bottom-0 right-0 grid grid-cols-2">
+            <button type="button" aria-label="Previous testimonial" class="flex h-16 w-20 items-center justify-center bg-white/20 text-white backdrop-blur-md" id="testi-prev">
+              <iconify-icon icon="solar:alt-arrow-left-linear" class="text-3xl" style="stroke-width: 1.5;"></iconify-icon>
+            </button>
+            <button type="button" aria-label="Next testimonial" class="flex h-16 w-20 items-center justify-center bg-white text-[#f08bb1]" id="testi-next">
+              <iconify-icon icon="solar:alt-arrow-right-linear" class="text-3xl" style="stroke-width: 1.5;"></iconify-icon>
+            </button>
+          </div>
+        </div>
+        <div>
+          <div class="flex gap-5 text-[#ffcc4f]">
+            <iconify-icon icon="solar:star-linear" class="text-xl" style="stroke-width: 1.5;"></iconify-icon>
+            <iconify-icon icon="solar:star-linear" class="text-xl" style="stroke-width: 1.5;"></iconify-icon>
+            <iconify-icon icon="solar:star-linear" class="text-xl" style="stroke-width: 1.5;"></iconify-icon>
+            <iconify-icon icon="solar:star-linear" class="text-xl" style="stroke-width: 1.5;"></iconify-icon>
+            <iconify-icon icon="solar:star-linear" class="text-xl" style="stroke-width: 1.5;"></iconify-icon>
+          </div>
+          <blockquote class="mt-8 max-w-2xl text-lg font-light leading-8 text-[#1e1b24] transition-opacity duration-300" id="testi-quote">
+            “This foundation blends so seamlessly into my skin. It feels
+            completely weightless, and the blush palette gives me the most
+            perfect natural glow all day long.”
+          </blockquote>
+          <div class="mt-6 flex items-center gap-5">
+            <span class="h-0.5 w-20 bg-[#1e1b24]"></span>
+            <cite class="text-sm font-normal not-italic text-[#1e1b24] transition-opacity duration-300" id="testi-author">
+              Maren Ellis
+            </cite>
+          </div>
+          <div class="mt-12 flex gap-4" id="testi-indicators">
+            <span class="h-1 w-20 bg-[#1e1b24] transition-colors duration-300"></span>
+            <span class="h-1 w-20 bg-black/10 transition-colors duration-300"></span>
+            <span class="h-1 w-20 bg-black/10 transition-colors duration-300"></span>
+            <span class="h-1 w-20 bg-black/10 transition-colors duration-300"></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="mx-auto w-full max-w-7xl px-6 py-20 sm:px-10 lg:px-12" id="company">
+        <div class="mb-14 grid grid-cols-1 items-start gap-8 md:grid-cols-[18rem_1fr_10rem]">
+          <h2 class="reveal-title text-4xl font-medium tracking-tight text-[#1e1b24]" aria-label="Our Artists">
+            <span aria-hidden="true" class="inline-block overflow-hidden align-bottom">
+              <span class="word inline-block">Our</span>
+            </span>
+            <span aria-hidden="true" class="inline-block overflow-hidden align-bottom">
+              <span class="word inline-block">Artists</span>
+            </span>
+          </h2>
+          <p class="max-w-md text-sm font-light leading-6 text-[#1e1b24]/60">
+            Professional makeup artists, formulation experts, and color
+            theorists dedicated to elevating your routine.
+          </p>
+          <a href="#company" class="rounded-md bg-gradient-to-r from-[#f08bb1] to-[#e06691] px-10 py-4 text-center text-sm font-medium text-white shadow-[0_1rem_2.5rem_rgba(240,139,177,.18)] transition hover:-translate-y-0.5">
+            See All
+          </a>
+        </div>
+
+        <div class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
+          <article class="team-card overflow-hidden shadow-[0_1.5rem_4rem_rgba(0,0,0,.22)]" style="clip-path: polygon(0 0, 78% 0, 100% 16%, 100% 100%, 0 100%);">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/30be2051-c787-475b-89be-82b7bebfd5be_3840w.png" alt="Nora Pierce" class="h-56 w-full object-cover" style="filter: saturate(1.35) hue-rotate(18deg); object-position: center 20%;">
+            <div class="p-6 text-center" style="background: linear-gradient(105deg, rgba(255, 255, 255, 0.96), rgba(250, 245, 247, 0.96));">
+              <h3 class="text-lg font-normal tracking-tight text-[#1e1b24]">
+                Nora Pierce
+              </h3>
+              <div class="mt-4 flex justify-center gap-4 text-2xl text-[#1e1b24]/60">
+                <iconify-icon icon="solar:camera-linear" style="stroke-width: 1.5;"></iconify-icon>
+                <iconify-icon icon="solar:planet-linear" style="stroke-width: 1.5;"></iconify-icon>
+                <iconify-icon icon="solar:link-linear" style="stroke-width: 1.5;"></iconify-icon>
+                <iconify-icon icon="solar:letter-linear" style="stroke-width: 1.5;"></iconify-icon>
+              </div>
+              <a href="#" class="mt-6 inline-flex items-center gap-2 text-xs font-medium text-[#f08bb1]">
+                View Profile
+                <iconify-icon icon="solar:arrow-right-up-linear" class="text-base" style="stroke-width: 1.5;"></iconify-icon>
+              </a>
+            </div>
+          </article>
+
+          <article class="team-card mt-10 overflow-hidden shadow-[0_1.5rem_4rem_rgba(0,0,0,.22)]" style="clip-path: polygon(0 0, 78% 0, 100% 16%, 100% 100%, 0 100%);">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/5b287685-f39a-4516-95f1-d91282516030_3840w.png" alt="Rylan Cole" class="h-56 w-full object-cover" style="filter: saturate(1.35) hue-rotate(18deg); object-position: center 20%;">
+            <div class="p-6 text-center" style="background: linear-gradient(105deg, rgba(255, 255, 255, 0.96), rgba(250, 245, 247, 0.96));">
+              <h3 class="text-lg font-normal tracking-tight text-[#1e1b24]">
+                Rylan Cole
+              </h3>
+              <div class="mt-4 flex justify-center gap-4 text-2xl text-[#1e1b24]/60">
+                <iconify-icon icon="solar:camera-linear" style="stroke-width: 1.5;"></iconify-icon>
+                <iconify-icon icon="solar:planet-linear" style="stroke-width: 1.5;"></iconify-icon>
+                <iconify-icon icon="solar:link-linear" style="stroke-width: 1.5;"></iconify-icon>
+                <iconify-icon icon="solar:letter-linear" style="stroke-width: 1.5;"></iconify-icon>
+              </div>
+              <a href="#" class="mt-6 inline-flex items-center gap-2 text-xs font-medium text-[#f08bb1]">
+                View Profile
+                <iconify-icon icon="solar:arrow-right-up-linear" class="text-base" style="stroke-width: 1.5;"></iconify-icon>
+              </a>
+            </div>
+          </article>
+
+          <article class="team-card overflow-hidden shadow-[0_1.5rem_4rem_rgba(0,0,0,.22)]" style="clip-path: polygon(0 0, 78% 0, 100% 16%, 100% 100%, 0 100%);">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/1574eec9-016e-40cc-8d2d-04de1c9cc1b0_800w.png" alt="Kian Voss" class="h-56 w-full object-cover" style="filter: saturate(1.35) hue-rotate(18deg); object-position: center 20%;">
+            <div class="relative p-6 text-center" style="background: linear-gradient(105deg, rgba(255, 255, 255, 0.96), rgba(250, 245, 247, 0.96));">
+              <h3 class="mt-4 text-lg font-normal tracking-tight text-[#1e1b24]">
+                Kian Voss
+              </h3>
+              <div class="mt-4 flex justify-center gap-4 text-2xl text-[#1e1b24]/60">
+                <iconify-icon icon="solar:camera-linear" style="stroke-width: 1.5;"></iconify-icon>
+                <iconify-icon icon="solar:planet-linear" style="stroke-width: 1.5;"></iconify-icon>
+                <iconify-icon icon="solar:link-linear" style="stroke-width: 1.5;" class=""></iconify-icon>
+                <iconify-icon icon="solar:letter-linear" style="stroke-width: 1.5;"></iconify-icon>
+              </div>
+              <a href="#" class="mt-6 inline-flex items-center gap-2 text-xs font-medium text-[#f08bb1]">
+                View Profile
+                <iconify-icon icon="solar:arrow-right-up-linear" class="text-base" style="stroke-width: 1.5;"></iconify-icon>
+              </a>
+            </div>
+          </article>
+
+          <article class="team-card mt-10 overflow-hidden shadow-[0_1.5rem_4rem_rgba(0,0,0,.22)]" style="clip-path: polygon(0 0, 78% 0, 100% 16%, 100% 100%, 0 100%);">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/bbbf6406-31ac-4f70-a268-8d2264c56350_800w.png" alt="Ari Morgan" class="h-56 w-full object-cover" style="filter: saturate(1.35) hue-rotate(18deg); object-position: center 20%;">
+            <div class="relative p-6 text-center" style="background: linear-gradient(105deg, rgba(255, 255, 255, 0.96), rgba(250, 245, 247, 0.96));">
+              <h3 class="mt-4 text-lg font-normal tracking-tight text-[#1e1b24]">
+                Ari Morgan
+              </h3>
+              <div class="mt-4 flex justify-center gap-4 text-2xl text-[#1e1b24]/60">
+                <iconify-icon icon="solar:camera-linear" style="stroke-width: 1.5;"></iconify-icon>
+                <iconify-icon icon="solar:planet-linear" style="stroke-width: 1.5;"></iconify-icon>
+                <iconify-icon icon="solar:link-linear" style="stroke-width: 1.5;"></iconify-icon>
+                <iconify-icon icon="solar:letter-linear" style="stroke-width: 1.5;"></iconify-icon>
+              </div>
+              <a href="#" class="mt-6 inline-flex items-center gap-2 text-xs font-medium text-[#f08bb1]">
+                View Profile
+                <iconify-icon icon="solar:arrow-right-up-linear" class="text-base" style="stroke-width: 1.5;"></iconify-icon>
+              </a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="mx-auto grid w-full max-w-7xl grid-cols-1 gap-14 px-6 py-24 sm:px-10 lg:grid-cols-[20rem_1fr] lg:px-12">
+        <div>
+          <h2 class="reveal-title text-4xl font-medium leading-tight tracking-tight text-[#1e1b24]" aria-label="Frequently Asked Question">
+            <span aria-hidden="true" class="inline-block overflow-hidden align-bottom">
+              <span class="word inline-block">Frequently</span>
+            </span>
+            <span aria-hidden="true" class="inline-block overflow-hidden align-bottom">
+              <span class="word inline-block">Asked</span>
+            </span>
+            <span aria-hidden="true" class="inline-block overflow-hidden align-bottom">
+              <span class="word inline-block">Question</span>
+            </span>
+          </h2>
+          <a href="#faq" class="mt-10 inline-flex rounded-md bg-gradient-to-r from-[#f08bb1] to-[#e06691] px-10 py-4 text-sm font-medium text-white shadow-[0_1rem_2.5rem_rgba(240,139,177,.18)] transition hover:-translate-y-0.5">
+            Ask More
+          </a>
+        </div>
+        <div id="faq" class="space-y-0">
+          <details class="group border-b border-black/10 py-7" open="">
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-8 text-xl font-normal tracking-tight text-[#1e1b24]">
+              Are your products cruelty-free?
+              <iconify-icon icon="solar:alt-arrow-down-linear" class="text-2xl transition-transform duration-300 group-open:-rotate-180" style="stroke-width: 1.5;"></iconify-icon>
+            </summary>
+            <p class="mt-5 max-w-3xl text-sm font-light leading-7 text-[#1e1b24]/60">
+              Yes, all of our products are 100% cruelty-free and never tested on
+              animals. We are committed to ethical beauty standards.
+            </p>
+          </details>
+          <details class="group border-b border-black/10 py-7">
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-8 text-xl font-normal tracking-tight text-[#1e1b24]">
+              How do I find my perfect foundation shade?
+              <iconify-icon icon="solar:alt-arrow-down-linear" class="text-2xl transition-transform duration-300 group-open:-rotate-180" style="stroke-width: 1.5;"></iconify-icon>
+            </summary>
+            <p class="mt-5 max-w-3xl text-sm font-light leading-7 text-[#1e1b24]/60">
+              Use our virtual try-on tool or consult our shade matching guide to
+              find the perfect undertone for your specific skin type.
+            </p>
+          </details>
+          <details class="group border-b border-black/10 py-7">
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-8 text-xl font-normal tracking-tight text-[#1e1b24]">
+              Are these products suitable for sensitive skin?
+              <iconify-icon icon="solar:alt-arrow-down-linear" class="text-2xl transition-transform duration-300 group-open:-rotate-180" style="stroke-width: 1.5;"></iconify-icon>
+            </summary>
+            <p class="mt-5 max-w-3xl text-sm font-light leading-7 text-[#1e1b24]/60">
+              Absolutely. Our products are formulated without harsh chemicals,
+              parabens, or synthetic fragrances, making them gentle enough for
+              the most sensitive skin.
+            </p>
+          </details>
+          <details class="group border-b border-black/10 py-7">
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-8 text-xl font-normal tracking-tight text-[#1e1b24]">
+              What is your return policy?
+              <iconify-icon icon="solar:alt-arrow-down-linear" class="text-2xl transition-transform duration-300 group-open:-rotate-180" style="stroke-width: 1.5;"></iconify-icon>
+            </summary>
+            <p class="mt-5 max-w-3xl text-sm font-light leading-7 text-[#1e1b24]/60">
+              We offer a 30-day satisfaction guarantee. If you are not
+              completely satisfied, you can return lightly used products for a
+              full refund or exchange.
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <footer id="signup" class="mx-auto grid w-full max-w-7xl grid-cols-1 gap-12 px-6 pb-14 pt-20 sm:px-10 md:grid-cols-[1.3fr_1fr_1fr_1fr] lg:px-12">
+        <div>
+          <a href="#" aria-label="Immersia home" class="flex items-center gap-4">
+            <span class="text-2xl font-medium tracking-tight text-[#1e1b24]">
+              Lumière
+            </span>
+          </a>
+          <div class="mt-12 flex gap-6">
+            <a aria-label="Instagram" href="#" class="flex h-10 w-10 items-center justify-center rounded-md bg-black/5 text-xl transition hover:bg-black/10 text-[#1e1b24]">
+              <iconify-icon icon="solar:camera-linear" style="stroke-width: 1.5;"></iconify-icon>
+            </a>
+            <a aria-label="Community" href="#" class="flex h-10 w-10 items-center justify-center rounded-md bg-black/5 text-xl transition hover:bg-black/10 text-[#1e1b24]">
+              <iconify-icon icon="solar:planet-linear" style="stroke-width: 1.5;"></iconify-icon>
+            </a>
+            <a aria-label="Video channel" href="#" class="flex h-10 w-10 items-center justify-center rounded-md bg-black/5 text-xl transition hover:bg-black/10 text-[#1e1b24]">
+              <iconify-icon icon="solar:play-linear" style="stroke-width: 1.5;"></iconify-icon>
+            </a>
+          </div>
+        </div>
+        <div>
+          <h3 class="text-lg font-medium tracking-tight text-[#1e1b24]">
+            Resources
+          </h3>
+          <ul class="mt-8 space-y-6 text-sm font-light text-[#1e1b24]/80">
+            <li><a href="#" class="hover:text-[#f08bb1]">About</a></li>
+            <li><a href="#" class="hover:text-[#f08bb1]">Cart</a></li>
+            <li><a href="#" class="hover:text-[#f08bb1]">Store</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="text-lg font-medium tracking-tight text-[#1e1b24]">
+            Our Users
+          </h3>
+          <ul class="mt-8 space-y-6 text-sm font-light text-[#1e1b24]/80">
+            <li>
+              <a href="#" class="hover:text-[#f08bb1]">Customer Support</a>
+            </li>
+            <li><a href="#" class="hover:text-[#f08bb1]">Guide</a></li>
+            <li><a href="#" class="hover:text-[#f08bb1]">How It Works</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="text-lg font-medium tracking-tight text-[#1e1b24]">
+            Company
+          </h3>
+          <ul class="mt-8 space-y-6 text-sm font-light text-[#1e1b24]/80">
+            <li><a href="#" class="hover:text-[#f08bb1]">Privacy Policy</a></li>
+            <li>
+              <a href="#" class="hover:text-[#f08bb1]">
+                Terms &amp; Conditions
+              </a>
+            </li>
+          </ul>
+        </div>
+        <p class="md:col-span-4 text-center text-sm font-light text-[#1e1b24]/80">
+          © 2026 Lumière Cosmetics.
+        </p>
+      </footer>
+    </main>
+
+    <script class="">
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      function wrapWords(selector) {
+        document.querySelectorAll(selector).forEach((el) => {
+          if (el.querySelector('.word-rotator')) return;
+          const words = el.textContent.trim().split(/\s+/);
+          el.setAttribute('aria-label', el.textContent.trim());
+          el.innerHTML = words.map(word => '<span aria-hidden="true" class="inline-block overflow-hidden align-bottom"><span class="word inline-block">' + word + '</span></span>').join(' ');
+        });
+      }
+
+      if (!reducedMotion && window.gsap) {
+        gsap.registerPlugin(ScrollTrigger);
+        wrapWords('.reveal-title');
+
+        const intro = gsap.timeline({ defaults: { ease: 'power4.out' } });
+        intro
+          .from('.motion-item', { y: 40, opacity: 0, filter: 'blur(10px)', duration: 1.2, stagger: 0.1 })
+          .from('.word', { yPercent: 120, opacity: 0, rotationZ: 3, filter: 'blur(8px)', duration: 1.2, stagger: 0.05 }, 0.2)
+          .from('.motion-hero', { x: 100, opacity: 0, scale: 0.9, filter: 'blur(15px)', duration: 1.5 }, 0.4)
+          .from('.gradient-panel', { x: 100, opacity: 0, filter: 'blur(10px)', duration: 1.2 }, 0.8);
+
+        const rotators = document.querySelectorAll('.word-rotator');
+        if (rotators.length) {
+          let currentIndex = 0;
+          setInterval(() => {
+            const nextIndex = (currentIndex + 1) % rotators.length;
+            gsap.to(rotators[currentIndex], { yPercent: -100, opacity: 0, filter: 'blur(5px)', duration: 0.8, ease: 'power3.inOut' });
+            gsap.fromTo(rotators[nextIndex],
+              { yPercent: 100, opacity: 0, filter: 'blur(5px)' },
+              { yPercent: 0, opacity: 1, filter: 'blur(0px)', duration: 0.8, ease: 'power3.inOut' }
+            );
+            currentIndex = nextIndex;
+          }, 2500);
+        }
+
+        document.querySelectorAll('.reveal-title').forEach((title) => {
+          gsap.from(title.querySelectorAll('.word'), {
+            scrollTrigger: { trigger: title, start: 'top 85%' },
+            yPercent: 120,
+            opacity: 0,
+            rotationZ: 2,
+            filter: 'blur(8px)',
+            duration: 1,
+            stagger: 0.05,
+            ease: 'power3.out'
+          });
+        });
+
+        gsap.utils.toArray('.reveal-card, .product-card, .team-card').forEach((card, index) => {
+          gsap.from(card, {
+            scrollTrigger: { trigger: card, start: 'top 85%' },
+            y: 80,
+            opacity: 0,
+            scale: 0.95,
+            filter: 'blur(12px)',
+            duration: 1.2,
+            delay: (index % 3) * 0.1,
+            ease: 'power3.out'
+          });
+        });
+
+        const featuresSection = document.getElementById('features');
+        if (featuresSection) {
+          ScrollTrigger.create({
+            trigger: featuresSection,
+            start: 'top top',
+            end: '+=100%',
+            pin: true,
+            pinSpacing: true,
+          });
+
+          gsap.to(featuresSection.querySelectorAll('.reveal-card'), {
+            scrollTrigger: {
+              trigger: featuresSection,
+              start: 'top top',
+              end: '+=100%',
+              scrub: 1
+            },
+            yPercent: -50,
+            stagger: 0.1,
+            ease: 'none'
+          });
+        }
+
+        gsap.to('.product-card', {
+          scrollTrigger: { trigger: '#variants', start: 'top bottom', end: 'bottom top', scrub: 1 },
+          y: (i) => i % 2 ? 60 : -40,
+          ease: 'none'
+        });
+      }
+
+      (function initAuraWebGL() {
+        const canvas = document.getElementById('auraCanvas');
+        const fallback = document.getElementById('webglFallback');
+        if (reducedMotion) {
+          canvas.style.display = 'none';
+          fallback.classList.remove('hidden');
+          return;
+        }
+
+        const gl = canvas.getContext('webgl', { alpha: true, antialias: false, powerPreference: 'high-performance' });
+        if (!gl) {
+          canvas.style.display = 'none';
+          fallback.classList.remove('hidden');
+          return;
+        }
+
+        const vertexSource = `
+          attribute vec2 position;
+          varying vec2 vUv;
+          void main() {
+            vUv = position * 0.5 + 0.5;
+            gl_Position = vec4(position, 0.0, 1.0);
+          }
+        `;
+
+        const fragmentSource = `
+          precision mediump float;
+          varying vec2 vUv;
+          uniform float uTime;
+          uniform vec2 uResolution;
+
+          float circle(vec2 uv, vec2 p, float r) {
+            return smoothstep(r, r - 0.42, length(uv - p));
+          }
+
+          void main() {
+            vec2 uv = vUv;
+            vec2 aspect = vec2(uResolution.x / uResolution.y, 1.0);
+            vec2 q = (uv - 0.5) * aspect;
+
+            float beat = min(uTime / 8.0, 1.0);
+            vec2 p1 = vec2(-0.36 + 0.06 * sin(uTime * 0.55), 0.25 + 0.04 * cos(uTime * 0.42));
+            vec2 p2 = vec2(0.42 + 0.05 * cos(uTime * 0.36), -0.03 + 0.07 * sin(uTime * 0.48));
+            vec2 p3 = vec2(0.02 + 0.08 * sin(uTime * 0.28), -0.42 + 0.05 * cos(uTime * 0.44));
+
+            float a = circle(q, p1, 0.36 + 0.04 * sin(uTime * 0.6));
+            float b = circle(q, p2, 0.42 + 0.03 * cos(uTime * 0.5));
+            float c = circle(q, p3, 0.30 + 0.04 * sin(uTime * 0.7));
+
+            vec3 color = vec3(0.0);
+            color += a * vec3(0.82, 0.12, 0.96);
+            color += b * vec3(0.16, 0.52, 0.98);
+            color += c * vec3(0.22, 0.95, 0.82);
+
+            float vignette = smoothstep(0.86, 0.14, length(uv - 0.5));
+            float alpha = (a + b + c) * 0.24 * vignette * beat;
+            gl_FragColor = vec4(color, alpha);
+          }
+        `;
+
+        function shader(type, source) {
+          const s = gl.createShader(type);
+          gl.shaderSource(s, source);
+          gl.compileShader(s);
+          if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(s));
+          }
+          return s;
+        }
+
+        let program;
+        try {
+          program = gl.createProgram();
+          gl.attachShader(program, shader(gl.VERTEX_SHADER, vertexSource));
+          gl.attachShader(program, shader(gl.FRAGMENT_SHADER, fragmentSource));
+          gl.linkProgram(program);
+          if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+        } catch (error) {
+          canvas.style.display = 'none';
+          fallback.classList.remove('hidden');
+          return;
+        }
+
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+
+        const position = gl.getAttribLocation(program, 'position');
+        const uTime = gl.getUniformLocation(program, 'uTime');
+        const uResolution = gl.getUniformLocation(program, 'uResolution');
+
+        function resize() {
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          canvas.width = Math.floor(window.innerWidth * dpr);
+          canvas.height = Math.floor(window.innerHeight * dpr);
+          canvas.style.width = '100%';
+          canvas.style.height = '100%';
+          gl.viewport(0, 0, canvas.width, canvas.height);
+        }
+
+        window.addEventListener('resize', resize, { passive: true });
+        resize();
+
+        const start = performance.now();
+        function render(now) {
+          const time = (now - start) * 0.001;
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.useProgram(program);
+          gl.enableVertexAttribArray(position);
+          gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+          gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+          gl.uniform1f(uTime, time);
+          gl.uniform2f(uResolution, canvas.width, canvas.height);
+          gl.drawArrays(gl.TRIANGLES, 0, 6);
+          requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+      })();
+    </script>
+
+    <script>
+      setTimeout(() => {
+        if (window.gsap && window.ScrollTrigger) {
+          gsap.to('#scroll-progress', {
+            scaleX: 1,
+            ease: 'none',
+            scrollTrigger: {
+              scrub: 0.2,
+              start: 0,
+              end: 'max'
+            }
+          });
+        }
+      }, 100);
+    </script>
+
+    <script>
+      (function() {
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+          anchor.addEventListener('click', function (e) {
+            const targetId = this.getAttribute('href');
+            if (targetId === '#') return;
+            const targetElement = document.querySelector(targetId);
+            if (targetElement) {
+              e.preventDefault();
+              targetElement.scrollIntoView({ behavior: 'smooth' });
+            }
+          });
+        });
+
+        const form = document.getElementById('subscribe-form');
+        const msg = document.getElementById('subscribe-msg');
+        if(form && msg) {
+          form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            form.reset();
+            msg.style.opacity = '1';
+            setTimeout(() => { msg.style.opacity = '0'; }, 3000);
+          });
+        }
+
+        const testimonials = [
+          { quote: "“This foundation blends so seamlessly into my skin. It feels completely weightless, and the blush palette gives me the most perfect natural glow all day long.”", author: "Maren Ellis" },
+          { quote: "“I’ve never experienced makeup that lasts this long without creasing. The setting spray is an absolute game-changer for my daily routine.”", author: "Sophia Carter" },
+          { quote: "“The colors are incredibly vibrant and true to what you see online. I'm obsessed with the velvet matte lipstick!”", author: "Elena Rodriguez" },
+          { quote: "“Finally, a brand that understands sensitive skin. These products feel nourishing and give a radiant finish without breakouts.”", author: "Jasmine Lee" }
+        ];
+        let currentTesti = 0;
+        const quoteEl = document.getElementById('testi-quote');
+        const authorEl = document.getElementById('testi-author');
+        const indicators = document.getElementById('testi-indicators');
+
+        function updateTestimonial(idx) {
+          if(quoteEl && authorEl) {
+            quoteEl.style.opacity = '0';
+            authorEl.style.opacity = '0';
+            setTimeout(() => {
+              quoteEl.textContent = testimonials[idx].quote;
+              authorEl.textContent = testimonials[idx].author;
+              quoteEl.style.opacity = '1';
+              authorEl.style.opacity = '1';
+            }, 300);
+            if(indicators && indicators.children) {
+              Array.from(indicators.children).forEach((ind, i) => {
+                ind.className = i === idx ? 'h-1 w-20 bg-[#1e1b24] transition-colors duration-300' : 'h-1 w-20 bg-black/10 transition-colors duration-300';
+              });
+            }
+          }
+        }
+
+        document.getElementById('testi-prev')?.addEventListener('click', () => {
+          currentTesti = (currentTesti - 1 + testimonials.length) % testimonials.length;
+          updateTestimonial(currentTesti);
+        });
+        document.getElementById('testi-next')?.addEventListener('click', () => {
+          currentTesti = (currentTesti + 1) % testimonials.length;
+          updateTestimonial(currentTesti);
+        });
+      })();
+    </script>
+  
+<script data-aura-video-controller="true">
+(function () {
+  function playVideo(video) {
+    var promise = video.play();
+    if (promise && typeof promise.catch === "function") {
+      promise.catch(function () {});
+    }
+  }
+
+  function setupVideo(video) {
+    if (video.__auraVideoReady === true) return;
+    video.__auraVideoReady = true;
+    video.removeAttribute("data-aura-video-ready");
+    video.removeAttribute("data-aura-video-played");
+    video.muted = true;
+    video.playsInline = true;
+
+    var preset = video.dataset.auraVideoPreset || "loop-in-view";
+    if (preset === "hover") {
+      video.addEventListener("mouseenter", function () {
+        playVideo(video);
+      });
+      video.addEventListener("mouseleave", function () {
+        video.pause();
+        video.currentTime = 0;
+      });
+      return;
+    }
+
+    if (!("IntersectionObserver" in window)) {
+      playVideo(video);
+      return;
+    }
+
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          if (preset === "play-once" && video.__auraVideoPlayed === true) {
+            return;
+          }
+          playVideo(video);
+        } else {
+          video.pause();
+        }
+      });
+    }, { threshold: 0.35 });
+
+    if (preset === "play-once") {
+      video.addEventListener("ended", function () {
+        video.__auraVideoPlayed = true;
+      }, { once: true });
+    }
+
+    observer.observe(video);
+  }
+
+  function setupVideos() {
+    document
+      .querySelectorAll("video[data-aura-video-preset]")
+      .forEach(setupVideo);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", setupVideos);
+  } else {
+    setupVideos();
+  }
+})();</script></body></html>

@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPU Path Tracing Water Renderer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r155/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
+<script src="https://cdn.tailwindcss.com"></script></head>
+<body class="bg-black text-white font-inter overflow-hidden">
+    <!-- Header -->
+    <div class="absolute top-0 left-0 right-0 z-10 bg-black/90 backdrop-blur-sm border-b border-gray-800">
+        <div class="flex items-center justify-between px-6 py-4">
+            <div class="flex items-center space-x-4">
+                <div class="text-xl font-semibold tracking-tight">GPU Path Tracing</div>
+                <div class="h-4 w-px bg-gray-700"></div>
+                <div class="text-sm text-gray-400">Real-Time Ray Traced Water & Mirrors</div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <button class="p-2 rounded-lg hover:bg-gray-800 transition-colors" id="infoBtn">
+                    <i data-lucide="info" class="w-4 h-4"></i>
+                </button>
+                <button class="p-2 rounded-lg hover:bg-gray-800 transition-colors" id="settingsBtn">
+                    <i data-lucide="settings" class="w-4 h-4"></i>
+                </button>
+                <button class="p-2 rounded-lg hover:bg-gray-800 transition-colors" id="fullscreenBtn">
+                    <i data-lucide="maximize" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Canvas Container -->
+    <div id="canvasContainer" class="w-full h-screen relative bg-black">
+        <canvas id="pathTracingCanvas" class="w-full h-full"></canvas>
+        
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            <div class="text-center">
+                <div class="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+                <div class="text-lg font-medium mb-2">Compiling Path Tracing Shaders</div>
+                <div class="text-sm text-gray-400">BVH acceleration structure, GPU kernels...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Control Panel -->
+    <div id="controlPanel" class="absolute right-6 top-24 w-80 bg-gray-800/90 backdrop-blur-sm rounded-xl border border-gray-700 p-6 transform transition-transform translate-x-full" style="max-height: calc(100vh - 8rem); overflow-y: auto;">
+        <div class="flex items-center justify-between mb-6">
+            <h3 class="text-lg font-semibold tracking-tight">Path Tracing Controls</h3>
+            <button id="closePanelBtn" class="p-1 rounded hover:bg-gray-700 transition-colors">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+
+        <!-- Ray Tracing Settings -->
+        <div class="space-y-6">
+            <div>
+                <h4 class="text-sm font-medium text-gray-300 mb-3">Ray Tracing</h4>
+                <div class="space-y-4">
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Max Bounces</span>
+                            <span class="text-gray-400" id="bouncesValue">8</span>
+                        </label>
+                        <input type="range" id="bouncesSlider" min="1" max="16" step="1" value="8" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+                    
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Samples per Frame</span>
+                            <span class="text-gray-400" id="samplesValue">1</span>
+                        </label>
+                        <input type="range" id="samplesSlider" min="1" max="8" step="1" value="1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Russian Roulette</span>
+                            <span class="text-gray-400" id="rrValue">0.8</span>
+                        </label>
+                        <input type="range" id="rrSlider" min="0.1" max="1.0" step="0.1" value="0.8" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm">Progressive Rendering</span>
+                        <div class="relative">
+                            <input type="checkbox" id="progressiveToggle" class="sr-only" checked>
+                            <div class="w-10 h-6 bg-gray-600 rounded-full shadow-inner cursor-pointer toggle-bg">
+                                <div class="w-4 h-4 bg-white rounded-full shadow transform transition-transform toggle-dot"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="h-px bg-gray-700"></div>
+
+            <!-- Water Material -->
+            <div>
+                <h4 class="text-sm font-medium text-gray-300 mb-3">Water Material</h4>
+                <div class="space-y-4">
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>IOR</span>
+                            <span class="text-gray-400" id="iorValue">1.33</span>
+                        </label>
+                        <input type="range" id="iorSlider" min="1.1" max="1.8" step="0.01" value="1.33" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Absorption</span>
+                            <span class="text-gray-400" id="absorptionValue">0.1</span>
+                        </label>
+                        <input type="range" id="absorptionSlider" min="0.0" max="1.0" step="0.01" value="0.1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Scattering</span>
+                            <span class="text-gray-400" id="scatteringValue">0.05</span>
+                        </label>
+                        <input type="range" id="scatteringSlider" min="0.0" max="0.5" step="0.01" value="0.05" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Wave Amplitude</span>
+                            <span class="text-gray-400" id="waveAmpValue">0.1</span>
+                        </label>
+                        <input type="range" id="waveAmpSlider" min="0.0" max="0.5" step="0.01" value="0.1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Wave Frequency</span>
+                            <span class="text-gray-400" id="waveFreqValue">2.0</span>
+                        </label>
+                        <input type="range" id="waveFreqSlider" min="0.5" max="8.0" step="0.1" value="2.0" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+                </div>
+            </div>
+
+            <div class="h-px bg-gray-700"></div>
+
+            <!-- Mirror Material -->
+            <div>
+                <h4 class="text-sm font-medium text-gray-300 mb-3">Mirror Material</h4>
+                <div class="space-y-4">
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Reflectivity</span>
+                            <span class="text-gray-400" id="mirrorReflValue">0.98</span>
+                        </label>
+                        <input type="range" id="mirrorReflSlider" min="0.0" max="1.0" step="0.01" value="0.98" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Roughness</span>
+                            <span class="text-gray-400" id="mirrorRoughValue">0.0</span>
+                        </label>
+                        <input type="range" id="mirrorRoughSlider" min="0.0" max="0.5" step="0.01" value="0.0" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Metallic</span>
+                            <span class="text-gray-400" id="mirrorMetallicValue">1.0</span>
+                        </label>
+                        <input type="range" id="mirrorMetallicSlider" min="0.0" max="1.0" step="0.01" value="1.0" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+                </div>
+            </div>
+
+            <div class="h-px bg-gray-700"></div>
+
+            <!-- Environment -->
+            <div>
+                <h4 class="text-sm font-medium text-gray-300 mb-3">Environment</h4>
+                <div class="space-y-4">
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Sun Intensity</span>
+                            <span class="text-gray-400" id="sunIntensityValue">20.0</span>
+                        </label>
+                        <input type="range" id="sunIntensitySlider" min="1.0" max="100.0" step="1.0" value="20.0" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Ambient Light</span>
+                            <span class="text-gray-400" id="ambientIntensityValue">0.3</span>
+                        </label>
+                        <input type="range" id="ambientIntensitySlider" min="0.0" max="2.0" step="0.1" value="0.3" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Sky Intensity</span>
+                            <span class="text-gray-400" id="skyIntensityValue">0.5</span>
+                        </label>
+                        <input type="range" id="skyIntensitySlider" min="0.0" max="5.0" step="0.1" value="0.5" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Sun Angle</span>
+                            <span class="text-gray-400" id="sunAngleValue">30°</span>
+                        </label>
+                        <input type="range" id="sunAngleSlider" min="5" max="85" step="5" value="30" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Sun Size</span>
+                            <span class="text-gray-400" id="sunSizeValue">0.01</span>
+                        </label>
+                        <input type="range" id="sunSizeSlider" min="0.005" max="0.1" step="0.005" value="0.01" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Reflection Intensity</span>
+                            <span class="text-gray-400" id="reflectionIntensityValue">2.0</span>
+                        </label>
+                        <input type="range" id="reflectionIntensitySlider" min="0.1" max="5.0" step="0.1" value="2.0" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+                </div>
+            </div>
+
+            <div class="h-px bg-gray-700"></div>
+
+            <!-- Post Processing -->
+            <div>
+                <h4 class="text-sm font-medium text-gray-300 mb-3">Post Processing</h4>
+                <div class="space-y-4">
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Exposure</span>
+                            <span class="text-gray-400" id="exposureValue">1.5</span>
+                        </label>
+                        <input type="range" id="exposureSlider" min="0.1" max="5.0" step="0.1" value="1.5" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+
+                    <div>
+                        <label class="flex items-center justify-between text-sm mb-2">
+                            <span>Gamma</span>
+                            <span class="text-gray-400" id="gammaValue">2.2</span>
+                        </label>
+                        <input type="range" id="gammaSlider" min="1.0" max="3.0" step="0.1" value="2.2" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider">
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm">Denoiser</span>
+                        <div class="relative">
+                            <input type="checkbox" id="denoiseToggle" class="sr-only" checked>
+                            <div class="w-10 h-6 bg-gray-600 rounded-full shadow-inner cursor-pointer toggle-bg">
+                                <div class="w-4 h-4 bg-white rounded-full shadow transform transition-transform toggle-dot"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm">ACES Tone Mapping</span>
+                        <div class="relative">
+                            <input type="checkbox" id="acesToneMapToggle" class="sr-only" checked>
+                            <div class="w-10 h-6 bg-gray-600 rounded-full shadow-inner cursor-pointer toggle-bg">
+                                <div class="w-4 h-4 bg-white rounded-full shadow transform transition-transform toggle-dot"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="h-px bg-gray-700"></div>
+
+            <!-- Actions -->
+            <div class="space-y-3">
+                <button class="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg font-medium transition-colors" id="resetSamplesBtn">
+                    Reset Accumulation
+                </button>
+                <button class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg font-medium transition-colors" id="resetCameraBtn">
+                    Reset Camera
+                </button>
+                <button class="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg font-medium transition-colors" id="screenshotBtn">
+                    Save Render
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Performance Stats -->
+    <div class="absolute bottom-6 left-6 bg-gray-800/90 backdrop-blur-sm rounded-lg border border-gray-700 p-4">
+        <div class="text-xs text-gray-400 mb-1">Path Tracing Stats</div>
+        <div class="flex space-x-4 text-sm">
+            <div>FPS: <span class="text-green-400" id="fps">--</span></div>
+            <div>Samples: <span class="text-blue-400" id="totalSamples">0</span></div>
+            <div>Bounces: <span class="text-purple-400" id="maxBounces">8</span></div>
+        </div>
+        <div class="flex space-x-4 text-sm mt-1">
+            <div>Rays/s: <span class="text-cyan-400" id="raysPerSec">0M</span></div>
+            <div>Quality: <span class="text-yellow-400" id="quality">Converging...</span></div>
+        </div>
+    </div>
+
+    <style>
+        .slider::-webkit-slider-thumb {
+            appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+        }
+        
+        .slider::-moz-range-thumb {
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+        }
+
+        .toggle-bg {
+            transition: background-color 0.2s;
+        }
+
+        .toggle-dot {
+            top: 4px;
+            left: 4px;
+            position: absolute;
+            transition: transform 0.2s;
+        }
+
+        input:checked + .toggle-bg {
+            background-color: #3b82f6;
+        }
+
+        input:checked + .toggle-bg .toggle-dot {
+            transform: translateX(16px);
+        }
+    </style>
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        // Check WebGL support first
+        function checkWebGLSupport() {
+            const canvas = document.createElement('canvas');
+            let gl = null;
+            
+            try {
+                gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            } catch (e) {
+                console.error('WebGL context creation error:', e);
+            }
+            
+            return {
+                webgl2: !!canvas.getContext('webgl2'),
+                webgl: !!gl,
+                context: gl
+            };
+        }
+
+        // Enhanced path tracer with better lighting and colors
+        class GPUPathTracer {
+            constructor(canvas) {
+                this.canvas = canvas;
+                
+                // Try WebGL2 first, fallback to WebGL1
+                const support = checkWebGLSupport();
+                console.log('WebGL Support:', support);
+                
+                if (support.webgl2) {
+                    this.gl = canvas.getContext('webgl2', { 
+                        antialias: false, 
+                        alpha: false,
+                        powerPreference: 'high-performance'
+                    });
+                    this.isWebGL2 = true;
+                    console.log('Using WebGL2');
+                } else if (support.webgl) {
+                    this.gl = canvas.getContext('webgl', { 
+                        antialias: false, 
+                        alpha: false,
+                        powerPreference: 'high-performance'
+                    });
+                    this.isWebGL2 = false;
+                    console.log('Using WebGL1 fallback');
+                } else {
+                    throw new Error('WebGL not supported');
+                }
+
+                this.width = canvas.width;
+                this.height = canvas.height;
+                this.frameCount = 0;
+                this.totalSamples = 0;
+                this.settings = {
+                    maxBounces: 8,
+                    samplesPerFrame: 1,
+                    russianRoulette: 0.8,
+                    progressive: true,
+                    waterIOR: 1.33,
+                    waterAbsorption: 0.1,
+                    waterScattering: 0.05,
+                    waveAmplitude: 0.1,
+                    waveFrequency: 2.0,
+                    mirrorReflectivity: 0.98,
+                    mirrorRoughness: 0.0,
+                    mirrorMetallic: 1.0,
+                    sunIntensity: 20.0,
+                    ambientIntensity: 0.3,
+                    skyIntensity: 0.5,
+                    reflectionIntensity: 2.0,
+                    sunAngle: 30,
+                    sunSize: 0.01,
+                    exposure: 1.5,
+                    gamma: 2.2,
+                    denoiser: true,
+                    acesToneMap: true
+                };
+
+                this.camera = {
+                    position: [8, 5, 8],
+                    target: [0, 0, 0],
+                    fov: 60 * Math.PI / 180,
+                    up: [0, 1, 0]
+                };
+
+                this.initPathTracer();
+            }
+
+            initPathTracer() {
+                const pathTracingVertexShader = this.isWebGL2 ? 
+                    `#version 300 es
+                    in vec2 a_position;
+                    void main() {
+                        gl_Position = vec4(a_position, 0.0, 1.0);
+                    }` : 
+                    `attribute vec2 a_position;
+                    void main() {
+                        gl_Position = vec4(a_position, 0.0, 1.0);
+                    }`;
+
+                const pathTracingFragmentShader = this.isWebGL2 ? 
+                    `#version 300 es
+                    precision highp float;
+                    precision highp int;
+                    
+                    uniform vec2 u_resolution;
+                    uniform float u_time;
+                    uniform int u_frame;
+                    uniform int u_maxBounces;
+                    uniform vec3 u_cameraPos;
+                    uniform vec3 u_cameraTarget;
+                    uniform float u_fov;
+                    uniform float u_waterIOR;
+                    uniform float u_waveAmplitude;
+                    uniform float u_waveFrequency;
+                    uniform float u_sunIntensity;
+                    uniform float u_ambientIntensity;
+                    uniform float u_skyIntensity;
+                    uniform float u_reflectionIntensity;
+                    uniform float u_sunAngle;
+                    uniform float u_exposure;
+                    uniform float u_gamma;
+                    uniform bool u_acesToneMap;
+                    
+                    out vec4 fragColor;
+                    
+                    // Hash function for better randomness
+                    float hash(vec2 p) {
+                        vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+                        p3 += dot(p3, p3.yzx + 33.33);
+                        return fract((p3.x + p3.y) * p3.z);
+                    }
+                    
+                    float random(vec2 st) {
+                        return hash(st + float(u_frame) * 0.0123);
+                    }
+                    
+                    vec3 randomDirection(vec2 seed) {
+                        float u1 = random(seed);
+                        float u2 = random(seed + vec2(1.0, 0.0));
+                        float z = 1.0 - 2.0 * u1;
+                        float r = sqrt(max(0.0, 1.0 - z * z));
+                        float phi = 2.0 * 3.14159 * u2;
+                        return vec3(r * cos(phi), r * sin(phi), z);
+                    }
+                    
+                    vec3 randomHemisphere(vec3 normal, vec2 seed) {
+                        vec3 dir = randomDirection(seed);
+                        return dot(dir, normal) < 0.0 ? -dir : dir;
+                    }
+                    
+                    // Improved water surface with more dramatic waves
+                    float waterHeight(vec2 pos) {
+                        float h = 0.0;
+                        h += sin(u_waveFrequency * pos.x + u_time) * 0.6;
+                        h += sin(u_waveFrequency * 1.5 * pos.y + u_time * 1.2) * 0.3;
+                        h += sin(u_waveFrequency * 2.0 * (pos.x + pos.y) + u_time * 0.8) * 0.1;
+                        h += sin(u_waveFrequency * 3.0 * pos.x + u_time * 1.5) * 0.05;
+                        return h * u_waveAmplitude;
+                    }
+                    
+                    vec3 waterNormal(vec2 pos) {
+                        float eps = 0.01;
+                        float h = waterHeight(pos);
+                        float hx = waterHeight(pos + vec2(eps, 0.0));
+                        float hy = waterHeight(pos + vec2(0.0, eps));
+                        vec3 tangentX = vec3(eps, hx - h, 0.0);
+                        vec3 tangentY = vec3(0.0, hy - h, eps);
+                        return normalize(cross(tangentX, tangentY));
+                    }
+                    
+                    // Ray-water intersection
+                    bool intersectWater(vec3 ro, vec3 rd, out float t, out vec3 pos, out vec3 normal) {
+                        // Simple plane intersection first
+                        if (abs(rd.y) < 0.001) return false;
+                        
+                        t = -ro.y / rd.y;
+                        if (t < 0.01) return false;
+                        
+                        pos = ro + t * rd;
+                        
+                        // Add wave displacement
+                        pos.y = waterHeight(pos.xz);
+                        normal = waterNormal(pos.xz);
+                        
+                        return true;
+                    }
+                    
+                    // Enhanced sky with pure black and bright sun
+                    vec3 getSkyColor(vec3 direction) {
+                        float sunAngleRad = u_sunAngle * 3.14159 / 180.0;
+                        vec3 sunDir = normalize(vec3(0.8 * cos(sunAngleRad), sin(sunAngleRad), 0.6));
+                        
+                        float sunDot = max(0.0, dot(direction, sunDir));
+                        
+                        // Very bright sun disk for strong reflections
+                        float sunDisk = pow(sunDot, 2048.0) * u_sunIntensity;
+                        float sunGlow = pow(sunDot, 128.0) * u_sunIntensity * 0.3;
+                        float sunHalo = pow(sunDot, 32.0) * u_sunIntensity * 0.1;
+                        
+                        // Mostly black sky with just a hint of ambient
+                        vec3 blackSky = vec3(0.0);
+                        
+                        // Only add minimal ambient around horizon for depth
+                        float elevation = direction.y;
+                        vec3 ambientColor = vec3(0.02, 0.03, 0.05) * u_ambientIntensity;
+                        float ambientFalloff = exp(-abs(elevation) * 3.0);
+                        
+                        // Very subtle sky glow only near horizon
+                        vec3 skyColor = blackSky;
+                        if (elevation > -0.1 && elevation < 0.3) {
+                            skyColor += ambientColor * ambientFalloff * u_skyIntensity;
+                        }
+                        
+                        // Bright white/yellow sun for strong reflections
+                        vec3 sunColor = vec3(1.0, 0.95, 0.85);
+                        
+                        return skyColor + sunColor * (sunDisk + sunGlow + sunHalo);
+                    }
+                    
+                    // Fresnel reflection calculation
+                    float fresnel(vec3 incident, vec3 normal, float ior) {
+                        float cosI = abs(dot(incident, normal));
+                        float sinT2 = (1.0 - cosI * cosI) / (ior * ior);
+                        
+                        if (sinT2 >= 1.0) return 1.0; // Total internal reflection
+                        
+                        float cosT = sqrt(1.0 - sinT2);
+                        float rs = (ior * cosI - cosT) / (ior * cosI + cosT);
+                        float rp = (cosI - ior * cosT) / (cosI + ior * cosT);
+                        
+                        return 0.5 * (rs * rs + rp * rp);
+                    }
+                    
+                    // Enhanced path tracing with stronger reflections
+                    vec3 pathTrace(vec3 ro, vec3 rd) {
+                        vec3 color = vec3(0.0);
+                        vec3 throughput = vec3(1.0);
+                        
+                        for (int i = 0; i < 16; i++) {
+                            if (i >= u_maxBounces) break;
+                            
+                            float t;
+                            vec3 pos, normal;
+                            
+                            if (intersectWater(ro, rd, t, pos, normal)) {
+                                // Calculate fresnel with enhanced reflection
+                                float f = fresnel(rd, normal, u_waterIOR);
+                                
+                                // Boost fresnel for stronger reflections
+                                f = mix(f, 1.0, 0.2);
+                                
+                                vec2 seed = pos.xz + float(i) * 123.456 + fract(u_time) * 0.1;
+                                
+                                if (random(seed) < f) {
+                                    // Perfect reflection for mirror-like water
+                                    rd = reflect(rd, normal);
+                                    ro = pos + normal * 0.001;
+                                    
+                                    // Maintain reflection intensity
+                                    throughput *= vec3(0.98, 0.99, 1.0) * u_reflectionIntensity;
+                                } else {
+                                    // Refraction with absorption
+                                    float eta = dot(rd, normal) < 0.0 ? 1.0 / u_waterIOR : u_waterIOR;
+                                    vec3 refracted = refract(rd, normal, eta);
+                                    
+                                    if (length(refracted) == 0.0) {
+                                        // Total internal reflection
+                                        rd = reflect(rd, normal);
+                                        ro = pos + normal * 0.001;
+                                        throughput *= u_reflectionIntensity;
+                                    } else {
+                                        rd = refracted;
+                                        ro = pos - normal * 0.001;
+                                        
+                                        // Water absorption with blue-green tint
+                                        throughput *= vec3(0.6, 0.8, 0.95);
+                                    }
+                                }
+                                
+                                // Add caustics-like highlights
+                                if (i == 0) {
+                                    float caustic = abs(sin(pos.x * 10.0 + u_time)) * abs(sin(pos.z * 10.0 + u_time));
+                                    color += throughput * vec3(0.1, 0.2, 0.3) * caustic * 0.1 * u_ambientIntensity;
+                                }
+                                
+                            } else {
+                                // Hit sky - enhanced lighting
+                                vec3 skyColor = getSkyColor(rd);
+                                color += throughput * skyColor;
+                                break;
+                            }
+                            
+                            // Russian roulette for performance
+                            if (i > 2) {
+                                float p = max(throughput.x, max(throughput.y, throughput.z));
+                                if (random(pos.xy + float(i) * 456.789) > p * 0.9) break;
+                                throughput /= (p * 0.9);
+                            }
+                        }
+                        
+                        return color;
+                    }
+                    
+                    // ACES tone mapping
+                    vec3 acesToneMapping(vec3 color) {
+                        const float a = 2.51;
+                        const float b = 0.03;
+                        const float c = 2.43;
+                        const float d = 0.59;
+                        const float e = 0.14;
+                        return clamp((color * (a * color + b)) / (color * (c * color + d) + e), 0.0, 1.0);
+                    }
+                    
+                    void main() {
+                        vec2 coord = gl_FragCoord.xy;
+                        vec2 uv = coord / u_resolution;
+                        vec2 screenCoord = (coord / u_resolution * 2.0 - 1.0);
+                        screenCoord.x *= u_resolution.x / u_resolution.y;
+                        
+                        // Add some anti-aliasing jitter
+                        vec2 jitter = (vec2(random(coord), random(coord + vec2(1.0))) - 0.5) / u_resolution;
+                        screenCoord += jitter * 2.0;
+                        
+                        // Camera setup
+                        vec3 cameraDir = normalize(u_cameraTarget - u_cameraPos);
+                        vec3 cameraRight = normalize(cross(cameraDir, vec3(0, 1, 0)));
+                        vec3 cameraUp = cross(cameraRight, cameraDir);
+                        
+                        // Ray direction with proper field of view
+                        float focalLength = 1.0 / tan(u_fov * 0.5);
+                        vec3 rayDir = normalize(
+                            screenCoord.x * cameraRight + 
+                            screenCoord.y * cameraUp + 
+                            focalLength * cameraDir
+                        );
+                        
+                        // Trace ray
+                        vec3 color = pathTrace(u_cameraPos, rayDir);
+                        
+                        // Post processing
+                        color *= u_exposure;
+                        
+                        // Tone mapping
+                        if (u_acesToneMap) {
+                            color = acesToneMapping(color);
+                        } else {
+                            color = color / (color + vec3(1.0)); // Reinhard
+                        }
+                        
+                        // Gamma correction
+                        color = pow(color, vec3(1.0 / u_gamma));
+                        
+                        fragColor = vec4(color, 1.0);
+                    }` :
+                    `precision highp float;
+                    precision highp int;
+                    
+                    uniform vec2 u_resolution;
+                    uniform float u_time;
+                    uniform int u_frame;
+                    uniform float u_exposure;
+                    uniform float u_gamma;
+                    uniform float u_skyIntensity;
+                    uniform float u_ambientIntensity;
+                    uniform float u_waveAmplitude;
+                    uniform float u_waveFrequency;
+                    uniform float u_sunIntensity;
+                    uniform float u_sunAngle;
+                    uniform float u_reflectionIntensity;
+                    
+                    float hash(vec2 p) {
+                        vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+                        p3 += dot(p3, p3.yzx + 33.33);
+                        return fract((p3.x + p3.y) * p3.z);
+                    }
+                    
+                    float waterHeight(vec2 pos) {
+                        float h = 0.0;
+                        h += sin(u_waveFrequency * pos.x + u_time) * 0.6;
+                        h += sin(u_waveFrequency * 1.5 * pos.y + u_time * 1.2) * 0.3;
+                        h += sin(u_waveFrequency * 2.0 * (pos.x + pos.y) + u_time * 0.8) * 0.1;
+                        return h * u_waveAmplitude;
+                    }
+                    
+                    vec3 getSkyColor(vec3 direction) {
+                        float sunAngleRad = u_sunAngle * 3.14159 / 180.0;
+                        vec3 sunDir = normalize(vec3(0.8, sin(sunAngleRad), 0.6));
+                        float sunDot = max(0.0, dot(direction, sunDir));
+                        
+                        // Bright sun against black background
+                        float sunDisk = pow(sunDot, 512.0) * u_sunIntensity;
+                        float sunGlow = pow(sunDot, 64.0) * u_sunIntensity * 0.2;
+                        
+                        // Black sky with minimal ambient
+                        vec3 skyColor = vec3(0.0);
+                        float elevation = direction.y;
+                        
+                        if (elevation > -0.1 && elevation < 0.2) {
+                            skyColor += vec3(0.01, 0.02, 0.03) * u_ambientIntensity;
+                        }
+                        
+                        return skyColor + vec3(1.0, 0.95, 0.8) * (sunDisk + sunGlow);
+                    }
+                    
+                    void main() {
+                        vec2 coord = gl_FragCoord.xy;
+                        vec2 screenCoord = (coord / u_resolution * 2.0 - 1.0);
+                        screenCoord.x *= u_resolution.x / u_resolution.y;
+                        
+                        // Enhanced water effect with stronger reflections
+                        vec2 waterPos = screenCoord * 3.0;
+                        float height = waterHeight(waterPos);
+                        
+                        // Multiple reflection directions for complexity
+                        vec3 skyDir1 = normalize(vec3(screenCoord.x, abs(screenCoord.y) + 0.3, 1.0));
+                        vec3 skyDir2 = normalize(vec3(screenCoord.x * 1.1, abs(screenCoord.y) + 0.2, 0.9));
+                        
+                        vec3 skyColor1 = getSkyColor(skyDir1);
+                        vec3 skyColor2 = getSkyColor(skyDir2);
+                        vec3 skyColor = mix(skyColor1, skyColor2, 0.3) * u_reflectionIntensity;
+                        
+                        // Dark water color for contrast
+                        float depth = max(0.0, -screenCoord.y + height * 0.1);
+                        vec3 waterColor = mix(
+                            vec3(0.0, 0.1, 0.2), // Very dark deep water
+                            vec3(0.1, 0.3, 0.5), // Slightly lighter shallow
+                            exp(-depth * 3.0)
+                        );
+                        
+                        // Enhanced fresnel for stronger reflections
+                        float fresnel = 0.1 + 0.9 * pow(1.0 - max(0.0, screenCoord.y + 0.5), 1.5);
+                        vec3 color = mix(waterColor, skyColor, fresnel);
+                        
+                        // Add wave highlights and caustics
+                        float wave1 = sin(waterPos.x + u_time) * 0.5 + 0.5;
+                        float wave2 = sin(waterPos.y * 1.3 + u_time * 1.1) * 0.5 + 0.5;
+                        float caustic = wave1 * wave2;
+                        
+                        color += vec3(1.0, 0.95, 0.8) * caustic * 0.3 * u_sunIntensity * 0.1;
+                        
+                        // Post processing
+                        color *= u_exposure;
+                        color = pow(color, vec3(1.0 / u_gamma));
+                        
+                        gl_FragColor = vec4(color, 1.0);
+                    }`;
+
+                // Create shader program
+                try {
+                    this.program = this.createProgram(pathTracingVertexShader, pathTracingFragmentShader);
+                } catch (error) {
+                    console.error('Shader compilation failed:', error);
+                    throw error;
+                }
+                
+                // Get uniform locations
+                this.uniforms = {};
+                const uniformNames = [
+                    'u_resolution', 'u_time', 'u_frame', 'u_maxBounces',
+                    'u_cameraPos', 'u_cameraTarget', 'u_fov',
+                    'u_waterIOR', 'u_waveAmplitude', 'u_waveFrequency',
+                    'u_sunIntensity', 'u_ambientIntensity', 'u_skyIntensity', 'u_reflectionIntensity', 'u_sunAngle',
+                    'u_exposure', 'u_gamma', 'u_acesToneMap'
+                ];
+                
+                uniformNames.forEach(name => {
+                    this.uniforms[name] = this.gl.getUniformLocation(this.program, name);
+                });
+
+                // Create quad geometry
+                this.quadBuffer = this.gl.createBuffer();
+                this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.quadBuffer);
+                this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array([
+                    -1, -1,  1, -1, -1,  1, -1,  1,  1, -1,  1,  1
+                ]), this.gl.STATIC_DRAW);
+
+                // Setup attributes
+                const positionAttributeName = 'a_position';
+                this.positionAttribute = this.gl.getAttribLocation(this.program, positionAttributeName);
+                this.gl.enableVertexAttribArray(this.positionAttribute);
+                this.gl.vertexAttribPointer(this.positionAttribute, 2, this.gl.FLOAT, false, 0, 0);
+
+                console.log('GPU Path Tracer initialized with black background and enhanced lighting');
+            }
+
+            createProgram(vertexSource, fragmentSource) {
+                const vertexShader = this.createShader(this.gl.VERTEX_SHADER, vertexSource);
+                const fragmentShader = this.createShader(this.gl.FRAGMENT_SHADER, fragmentSource);
+                
+                const program = this.gl.createProgram();
+                this.gl.attachShader(program, vertexShader);
+                this.gl.attachShader(program, fragmentShader);
+                this.gl.linkProgram(program);
+                
+                if (!this.gl.getProgramParameter(program, this.gl.LINK_STATUS)) {
+                    const error = this.gl.getProgramInfoLog(program);
+                    console.error('Program link error:', error);
+                    this.gl.deleteProgram(program);
+                    throw new Error('Failed to link shader program: ' + error);
+                }
+                
+                return program;
+            }
+
+            createShader(type, source) {
+                const shader = this.gl.createShader(type);
+                this.gl.shaderSource(shader, source);
+                this.gl.compileShader(shader);
+                
+                if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
+                    const error = this.gl.getShaderInfoLog(shader);
+                    console.error('Shader compile error:', error);
+                    console.error('Shader source:', source);
+                    this.gl.deleteShader(shader);
+                    throw new Error('Failed to compile shader: ' + error);
+                }
+                
+                return shader;
+            }
+
+            updateSettings(newSettings) {
+                Object.assign(this.settings, newSettings);
+                this.frameCount = 0;
+                this.totalSamples = 0;
+            }
+
+            updateCamera(camera) {
+                Object.assign(this.camera, camera);
+                this.frameCount = 0;
+                this.totalSamples = 0;
+            }
+
+            resetAccumulation() {
+                this.frameCount = 0;
+                this.totalSamples = 0;
+            }
+
+            render(time) {
+                this.gl.useProgram(this.program);
+                this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
+                this.gl.viewport(0, 0, this.width, this.height);
+                
+                // Clear to black
+                this.gl.clearColor(0, 0, 0, 1);
+                this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+                
+                // Set uniforms
+                if (this.uniforms.u_resolution) this.gl.uniform2f(this.uniforms.u_resolution, this.width, this.height);
+                if (this.uniforms.u_time) this.gl.uniform1f(this.uniforms.u_time, time);
+                if (this.uniforms.u_frame) this.gl.uniform1i(this.uniforms.u_frame, this.frameCount);
+                if (this.uniforms.u_maxBounces) this.gl.uniform1i(this.uniforms.u_maxBounces, this.settings.maxBounces);
+                
+                // Camera uniforms
+                if (this.uniforms.u_cameraPos) this.gl.uniform3fv(this.uniforms.u_cameraPos, this.camera.position);
+                if (this.uniforms.u_cameraTarget) this.gl.uniform3fv(this.uniforms.u_cameraTarget, this.camera.target);
+                if (this.uniforms.u_fov) this.gl.uniform1f(this.uniforms.u_fov, this.camera.fov);
+                
+                // Material uniforms
+                if (this.uniforms.u_waterIOR) this.gl.uniform1f(this.uniforms.u_waterIOR, this.settings.waterIOR);
+                if (this.uniforms.u_waveAmplitude) this.gl.uniform1f(this.uniforms.u_waveAmplitude, this.settings.waveAmplitude);
+                if (this.uniforms.u_waveFrequency) this.gl.uniform1f(this.uniforms.u_waveFrequency, this.settings.waveFrequency);
+                
+                // Environment uniforms
+                if (this.uniforms.u_sunIntensity) this.gl.uniform1f(this.uniforms.u_sunIntensity, this.settings.sunIntensity);
+                if (this.uniforms.u_ambientIntensity) this.gl.uniform1f(this.uniforms.u_ambientIntensity, this.settings.ambientIntensity);
+                if (this.uniforms.u_skyIntensity) this.gl.uniform1f(this.uniforms.u_skyIntensity, this.settings.skyIntensity);
+                if (this.uniforms.u_reflectionIntensity) this.gl.uniform1f(this.uniforms.u_reflectionIntensity, this.settings.reflectionIntensity);
+                if (this.uniforms.u_sunAngle) this.gl.uniform1f(this.uniforms.u_sunAngle, this.settings.sunAngle);
+                
+                // Post processing uniforms
+                if (this.uniforms.u_exposure) this.gl.uniform1f(this.uniforms.u_exposure, this.settings.exposure);
+                if (this.uniforms.u_gamma) this.gl.uniform1f(this.uniforms.u_gamma, this.settings.gamma);
+                if (this.uniforms.u_acesToneMap) this.gl.uniform1i(this.uniforms.u_acesToneMap, this.settings.acesToneMap ? 1 : 0);
+                
+                // Draw quad
+                this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.quadBuffer);
+                this.gl.vertexAttribPointer(this.positionAttribute, 2, this.gl.FLOAT, false, 0, 0);
+                this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
+                
+                this.frameCount++;
+                this.totalSamples += this.settings.samplesPerFrame;
+            }
+
+            resize(width, height) {
+                this.width = width;
+                this.height = height;
+                this.canvas.width = width;
+                this.canvas.height = height;
+                this.gl.viewport(0, 0, width, height);
+                this.resetAccumulation();
+            }
+        }
+
+        // Global variables
+        let pathTracer;
+        let animationId;
+        let lastTime = 0;
+        let frameCount = 0;
+        let fpsDisplay = 0;
+        let mouseX = 0, mouseY = 0;
+        let isMouseDown = false;
+        let cameraDistance = 10;
+        let cameraTheta = Math.PI / 4;
+        let cameraPhi = Math.PI / 6;
+
+        function init() {
+            const canvas = document.getElementById('pathTracingCanvas');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            try {
+                pathTracer = new GPUPathTracer(canvas);
+                setupControls();
+                setupMouseControls();
+                
+                // Hide loading overlay
+                setTimeout(() => {
+                    document.getElementById('loadingOverlay').style.opacity = '0';
+                    setTimeout(() => {
+                        document.getElementById('loadingOverlay').style.display = 'none';
+                    }, 300);
+                    
+                    // Start rendering
+                    animate();
+                }, 500);
+            } catch (error) {
+                console.error('Failed to initialize path tracer:', error);
+                const loadingOverlay = document.getElementById('loadingOverlay');
+                loadingOverlay.querySelector('.text-lg').textContent = 'GPU Path Tracing Not Supported';
+                loadingOverlay.querySelector('.text-sm').textContent = error.message || 'Your browser or GPU doesn\'t support the required WebGL features';
+                loadingOverlay.querySelector('.animate-spin').style.display = 'none';
+            }
+        }
+
+        function updateCamera() {
+            const x = cameraDistance * Math.sin(cameraPhi) * Math.cos(cameraTheta);
+            const y = cameraDistance * Math.cos(cameraPhi);
+            const z = cameraDistance * Math.sin(cameraPhi) * Math.sin(cameraTheta);
+            
+            if (pathTracer) {
+                pathTracer.updateCamera({
+                    position: [x, y, z],
+                    target: [0, 0, 0]
+                });
+            }
+        }
+
+        function setupMouseControls() {
+            const canvas = document.getElementById('pathTracingCanvas');
+            
+            canvas.addEventListener('mousedown', (e) => {
+                isMouseDown = true;
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            });
+            
+            canvas.addEventListener('mouseup', () => {
+                isMouseDown = false;
+            });
+            
+            canvas.addEventListener('mousemove', (e) => {
+                if (!isMouseDown) return;
+                
+                const deltaX = e.clientX - mouseX;
+                const deltaY = e.clientY - mouseY;
+                
+                cameraTheta -= deltaX * 0.01;
+                cameraPhi = Math.max(0.1, Math.min(Math.PI - 0.1, cameraPhi + deltaY * 0.01));
+                
+                updateCamera();
+                
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            });
+            
+            canvas.addEventListener('wheel', (e) => {
+                cameraDistance = Math.max(2, Math.min(50, cameraDistance + e.deltaY * 0.01));
+                updateCamera();
+                e.preventDefault();
+            });
+        }
+
+        function setupControls() {
+            // Settings button
+            document.getElementById('settingsBtn').addEventListener('click', () => {
+                const panel = document.getElementById('controlPanel');
+                panel.style.transform = panel.style.transform.includes('translate-x-full') ? 
+                    'translateX(0)' : 'translateX(100%)';
+            });
+
+            document.getElementById('closePanelBtn').addEventListener('click', () => {
+                document.getElementById('controlPanel').style.transform = 'translateX(100%)';
+            });
+
+            // All sliders
+            const sliders = [
+                { id: 'bouncesSlider', valueId: 'bouncesValue', setting: 'maxBounces', type: 'int' },
+                { id: 'samplesSlider', valueId: 'samplesValue', setting: 'samplesPerFrame', type: 'int' },
+                { id: 'rrSlider', valueId: 'rrValue', setting: 'russianRoulette' },
+                { id: 'iorSlider', valueId: 'iorValue', setting: 'waterIOR' },
+                { id: 'absorptionSlider', valueId: 'absorptionValue', setting: 'waterAbsorption' },
+                { id: 'scatteringSlider', valueId: 'scatteringValue', setting: 'waterScattering' },
+                { id: 'waveAmpSlider', valueId: 'waveAmpValue', setting: 'waveAmplitude' },
+                { id: 'waveFreqSlider', valueId: 'waveFreqValue', setting: 'waveFrequency' },
+                { id: 'mirrorReflSlider', valueId: 'mirrorReflValue', setting: 'mirrorReflectivity' },
+                { id: 'mirrorRoughSlider', valueId: 'mirrorRoughValue', setting: 'mirrorRoughness' },
+                { id: 'mirrorMetallicSlider', valueId: 'mirrorMetallicValue', setting: 'mirrorMetallic' },
+                { id: 'sunIntensitySlider', valueId: 'sunIntensityValue', setting: 'sunIntensity' },
+                { id: 'ambientIntensitySlider', valueId: 'ambientIntensityValue', setting: 'ambientIntensity' },
+                { id: 'skyIntensitySlider', valueId: 'skyIntensityValue', setting: 'skyIntensity' },
+                { id: 'reflectionIntensitySlider', valueId: 'reflectionIntensityValue', setting: 'reflectionIntensity' },
+                { id: 'sunAngleSlider', valueId: 'sunAngleValue', setting: 'sunAngle', suffix: '°' },
+                { id: 'sunSizeSlider', valueId: 'sunSizeValue', setting: 'sunSize' },
+                { id: 'exposureSlider', valueId: 'exposureValue', setting: 'exposure' },
+                { id: 'gammaSlider', valueId: 'gammaValue', setting: 'gamma' }
+            ];
+
+            sliders.forEach(slider => {
+                const element = document.getElementById(slider.id);
+                const valueElement = document.getElementById(slider.valueId);
+                
+                if (element && valueElement) {
+                    element.addEventListener('input', (e) => {
+                        const value = slider.type === 'int' ? parseInt(e.target.value) : parseFloat(e.target.value);
+                        const decimals = slider.setting.includes('Size') || slider.setting.includes('Scattering') ? 3 : 
+                                        slider.setting.includes('Angle') ? 0 : 
+                                        slider.setting.includes('Intensity') ? 1 : 2;
+                        valueElement.textContent = value.toFixed(decimals) + (slider.suffix || '');
+                        
+                        if (pathTracer) {
+                            pathTracer.updateSettings({ [slider.setting]: value });
+                        }
+                    });
+                }
+            });
+
+            // Toggles
+            const toggles = [
+                { id: 'progressiveToggle', setting: 'progressive' },
+                { id: 'denoiseToggle', setting: 'denoiser' },
+                { id: 'acesToneMapToggle', setting: 'acesToneMap' }
+            ];
+
+            toggles.forEach(toggle => {
+                const element = document.getElementById(toggle.id);
+                if (element) {
+                    element.addEventListener('change', (e) => {
+                        if (pathTracer) {
+                            pathTracer.updateSettings({ [toggle.setting]: e.target.checked });
+                        }
+                    });
+                }
+            });
+
+            // Buttons
+            const resetSamplesBtn = document.getElementById('resetSamplesBtn');
+            if (resetSamplesBtn) {
+                resetSamplesBtn.addEventListener('click', () => {
+                    if (pathTracer) pathTracer.resetAccumulation();
+                });
+            }
+
+            const resetCameraBtn = document.getElementById('resetCameraBtn');
+            if (resetCameraBtn) {
+                resetCameraBtn.addEventListener('click', () => {
+                    cameraDistance = 10;
+                    cameraTheta = Math.PI / 4;
+                    cameraPhi = Math.PI / 6;
+                    updateCamera();
+                });
+            }
+
+            const screenshotBtn = document.getElementById('screenshotBtn');
+            if (screenshotBtn) {
+                screenshotBtn.addEventListener('click', () => {
+                    if (pathTracer) {
+                        const link = document.createElement('a');
+                        link.download = 'path_traced_water.png';
+                        link.href = pathTracer.canvas.toDataURL();
+                        link.click();
+                    }
+                });
+            }
+
+            // Initialize toggle states
+            document.querySelectorAll('input[type="checkbox"]').forEach(toggle => {
+                const bg = toggle.nextElementSibling;
+                if (bg && toggle.checked) {
+                    bg.style.backgroundColor = '#3b82f6';
+                    const dot = bg.querySelector('.toggle-dot');
+                    if (dot) dot.style.transform = 'translateX(16px)';
+                }
+                
+                toggle.addEventListener('change', () => {
+                    if (bg) {
+                        const dot = bg.querySelector('.toggle-dot');
+                        if (toggle.checked) {
+                            bg.style.backgroundColor = '#3b82f6';
+                            if (dot) dot.style.transform = 'translateX(16px)';
+                        } else {
+                            bg.style.backgroundColor = '#4b5563';
+                            if (dot) dot.style.transform = 'translateX(0)';
+                        }
+                    }
+                });
+            });
+        }
+
+        function animate(currentTime = 0) {
+            animationId = requestAnimationFrame(animate);
+            
+            if (pathTracer) {
+                pathTracer.render(currentTime * 0.001);
+                
+                // Update stats
+                frameCount++;
+                if (currentTime - lastTime > 1000) {
+                    fpsDisplay = Math.round((frameCount * 1000) / (currentTime - lastTime));
+                    
+                    const fpsElement = document.getElementById('fps');
+                    const totalSamplesElement = document.getElementById('totalSamples');
+                    const maxBouncesElement = document.getElementById('maxBounces');
+                    const raysPerSecElement = document.getElementById('raysPerSec');
+                    const qualityElement = document.getElementById('quality');
+                    
+                    if (fpsElement) fpsElement.textContent = fpsDisplay;
+                    if (totalSamplesElement) totalSamplesElement.textContent = pathTracer.totalSamples;
+                    if (maxBouncesElement) maxBouncesElement.textContent = pathTracer.settings.maxBounces;
+                    
+                    // Calculate rays per second
+                    const raysPerSec = (pathTracer.totalSamples * pathTracer.width * pathTracer.height * pathTracer.settings.maxBounces) / ((currentTime - lastTime) / 1000) / 1000000;
+                    if (raysPerSecElement) raysPerSecElement.textContent = raysPerSec.toFixed(1) + 'M';
+                    
+                    // Quality indicator
+                    const quality = pathTracer.totalSamples < 100 ? 'Low' : pathTracer.totalSamples < 500 ? 'Medium' : pathTracer.totalSamples < 1000 ? 'High' : 'Converged';
+                    if (qualityElement) qualityElement.textContent = quality;
+                    
+                    frameCount = 0;
+                    lastTime = currentTime;
+                }
+            }
+        }
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            if (pathTracer) {
+                pathTracer.resize(window.innerWidth, window.innerHeight);
+            }
+        });
+
+        // Initialize everything
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            init();
+        });
+    </script>
+</body>
+</html>

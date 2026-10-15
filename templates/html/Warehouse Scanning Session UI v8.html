@@ -1,0 +1,220 @@
+<html lang="ru"><head><meta charset="UTF-8">
+<title>Сканер склада</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+<script src="https://unpkg.com/lucide@latest/dist/lu.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script></head>
+
+<body class="min-h-screen bg-neutral-900 text-white font-inter">
+
+  <!-- Экран 1 ▸ Приветствие -->
+  <section id="screen1" class="min-h-screen grid place-items-center pr-6 pl-6">
+    <div class="flex flex-col items-center gap-16 animate-fade-in">
+      <h1 class="text-5xl sm:text-6xl font-semibold tracking-tight text-center">Сканер&nbsp;склада</h1>
+
+      <button aria-label="Начать сессию" id="startBtn" class="w-full max-w-xs px-10 py-5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition flex items-center justify-center gap-3 text-xl font-medium shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+        <i data-lucide="play" class="w-[24px] h-[24px]" stroke-width="2"></i><span>Начать</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Экран 2 ▸ Динамическая форма -->
+  <section id="screen2" class="hidden min-h-screen px-6 pb-10 flex flex-col animate-fade-in">
+    <header class="py-8 flex items-center relative">
+      <button aria-label="Назад" id="backToStart" class="absolute left-0 top-1/2 -translate-y-1/2 p-3 rounded-full bg-white text-neutral-900 hover:bg-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 transition active:scale-95">
+        <i data-lucide="arrow-left" class="w-5 h-5"></i>
+      </button>
+
+      <h2 class="mx-auto text-4xl font-semibold tracking-tight text-center">Детали сессии</h2>
+    </header>
+
+    <form id="dynamicForm" class="flex-1 flex flex-col gap-8 overflow-y-auto pb-4" aria-live="polite">
+      <!-- Поля вставляются динамически -->
+    </form>
+
+    <div class="pt-6">
+      <button aria-label="Перейти к сканеру" id="scanBtn" disabled aria-disabled="true" class="w-full max-w-xs mx-auto px-10 py-5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:pointer-events-none active:scale-95 transition font-medium flex items-center justify-center gap-3 shadow-lg">
+        <i data-lucide="scan-barcode" class="w-6 h-6"></i><span>Сканировать</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Экран 3 ▸ Сканер -->
+  <section id="screen3" class="hidden min-h-screen px-6 pb-10 flex flex-col animate-fade-in">
+    <header class="py-8">
+      <h2 class="text-4xl font-semibold tracking-tight text-center">Сканирование</h2>
+    </header>
+
+    <div id="placeholder" class="flex-1 rounded-xl border border-neutral-700 w-full grid place-items-center bg-neutral-800 text-neutral-400 text-center text-lg px-8">
+      <p>Имитируется сканирование…</p>
+    </div>
+
+    <p id="counter" aria-live="polite" class="pt-6 text-center text-7xl font-semibold tracking-tight">0</p>
+
+    <div class="pt-8">
+      <button aria-label="Завершить сессию" id="finishBtn" class="w-full max-w-xs mx-auto px-10 py-5 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 transition font-medium flex items-center justify-center gap-3 shadow-lg">
+        <i data-lucide="check-circle" class="w-6 h-6"></i><span>Завершить</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Диалог подтверждения (центрирован) -->
+  <div id="confirmModal" role="dialog" aria-modal="true" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div class="bg-neutral-800 rounded-2xl p-8 w-[90%] max-w-sm flex flex-col gap-6 shadow-xl animate-slide-in">
+      <h3 class="text-2xl font-semibold tracking-tight">Завершить сессию?</h3>
+      <p class="text-neutral-400 text-base leading-relaxed">Все отсканированные данные будут отправлены, и сессия будет сброшена.</p>
+
+      <div class="flex flex-col sm:flex-row sm:justify-end gap-4 pt-2">
+        <button id="cancelConfirm" class="flex-1 sm:flex-none px-6 py-3 rounded-xl border border-neutral-600 hover:bg-neutral-700 active:scale-95 transition font-medium">Нет</button>
+        <button id="confirmYes" class="flex-1 sm:flex-none px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition font-medium">Да</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Скрипты -->
+  <script>
+    const screens   = { 1: screen1, 2: screen2, 3: screen3 };
+    const startBtn  = document.getElementById('startBtn');
+    const scanBtn   = document.getElementById('scanBtn');
+    const finishBtn = document.getElementById('finishBtn');
+    const backBtn   = document.getElementById('backToStart');
+    const counterEl = document.getElementById('counter');
+    const form      = document.getElementById('dynamicForm');
+    const modal     = document.getElementById('confirmModal');
+    const cancelBtn = document.getElementById('cancelConfirm');
+    const yesBtn    = document.getElementById('confirmYes');
+
+    const API_HEADERS = {
+      "WarehousesApiAuthToken": "djmki3490de990w2q9g99dcjmgiwwi0002q",
+      "Authorization": "Basic Og=="
+    };
+
+    let fieldMeta = {};
+    let formState = {};
+    let scannedSet = new Set();
+
+    function showScreen(n) {
+      Object.entries(screens).forEach(([i, el]) => {
+        (+i === n) ? el.classList.remove('hidden') : el.classList.add('hidden');
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function loadFormAndShow() {
+      try {
+        const res = await fetch("https://service.hvalwaters.ru/api/warehouses/get_fields", { headers: API_HEADERS });
+        const { data } = await res.json();
+        fieldMeta = data;
+        renderDynamicForm(data);
+        showScreen(2);
+      } catch {
+        alert('Не удалось загрузить форму');
+      }
+    }
+
+    function renderDynamicForm(meta) {
+      form.innerHTML = '';
+      Object.values(meta).forEach(f => {
+        const wrap = document.createElement('div');
+        wrap.className = 'flex flex-col gap-2';
+
+        const label = document.createElement('label');
+        label.textContent = f.label + (f.required ? ' *' : '');
+        label.className = 'text-base font-medium';
+        label.setAttribute('for', f.name);
+        wrap.appendChild(label);
+
+        let el;
+        if (f.type === 'select') {
+          el = document.createElement('select');
+          el.innerHTML = '<option value="">Выбрать…</option>' + f.data.map(o => `<option value="${o.value}">${o.text}</option>`).join('');
+        } else {
+          el = document.createElement('input');
+          el.type = 'text';
+          el.placeholder = f.placeholder || '';
+        }
+
+        el.id = f.name;
+        el.dataset.name = f.name;
+        if (f.required) el.required = true;
+
+        el.className = 'bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-4 focus:outline-none';
+        el.addEventListener('input', updateState);
+        el.addEventListener('change', updateState);
+
+        wrap.appendChild(el);
+        form.appendChild(wrap);
+      });
+
+      updateState();
+    }
+
+    function updateState() {
+      formState = {};
+      let valid = true;
+
+      form.querySelectorAll('[data-name]').forEach(el => {
+        const name = el.dataset.name;
+        const value = el.value.trim();
+        formState[name] = value;
+        if (fieldMeta[name]?.required && !value) valid = false;
+      });
+
+      scanBtn.disabled = !valid;
+      scanBtn.setAttribute('aria-disabled', !valid);
+    }
+
+    function simulateScan() {
+      const fakeCodes = ['ABC123', 'DEF456', 'GHI789', 'JKL012', 'MNO345'];
+      fakeCodes.forEach((code, idx) => {
+        setTimeout(() => {
+          if (!scannedSet.has(code)) {
+            scannedSet.add(code);
+            counterEl.textContent = scannedSet.size;
+          }
+        }, (idx + 1) * 800);
+      });
+    }
+
+    async function submitSession() {
+      yesBtn.disabled = true;
+      try {
+        await fetch("https://service.hvalwaters.ru/api/warehouses/codes/create", {
+          method: 'POST',
+          headers: { ...API_HEADERS, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...formState, codes: [...scannedSet] })
+        });
+        resetAll();
+      } catch {
+        alert('Ошибка отправки');
+      }
+      yesBtn.disabled = false;
+      modal.classList.add('hidden');
+    }
+
+    function resetAll() {
+      form.reset?.();
+      scanBtn.disabled = true;
+      scanBtn.setAttribute('aria-disabled', 'true');
+      scannedSet.clear();
+      counterEl.textContent = '0';
+      showScreen(1);
+    }
+
+    startBtn.addEventListener('click', loadFormAndShow);
+    backBtn.addEventListener('click', () => { form.reset?.(); updateState(); showScreen(1); });
+    scanBtn.addEventListener('click', () => { if (scanBtn.disabled) return; scannedSet.clear(); counterEl.textContent = '0'; showScreen(3); simulateScan(); });
+    finishBtn.addEventListener('click', () => modal.classList.remove('hidden'));
+    cancelBtn.addEventListener('click', () => modal.classList.add('hidden'));
+    yesBtn.addEventListener('click', submitSession);
+
+    lu.createIcons();
+  </script>
+
+  <style>
+    @keyframes fade-in { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+    @keyframes slide-in { from { opacity: 0; transform: scale(.95) } to { opacity: 1; transform: none } }
+    .animate-fade-in { animation: fade-in .6s both }
+    .animate-slide-in { animation: slide-in .35s both }
+  </style>
+</body></html>

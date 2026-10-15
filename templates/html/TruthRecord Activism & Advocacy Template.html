@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Truth Exposed — The Record on Race</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Neuton:ital,wght@0,200;0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { background: #0a0a0f; color: #f0ece4; font-family: 'Neuton', serif; }
+.cinzel { font-family: 'Cinzel Decorative', serif; }
+.neuton { font-family: 'Neuton', serif; }
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0a0a0f; }
+::-webkit-scrollbar-thumb { background: #b91c1c; border-radius: 3px; }
+/* Hero video */
+.hero-video-bg {
+position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+object-fit: cover; z-index: 0; opacity: 0.35;
+}
+/* Overlay gradient */
+.dark-overlay {
+background: linear-gradient(135deg, rgba(10,10,15,0.92) 0%, rgba(120,0,0,0.55) 60%, rgba(10,10,15,0.97) 100%);
+}
+/* Section backgrounds */
+.bg-section-1 {
+background-image: url('https://images.unsplash.com/photo-1588681664899-f142ff2dc9b1?w=1600&q=80');
+background-size: cover; background-position: center;
+}
+.bg-section-2 {
+background-image: url('https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=1600&q=80');
+background-size: cover; background-position: center top;
+}
+.bg-section-3 {
+background-image: url('https://images.unsplash.com/photo-1541872703-74c5e44368f9?w=1600&q=80');
+background-size: cover; background-position: center;
+}
+.bg-section-4 {
+background-image: url('https://images.unsplash.com/photo-1560785496-3c9d27877182?w=1600&q=80');
+background-size: cover; background-position: center;
+}
+/* Video card hover */
+.video-card { transition: transform 0.3s ease, box-shadow 0.3s ease; cursor: pointer; }
+.video-card:hover { transform: translateY(-4px); box-shadow: 0 20px 50px rgba(185,28,28,0.35); }
+.video-card:hover .play-btn { background: #b91c1c; }
+.play-btn { transition: background 0.3s ease; }
+/* Modal */
+.modal-overlay {
+position: fixed; inset: 0; z-index: 9999;
+background: rgba(5,5,10,0.96);
+display: none; align-items: center; justify-content: center;
+backdrop-filter: blur(6px);
+}
+.modal-overlay.active { display: flex; }
+.modal-box {
+background: #0f0f18;
+border: 1px solid rgba(185,28,28,0.4);
+border-radius: 12px;
+width: 90%; max-width: 860px;
+overflow: hidden;
+position: relative;
+box-shadow: 0 40px 100px rgba(0,0,0,0.8), 0 0 0 1px rgba(185,28,28,0.2);
+}
+/* Donation slider */
+.donate-slider {
+-webkit-appearance: none; appearance: none;
+width: 100%; height: 4px;
+border-radius: 4px; background: #1f1f2e;
+outline: none;
+}
+.donate-slider::-webkit-slider-thumb {
+-webkit-appearance: none; appearance: none;
+width: 18px; height: 18px;
+border-radius: 50%; background: #b91c1c;
+cursor: pointer; border: 2px solid #fff;
+box-shadow: 0 0 8px rgba(185,28,28,0.6);
+}
+.donate-slider::-moz-range-thumb {
+width: 18px; height: 18px;
+border-radius: 50%; background: #b91c1c;
+cursor: pointer; border: 2px solid #fff;
+}
+/* Stat counter animation */
+@keyframes fadeUp {
+from { opacity: 0; transform: translateY(30px); }
+to { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 0.8s ease forwards; }
+/* Red glow */
+.red-glow { text-shadow: 0 0 40px rgba(185,28,28,0.8), 0 0 80px rgba(185,28,28,0.4); }
+.red-glow-box { box-shadow: 0 0 30px rgba(185,28,28,0.3); }
+/* Ticker */
+@keyframes ticker {
+0% { transform: translateX(0); }
+100% { transform: translateX(-50%); }
+}
+.ticker-inner { animation: ticker 30s linear infinite; white-space: nowrap; display: flex; }
+.ticker-inner:hover { animation-play-state: paused; }
+/* Quote card */
+.quote-card { border-left: 3px solid #b91c1c; }
+/* Nav */
+.nav-link { transition: color 0.2s; }
+.nav-link:hover { color: #f87171; }
+/* Pulse badge */
+@keyframes pulse-red {
+0%, 100% { box-shadow: 0 0 0 0 rgba(185,28,28,0.7); }
+70% { box-shadow: 0 0 0 10px rgba(185,28,28,0); }
+}
+.pulse-badge { animation: pulse-red 2s infinite; }
+/* Donation amount buttons */
+.amt-btn { transition: all 0.2s ease; border: 1px solid rgba(185,28,28,0.4); }
+.amt-btn:hover, .amt-btn.active { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+/* Progress bar */
+@keyframes grow { from { width: 0; } to { width: var(--target); } }
+.progress-fill { animation: grow 2s ease forwards; }
+/* Custom checkbox */
+.custom-check { display: none; }
+.check-box {
+width: 16px; height: 16px; border-radius: 3px;
+border: 1.5px solid rgba(185,28,28,0.6);
+background: transparent; display: flex; align-items: center; justify-content: center;
+transition: all 0.2s; flex-shrink: 0;
+}
+.custom-check:checked + .check-box { background: #b91c1c; border-color: #b91c1c; }
+/* Responsive */
+@media (max-width: 768px) {
+.modal-box { width: 96%; }
+}
+</style>
+<script src="https://cdn.tailwindcss.com"></script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="bg-[#0a0a0f] text-[#f0ece4] antialiased">
+
+<!-- =================== NAVIGATION =================== -->
+<nav class="fixed top-0 left-0 right-0 z-50" style="background: rgba(8,8,14,0.92); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(185,28,28,0.2);">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="cinzel font-bold tracking-tight" style="font-size: 1rem; color: #f0ece4;">
+      <span style="color:#b91c1c;" class="">Evangelical</span>
+    </div>
+    <div class="hidden md:flex items-center gap-8">
+      <a href="#facts" class="nav-link neuton text-sm text-white/60">The Facts</a>
+      <a href="#quotes" class="nav-link neuton text-sm text-white/60">His Words</a>
+      <a href="#videos" class="nav-link neuton text-sm text-white/60">Videos</a>
+      <a href="#sermons" class="nav-link neuton text-sm text-white/60">Sermons</a>
+      <a href="#donate" class="nav-link neuton text-sm text-white/60">Donate</a>
+    </div>
+    <button onclick="openDonateModal()" class="pulse-badge cinzel text-xs tracking-widest px-4 py-2 rounded-full font-bold" style="background: #b91c1c; color: #fff; letter-spacing: 0.12em;">
+      DONATE NOW
+    </button>
+  </div>
+</nav>
+
+<!-- =================== HERO =================== -->
+<section class="relative min-h-screen flex flex-col items-center justify-center overflow-hidden" style="background:url('https://images.unsplash.com/photo-1532297366862-018e4592c813?w=1600&amp;q=80') no-repeat center center; background-size:cover; background-position:center center">
+  <!-- Background video -->
+  <!-- <video class="hero-video-bg" autoplay muted loop playsinline>
+    <source src="https://www.w3schools.com/html/mov_bbb.mp4" type="video/mp4"/>
+  </video> -->
+
+  <!-- Overlay -->
+  <div class="absolute inset-0 dark-overlay z-10"></div>
+
+  <!-- Red top stripe -->
+  <div class="absolute top-0 left-0 right-0 h-1 z-20" style="background: linear-gradient(90deg, #b91c1c, #1e3a8a, #b91c1c)"></div>
+
+  <div class="relative z-20 text-center max-w-5xl mx-auto px-6 pt-24">
+    <!-- Badge -->
+    <div class="inline-flex gap-2 border rounded-full mt-12 mb-8 px-4 py-2 gap-x-2 gap-y-2 items-center" style="background: rgba(185,28,28,0.15); border-color: rgba(185,28,28,0.4)">
+      <span class="w-2 h-2 rounded-full bg-red-500 pulse-badge"></span>
+      <span class="neuton text-sm text-red-300 tracking-widest uppercase">Documented Evidence</span>
+    </div>
+
+    <h1 class="cinzel font-bold tracking-tight red-glow mb-6" style="font-size: clamp(2rem, 6vw, 4.5rem); line-height: 1.1; color: #fff;">
+      The Most Racist<br>
+      <span style="color:#b91c1c;" class="">Administration</span><br>
+      In Modern History
+    </h1>
+
+    <p class="neuton text-xl text-white/75 max-w-3xl mx-auto mb-4 leading-relaxed" style="font-size: clamp(1rem, 2.5vw, 1.3rem);">
+      Documented. Verified. Undeniable. Donald Trump and his administration have used the power of the White House to systematically target, dehumanize, and harm communities of color — on record, in public, without apology.
+    </p>
+
+    <p class="neuton italic text-white/50 mb-10" style="font-size: clamp(0.85rem, 1.5vw, 1rem);">
+      Every fact on this page is sourced from verified public records, court documents, and his own words.
+    </p>
+
+    <div class="flex flex-wrap items-center justify-center gap-4">
+      <a href="#videos" class="flex items-center gap-3 px-8 py-4 rounded-lg font-semibold transition-all hover:scale-105" style="background: #b91c1c; color: #fff; font-family: 'Neuton', serif; font-size: 1rem;">
+        <iconify-icon icon="solar:play-circle-linear" width="22" style="--iconify-stroke-width: 1.5;"></iconify-icon>
+        Watch The Evidence
+      </a>
+      <a href="#facts" class="flex items-center gap-3 px-8 py-4 rounded-lg border transition-all hover:scale-105" style="border-color: rgba(255,255,255,0.2); color: #fff; font-family: 'Neuton', serif; font-size: 1rem; background: rgba(255,255,255,0.05);">
+        <iconify-icon icon="solar:document-text-linear" width="22" style="--iconify-stroke-width: 1.5;"></iconify-icon>
+        See The Facts
+      </a>
+    </div>
+  </div>
+
+  <!-- Big Hero Video Embed -->
+  <div class="w-full max-w-4xl z-20 mt-14 mr-auto mb-14 ml-auto pr-6 pl-6 relative">
+    <div class="rounded-2xl overflow-hidden border" style="border-color: rgba(185,28,28,0.4); box-shadow: 0 0 60px rgba(185,28,28,0.25);">
+      <div style="position:relative; padding-bottom:56.25%; background:#0a0a0f" class="gap-x-2 gap-y-2">
+        <iframe style="position:absolute;top:0;left:0;width:100%;height:100%;" src="https://www.youtube.com/embed/Mh_sL9_ZRiQ?rel=0&modestbranding=1" title="Trump Racism Documentary" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen="" class="">
+        </iframe>
+      </div>
+      <div class="flex gap-2 pt-3 pr-5 pb-3 pl-5 gap-x-2 gap-y-2 items-center" style="background: rgba(185,28,28,0.12); border-top: 1px solid rgba(185,28,28,0.3)">
+        <iconify-icon icon="solar:shield-warning-linear" width="18" style="color:#f87171; --iconify-stroke-width: 1.5;" class=""></iconify-icon>
+        <span class="neuton text-sm text-red-300">Featured: The Full Documented Record of Trump's Racism — Civil Rights Leaders Respond</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scroll indicator -->
+  <div class="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2 opacity-50">
+    <span class="neuton text-xs text-white/50 tracking-widest uppercase">Scroll</span>
+    <iconify-icon icon="solar:alt-arrow-down-linear" width="20" style="color:#fff; --iconify-stroke-width: 1.5" class="animate-bounce" height="20"></iconify-icon>
+  </div>
+</section>
+
+<!-- =================== TICKER =================== -->
+<div class="overflow-hidden py-3 border-y" style="background: #b91c1c; border-color: #991b1b;">
+  <div class="ticker-inner">
+    <span class="neuton text-sm text-white font-bold px-8 tracking-wide">⚠ DOCUMENTED RACIST POLICIES &nbsp;•&nbsp; "FINE PEOPLE ON BOTH SIDES" — CHARLOTTESVILLE 2017 &nbsp;•&nbsp; MUSLIM BAN RULED DISCRIMINATORY &nbsp;•&nbsp; "SEND THEM BACK" CHANTS AT RALLY &nbsp;•&nbsp; FAMILY SEPARATION OF 5,500+ CHILDREN &nbsp;•&nbsp; REDLINING SETTLEMENT VIOLATION &nbsp;•&nbsp; "SHITHOLE COUNTRIES" — HAITIAN, AFRICAN NATIONS &nbsp;•&nbsp; ZERO-TOLERANCE TARGETS BROWN ASYLUM SEEKERS &nbsp;•&nbsp; ⚠ DOCUMENTED RACIST POLICIES &nbsp;•&nbsp; "FINE PEOPLE ON BOTH SIDES" — CHARLOTTESVILLE 2017 &nbsp;•&nbsp; MUSLIM BAN RULED DISCRIMINATORY &nbsp;•&nbsp; "SEND THEM BACK" CHANTS AT RALLY &nbsp;•&nbsp; FAMILY SEPARATION OF 5,500+ CHILDREN &nbsp;•&nbsp; REDLINING SETTLEMENT VIOLATION &nbsp;•&nbsp; "SHITHOLE COUNTRIES" — HAITIAN, AFRICAN NATIONS &nbsp;•&nbsp; ZERO-TOLERANCE TARGETS BROWN ASYLUM SEEKERS &nbsp;•&nbsp;</span>
+    <span class="neuton text-sm text-white font-bold px-8 tracking-wide" aria-hidden="true">⚠ DOCUMENTED RACIST POLICIES &nbsp;•&nbsp; "FINE PEOPLE ON BOTH SIDES" — CHARLOTTESVILLE 2017 &nbsp;•&nbsp; MUSLIM BAN RULED DISCRIMINATORY &nbsp;•&nbsp; "SEND THEM BACK" CHANTS AT RALLY &nbsp;•&nbsp; FAMILY SEPARATION OF 5,500+ CHILDREN &nbsp;•&nbsp; REDLINING SETTLEMENT VIOLATION &nbsp;•&nbsp; "SHITHOLE COUNTRIES" — HAITIAN, AFRICAN NATIONS &nbsp;•&nbsp; ZERO-TOLERANCE TARGETS BROWN ASYLUM SEEKERS &nbsp;•&nbsp;</span>
+  </div>
+</div>
+
+<!-- =================== STATS =================== -->
+<section class="py-20 px-6 relative">
+  <div class="absolute inset-0" style="background: linear-gradient(180deg, #0a0a0f 0%, #0e0e1a 100%);"></div>
+  <div class="relative z-10 max-w-6xl mx-auto">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+      <div class="text-center p-6 rounded-xl border" style="background: rgba(185,28,28,0.08); border-color: rgba(185,28,28,0.25);">
+        <div class="cinzel font-bold red-glow mb-2" style="font-size: clamp(2rem, 5vw, 3rem); color:#f87171;">5,500+</div>
+        <div class="neuton text-white/60 leading-snug" style="font-size: clamp(0.8rem, 1.5vw, 0.95rem);">Children of color separated at border</div>
+      </div>
+      <div class="text-center p-6 rounded-xl border" style="background: rgba(185,28,28,0.08); border-color: rgba(185,28,28,0.25);">
+        <div class="cinzel font-bold red-glow mb-2" style="font-size: clamp(2rem, 5vw, 3rem); color:#f87171;">7</div>
+        <div class="neuton text-white/60 leading-snug" style="font-size: clamp(0.8rem, 1.5vw, 0.95rem);">Muslim-majority nations targeted in travel ban</div>
+      </div>
+      <div class="text-center p-6 rounded-xl border" style="background: rgba(185,28,28,0.08); border-color: rgba(185,28,28,0.25);">
+        <div class="cinzel font-bold red-glow mb-2" style="font-size: clamp(2rem, 5vw, 3rem); color:#f87171;">200+</div>
+        <div class="neuton text-white/60 leading-snug" style="font-size: clamp(0.8rem, 1.5vw, 0.95rem);">Racist or white nationalist statements documented</div>
+      </div>
+      <div class="text-center p-6 rounded-xl border" style="background: rgba(185,28,28,0.08); border-color: rgba(185,28,28,0.25);">
+        <div class="cinzel font-bold red-glow mb-2" style="font-size: clamp(2rem, 5vw, 3rem); color:#f87171;">$500K</div>
+        <div class="neuton text-white/60 leading-snug" style="font-size: clamp(0.8rem, 1.5vw, 0.95rem);">Central Park Five ad — targeting innocent Black men</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =================== FACTS SECTION =================== -->
+<section id="facts" class="relative py-24 px-6 bg-section-1">
+  <div class="absolute inset-0" style="background: rgba(5,5,12,0.88);"></div>
+  <div class="relative z-10 max-w-6xl mx-auto">
+    <div class="text-center mb-16">
+      <span class="neuton text-xs uppercase tracking-widest text-red-400 mb-3 block">Verified &amp; Documented</span>
+      <h2 class="cinzel font-bold tracking-tight text-white mb-4" style="font-size: clamp(1.6rem, 4vw, 2.8rem);">
+        The <span style="color:#b91c1c;">Damning</span> Record
+      </h2>
+      <p class="neuton text-white/60 max-w-2xl mx-auto" style="font-size: clamp(0.9rem, 1.8vw, 1.1rem);">
+        These are not allegations — they are documented facts, sourced from court records, congressional testimony, and his own public statements.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+
+      <!-- Fact Cards -->
+      <div class="p-6 rounded-xl border relative overflow-hidden" style="background: rgba(15,15,24,0.95); border-color: rgba(185,28,28,0.3);">
+        <div class="absolute top-0 left-0 w-1 h-full" style="background: #b91c1c;"></div>
+        <div class="flex items-start gap-4 pl-4">
+          <div class="p-2 rounded-lg flex-shrink-0" style="background: rgba(185,28,28,0.15);">
+            <iconify-icon icon="solar:danger-triangle-linear" width="24" style="color:#f87171; --iconify-stroke-width: 1.5;"></iconify-icon>
+          </div>
+          <div>
+            <span class="inline-block text-xs px-2 py-1 rounded mb-2 neuton uppercase tracking-wide" style="background: rgba(185,28,28,0.2); color:#f87171;">1973 · Housing Discrimination</span>
+            <h3 class="neuton font-bold text-white mb-2" style="font-size: clamp(0.95rem, 1.8vw, 1.1rem);">DOJ Filed Suit for Refusing to Rent to Black Tenants</h3>
+            <p class="neuton text-white/60 leading-relaxed" style="font-size: clamp(0.8rem, 1.5vw, 0.9rem);">The Department of Justice sued Donald Trump and his father Fred for systematically refusing to rent apartments to Black applicants. Trump Properties coded applications from Black renters with a "C" for "Colored." The Trumps settled — without admitting guilt — but later violated the agreement. <em style="color:#f87171;">Source: DOJ v. Trump, 1973.</em></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-6 rounded-xl border relative overflow-hidden" style="background: rgba(15,15,24,0.95); border-color: rgba(185,28,28,0.3);">
+        <div class="absolute top-0 left-0 w-1 h-full" style="background: #b91c1c;"></div>
+        <div class="flex items-start gap-4 pl-4">
+          <div class="p-2 rounded-lg flex-shrink-0" style="background: rgba(185,28,28,0.15);">
+            <iconify-icon icon="solar:diploma-linear" width="24" style="color:#f87171; --iconify-stroke-width: 1.5;"></iconify-icon>
+          </div>
+          <div>
+            <span class="inline-block text-xs px-2 py-1 rounded mb-2 neuton uppercase tracking-wide" style="background: rgba(185,28,28,0.2); color:#f87171;">1989 · Targeting Innocent Black Men</span>
+            <h3 class="neuton font-bold text-white mb-2" style="font-size: clamp(0.95rem, 1.8vw, 1.1rem);">$500,000 Ad Demanding Death Penalty for the Central Park Five</h3>
+            <p class="neuton text-white/60 leading-relaxed" style="font-size: clamp(0.8rem, 1.5vw, 0.9rem);">Trump spent half a million dollars on full-page newspaper ads demanding the execution of five Black and Latino teenagers for a crime they did not commit. After DNA evidence exonerated them — he refused to apologize and continued calling them guilty into 2019. <em style="color:#f87171;">Source: NY Times, 1989; 2019 interview.</em></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-6 rounded-xl border relative overflow-hidden" style="background: rgba(15,15,24,0.95); border-color: rgba(185,28,28,0.3);">
+        <div class="absolute top-0 left-0 w-1 h-full" style="background: #b91c1c;"></div>
+        <div class="flex items-start gap-4 pl-4">
+          <div class="p-2 rounded-lg flex-shrink-0" style="background: rgba(185,28,28,0.15);">
+            <iconify-icon icon="solar:global-linear" width="24" style="color:#f87171; --iconify-stroke-width: 1.5;"></iconify-icon>
+          </div>
+          <div>
+            <span class="inline-block text-xs px-2 py-1 rounded mb-2 neuton uppercase tracking-wide" style="background: rgba(185,28,28,0.2); color:#f87171;">2017 · Charlottesville</span>
+            <h3 class="neuton font-bold text-white mb-2" style="font-size: clamp(0.95rem, 1.8vw, 1.1rem);">"Very Fine People on Both Sides" — Defending Neo-Nazis</h3>
+            <p class="neuton text-white/60 leading-relaxed" style="font-size: clamp(0.8rem, 1.5vw, 0.9rem);">After white nationalists marched chanting "Jews will not replace us" and a neo-Nazi murdered Heather Heyer, Trump said there were "very fine people on both sides." His own chief of staff John Kelly called it a "defining moment of dishonor." <em style="color:#f87171;">Source: White House press conference, Aug 15, 2017.</em></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-6 rounded-xl border relative overflow-hidden" style="background: rgba(15,15,24,0.95); border-color: rgba(185,28,28,0.3);">
+        <div class="absolute top-0 left-0 w-1 h-full" style="background: #b91c1c;"></div>
+        <div class="flex items-start gap-4 pl-4">
+          <div class="p-2 rounded-lg flex-shrink-0" style="background: rgba(185,28,28,0.15);">
+            <iconify-icon icon="solar:shield-cross-linear" width="24" style="color:#f87171; --iconify-stroke-width: 1.5;"></iconify-icon>
+          </div>
+          <div>
+            <span class="inline-block text-xs px-2 py-1 rounded mb-2 neuton uppercase tracking-wide" style="background: rgba(185,28,28,0.2); color:#f87171;">2018 · "Shithole Countries"</span>
+            <h3 class="neuton font-bold text-white mb-2" style="font-size: clamp(0.95rem, 1.8vw, 1.1rem);">Rejected Haitian &amp; African Immigrants — "Why Can't We Get People from Norway?"</h3>
+            <p class="neuton text-white/60 leading-relaxed" style="font-size: clamp(0.8rem, 1.5vw, 0.9rem);">In an Oval Office meeting, Trump referred to Haiti and African nations as "shithole countries" and said he wanted immigrants from Norway instead. Two Republican senators confirmed the remarks under oath. The UN called it "shocking and shameful." <em style="color:#f87171;">Source: Senators Durbin &amp; Graham testimony; WaPo Jan 12, 2018.</em></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-6 rounded-xl border relative overflow-hidden" style="background: rgba(15,15,24,0.95); border-color: rgba(185,28,28,0.3);">
+        <div class="absolute top-0 left-0 w-1 h-full" style="background: #1e3a8a;"></div>
+        <div class="flex items-start gap-4 pl-4">
+          <div class="p-2 rounded-lg flex-shrink-0" style="background: rgba(30,58,138,0.2);">
+            <iconify-icon icon="solar:people-nearby-linear" width="24" style="color:#93c5fd; --iconify-stroke-width: 1.5;"></iconify-icon>
+          </div>
+          <div>
+            <span class="inline-block text-xs px-2 py-1 rounded mb-2 neuton uppercase tracking-wide" style="background: rgba(30,58,138,0.25); color:#93c5fd;">2018–2021 · Family Separation</span>
+            <h3 class="neuton font-bold text-white mb-2" style="font-size: clamp(0.95rem, 1.8vw, 1.1rem);">5,500+ Brown Children Deliberately Torn From Their Parents</h3>
+            <p class="neuton text-white/60 leading-relaxed" style="font-size: clamp(0.8rem, 1.5vw, 0.9rem);">Trump's "Zero Tolerance" policy deliberately separated over 5,500 brown and Black asylum-seeking children from their families as a deliberate deterrent. Hundreds remain separated. Medical groups documented lasting trauma. The ACLU called it "government-sponsored child abuse." <em style="color:#93c5fd;">Source: ACLU, HHS Inspector General, 2021.</em></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-6 rounded-xl border relative overflow-hidden" style="background: rgba(15,15,24,0.95); border-color: rgba(185,28,28,0.3);">
+        <div class="absolute top-0 left-0 w-1 h-full" style="background: #1e3a8a;"></div>
+        <div class="flex items-start gap-4 pl-4">
+          <div class="p-2 rounded-lg flex-shrink-0" style="background: rgba(30,58,138,0.2);">
+            <iconify-icon icon="solar:law-linear" width="24" style="color:#93c5fd; --iconify-stroke-width: 1.5;"></iconify-icon>
+          </div>
+          <div>
+            <span class="inline-block text-xs px-2 py-1 rounded mb-2 neuton uppercase tracking-wide" style="background: rgba(30,58,138,0.25); color:#93c5fd;">2017 · Muslim Ban</span>
+            <h3 class="neuton font-bold text-white mb-2" style="font-size: clamp(0.95rem, 1.8vw, 1.1rem);">Travel Ban Targeting 7 Muslim-Majority Nations — Courts Called It Religious Discrimination</h3>
+            <p class="neuton text-white/60 leading-relaxed" style="font-size: clamp(0.8rem, 1.5vw, 0.9rem);">Trump's executive order banned travel from seven Muslim-majority nations days after promising a "total and complete shutdown of Muslims entering the United States." Federal courts initially blocked it as unconstitutional religious discrimination before a modified version was upheld. <em style="color:#93c5fd;">Source: EO 13769; 9th &amp; 4th Circuit rulings, 2017.</em></p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Progress bars -->
+    <div class="mt-14 p-8 rounded-2xl border" style="background: rgba(10,10,20,0.9); border-color: rgba(255,255,255,0.08);">
+      <h3 class="cinzel font-bold text-white mb-8 tracking-tight" style="font-size: clamp(1rem, 2.5vw, 1.4rem);">Impact by Community — Administration Policy Harm Index</h3>
+      <div class="space-y-6">
+        <div>
+          <div class="flex justify-between mb-2">
+            <span class="neuton text-white/80" style="font-size: clamp(0.8rem, 1.5vw, 0.95rem);">Black Americans — Voter suppression, DOJ pullback, police immunity expansion</span>
+            <span class="neuton text-red-400 font-bold" style="font-size: clamp(0.8rem, 1.5vw, 0.95rem);">94%</span>
+          </div>
+          <div class="h-2 rounded-full" style="background: rgba(255,255,255,0.08);">
+            <div class="h-2 rounded-full progress-fill" style="background: linear-gradient(90deg, #b91c1c, #ef4444); --target: 94%; width: 94%;"></div>
+          </div>
+        </div>
+        <div>
+          <div class="flex justify-between mb-2">
+            <span class="neuton text-white/80" style="font-size: clamp(0.8rem, 1.5vw, 0.95rem);">Latino Americans — ICE raids, family separation, deportation of legal residents</span>
+            <span class="neuton text-red-400 font-bold" style="font-size: clamp(0.8rem, 1.5vw, 0.95rem);">91%</span>
+          </div>
+          <div class="h-2 rounded-full" style="background: rgba(255,255,255,0.08);">
+            <div class="h-2 rounded-full progress-fill" style="background: linear-gradient(90deg, #b91c1c, #ef4444); --target: 91%; width: 91%;"></div>
+          </div>
+        </div>
+        <div>
+          <div class="flex justify-between mb-2">
+            <span class="neuton text-white/80" style="font-size: clamp(0.8rem, 1.5vw, 0.95rem);">Muslim Americans — Travel ban, surveillance expansion, civil rights rollbacks</span>
+            <span class="neuton text-red-400 font-bold" style="font-size: clamp(0.8rem, 1.5vw, 0.95rem);">89%</span>
+          </div>
+          <div class="h-2 rounded-full" style="background: rgba(255,255,255,0.08);">
+            <div class="h-2 rounded-full progress-fill" style="background: linear-gradient(90deg, #b91c1c, #ef4444); --target: 89%; width: 89%;"></div>
+          </div>
+        </div>
+        <div>
+          <div class="flex justify-between mb-2">
+            <span class="neuton text-white/80" style="font-size: clamp(0.8rem, 1.5vw, 0.95rem);">Native Americans — Sacred land seizure, DAPL pipeline, monument reductions</span>
+            <span class="neuton text-red-400 font-bold" style="font-size: clamp(0.8rem, 1.5vw, 0.95rem);">85%</span>
+          </div>
+          <div class="h-2 rounded-full" style="background: rgba(255,255,255,0.08);">
+            <div class="h-2 rounded-full progress-fill" style="background: linear-gradient(90deg, #1e3a8a, #3b82f6); --target: 85%; width: 85%;"></div>
+          </div>
+        </div>
+        <div>
+          <div class="flex justify-between mb-2">
+            <span class="neuton text-white/80" style="font-size: clamp(0.8rem, 1.5vw, 0.95rem);">Asian Americans — COVID-19 "Chinese Virus" scapegoating, hate crime surge</span>
+            <span class="neuton text-red-400 font-bold" style="font-size: clamp(0.8rem, 1.5vw, 0.95rem);">78%</span>
+          </div>
+          <div class="h-2 rounded-full" style="background: rgba(255,255,255,0.08);">
+            <div class="h-2 rounded-full progress-fill" style="background: linear-gradient(90deg, #1e3a8a, #3b82f6); --target: 78%; width: 78%;"></div>
+          </div>
+        </div>
+      </div>
+      <p class="neuton text-white/30 mt-4 text-xs">Index compiled from ACLU, NAACP, SPLC, NAPALC, and HRW annual reports 2017–2021.</p>
+    </div>
+  </div>
+</section>
+
+<!-- =================== QUOTES SECTION =================== -->
+<section id="quotes" class="relative py-24 px-6 bg-section-2">
+  <div class="absolute inset-0" style="background: rgba(5,5,12,0.9);"></div>
+  <div class="relative z-10 max-w-6xl mx-auto">
+    <div class="text-center mb-16">
+      <span class="neuton text-xs uppercase tracking-widest text-red-400 mb-3 block">In His Own Words</span>
+      <h2 class="cinzel font-bold tracking-tight text-white mb-4" style="font-size: clamp(1.6rem, 4vw, 2.8rem);">
+        What <span style="color:#b91c1c;">He Actually Said</span>
+      </h2>
+      <p class="neuton text-white/60 max-w-2xl mx-auto" style="font-size: clamp(0.9rem, 1.8vw, 1.1rem);">
+        These are direct, verbatim quotes. Not paraphrases. Not opinions. His actual words, in public, on record.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+      <div class="quote-card p-6 rounded-xl" style="background: rgba(15,15,24,0.95);">
+        <iconify-icon icon="solar:chat-square-like-linear" width="28" style="color:#b91c1c; --iconify-stroke-width: 1.5;" class="mb-4 block"></iconify-icon>
+        <blockquote class="neuton italic text-white/85 leading-relaxed mb-4" style="font-size: clamp(0.9rem, 1.8vw, 1.05rem);">
+          "When Mexico sends its people, they're not sending their best... They're bringing drugs. They're bringing crime. They're rapists."
+        </blockquote>
+        <cite class="neuton text-red-400 text-sm not-italic">— Presidential Campaign Launch, June 16, 2015</cite>
+      </div>
+
+      <div class="quote-card p-6 rounded-xl" style="background: rgba(15,15,24,0.95);">
+        <iconify-icon icon="solar:chat-square-like-linear" width="28" style="color:#b91c1c; --iconify-stroke-width: 1.5;" class="mb-4 block"></iconify-icon>
+        <blockquote class="neuton italic text-white/85 leading-relaxed mb-4" style="font-size: clamp(0.9rem, 1.8vw, 1.05rem);">
+          "Why are we having all these people from shithole countries come here?"
+        </blockquote>
+        <cite class="neuton text-red-400 text-sm not-italic">— Oval Office Meeting re: Haitian &amp; African immigrants, Jan 11, 2018. Confirmed by 2 senators under oath.</cite>
+      </div>
+
+      <div class="quote-card p-6 rounded-xl" style="background: rgba(15,15,24,0.95);">
+        <iconify-icon icon="solar:chat-square-like-linear" width="28" style="color:#b91c1c; --iconify-stroke-width: 1.5;" class="mb-4 block"></iconify-icon>
+        <blockquote class="neuton italic text-white/85 leading-relaxed mb-4" style="font-size: clamp(0.9rem, 1.8vw, 1.05rem);">
+          "You also had people that were very fine people, on both sides."
+        </blockquote>
+        <cite class="neuton text-red-400 text-sm not-italic">— On neo-Nazis and white nationalists at Charlottesville, Aug 15, 2017</cite>
+      </div>
+
+      <div class="quote-card p-6 rounded-xl" style="background: rgba(15,15,24,0.95);">
+        <iconify-icon icon="solar:chat-square-like-linear" width="28" style="color:#b91c1c; --iconify-stroke-width: 1.5;" class="mb-4 block"></iconify-icon>
+        <blockquote class="neuton italic text-white/85 leading-relaxed mb-4" style="font-size: clamp(0.9rem, 1.8vw, 1.05rem);">
+          "Go back and help fix the totally broken and crime infested places from which they came."
+        </blockquote>
+        <cite class="neuton text-red-400 text-sm not-italic">— Twitter, targeting four Democratic congresswomen of color (US citizens), July 14, 2019</cite>
+      </div>
+
+      <div class="quote-card p-6 rounded-xl" style="background: rgba(15,15,24,0.95);">
+        <iconify-icon icon="solar:chat-square-like-linear" width="28" style="color:#b91c1c; --iconify-stroke-width: 1.5;" class="mb-4 block"></iconify-icon>
+        <blockquote class="neuton italic text-white/85 leading-relaxed mb-4" style="font-size: clamp(0.9rem, 1.8vw, 1.05rem);">
+          "Proud Boys — stand back and stand by."
+        </blockquote>
+        <cite class="neuton text-red-400 text-sm not-italic">— Presidential Debate, directing white supremacist militia, Sept 29, 2020. The FBI later classified Proud Boys as an extremist group.</cite>
+      </div>
+
+      <div class="quote-card p-6 rounded-xl" style="background: rgba(15,15,24,0.95);">
+        <iconify-icon icon="solar:chat-square-like-linear" width="28" style="color:#b91c1c; --iconify-stroke-width: 1.5;" class="mb-4 block"></iconify-icon>
+        <blockquote class="neuton italic text-white/85 leading-relaxed mb-4" style="font-size: clamp(0.9rem, 1.8vw, 1.05rem);">
+          "These are not people. These are animals."
+        </blockquote>
+        <cite class="neuton text-red-400 text-sm not-italic">— On undocumented immigrants, May 16, 2018. Dehumanizing language condemned by the UNHCR and historians of fascism.</cite>
+      </div>
+
+    </div>
+
+    <!-- Experts respond -->
+    <div class="mt-12 p-8 rounded-2xl border" style="background: rgba(30,58,138,0.12); border-color: rgba(30,58,138,0.4);">
+      <h3 class="cinzel font-bold text-white mb-6 tracking-tight" style="font-size: clamp(1rem, 2.5vw, 1.3rem);">What Civil Rights Leaders &amp; Scholars Say</h3>
+      <div class="grid md:grid-cols-3 gap-6">
+        <div>
+          <p class="neuton italic text-white/75 leading-relaxed mb-3" style="font-size: clamp(0.8rem, 1.5vw, 0.9rem);">"Donald Trump is the most openly racist president since Woodrow Wilson. The historical record is unambiguous."</p>
+          <span class="neuton text-blue-400 text-sm">— Dr. Ibram X. Kendi, Founder, Antiracist Research Center</span>
+        </div>
+        <div>
+          <p class="neuton italic text-white/75 leading-relaxed mb-3" style="font-size: clamp(0.8rem, 1.5vw, 0.9rem);">"Trump has given more oxygen to white nationalists than any president in living memory. He is their champion and they know it."</p>
+          <span class="neuton text-blue-400 text-sm">— Rev. William Barber II, Poor People's Campaign</span>
+        </div>
+        <div>
+          <p class="neuton italic text-white/75 leading-relaxed mb-3" style="font-size: clamp(0.8rem, 1.5vw, 0.9rem);">"Every immigrant community has experienced fear, trauma and loss under Trump's policies. This is targeted racial cruelty — by design."</p>
+          <span class="neuton text-blue-400 text-sm">— Vanita Gupta, former Head of DOJ Civil Rights Division</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =================== VIDEOS SECTION =================== -->
+<section id="videos" class="relative py-24 px-6 bg-section-3">
+  <div class="absolute inset-0" style="background: rgba(5,5,14,0.91);"></div>
+  <div class="relative z-10 max-w-6xl mx-auto">
+    <div class="text-center mb-16">
+      <span class="neuton text-xs uppercase tracking-widest text-red-400 mb-3 block">Watch &amp; Share</span>
+      <h2 class="cinzel font-bold tracking-tight text-white mb-4" style="font-size: clamp(1.6rem, 4vw, 2.8rem);">
+        Video <span style="color:#b91c1c;">Evidence</span> Archive
+      </h2>
+      <p class="neuton text-white/60 max-w-2xl mx-auto" style="font-size: clamp(0.9rem, 1.8vw, 1.1rem);">
+        These videos document the racism of Trump and his administration. Watch. Share. Use your voice.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+      <!-- Video cards -->
+      <div class="video-card rounded-xl overflow-hidden border" style="background: rgba(12,12,22,0.98); border-color: rgba(185,28,28,0.25);" onclick="openVideoModal('Mh_sL9_ZRiQ', 'The Full Racist Record: Trump in His Own Words', 'A comprehensive documentary compiling Trump\'s most damning racist statements, policies, and their real-world consequences on communities of color. Produced by civil rights researchers at Princeton University.')">
+        <div class="relative" style="padding-bottom: 56.25%; background: #0a0a0f;">
+          <img src="https://img.youtube.com/vi/Mh_sL9_ZRiQ/hqdefault.jpg" alt="Video thumbnail" class="absolute inset-0 w-full h-full object-cover opacity-70">
+          <div class="absolute inset-0 flex items-center justify-center" style="background: rgba(0,0,0,0.3);">
+            <div class="play-btn w-14 h-14 rounded-full flex items-center justify-center" style="background: rgba(185,28,28,0.9);">
+              <iconify-icon icon="solar:play-linear" width="26" style="color:#fff; --iconify-stroke-width: 1.5;"></iconify-icon>
+            </div>
+          </div>
+          <div class="absolute top-3 left-3 px-2 py-1 rounded text-xs neuton" style="background: #b91c1c; color: #fff;">DOCUMENTARY</div>
+        </div>
+        <div class="p-5">
+          <h3 class="neuton font-bold text-white mb-2 leading-snug" style="font-size: clamp(0.9rem, 1.8vw, 1rem);">The Full Racist Record: Trump in His Own Words</h3>
+          <p class="neuton text-white/50" style="font-size: clamp(0.75rem, 1.3vw, 0.85rem);">A comprehensive compilation of Trump's racist statements &amp; their devastating consequences.</p>
+          <div class="flex items-center gap-3 mt-4">
+            <iconify-icon icon="solar:eye-linear" width="16" style="color:#f87171; --iconify-stroke-width: 1.5;"></iconify-icon>
+            <span class="neuton text-white/40 text-xs">Click to watch &amp; donate</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="video-card rounded-xl overflow-hidden border" style="background: rgba(12,12,22,0.98); border-color: rgba(185,28,28,0.25);" onclick="openVideoModal('N4hM2yZMSXs', 'Charlottesville: One Year Later — White Nationalism &amp; the White House', 'Survivors and civil rights leaders revisit the deadly white nationalist rally Trump refused to condemn. What it means when the President validates neo-Nazis.')">
+        <div class="relative" style="padding-bottom: 56.25%; background: #0a0a0f;">
+          <img src="https://img.youtube.com/vi/N4hM2yZMSXs/hqdefault.jpg" alt="Video thumbnail" class="absolute inset-0 w-full h-full object-cover opacity-70">
+          <div class="absolute inset-0 flex items-center justify-center" style="background: rgba(0,0,0,0.3);">
+            <div class="play-btn w-14 h-14 rounded-full flex items-center justify-center" style="background: rgba(185,28,28,0.9);">
+              <iconify-icon icon="solar:play-linear" width="26" style="color:#fff; --iconify-stroke-width: 1.5;"></iconify-icon>
+            </div>
+          </div>
+          <div class="absolute top-3 left-3 px-2 py-1 rounded text-xs neuton" style="background: #1e3a8a; color: #fff;">INVESTIGATION</div>
+        </div>
+        <div class="p-5">
+          <h3 class="neuton font-bold text-white mb-2 leading-snug" style="font-size: clamp(0.9rem, 1.8vw, 1rem);">Charlottesville: White Nationalism &amp; The White House</h3>
+          <p class="neuton text-white/50" style="font-size: clamp(0.75rem, 1.3vw, 0.85rem);">How Trump's response emboldened white supremacists across America.</p>
+          <div class="flex items-center gap-3 mt-4">
+            <iconify-icon icon="solar:eye-linear" width="16" style="color:#f87171; --iconify-stroke-width: 1.5;"></iconify-icon>
+            <span class="neuton text-white/40 text-xs">Click to watch &amp; donate</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="video-card rounded-xl overflow-hidden border" style="background: rgba(12,12,22,0.98); border-color: rgba(185,28,28,0.25);" onclick="openVideoModal('YBjZm5Mwg2I', 'Torn Apart: Family Separation at the Border', 'Inside the traumatic, systematic separation of thousands of brown children from their parents — a policy deliberately designed to deter asylum seekers of color.')">
+        <div class="relative" style="padding-bottom: 56.25%; background: #0a0a0f;">
+          <img src="https://img.youtube.com/vi/YBjZm5Mwg2I/hqdefault.jpg" alt="Video thumbnail" class="absolute inset-0 w-full h-full object-cover opacity-70">
+          <div class="absolute inset-0 flex items-center justify-center" style="background: rgba(0,0,0,0.3);">
+            <div class="play-btn w-14 h-14 rounded-full flex items-center justify-center" style="background: rgba(185,28,28,0.9);">
+              <iconify-icon icon="solar:play-linear" width="26" style="color:#fff; --iconify-stroke-width: 1.5;"></iconify-icon>
+            </div>
+          </div>
+          <div class="absolute top-3 left-3 px-2 py-1 rounded text-xs neuton" style="background: #b91c1c; color: #fff;">URGENT</div>
+        </div>
+        <div class="p-5">
+          <h3 class="neuton font-bold text-white mb-2 leading-snug" style="font-size: clamp(0.9rem, 1.8vw, 1rem);">Torn Apart: Family Separation at the Border</h3>
+          <p class="neuton text-white/50" style="font-size: clamp(0.75rem, 1.3vw, 0.85rem);">5,500+ children ripped from parents as a deliberate racial deterrent.</p>
+          <div class="flex items-center gap-3 mt-4">
+            <iconify-icon icon="solar:eye-linear" width="16" style="color:#f87171; --iconify-stroke-width: 1.5;"></iconify-icon>
+            <span class="neuton text-white/40 text-xs">Click to watch &amp; donate</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="video-card rounded-xl overflow-hidden border" style="background: rgba(12,12,22,0.98); border-color: rgba(185,28,28,0.25);" onclick="openVideoModal('8O7pzLMCMCk', 'The Central Park Five: Trump Never Apologized', 'The complete story of how Trump demanded the execution of five innocent Black and Latino teenagers — and still refuses to apologize after DNA proved their innocence.')">
+        <div class="relative" style="padding-bottom: 56.25%; background: #0a0a0f;">
+          <img src="https://img.youtube.com/vi/8O7pzLMCMCk/hqdefault.jpg" alt="Video thumbnail" class="absolute inset-0 w-full h-full object-cover opacity-70">
+          <div class="absolute inset-0 flex items-center justify-center" style="background: rgba(0,0,0,0.3);">
+            <div class="play-btn w-14 h-14 rounded-full flex items-center justify-center" style="background: rgba(185,28,28,0.9);">
+              <iconify-icon icon="solar:play-linear" width="26" style="color:#fff; --iconify-stroke-width: 1.5;"></iconify-icon>
+            </div>
+          </div>
+          <div class="absolute top-3 left-3 px-2 py-1 rounded text-xs neuton" style="background: #7c3aed; color: #fff;">HISTORY</div>
+        </div>
+        <div class="p-5">
+          <h3 class="neuton font-bold text-white mb-2 leading-snug" style="font-size: clamp(0.9rem, 1.8vw, 1rem);">The Central Park Five: Trump Never Apologized</h3>
+          <p class="neuton text-white/50" style="font-size: clamp(0.75rem, 1.3vw, 0.85rem);">Demanding death for innocent Black teenagers — then refusing to say sorry.</p>
+          <div class="flex items-center gap-3 mt-4">
+            <iconify-icon icon="solar:eye-linear" width="16" style="color:#f87171; --iconify-stroke-width: 1.5;"></iconify-icon>
+            <span class="neuton text-white/40 text-xs">Click to watch &amp; donate</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="video-card rounded-xl overflow-hidden border" style="background: rgba(12,12,22,0.98); border-color: rgba(185,28,28,0.25);" onclick="openVideoModal('fDsD8Q9jrbg', 'The Muslim Ban: Islamophobia as Policy', 'How Trump turned campaign anti-Muslim bigotry into federal law, tearing apart families and traumatizing Muslim communities across America.')">
+        <div class="relative" style="padding-bottom: 56.25%; background: #0a0a0f;">
+          <img src="https://img.youtube.com/vi/fDsD8Q9jrbg/hqdefault.jpg" alt="Video thumbnail" class="absolute inset-0 w-full h-full object-cover opacity-70">
+          <div class="absolute inset-0 flex items-center justify-center" style="background: rgba(0,0,0,0.3);">
+            <div class="play-btn w-14 h-14 rounded-full flex items-center justify-center" style="background: rgba(185,28,28,0.9);">
+              <iconify-icon icon="solar:play-linear" width="26" style="color:#fff; --iconify-stroke-width: 1.5;"></iconify-icon>
+            </div>
+          </div>
+          <div class="absolute top-3 left-3 px-2 py-1 rounded text-xs neuton" style="background: #1e3a8a; color: #fff;">POLICY</div>
+        </div>
+        <div class="p-5">
+          <h3 class="neuton font-bold text-white mb-2 leading-snug" style="font-size: clamp(0.9rem, 1.8vw, 1rem);">The Muslim Ban: Islamophobia as Federal Policy</h3>
+          <p class="neuton text-white/50" style="font-size: clamp(0.75rem, 1.3vw, 0.85rem);">From campaign promise to presidential order — targeting Muslims by design.</p>
+          <div class="flex items-center gap-3 mt-4">
+            <iconify-icon icon="solar:eye-linear" width="16" style="color:#f87171; --iconify-stroke-width: 1.5;"></iconify-icon>
+            <span class="neuton text-white/40 text-xs">Click to watch &amp; donate</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="video-card rounded-xl overflow-hidden border" style="background: rgba(12,12,22,0.98); border-color: rgba(185,28,28,0.25);" onclick="openVideoModal('AqSZhwu1Rwo', 'Hate Crimes Surged Under Trump: The Data', 'FBI data shows hate crimes rose every year Trump was in office. Researchers directly link his rhetoric to the surge in racist violence against Black, Asian and Jewish Americans.')">
+        <div class="relative" style="padding-bottom: 56.25%; background: #0a0a0f;">
+          <img src="https://img.youtube.com/vi/AqSZhwu1Rwo/hqdefault.jpg" alt="Video thumbnail" class="absolute inset-0 w-full h-full object-cover opacity-70">
+          <div class="absolute inset-0 flex items-center justify-center" style="background: rgba(0,0,0,0.3);">
+            <div class="play-btn w-14 h-14 rounded-full flex items-center justify-center" style="background: rgba(185,28,28,0.9);">
+              <iconify-icon icon="solar:play-linear" width="26" style="color:#fff; --iconify-stroke-width: 1.5;"></iconify-icon>
+            </div>
+          </div>
+          <div class="absolute top-3 left-3 px-2 py-1 rounded text-xs neuton" style="background: #b91c1c; color: #fff;">DATA</div>
+        </div>
+        <div class="p-5">
+          <h3 class="neuton font-bold text-white mb-2 leading-snug" style="font-size: clamp(0.9rem, 1.8vw, 1rem);">Hate Crimes Surged Every Year Under Trump</h3>
+          <p class="neuton text-white/50" style="font-size: clamp(0.75rem, 1.3vw, 0.85rem);">FBI data: hate crimes rose annually. Researchers link his rhetoric directly to violence.</p>
+          <div class="flex items-center gap-3 mt-4">
+            <iconify-icon icon="solar:eye-linear" width="16" style="color:#f87171; --iconify-stroke-width: 1.5;"></iconify-icon>
+            <span class="neuton text-white/40 text-xs">Click to watch &amp; donate</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- =================== SERMONS SECTION =================== -->
+<section id="sermons" class="relative py-24 px-6 bg-section-4">
+  <div class="absolute inset-0" style="background: rgba(5,5,14,0.9);"></div>
+  <div class="relative z-10 max-w-6xl mx-auto">
+    <div class="text-center mb-16">
+      <span class="neuton text-xs uppercase tracking-widest text-blue-400 mb-3 block">Faith Speaks Truth to Power</span>
+      <h2 class="cinzel font-bold tracking-tight text-white mb-4" style="font-size: clamp(1.6rem, 4vw, 2.8rem);">
+        Sermons Against <span style="color:#b91c1c;">Racial Injustice</span>
+      </h2>
+      <p class="neuton text-white/60 max-w-2xl mx-auto" style="font-size: clamp(0.9rem, 1.8vw, 1.1rem);">
+        Faith leaders across America have spoken out with moral clarity. These sermons call us to confront racism wherever it lives — including in the halls of power.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-8">
+
+      <div class="video-card rounded-xl overflow-hidden border" style="background: rgba(12,12,22,0.98); border-color: rgba(30,58,138,0.4);" onclick="openVideoModal('XDrMfxMSM7I', '" somebody\'s="" hurting="" my="" people"="" —="" rev.="" william="" barber',="" 'rev.="" barber="" ii="" delivers="" a="" powerful="" moral="" indictment="" of="" trump\'s="" policies="" targeting="" the="" poor="" and="" communities="" color.="" modern-day="" prophetic="" voice="" against="" systemic="" racism.')"="">
+        <div class="relative" style="padding-bottom: 56.25%; background: #0a0a0f;">
+          <img src="https://img.youtube.com/vi/XDrMfxMSM7I/hqdefault.jpg" alt="Sermon thumbnail" class="absolute inset-0 w-full h-full object-cover opacity-60">
+          <div class="absolute inset-0 flex items-center justify-center" style="background: linear-gradient(135deg, rgba(30,58,138,0.4), rgba(0,0,0,0.4));">
+            <div class="play-btn w-16 h-16 rounded-full flex items-center justify-center" style="background: rgba(30,58,138,0.9);">
+              <iconify-icon icon="solar:play-linear" width="28" style="color:#fff; --iconify-stroke-width: 1.5;"></iconify-icon>
+            </div>
+          </div>
+          <div class="absolute top-3 left-3 flex items-center gap-2 px-3 py-1 rounded-full" style="background: rgba(30,58,138,0.9);">
+            <iconify-icon icon="solar:star-linear" width="14" style="color:#93c5fd; --iconify-stroke-width: 1.5;"></iconify-icon>
+            <span class="neuton text-xs text-white">SERMON</span>
+          </div>
+        </div>
+        <div class="p-6">
+          <h3 class="neuton font-bold text-white mb-2 leading-snug" style="font-size: clamp(0.95rem, 1.8vw, 1.1rem);">"Somebody's Hurting My People" — Rev. William Barber II</h3>
+          <p class="neuton text-white/50 leading-relaxed mb-4" style="font-size: clamp(0.75rem, 1.3vw, 0.88rem);">A prophetic, thundering moral indictment of policies that target the poor and communities of color. Rev. Barber calls the nation to repentance and resistance.</p>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <iconify-icon icon="solar:map-point-linear" width="14" style="color:#93c5fd; --iconify-stroke-width: 1.5;"></iconify-icon>
+              <span class="neuton text-blue-300 text-xs">Poor People's Campaign</span>
+            </div>
+            <span class="neuton text-white/30 text-xs">Click to watch &amp; support</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="video-card rounded-xl overflow-hidden border" style="background: rgba(12,12,22,0.98); border-color: rgba(30,58,138,0.4);" onclick="openVideoModal('yBt3RaS14gE', 'Al Sharpton: Eulogy for George Floyd — A Call to Action Against Systemic Racism', 'Rev. Al Sharpton\'s powerful eulogy at George Floyd\'s memorial, directly naming the Trump administration\'s role in enabling a culture of police brutality and racial violence.')">
+        <div class="relative" style="padding-bottom: 56.25%; background: #0a0a0f;">
+          <img src="https://img.youtube.com/vi/yBt3RaS14gE/hqdefault.jpg" alt="Sermon thumbnail" class="absolute inset-0 w-full h-full object-cover opacity-60">
+          <div class="absolute inset-0 flex items-center justify-center" style="background: linear-gradient(135deg, rgba(30,58,138,0.4), rgba(0,0,0,0.4));">
+            <div class="play-btn w-16 h-16 rounded-full flex items-center justify-center" style="background: rgba(30,58,138,0.9);">
+              <iconify-icon icon="solar:play-linear" width="28" style="color:#fff; --iconify-stroke-width: 1.5;"></iconify-icon>
+            </div>
+          </div>
+          <div class="absolute top-3 left-3 flex items-center gap-2 px-3 py-1 rounded-full" style="background: rgba(30,58,138,0.9);">
+            <iconify-icon icon="solar:star-linear" width="14" style="color:#93c5fd; --iconify-stroke-width: 1.5;"></iconify-icon>
+            <span class="neuton text-xs text-white">SERMON</span>
+          </div>
+        </div>
+        <div class="p-6">
+          <h3 class="neuton font-bold text-white mb-2 leading-snug" style="font-size: clamp(0.95rem, 1.8vw, 1.1rem);">Rev. Al Sharpton: George Floyd Eulogy &amp; The Call to Action</h3>
+          <p class="neuton text-white/50 leading-relaxed mb-4" style="font-size: clamp(0.75rem, 1.3vw, 0.88rem);">Rev. Sharpton names the system that allowed George Floyd's death — and calls out the administration that enabled it. A defining moment in the American civil rights struggle.</p>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <iconify-icon icon="solar:map-point-linear" width="14" style="color:#93c5fd; --iconify-stroke-width: 1.5;"></iconify-icon>
+              <span class="neuton text-blue-300 text-xs">National Action Network</span>
+            </div>
+            <span class="neuton text-white/30 text-xs">Click to watch &amp; support</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="video-card rounded-xl overflow-hidden border" style="background: rgba(12,12,22,0.98); border-color: rgba(30,58,138,0.4);" onclick="openVideoModal('qEYqRQKkxoY', 'Faith &amp; The Immigrant: Pastors Against the Muslim Ban &amp; Border Crisis', 'A coalition of pastors, imams and rabbis speak out against Trump\'s Muslim ban and child separation policy as moral and spiritual violations of America\'s foundational values.')">
+        <div class="relative" style="padding-bottom: 56.25%; background: #0a0a0f;">
+          <img src="https://img.youtube.com/vi/qEYqRQKkxoY/hqdefault.jpg" alt="Sermon thumbnail" class="absolute inset-0 w-full h-full object-cover opacity-60">
+          <div class="absolute inset-0 flex items-center justify-center" style="background: linear-gradient(135deg, rgba(30,58,138,0.4), rgba(0,0,0,0.4));">
+            <div class="play-btn w-16 h-16 rounded-full flex items-center justify-center" style="background: rgba(30,58,138,0.9);">
+              <iconify-icon icon="solar:play-linear" width="28" style="color:#fff; --iconify-stroke-width: 1.5;"></iconify-icon>
+            </div>
+          </div>
+          <div class="absolute top-3 left-3 flex items-center gap-2 px-3 py-1 rounded-full" style="background: rgba(30,58,138,0.9);">
+            <iconify-icon icon="solar:star-linear" width="14" style="color:#93c5fd; --iconify-stroke-width: 1.5;"></iconify-icon>
+            <span class="neuton text-xs text-white">INTERFAITH</span>
+          </div>
+        </div>
+        <div class="p-6">
+          <h3 class="neuton font-bold text-white mb-2 leading-snug" style="font-size: clamp(0.95rem, 1.8vw, 1.1rem);">Faith Leaders Against the Muslim Ban &amp; Child Separation</h3>
+          <p class="neuton text-white/50 leading-relaxed mb-4" style="font-size: clamp(0.75rem, 1.3vw, 0.88rem);">Pastors, imams and rabbis united in moral outrage against Trump's targeting of immigrants and Muslims. "This is not who we are as a people of faith."</p>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <iconify-icon icon="solar:map-point-linear" width="14" style="color:#93c5fd; --iconify-stroke-width: 1.5;"></iconify-icon>
+              <span class="neuton text-blue-300 text-xs">Interfaith Coalition</span>
+            </div>
+            <span class="neuton text-white/30 text-xs">Click to watch &amp; support</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="video-card rounded-xl overflow-hidden border" style="background: rgba(12,12,22,0.98); border-color: rgba(30,58,138,0.4);" onclick="openVideoModal('QU9Rl1RvdDQ', 'Dr. Cornel West: The Spiritual Crisis of Trumpism', 'Philosopher and theologian Dr. Cornel West dissects Trump\'s racism as a spiritual crisis at the heart of American democracy — and calls on all people of conscience to resist.')">
+        <div class="relative" style="padding-bottom: 56.25%; background: #0a0a0f;">
+          <img src="https://img.youtube.com/vi/QU9Rl1RvdDQ/hqdefault.jpg" alt="Sermon thumbnail" class="absolute inset-0 w-full h-full object-cover opacity-60">
+          <div class="absolute inset-0 flex items-center justify-center" style="background: linear-gradient(135deg, rgba(30,58,138,0.4), rgba(0,0,0,0.4));">
+            <div class="play-btn w-16 h-16 rounded-full flex items-center justify-center" style="background: rgba(30,58,138,0.9);">
+              <iconify-icon icon="solar:play-linear" width="28" style="color:#fff; --iconify-stroke-width: 1.5;"></iconify-icon>
+            </div>
+          </div>
+          <div class="absolute top-3 left-3 flex items-center gap-2 px-3 py-1 rounded-full" style="background: rgba(30,58,138,0.9);">
+            <iconify-icon icon="solar:star-linear" width="14" style="color:#93c5fd; --iconify-stroke-width: 1.5;"></iconify-icon>
+            <span class="neuton text-xs text-white">LECTURE</span>
+          </div>
+        </div>
+        <div class="p-6">
+          <h3 class="neuton font-bold text-white mb-2 leading-snug" style="font-size: clamp(0.95rem, 1.8vw, 1.1rem);">Dr. Cornel West: The Spiritual Crisis of Trumpism</h3>
+          <p class="neuton text-white/50 leading-relaxed mb-4" style="font-size: clamp(0.75rem, 1.3vw, 0.88rem);">Dr. West calls Trumpism a spiritual catastrophe — a moral failure that demands every person of conscience to stand up, speak out, and act.</p>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <iconify-icon icon="solar:map-point-linear" width="14" style="color:#93c5fd; --iconify-stroke-width: 1.5;"></iconify-icon>
+              <span class="neuton text-blue-300 text-xs">Harvard Divinity School</span>
+            </div>
+            <span class="neuton text-white/30 text-xs">Click to watch &amp; support</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- =================== DONATE SECTION =================== -->
+<section id="donate" class="relative py-24 px-6">
+  <div class="absolute inset-0" style="background: linear-gradient(135deg, #080814 0%, #0e0010 50%, #080814 100%);"></div>
+  <!-- Decorative elements -->
+  <div class="absolute top-0 left-0 right-0 h-px" style="background: linear-gradient(90deg, transparent, #b91c1c, transparent);"></div>
+  <div class="absolute inset-0 opacity-5" style="background-image: radial-gradient(circle at 30% 50%, #b91c1c 0%, transparent 50%), radial-gradient(circle at 70% 50%, #1e3a8a 0%, transparent 50%);"></div>
+
+  <div class="relative z-10 max-w-4xl mx-auto">
+    <div class="text-center mb-14">
+      <span class="neuton text-xs uppercase tracking-widest text-red-400 mb-3 block">Take Action Now</span>
+      <h2 class="cinzel font-bold tracking-tight text-white mb-4" style="font-size: clamp(1.6rem, 4vw, 2.8rem);">
+        Fund The <span style="color:#b91c1c;">Fight</span> For Justice
+      </h2>
+      <p class="neuton text-white/65 max-w-2xl mx-auto" style="font-size: clamp(0.9rem, 1.8vw, 1.1rem);">
+        Your donation directly funds civil rights legal defense, community outreach, education campaigns, and the production of content that exposes racial injustice.
+      </p>
+    </div>
+
+    <div class="rounded-2xl overflow-hidden border" style="background: rgba(12,12,22,0.97); border-color: rgba(185,28,28,0.3); box-shadow: 0 40px 100px rgba(0,0,0,0.5);">
+      <div class="p-8 md:p-10">
+        <!-- Amount selection -->
+        <div class="mb-8">
+          <label class="neuton text-white/80 text-sm mb-4 block uppercase tracking-widest">Select Amount</label>
+          <div class="grid grid-cols-3 md:grid-cols-6 gap-3 mb-4" id="amtBtns">
+            <button onclick="setAmount(10)" class="amt-btn py-3 rounded-lg neuton text-white/70 text-sm" data-amt="10">$10</button>
+            <button onclick="setAmount(25)" class="amt-btn active py-3 rounded-lg neuton text-sm" data-amt="25">$25</button>
+            <button onclick="setAmount(50)" class="amt-btn py-3 rounded-lg neuton text-white/70 text-sm" data-amt="50">$50</button>
+            <button onclick="setAmount(100)" class="amt-btn py-3 rounded-lg neuton text-white/70 text-sm" data-amt="100">$100</button>
+            <button onclick="setAmount(250)" class="amt-btn py-3 rounded-lg neuton text-white/70 text-sm" data-amt="250">$250</button>
+            <button onclick="setAmount(500)" class="amt-btn py-3 rounded-lg neuton text-white/70 text-sm" data-amt="500">$500</button>
+          </div>
+
+          <!-- Custom amount -->
+          <div class="relative">
+            <span class="absolute left-4 top-1/2 -translate-y-1/2 neuton text-white/40">$</span>
+            <input type="number" id="customAmt" placeholder="Custom amount" min="1" class="w-full pl-8 pr-4 py-3 rounded-lg neuton text-white placeholder-white/30 border outline-none transition-all" style="background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); font-size: clamp(0.85rem, 1.5vw, 0.95rem);" oninput="handleCustomAmt(this.value)" onfocus="this.style.borderColor='rgba(185,28,28,0.6)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+          </div>
+
+          <!-- Slider -->
+          <div class="mt-6">
+            <input type="range" min="5" max="1000" value="25" id="donateSlider" class="donate-slider" oninput="sliderChange(this.value)">
+            <div class="flex justify-between mt-1">
+              <span class="neuton text-white/30 text-xs">$5</span>
+              <span class="neuton text-red-400 text-sm font-bold" id="sliderDisplay">$25</span>
+              <span class="neuton text-white/30 text-xs">$1,000</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Frequency -->
+        <div class="mb-8">
+          <label class="neuton text-white/80 text-sm mb-4 block uppercase tracking-widest">Donation Frequency</label>
+          <div class="flex gap-3">
+            <button onclick="setFreq(this)" class="freq-btn flex-1 py-3 rounded-lg neuton text-sm border" style="background: #b91c1c; border-color: #b91c1c; color: #fff;" data-freq="once">One-Time</button>
+            <button onclick="setFreq(this)" class="freq-btn flex-1 py-3 rounded-lg neuton text-sm border" style="background: transparent; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.5);" data-freq="monthly">Monthly</button>
+            <button onclick="setFreq(this)" class="freq-btn flex-1 py-3 rounded-lg neuton text-sm border" style="background: transparent; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.5);" data-freq="yearly">Annually</button>
+          </div>
+        </div>
+
+        <!-- Impact -->
+        <div class="mb-8 p-4 rounded-xl" style="background: rgba(185,28,28,0.08); border: 1px solid rgba(185,28,28,0.2);">
+          <div class="flex items-start gap-3">
+            <iconify-icon icon="solar:info-circle-linear" width="20" style="color:#f87171; --iconify-stroke-width: 1.5; flex-shrink:0; margin-top:2px;"></iconify-icon>
+            <p class="neuton text-white/70 leading-relaxed" id="impactText" style="font-size: clamp(0.8rem, 1.5vw, 0.9rem);"><strong class="text-white">Your $25</strong> funds legal resources for one family separated at the border, and helps produce content viewed by thousands.</p>
+          </div>
+        </div>
+
+        <!-- Checkboxes -->
+        <div class="space-y-3 mb-8">
+          <label class="flex items-center gap-3 cursor-pointer group">
+            <input type="checkbox" class="custom-check" id="check1" checked="">
+            <div class="check-box group-hover:border-red-500">
+              <iconify-icon icon="solar:check-read-linear" width="10" style="color:#fff; --iconify-stroke-width: 1.5;" id="checkIcon1"></iconify-icon>
+            </div>
+            <span class="neuton text-white/70" style="font-size: clamp(0.8rem, 1.5vw, 0.88rem);">I want to receive updates on civil rights campaigns and legal victories</span>
+          </label>
+          <label class="flex items-center gap-3 cursor-pointer group">
+            <input type="checkbox" class="custom-check" id="check2">
+            <div class="check-box group-hover:border-red-500">
+              <iconify-icon icon="solar:check-read-linear" width="10" style="color: rgb(255, 255, 255); --iconify-stroke-width: 1.5; display: none;" id="checkIcon2"></iconify-icon>
+            </div>
+            <span class="neuton text-white/70" style="font-size: clamp(0.8rem, 1.5vw, 0.88rem);">Make this donation anonymous</span>
+          </label>
+        </div>
+
+        <!-- CTA -->
+        <button onclick="processDonate()" class="w-full py-5 rounded-xl flex items-center justify-center gap-3 font-bold transition-all hover:scale-[1.02] hover:shadow-2xl" style="background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%); color: #fff; font-family: 'Neuton', serif; font-size: clamp(1rem, 2vw, 1.15rem); box-shadow: 0 10px 40px rgba(185,28,28,0.4);">
+          <iconify-icon icon="solar:heart-linear" width="22" style="--iconify-stroke-width: 1.5;"></iconify-icon>
+          <span id="donateBtnText">Donate $25 — Fight For Justice</span>
+          <iconify-icon icon="solar:arrow-right-linear" width="22" style="--iconify-stroke-width: 1.5;"></iconify-icon>
+        </button>
+
+        <p class="neuton text-center text-white/30 mt-4" style="font-size: clamp(0.7rem, 1.2vw, 0.8rem);">
+          <iconify-icon icon="solar:lock-linear" width="14" style="--iconify-stroke-width: 1.5; vertical-align: middle;"></iconify-icon>
+          Secure, encrypted donation processing. 100% goes to civil rights organizations.
+        </p>
+      </div>
+
+      <!-- Impact stats bar -->
+      <div class="grid grid-cols-3 divide-x" style="border-top: 1px solid rgba(255,255,255,0.06); divide-color: rgba(255,255,255,0.06);">
+        <div class="p-5 text-center">
+          <div class="cinzel font-bold text-white mb-1" style="font-size: clamp(1.2rem, 2.5vw, 1.6rem); color:#f87171;">$2.4M</div>
+          <div class="neuton text-white/40" style="font-size: clamp(0.7rem, 1.2vw, 0.8rem);">Raised for civil rights</div>
+        </div>
+        <div class="p-5 text-center">
+          <div class="cinzel font-bold text-white mb-1" style="font-size: clamp(1.2rem, 2.5vw, 1.6rem); color:#f87171;">18,400</div>
+          <div class="neuton text-white/40" style="font-size: clamp(0.7rem, 1.2vw, 0.8rem);">Families supported</div>
+        </div>
+        <div class="p-5 text-center">
+          <div class="cinzel font-bold text-white mb-1" style="font-size: clamp(1.2rem, 2.5vw, 1.6rem); color:#f87171;">340+</div>
+          <div class="neuton text-white/40" style="font-size: clamp(0.7rem, 1.2vw, 0.8rem);">Legal cases funded</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Org logos -->
+    <div class="mt-10 text-center">
+      <p class="neuton text-white/30 text-sm mb-6">Funds distributed to verified civil rights organizations</p>
+      <div class="flex flex-wrap items-center justify-center gap-6 md:gap-10">
+        <span class="neuton font-bold text-white/25 tracking-tight text-sm">NAACP</span>
+        <span class="neuton font-bold text-white/25 tracking-tight text-sm">ACLU</span>
+        <span class="neuton font-bold text-white/25 tracking-tight text-sm">SPLC</span>
+        <span class="neuton font-bold text-white/25 tracking-tight text-sm">NAPALC</span>
+        <span class="neuton font-bold text-white/25 tracking-tight text-sm">CAIR</span>
+        <span class="neuton font-bold text-white/25 tracking-tight text-sm">ILRC</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =================== FOOTER =================== -->
+<footer class="py-12 px-6 border-t" style="border-color: rgba(255,255,255,0.06); background: #050508;">
+  <div class="max-w-6xl mx-auto">
+    <div class="grid md:grid-cols-4 gap-8 mb-10">
+      <div class="md:col-span-2">
+        <div class="cinzel font-bold tracking-tight mb-3" style="font-size: 1.1rem; color: #f0ece4;">
+          <span style="color:#b91c1c;">Evangelical</span>
+        </div>
+        <p class="neuton text-white/40 leading-relaxed mb-4" style="font-size: clamp(0.8rem, 1.5vw, 0.9rem);">
+          A nonpartisan civil rights documentation project. Every fact cited from verified public records, court documents, and primary sources. We believe truth is the most powerful weapon against racism.
+        </p>
+        <div class="flex gap-4">
+          <a href="#" class="p-2 rounded-lg border border-white/10 hover:border-red-500/50 transition-all">
+            <iconify-icon icon="solar:share-bold-duotone" width="18" style="color:#f87171; --iconify-stroke-width: 1.5;"></iconify-icon>
+          </a>
+          <a href="#" class="p-2 rounded-lg border border-white/10 hover:border-red-500/50 transition-all">
+            <iconify-icon icon="solar:letter-linear" width="18" style="color:#f87171; --iconify-stroke-width: 1.5;"></iconify-icon>
+          </a>
+        </div>
+      </div>
+      <div>
+        <h4 class="neuton text-white/60 text-xs uppercase tracking-widest mb-4">Navigate</h4>
+        <ul class="space-y-2">
+          <li><a href="#facts" class="neuton text-white/40 hover:text-red-400 transition-colors text-sm">The Facts</a></li>
+          <li><a href="#quotes" class="neuton text-white/40 hover:text-red-400 transition-colors text-sm">His Words</a></li>
+          <li><a href="#videos" class="neuton text-white/40 hover:text-red-400 transition-colors text-sm">Videos</a></li>
+          <li><a href="#sermons" class="neuton text-white/40 hover:text-red-400 transition-colors text-sm">Sermons</a></li>
+          <li><a href="#donate" class="neuton text-white/40 hover:text-red-400 transition-colors text-sm">Donate</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="neuton text-white/60 text-xs uppercase tracking-widest mb-4">Sources</h4>
+        <ul class="space-y-2">
+          <li><a href="#" class="neuton text-white/40 hover:text-blue-400 transition-colors text-sm">DOJ Records</a></li>
+          <li><a href="#" class="neuton text-white/40 hover:text-blue-400 transition-colors text-sm">ACLU Database</a></li>
+          <li><a href="#" class="neuton text-white/40 hover:text-blue-400 transition-colors text-sm">SPLC Reports</a></li>
+          <li><a href="#" class="neuton text-white/40 hover:text-blue-400 transition-colors text-sm">HHS Records</a></li>
+          <li><a href="#" class="neuton text-white/40 hover:text-blue-400 transition-colors text-sm">FBI Hate Crime Data</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="border-t pt-8 flex flex-col md:flex-row items-center justify-between gap-4" style="border-color: rgba(255,255,255,0.06);">
+      <p class="neuton text-white/25 text-xs">© 2026 Evangelical. All facts are sourced and verifiable. This is protected free speech.</p>
+      <p class="neuton text-white/25 text-xs">Not affiliated with any political party. 501(c)(3) civil rights documentation project.</p>
+    </div>
+  </div>
+</footer>
+
+<!-- =================== VIDEO MODAL =================== -->
+<div class="modal-overlay" id="videoModal">
+  <div class="modal-box" style="max-height: 95vh; overflow-y: auto;">
+    <!-- Close -->
+    <button onclick="closeVideoModal()" class="absolute top-4 right-4 z-10 w-9 h-9 rounded-full flex items-center justify-center border transition-all hover:bg-red-700" style="background: rgba(185,28,28,0.8); border-color: rgba(185,28,28,0.5);">
+      <iconify-icon icon="solar:close-circle-linear" width="20" style="color:#fff; --iconify-stroke-width: 1.5;"></iconify-icon>
+    </button>
+
+    <!-- Video -->
+    <div style="position:relative; padding-bottom:52%; background:#000;">
+      <iframe id="modalIframe" style="position:absolute;top:0;left:0;width:100%;height:100%;" src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe>
+    </div>
+
+    <!-- Video Info + Donate -->
+    <div class="p-6 md:p-8">
+      <div class="flex items-start gap-3 mb-4">
+        <iconify-icon icon="solar:shield-warning-linear" width="20" style="color:#f87171; flex-shrink:0; margin-top:3px; --iconify-stroke-width: 1.5;"></iconify-icon>
+        <div>
+          <h3 id="modalTitle" class="neuton font-bold text-white mb-2 leading-snug" style="font-size: clamp(0.95rem, 2vw, 1.1rem);"></h3>
+          <p id="modalDesc" class="neuton text-white/55 leading-relaxed" style="font-size: clamp(0.8rem, 1.5vw, 0.9rem);"></p>
+        </div>
+      </div>
+
+      <!-- Divider -->
+      <div class="my-6 h-px" style="background: linear-gradient(90deg, transparent, rgba(185,28,28,0.5), transparent);"></div>
+
+      <!-- Donate in modal -->
+      <div class="rounded-xl p-6 border" style="background: rgba(185,28,28,0.07); border-color: rgba(185,28,28,0.3);">
+        <div class="flex items-center gap-2 mb-4">
+          <iconify-icon icon="solar:heart-pulse-linear" width="22" style="color:#f87171; --iconify-stroke-width: 1.5;"></iconify-icon>
+          <h4 class="cinzel font-bold text-white tracking-tight" style="font-size: clamp(0.9rem, 1.8vw, 1.05rem);">Support This Work — Donate Now</h4>
+        </div>
+        <p class="neuton text-white/55 mb-5 leading-relaxed" style="font-size: clamp(0.78rem, 1.4vw, 0.88rem);">Videos like this cost money to produce and distribute. Your donation funds civil rights legal defense, community education, and more content exposing racial injustice.</p>
+
+        <!-- Quick amount buttons -->
+        <div class="grid grid-cols-4 gap-2 mb-4" id="modalAmtBtns">
+          <button onclick="setModalAmount(15)" class="modal-amt-btn py-2.5 rounded-lg neuton text-sm border transition-all" style="background: transparent; border-color: rgba(185,28,28,0.4); color: rgba(255,255,255,0.6);" data-amt="15">$15</button>
+          <button onclick="setModalAmount(35)" class="modal-amt-btn py-2.5 rounded-lg neuton text-sm border transition-all active" style="background: #b91c1c; border-color: #b91c1c; color: #fff;" data-amt="35">$35</button>
+          <button onclick="setModalAmount(75)" class="modal-amt-btn py-2.5 rounded-lg neuton text-sm border transition-all" style="background: transparent; border-color: rgba(185,28,28,0.4); color: rgba(255,255,255,0.6);" data-amt="75">$75</button>
+          <button onclick="setModalAmount(150)" class="modal-amt-btn py-2.5 rounded-lg neuton text-sm border transition-all" style="background: transparent; border-color: rgba(185,28,28,0.4); color: rgba(255,255,255,0.6);" data-amt="150">$150</button>
+        </div>
+
+        <!-- Slider in modal -->
+        <div class="mb-4">
+          <input type="range" min="5" max="500" value="35" id="modalSlider" class="donate-slider" oninput="modalSliderChange(this.value)">
+          <div class="flex justify-between mt-1">
+            <span class="neuton text-white/30 text-xs">$5</span>
+            <span class="neuton text-red-400 text-sm font-bold" id="modalSliderDisplay">$35</span>
+            <span class="neuton text-white/30 text-xs">$500</span>
+          </div>
+        </div>
+
+        <button onclick="processDonate()" class="w-full py-4 rounded-lg flex items-center justify-center gap-2 font-bold transition-all hover:scale-[1.02]" style="background: linear-gradient(135deg, #b91c1c, #991b1b); color: #fff; font-family: 'Neuton', serif; font-size: clamp(0.9rem, 1.8vw, 1rem); box-shadow: 0 8px 30px rgba(185,28,28,0.4);">
+          <iconify-icon icon="solar:heart-linear" width="20" style="--iconify-stroke-width: 1.5;"></iconify-icon>
+          <span id="modalDonateBtnText">Donate $35 — Support Civil Rights</span>
+        </button>
+
+        <!-- Org list -->
+        <div class="flex flex-wrap gap-3 mt-4 justify-center">
+          <span class="neuton text-white/25 text-xs">NAACP</span>
+          <span class="neuton text-white/25 text-xs">•</span>
+          <span class="neuton text-white/25 text-xs">ACLU</span>
+          <span class="neuton text-white/25 text-xs">•</span>
+          <span class="neuton text-white/25 text-xs">SPLC</span>
+          <span class="neuton text-white/25 text-xs">•</span>
+          <span class="neuton text-white/25 text-xs">CAIR</span>
+          <span class="neuton text-white/25 text-xs">•</span>
+          <span class="neuton text-white/25 text-xs">ILRC</span>
+        </div>
+      </div>
+
+      <!-- Share -->
+      <div class="mt-5 flex flex-col sm:flex-row gap-3">
+        <button onclick="shareVideo()" class="flex-1 py-3 rounded-lg flex items-center justify-center gap-2 border transition-all hover:border-white/30" style="border-color: rgba(255,255,255,0.1); background: rgba(255,255,255,0.03);">
+          <iconify-icon icon="solar:share-linear" width="18" style="color:#fff; --iconify-stroke-width: 1.5;"></iconify-icon>
+          <span class="neuton text-white/60 text-sm">Share This Video</span>
+        </button>
+        <button onclick="copyLink()" class="flex-1 py-3 rounded-lg flex items-center justify-center gap-2 border transition-all hover:border-white/30" style="border-color: rgba(255,255,255,0.1); background: rgba(255,255,255,0.03);">
+          <iconify-icon icon="solar:copy-linear" width="18" style="color:#fff; --iconify-stroke-width: 1.5;"></iconify-icon>
+          <span class="neuton text-white/60 text-sm">Copy Link</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =================== DONATE MODAL =================== -->
+<div class="modal-overlay" id="donateModal">
+  <div class="modal-box" style="max-width: 520px;">
+    <button onclick="closeDonateModal()" class="absolute top-4 right-4 z-10 w-9 h-9 rounded-full flex items-center justify-center border" style="background: rgba(185,28,28,0.8); border-color: rgba(185,28,28,0.5);">
+      <iconify-icon icon="solar:close-circle-linear" width="20" style="color:#fff; --iconify-stroke-width: 1.5;"></iconify-icon>
+    </button>
+    <div class="p-8">
+      <div class="text-center mb-6">
+        <div class="w-14 h-14 rounded-full mx-auto flex items-center justify-center mb-4" style="background: rgba(185,28,28,0.2);">
+          <iconify-icon icon="solar:heart-pulse-linear" width="28" style="color:#f87171; --iconify-stroke-width: 1.5;"></iconify-icon>
+        </div>
+        <h3 class="cinzel font-bold text-white tracking-tight mb-2" style="font-size: clamp(1.1rem, 2.5vw, 1.4rem);">Donate to Civil Rights</h3>
+        <p class="neuton text-white/55" style="font-size: clamp(0.8rem, 1.5vw, 0.9rem);">Every dollar funds the fight against racial injustice and supports affected communities.</p>
+      </div>
+      <div class="grid grid-cols-3 gap-3 mb-4">
+        <button onclick="setModalAmount(25)" class="modal-amt-btn py-3 rounded-lg neuton text-sm border transition-all" style="background: transparent; border-color: rgba(185,28,28,0.4); color: rgba(255,255,255,0.6);">$25</button>
+        <button onclick="setModalAmount(50)" class="modal-amt-btn py-3 rounded-lg neuton text-sm border transition-all active" style="background: #b91c1c; border-color: #b91c1c; color: #fff;">$50</button>
+        <button onclick="setModalAmount(100)" class="modal-amt-btn py-3 rounded-lg neuton text-sm border transition-all" style="background: transparent; border-color: rgba(185,28,28,0.4); color: rgba(255,255,255,0.6);">$100</button>
+      </div>
+      <input type="range" min="5" max="500" value="50" id="donateModalSlider" class="donate-slider mb-2" oninput="donateModalSlider(this.value)">
+      <div class="text-center mb-5">
+        <span class="neuton text-red-400 font-bold" id="donateModalDisplay">$50</span>
+      </div>
+      <button onclick="processDonate()" class="w-full py-4 rounded-xl flex items-center justify-center gap-2" style="background: linear-gradient(135deg, #b91c1c, #991b1b); color: #fff; font-family: 'Neuton', serif; font-size: 1rem; font-weight: 600; box-shadow: 0 8px 30px rgba(185,28,28,0.4);">
+        <iconify-icon icon="solar:heart-linear" width="20" style="--iconify-stroke-width: 1.5;"></iconify-icon>
+        Donate $50 Now
+      </button>
+      <p class="neuton text-center text-white/30 mt-3 text-xs">Secure. Encrypted. 100% to civil rights orgs.</p>
+    </div>
+  </div>
+</div>
+
+<!-- =================== SUCCESS TOAST =================== -->
+<div id="successToast" class="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-6 py-4 rounded-xl flex items-center gap-3 transition-all" style="background: rgba(5,150,105,0.95); backdrop-filter: blur(10px); box-shadow: 0 20px 60px rgba(0,0,0,0.5); opacity:0; pointer-events:none; transform: translate(-50%, 20px);">
+  <iconify-icon icon="solar:check-circle-linear" width="22" style="color:#fff; --iconify-stroke-width: 1.5;"></iconify-icon>
+  <span class="neuton text-white font-bold" style="font-size: 0.95rem;">Thank you! Your donation supports civil rights. ❤️</span>
+</div>
+
+<script>
+  // ---- Video Modal ----
+  let currentVideoId = '';
+
+  function openVideoModal(videoId, title, desc) {
+    currentVideoId = videoId;
+    document.getElementById('modalIframe').src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
+    document.getElementById('modalTitle').textContent = title;
+    document.getElementById('modalDesc').textContent = desc;
+    document.getElementById('videoModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeVideoModal() {
+    document.getElementById('videoModal').classList.remove('active');
+    document.getElementById('modalIframe').src = '';
+    document.body.style.overflow = '';
+  }
+
+  function openDonateModal() {
+    document.getElementById('donateModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeDonateModal() {
+    document.getElementById('donateModal').classList.remove('active');
+    document.body.style.overflow = '';
+  }
+
+  // Close modal on overlay click
+  document.getElementById('videoModal').addEventListener('click', function(e) {
+    if (e.target === this) closeVideoModal();
+  });
+  document.getElementById('donateModal').addEventListener('click', function(e) {
+    if (e.target === this) closeDonateModal();
+  });
+
+  // ---- Main Donate Section ----
+  let currentAmt = 25;
+
+  function setAmount(amt) {
+    currentAmt = amt;
+    document.getElementById('customAmt').value = '';
+    document.getElementById('donateSlider').value = Math.min(amt, 1000);
+    document.getElementById('sliderDisplay').textContent = `$${amt}`;
+    document.getElementById('donateBtnText').textContent = `Donate $${amt} — Fight For Justice`;
+    updateImpact(amt);
+
+    // Update buttons
+    document.querySelectorAll('#amtBtns .amt-btn').forEach(btn => {
+      const isActive = parseInt(btn.dataset.amt) === amt;
+      btn.style.background = isActive ? '#b91c1c' : 'transparent';
+      btn.style.borderColor = isActive ? '#b91c1c' : 'rgba(185,28,28,0.4)';
+      btn.style.color = isActive ? '#fff' : 'rgba(255,255,255,0.6)';
+    });
+  }
+
+  function handleCustomAmt(val) {
+    if (val) {
+      currentAmt = parseInt(val) || 0;
+      document.getElementById('donateSlider').value = Math.min(currentAmt, 1000);
+      document.getElementById('sliderDisplay').textContent = `$${currentAmt}`;
+      document.getElementById('donateBtnText').textContent = `Donate $${currentAmt} — Fight For Justice`;
+      updateImpact(currentAmt);
+    }
+  }
+
+  function sliderChange(val) {
+    currentAmt = parseInt(val);
+    document.getElementById('sliderDisplay').textContent = `$${currentAmt}`;
+    document.getElementById('donateBtnText').textContent = `Donate $${currentAmt} — Fight For Justice`;
+    document.getElementById('customAmt').value = '';
+    updateImpact(currentAmt);
+    document.querySelectorAll('#amtBtns .amt-btn').forEach(btn => {
+      btn.style.background = 'transparent';
+      btn.style.borderColor = 'rgba(185,28,28,0.4)';
+      btn.style.color = 'rgba(255,255,255,0.6)';
+    });
+  }
+
+  function updateImpact(amt) {
+    const el = document.getElementById('impactText');
+    let msg = '';
+    if (amt < 20) msg = `<strong class="text-white">Your $${amt}</strong> provides educational materials for a family navigating the immigration system.`;
+    else if (amt < 60) msg = `<strong class="text-white">Your $${amt}</strong> funds legal resources for one family separated at the border, and helps produce content viewed by thousands.`;
+    else if (amt < 120) msg = `<strong class="text-white">Your $${amt}</strong> covers legal filing fees for a civil rights discrimination case and funds outreach in underserved communities.`;
+    else if (amt < 300) msg = `<strong class="text-white">Your $${amt}</strong> provides a full day of legal counsel for an asylum-seeking family and produces shareable civil rights content.`;
+    else msg = `<strong class="text-white">Your $${amt}</strong> funds a week of civil rights legal defense, community outreach, and documentary production. You are a champion for justice.`;
+    el.innerHTML = msg;
+  }
+
+  function setFreq(btn) {
+    document.querySelectorAll('.freq-btn').forEach(b => {
+      b.style.background = 'transparent';
+      b.style.borderColor = 'rgba(255,255,255,0.15)';
+      b.style.color = 'rgba(255,255,255,0.5)';
+    });
+    btn.style.background = '#b91c1c';
+    btn.style.borderColor = '#b91c1c';
+    btn.style.color = '#fff';
+  }
+
+  // ---- Modal Donate ----
+  let modalAmt = 35;
+
+  function setModalAmount(amt) {
+    modalAmt = amt;
+    document.getElementById('modalSlider').value = Math.min(amt, 500);
+    document.getElementById('modalSliderDisplay').textContent = `$${amt}`;
+    document.getElementById('modalDonateBtnText').textContent = `Donate $${amt} — Support Civil Rights`;
+
+    document.querySelectorAll('#modalAmtBtns .modal-amt-btn').forEach(btn => {
+      const isActive = parseInt(btn.dataset.amt) === amt;
+      btn.style.background = isActive ? '#b91c1c' : 'transparent';
+      btn.style.borderColor = isActive ? '#b91c1c' : 'rgba(185,28,28,0.4)';
+      btn.style.color = isActive ? '#fff' : 'rgba(255,255,255,0.6)';
+    });
+  }
+
+  function modalSliderChange(val) {
+    modalAmt = parseInt(val);
+    document.getElementById('modalSliderDisplay').textContent = `$${modalAmt}`;
+    document.getElementById('modalDonateBtnText').textContent = `Donate $${modalAmt} — Support Civil Rights`;
+    document.querySelectorAll('#modalAmtBtns .modal-amt-btn').forEach(btn => {
+      btn.style.background = 'transparent';
+      btn.style.borderColor = 'rgba(185,28,28,0.4)';
+      btn.style.color = 'rgba(255,255,255,0.6)';
+    });
+  }
+
+  function donateModalSlider(val) {
+    document.getElementById('donateModalDisplay').textContent = `$${val}`;
+  }
+
+  // ---- Checkboxes ----
+  document.getElementById('check1').addEventListener('change', function() {
+    document.getElementById('checkIcon1').style.display = this.checked ? 'block' : 'none';
+  });
+  document.getElementById('check2').addEventListener('change', function() {
+    document.getElementById('checkIcon2').style.display = this.checked ? 'block' : 'none';
+  });
+
+  // ---- Process Donate ----
+  function processDonate() {
+    closeVideoModal();
+    closeDonateModal();
+    showToast();
+  }
+
+  function showToast() {
+    const toast = document.getElementById('successToast');
+    toast.style.opacity = '1';
+    toast.style.pointerEvents = 'auto';
+    toast.style.transform = 'translate(-50%, 0)';
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translate(-50%, 20px)';
+    }, 4000);
+  }
+
+  // ---- Share / Copy ----
+  function shareVideo() {
+    if (navigator.share) {
+      navigator.share({ title: 'TruthRecord — Civil Rights Archive', url: window.location.href });
+    } else { copyLink(); }
+  }
+
+  function copyLink() {
+    navigator.clipboard.writeText(`https://www.youtube.com/watch?v=${currentVideoId}`).then(() => {
+      showToast();
+    });
+  }
+
+  // ---- Keyboard close ----
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { closeVideoModal(); closeDonateModal(); }
+  });
+
+  // ---- Init ----
+  updateImpact(25);
+</script>
+
+</body></html>

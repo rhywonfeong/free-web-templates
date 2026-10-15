@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coast Flight Training | Elite Airline Pilot Training</title>
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/geist@1.0.3/dist/fonts/geist-sans/style.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/geist@1.0.3/dist/fonts/geist-mono/style.css" rel="stylesheet">
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Three.js for WebGL -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+<!-- Iconify -->
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<style>
+/* Base Configuration & Noise Texture */
+body {
+-webkit-font-smoothing: antialiased;
+overflow-x: hidden;
+font-family: 'Geist', sans-serif;
+}
+h1, h2, h3, h4, h5, .font-display { font-family: 'Syne', sans-serif; }
+.font-mono { font-family: 'Geist Mono', monospace; }
+.noise-overlay::after {
+content: ""; position: fixed; inset: 0; z-index: 9999; pointer-events: none;
+background: url('data:image/svg+xml;utf8,<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><filter id="noiseFilter"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23noiseFilter)"/></svg>');
+opacity: 0.03; mix-blend-mode: multiply;
+}
+/* Framer-style Reveals & Clips */
+.reveal-up {
+opacity: 0;
+transform: translateY(2rem);
+filter: blur(4px);
+transition: opacity 1s cubic-bezier(0.16, 1, 0.3, 1), transform 1s cubic-bezier(0.16, 1, 0.3, 1), filter 1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal-up.is-visible { opacity: 1; transform: translateY(0); filter: blur(0); }
+.reveal-clip { clip-path: polygon(0 0, 100% 0, 100% 0, 0 0); transition: clip-path 1.2s cubic-bezier(0.16, 1, 0.3, 1); }
+.reveal-clip.is-visible { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); }
+/* Animations */
+@keyframes slideUp { to { transform: translateY(0); } }
+@keyframes progress { 0% { width: 0; } 100% { width: 100%; } }
+@keyframes slideDown { 0% { top: -50%; } 100% { top: 100%; } }
+@keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+@keyframes zoomInOut { 0%, 100% { transform: scale(1.05); } 50% { transform: scale(1.15); } }
+.animate-zoomInOut { animation: zoomInOut 20s ease-in-out infinite; }
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 0.25rem; height: 0.25rem; }
+::-webkit-scrollbar-track { background: #f8fafc; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 1rem; }
+::-webkit-scrollbar-thumb:hover { background: #2B7CD4; }
+/* Utilities */
+.text-balance { text-wrap: balance; }
+#webgl-container canvas { outline: none; }
+.hud-container { perspective: 1000px; transform-style: preserve-3d; }
+.codepen-button { display: inline-block; cursor: pointer; color: #fff; position: relative; text-decoration: none; font-weight: 600; border-radius: 100px; overflow: hidden; padding: 2px; isolation: isolate; font-family: 'Inter', sans-serif; }
+.codepen-button::before { content: ""; position: absolute; inset: 0; width: 400%; height: 100%; background: linear-gradient(115deg, #d1d1d1, #02367b, #a7bfde); background-size: 25% 100%; animation: border-shift .75s linear infinite; }
+@keyframes border-shift { to { transform: translateX(-25%); } }
+.codepen-button span { position: relative; display: flex; align-items: center; justify-content: center; gap: 0.5rem; background: #02367b; border-radius: 100px; height: 100%; transition: background 0.3s ease; }
+.codepen-button:hover span { background: #1A5DAB; }
+<style>
+.codepen-button::before { background: linear-gradient(115deg, #f5c4b8, #E8573A, #f9d4c8) !important; background-size: 25% 100% !important; }
+.codepen-button span { background: #E8573A !important; }
+.codepen-button:hover span { background: #F06B4E !important; }
+::-webkit-scrollbar-thumb:hover { background: #E8573A !important; }
+.text-\[\#1A5DAB\] { color: #E8573A !important; }
+.bg-\[\#1A5DAB\] { background-color: #E8573A !important; }
+.border-\[rgba\(26\,93\,171\,0\.25\)\] { border-color: rgba(232,87,58,0.25) !important; }
+.shadow-\[0_0_10px_rgba\(26\,93\,171\,0\.20\)\] { box-shadow: 0 0 10px rgba(232,87,58,0.20) !important; }
+.hover\:text-\[\#2B7CD4\]:hover { color: #F06B4E !important; }
+.hover\:bg-\[\#1A5DAB\]:hover { background-color: #E8573A !important; }
+.group:hover .group-hover\:text-\[\#2B7CD4\] { color: #F06B4E !important; }
+.group:hover .group-hover\:bg-\[\#2B7CD4\] { background-color: #F06B4E !important; }
+.group:hover .group-hover\:border-\[\#2B7CD4\] { border-color: #F06B4E !important; }
+.bg-\[radial-gradient\(circle_at_center\,rgba\(26\,93\,171\,0\.08\)_0\%\,transparent_60\%\)\] { background: radial-gradient(circle at center, rgba(232,87,58,0.10) 0%, transparent 60%) !important; }
+</style>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+.codepen-button::before { background: linear-gradient(115deg, #d1d1d1, #E8573A, #fcd5ce) !important; background-size: 25% 100% !important; }
+.codepen-button span { background: #E8573A !important; }
+.codepen-button:hover span { background: #F06B4E !important; }
+::-webkit-scrollbar-thumb:hover { background: #E8573A !important; }
+.text-\[\#1A5DAB\] { color: #E8573A !important; }
+.bg-\[\#1A5DAB\] { background-color: #E8573A !important; }
+.border-\[rgba\(26\,93\,171\,0\.25\)\] { border-color: rgba(232,87,58,0.25) !important; }
+.shadow-\[0_0_10px_rgba\(26\,93\,171\,0\.20\)\] { box-shadow: 0 0 10px rgba(232,87,58,0.20) !important; }
+.hover\:text-\[\#2B7CD4\]:hover { color: #F06B4E !important; }
+.hover\:bg-\[\#1A5DAB\]:hover { background-color: #E8573A !important; }
+.group:hover .group-hover\:text-\[\#2B7CD4\] { color: #F06B4E !important; }
+.group:hover .group-hover\:bg-\[\#2B7CD4\] { background-color: #F06B4E !important; }
+.group:hover .group-hover\:border-\[\#2B7CD4\] { border-color: #F06B4E !important; }
+.bg-\[radial-gradient\(circle_at_center\,rgba\(26\,93\,171\,0\.08\)_0\%\,transparent_60\%\)\] { background: radial-gradient(circle at center, rgba(232,87,58,0.10) 0%, transparent 60%) !important; }
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body class="scroll-smooth bg-white text-slate-900 selection:bg-[#1A5DAB] selection:text-white noise-overlay">
+    <!-- Global Layout Lines -->
+    <div class="fixed inset-y-0 left-[clamp(1.5rem,5vw,5rem)] w-px bg-slate-900/[0.04] pointer-events-none z-0"></div>
+    <div class="fixed inset-y-0 right-[clamp(1.5rem,5vw,5rem)] w-px bg-slate-900/[0.04] pointer-events-none z-0"></div>
+
+    <!-- Preloader -->
+
+    <!-- Background Grid -->
+    <div class="fixed inset-0 z-[-1] pointer-events-none bg-[linear-gradient(rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.03)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:linear-gradient(to_bottom,white_20%,transparent_80%)]"></div>
+
+    <!-- Floating Navigation Pill -->
+    <nav id="navbar" class="fixed top-6 md:top-8 inset-x-0 mx-auto z-50 w-[92%] max-w-[55rem] transition-all duration-700 reveal-up is-visible" style="transition-delay: 1s;">
+      <div class="flex items-center justify-between relative px-2.5 py-2.5 bg-white/80 backdrop-blur-xl border border-slate-900/10 rounded-full shadow-[0_10px_40px_-10px_rgba(0,0,0,0.05)]">
+        <!-- Logo -->
+        <div class="flex-none pl-3 z-10">
+          <a href="#" class="flex items-center gap-3 group/logo">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/7779c4e9-cf43-4379-a162-96455d9c5618_320w.png" alt="Coast Flight Training" class="md:h-8 transition-transform duration-500 group-hover/logo:scale-105 w-auto h-7 object-contain invert-0">
+          </a>
+        </div>
+
+        <!-- Links -->
+        <div class="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-1 px-4 border-x border-slate-900/10 h-[60%]">
+          <a href="#architecture" class="text-xs font-mono font-light text-slate-500 hover:text-slate-900 hover:bg-slate-900/5 px-4 py-2 rounded-full transition-all duration-300">
+            Pathways
+          </a>
+          <a href="#fleet" class="text-xs font-mono font-light text-slate-500 hover:text-slate-900 hover:bg-slate-900/5 px-4 py-2 rounded-full transition-all duration-300">
+            Fleet
+          </a>
+          <a href="#admissions" class="text-xs font-mono font-light text-slate-500 hover:text-slate-900 hover:bg-slate-900/5 px-4 py-2 rounded-full transition-all duration-300">
+            Admissions
+          </a>
+        </div>
+
+        <!-- CTA -->
+        <div class="flex-none pr-1 z-10">
+          <a href="#contact" class="codepen-button hidden md:inline-block">
+            <span class="px-5 py-2 text-xs font-mono tracking-wider">
+              BOOK FLIGHT
+              <iconify-icon icon="solar:arrow-right-up-linear" class="w-4 h-4"></iconify-icon>
+            </span>
+          </a>
+          <button class="md:hidden flex flex-col gap-1.5 p-3">
+            <div class="w-4 h-[1px] bg-slate-900"></div>
+            <div class="w-4 h-[1px] bg-slate-900"></div>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="relative min-h-[100dvh] w-full flex items-center pt-[8rem] pb-[4rem] px-[clamp(1.5rem,5vw,5rem)] overflow-hidden">
+      <!-- WebGL & Photographic Background -->
+      <div class="absolute inset-0 z-0 flex items-center justify-center pointer-events-none overflow-hidden bg-gradient-to-b from-[#AEC7E4] via-[#C0D6EC] to-white">
+        <!-- Left Cloud -->
+        <div class="absolute -left-[10%] top-[15%] w-[50vw] min-w-[400px] aspect-square bg-[url('https://images.unsplash.com/photo-1534447677768-be436bb09401?q=80&amp;w=800&amp;auto=format&amp;fit=crop')] bg-cover bg-center mix-blend-screen opacity-90" style="-webkit-mask-image: radial-gradient(circle at center, black 15%, transparent 60%); mask-image: radial-gradient(circle at center, black 15%, transparent 60%);"></div>
+
+        <!-- Right Cloud -->
+        <div class="absolute -right-[15%] top-[5%] w-[60vw] min-w-[500px] aspect-square bg-[url('https://images.unsplash.com/photo-1534447677768-be436bb09401?q=80&amp;w=800&amp;auto=format&amp;fit=crop')] bg-cover bg-center mix-blend-screen opacity-90" style="-webkit-mask-image: radial-gradient(circle at center, black 15%, transparent 60%); mask-image: radial-gradient(circle at center, black 15%, transparent 60%); transform: scaleX(-1) rotate(5deg);"></div>
+
+        <div id="webgl-container" class="absolute inset-0 z-0 opacity-20 mix-blend-multiply"></div>
+      </div>
+
+      <div class="w-full max-w-[90rem] mx-auto relative z-10 grid grid-cols-1 gap-12 items-center">
+        <div class="flex flex-col items-center text-center mt-12 md:mt-0">
+          <div class="inline-flex items-center gap-3 border border-slate-900/10 bg-white/50 backdrop-blur-md px-4 py-2 rounded-full mb-8 reveal-up shadow-sm is-visible" style="transition-delay: 1.1s;">
+            <div class="w-2 h-2 bg-[#1A5DAB] rounded-full animate-pulse shadow-[0_0_10px_rgba(26,93,171,0.20)]"></div>
+            <span class="font-mono text-xs font-light text-slate-900 uppercase tracking-widest">
+              Professional Flight School
+            </span>
+          </div>
+
+          <h1 class="font-display font-normal text-[clamp(2.5rem,8vw,9rem)] leading-[0.85] tracking-tighter text-slate-900 mb-8 reveal-up text-balance flex flex-col items-center w-full is-visible" style="transition-delay: 1.2s;">
+            <span class="sr-only">Professional Flight School</span>
+            <span class="">THE SKY IS NO</span>
+            <span class="flex items-center justify-center gap-3 md:gap-4 flex-wrap w-full">
+              LONGER THE
+              <span class="hidden sm:inline-flex h-[clamp(2.5rem,5vw,6rem)] w-[clamp(6rem,12vw,14rem)] bg-white border rounded-full items-center justify-center overflow-hidden relative group backdrop-blur-sm shadow-sm border-white">
+                <span class="bg-center group-hover:scale-110 transition-transform duration-1000 opacity-60 bg-[url(https://images.unsplash.com/photo-1419833173245-f59e1b93f9ee?w=320&amp;q=80)] bg-cover absolute top-0 right-0 bottom-0 left-0"></span>
+                <span class="z-[5] border-stone-50 absolute top-0 right-0 bottom-0 left-0"></span>
+                <span class="text-xs text-neutral-50 tracking-widest font-mono z-10 relative">
+                  LIMIT.
+                </span>
+              </span>
+            </span>
+            <span class="">IT'S YOUR OFFICE.</span>
+          </h1>
+
+          <p class="font-sans text-[clamp(1.125rem,1.5vw,1.5rem)] font-light text-slate-600 max-w-[50ch] leading-[1.6] mb-12 reveal-up text-balance is-visible" style="transition-delay: 1.3s;">
+            Elite Airline Pilot Training in San Diego, Dallas, and San Marcos.
+          </p>
+
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-6 w-full sm:w-auto reveal-up is-visible" style="transition-delay: 1.4s;">
+            <a href="#admissions" class="codepen-button w-full sm:w-auto">
+              <span class="px-8 py-4 text-sm font-mono tracking-widest">
+                BOOK A DISCOVERY FLIGHT
+                <iconify-icon icon="solar:paperplane-linear" class="w-5 h-5"></iconify-icon>
+              </span>
+            </a>
+            <a href="#architecture" class="group flex items-center justify-center gap-3 h-14 px-6 text-xs text-slate-500 hover:text-slate-900 font-mono font-light tracking-widest transition-colors w-full sm:w-auto">
+              <div class="w-8 h-[1px] bg-slate-300 group-hover:w-12 group-hover:bg-slate-900 transition-all duration-300"></div>
+              EXPLORE PATHWAYS
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scroll Indicator -->
+      <div class="absolute left-[clamp(1.5rem,5vw,5rem)] bottom-12 hidden lg:flex flex-col items-start gap-4 reveal-up is-visible" style="transition-delay: 1.5s;">
+        <div class="font-mono text-xs font-light text-slate-900 tracking-widest transform -rotate-90 origin-left translate-y-12">
+          SCROLL
+        </div>
+        <div class="w-[1px] h-16 bg-slate-900/30 relative overflow-hidden ml-2">
+          <div class="absolute top-0 left-0 w-full h-1/2 bg-slate-900 animate-[slideDown_2s_ease-in-out_infinite]"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Marquee Partners -->
+    <section class="border-y border-slate-200 overflow-hidden relative flex items-center h-20 md:h-28 bg-slate-50">
+      <!-- Static Overlay for Marquee Fade/Cover -->
+      <div class="absolute left-0 top-0 bottom-0 z-20 flex items-center pl-[clamp(1.5rem,5vw,5rem)] pr-6 md:pr-10 border-r border-slate-200 shadow-[20px_0_30px_-10px_rgba(255,255,255,1)] bg-slate-50">
+        <div class="font-mono text-xs text-slate-500 tracking-[0.2em] font-light uppercase whitespace-nowrap">
+          Partner
+          <br>
+          Careers
+        </div>
+      </div>
+
+      <!-- Right Fade -->
+      <div class="absolute right-0 top-0 bottom-0 z-20 w-32 bg-gradient-to-l to-transparent pointer-events-none from-slate-50"></div>
+
+      <!-- Marquee Track -->
+      <div class="flex flex-nowrap w-max animate-[marquee_40s_linear_infinite] opacity-60 hover:opacity-100 transition-opacity duration-700 pl-[250px] md:pl-[350px]" style="animation: marquee 40s linear infinite;">
+        <div class="flex items-center gap-12 md:gap-24 pr-12 md:pr-24 min-w-max">
+          <span class="font-display font-normal text-lg md:text-2xl tracking-tight text-slate-400 hover:text-slate-900 transition-all duration-300 cursor-default">
+            UNITED
+          </span>
+          <span class="font-display font-normal text-lg md:text-2xl tracking-tight text-slate-400 hover:text-slate-900 transition-all duration-300 cursor-default">
+            SKYWEST
+          </span>
+          <span class="font-display font-normal text-lg md:text-2xl tracking-tight text-slate-400 hover:text-slate-900 transition-all duration-300 cursor-default">
+            AMERICAN AIRLINES
+          </span>
+          <span class="font-display font-normal text-lg md:text-2xl tracking-tight text-slate-400 hover:text-slate-900 transition-all duration-300 cursor-default">
+            DELTA
+          </span>
+          <span class="font-display font-normal text-lg md:text-2xl tracking-tight text-slate-400 hover:text-slate-900 transition-all duration-300 cursor-default">
+            SOUTHWEST
+          </span>
+        </div>
+        <div class="flex items-center gap-12 md:gap-24 pr-12 md:pr-24 min-w-max" aria-hidden="true">
+          <span class="font-display font-normal text-lg md:text-2xl tracking-tight text-slate-400 hover:text-slate-900 transition-all duration-300 cursor-default">
+            UNITED
+          </span>
+          <span class="font-display font-normal text-lg md:text-2xl tracking-tight text-slate-400 hover:text-slate-900 transition-all duration-300 cursor-default">
+            SKYWEST
+          </span>
+          <span class="font-display font-normal text-lg md:text-2xl tracking-tight text-slate-400 hover:text-slate-900 transition-all duration-300 cursor-default">
+            AMERICAN AIRLINES
+          </span>
+          <span class="font-display font-normal text-lg md:text-2xl tracking-tight text-slate-400 hover:text-slate-900 transition-all duration-300 cursor-default">
+            DELTA
+          </span>
+          <span class="font-display font-normal text-lg md:text-2xl tracking-tight text-slate-400 hover:text-slate-900 transition-all duration-300 cursor-default">
+            SOUTHWEST
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Architecture / Asymmetric Bento Grid -->
+    <section id="architecture" class="py-[6rem] md:py-[10rem] px-[clamp(1.5rem,5vw,5rem)] relative z-10 bg-white">
+      <div class="max-w-[90rem] mx-auto">
+        <div class="mb-12 md:mb-20 reveal-up is-visible">
+          <span class="font-mono text-xs font-light text-[#1A5DAB] tracking-[0.2em] uppercase flex items-center gap-3 mb-6">
+            <span class="w-2 h-2 bg-[#1A5DAB]"></span>
+            Training Pathways
+          </span>
+          <h2 class="font-display font-normal text-[clamp(2.5rem,5vw,4.5rem)] tracking-tighter leading-none mb-6 text-slate-900">
+            Your Journey.
+            <br>
+            <span class="text-slate-400">Our Expertise.</span>
+          </h2>
+          <p class="text-[clamp(1.125rem,1.5vw,1.25rem)] font-light text-slate-500 max-w-[45ch] leading-[1.6]">
+            From zero experience to airline-ready. Our structured programs are
+            designed to turn ambition into a professional aviation career.
+          </p>
+        </div>
+
+        <!-- Asymmetric Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-4 auto-rows-auto md:auto-rows-[24rem]">
+          <!-- Main Featured Box (Col 8, Row 2) -->
+          <div class="md:col-span-8 md:row-span-2 bg-white border border-slate-200 relative overflow-hidden transition-all duration-700 group hover:border-slate-300 hover:shadow-[0_20px_40px_-20px_rgba(0,0,0,0.05)] flex flex-col justify-between reveal-up min-h-[24rem] bento-card hover:scale-[1.01] hover:z-20 rounded-xl is-visible" style="--mouse-x: 552.40625px; --mouse-y: 766.203125px;">
+            <div class="absolute inset-0 z-0 overflow-hidden rounded-xl">
+              <div class="absolute bottom-0 left-0 right-0 h-[65%] bg-gradient-to-t from-white/95 via-white/70 to-transparent z-10 pointer-events-none"></div>
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/0ae91804-ad20-4064-a787-425d5dc07a7b_1600w.jpg" alt="Airline Career" class="w-full h-full object-cover saturate-[1.1] transition-all duration-[600ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-105 group-hover:brightness-[1.08] group-hover:contrast-[1.05]">
+            </div>
+            <div class="z-10 relative h-full flex flex-col justify-between p-8 md:p-12 pointer-events-none">
+              <div class="flex justify-between items-start mb-12 md:mb-0">
+                <div class="font-mono text-xs font-light bg-slate-100/80 border border-slate-200 px-3 py-1 rounded-full text-slate-600 backdrop-blur-md">
+                  PROGRAM_01
+                </div>
+                <iconify-icon icon="solar:paperplane-linear" class="w-8 h-8 text-slate-900 opacity-40 group-hover:opacity-100 group-hover:text-[#2B7CD4] transition-all duration-500 text-3xl"></iconify-icon>
+              </div>
+              <div class="max-w-[32rem] pointer-events-auto">
+                <h3 class="font-display font-normal text-[clamp(2rem,3vw,3rem)] text-slate-900 mb-4 leading-none tracking-tight drop-shadow-sm group-hover:drop-shadow-none">
+                  Airline Career
+                </h3>
+                <p class="text-base font-light text-slate-600 leading-[1.6] mb-8 group-hover:text-slate-800 transition-colors">
+                  Our premier structured training program designed to take you
+                  from zero hours to a guaranteed flight instructor role, and
+                  onward to the airlines.
+                </p>
+                <a href="#" class="inline-flex items-center gap-2 font-mono text-xs font-light text-[#1A5DAB] hover:text-[#2B7CD4] transition-colors">
+                  VIEW CURRICULUM
+                  <iconify-icon icon="solar:arrow-right-linear" class="w-4 h-4"></iconify-icon>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Vertical Box (Col 4, Row 2) -->
+          <div class="md:col-span-4 md:row-span-2 bg-white border border-slate-200 relative overflow-hidden transition-all duration-700 group hover:border-slate-300 hover:shadow-[0_20px_40px_-20px_rgba(0,0,0,0.05)] flex flex-col justify-between reveal-up min-h-[24rem] bento-card hover:scale-[1.01] hover:z-20 rounded-xl is-visible" style="transition-delay: 0.1s; --mouse-x: 157.203125px; --mouse-y: 626.203125px;">
+            <div class="absolute inset-0 z-0 overflow-hidden rounded-xl">
+              <div class="absolute bottom-0 left-0 right-0 h-[65%] bg-gradient-to-t from-white/95 via-white/70 to-transparent z-10 pointer-events-none"></div>
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/6adba3db-5f1c-4818-920e-2ba54a1e81b1_1600w.jpg" alt="Military Transition" class="w-full h-full object-cover contrast-[1.08] saturate-[1.05] transition-all duration-[600ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-105 group-hover:brightness-[1.08] group-hover:contrast-[1.05]">
+            </div>
+            <div class="z-10 relative h-full flex flex-col justify-between p-8 md:p-12 pointer-events-none">
+              <div class="flex justify-between items-start mb-8 md:mb-12">
+                <div class="font-mono text-xs font-light bg-slate-100/80 border border-slate-200 px-3 py-1 rounded-full text-slate-600 backdrop-blur-md">
+                  PROGRAM_02
+                </div>
+              </div>
+              <div class="pointer-events-auto">
+                <h3 class="font-display font-normal text-[clamp(1.5rem,2.5vw,2rem)] text-slate-900 mb-3 tracking-tight">
+                  Military Transition
+                </h3>
+                <p class="text-base font-light text-slate-600 leading-relaxed mb-6 group-hover:text-slate-800 transition-colors">
+                  Rotor transition and skillbridge programs tailored for
+                  veterans.
+                </p>
+                <a href="#" class="inline-flex items-center gap-2 font-mono text-xs font-light text-[#1A5DAB] hover:text-[#2B7CD4] transition-colors">
+                  VIEW CURRICULUM
+                  <iconify-icon icon="solar:arrow-right-linear" class="w-4 h-4"></iconify-icon>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Horizontal Wide Box (Col 12, Row 1) -->
+          <div class="md:col-span-12 bg-white border border-slate-200 relative overflow-hidden transition-all duration-700 group hover:border-slate-300 hover:shadow-[0_20px_40px_-20px_rgba(0,0,0,0.05)] flex flex-col md:flex-row reveal-up bento-card hover:scale-[1.01] hover:z-20 rounded-xl is-visible" style="transition-delay: 0.2s; --mouse-x: 950.40625px; --mouse-y: 28.203125px;">
+            <div class="absolute inset-0 z-0 overflow-hidden rounded-xl">
+              <div class="absolute inset-0 bg-gradient-to-t from-white/95 via-white/70 to-transparent md:bg-gradient-to-r md:from-white/95 md:via-white/70 md:to-transparent z-10 pointer-events-none"></div>
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/52cb41cc-89b1-4d2b-8d88-f41e229a3b68_1600w.jpg" alt="Private Pilot" class="contrast-[1.05] saturate-[1.05] transition-all duration-[600ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-105 group-hover:brightness-[1.08] group-hover:contrast-[1.05] w-full h-full object-cover">
+            </div>
+            <div class="p-8 md:p-12 flex-1 flex flex-col justify-center z-10 relative w-full pointer-events-none">
+              <div class="font-mono text-xs font-light bg-slate-100/80 border border-slate-200 px-3 py-1 rounded-full text-slate-600 self-start mb-6 backdrop-blur-md">
+                PROGRAM_03
+              </div>
+              <h3 class="font-display font-normal text-[clamp(1.75rem,2.5vw,2.25rem)] text-slate-900 mb-4 tracking-tight">
+                Private Pilot
+              </h3>
+              <p class="text-base font-light text-slate-600 leading-[1.6] max-w-[40ch] mb-6 group-hover:text-slate-800 transition-colors">
+                Fly for business or pleasure. The ultimate freedom begins here
+                with our world-class modern fleet.
+              </p>
+              <a href="#" class="inline-flex items-center gap-2 font-mono text-xs font-light text-[#1A5DAB] hover:text-[#2B7CD4] transition-colors pointer-events-auto">
+                VIEW CURRICULUM
+                <iconify-icon icon="solar:arrow-right-linear" class="w-4 h-4"></iconify-icon>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive Systems -->
+
+    <!-- Metrics -->
+    <section class="border-y border-slate-200 bg-white relative z-20">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 w-full">
+        <div class="p-10 lg:p-14 flex flex-col justify-between aspect-square group bg-slate-50 hover:bg-[#1A5DAB] transition-colors duration-500 cursor-default relative overflow-hidden">
+          <div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1462331940025-496dfbfc7564?q=80&amp;w=800&amp;auto=format&amp;fit=crop')] bg-cover bg-center opacity-0 group-hover:opacity-10 transition-opacity duration-700 mix-blend-multiply grayscale"></div>
+          <span class="group-hover:text-white/80 transition-colors z-10 text-xs font-normal text-slate-500 tracking-widest font-mono relative">
+            PILOTS TRAINED
+          </span>
+          <div class="relative z-10 transform group-hover:-translate-y-4 transition-transform duration-500">
+            <div class="text-[clamp(3.5rem,6vw,5.5rem)] leading-none group-hover:text-white transition-colors count-up font-normal text-slate-900 tracking-tighter font-display mb-2" data-target="34">
+              0
+            </div>
+            <p class="group-hover:text-white/90 transition-colors text-sm font-light text-slate-500">
+              Career and recreational graduates across three campuses.
+            </p>
+          </div>
+        </div>
+
+        <div class="p-10 lg:p-14 flex flex-col justify-between aspect-square group bg-slate-50 hover:bg-[#1A5DAB] transition-colors duration-500 cursor-default relative overflow-hidden">
+          <div class="bg-center group-hover:opacity-10 transition-opacity duration-700 opacity-0 mix-blend-multiply bg-[url('https://images.unsplash.com/photo-1462331940025-496dfbfc7564?q=80&amp;w=800&amp;auto=format&amp;fit=crop')] bg-cover absolute top-0 right-0 bottom-0 left-0 grayscale"></div>
+          <span class="group-hover:text-white/80 transition-colors text-xs font-normal text-slate-500 tracking-widest font-mono z-10 relative">
+            PLACEMENT RATE
+          </span>
+          <div class="relative z-10 transform group-hover:-translate-y-4 transition-transform duration-500">
+            <div class="font-display font-normal text-[clamp(3.5rem,6vw,5.5rem)] text-slate-900 leading-none mb-2 group-hover:text-white transition-colors tracking-tighter">
+              <span class="count-up" data-target="99">0</span>
+              .9
+              <span class="text-[clamp(1.75rem,3vw,3rem)] text-slate-400 group-hover:text-white/80">
+                %
+              </span>
+            </div>
+            <p class="group-hover:text-white/90 transition-colors text-sm font-light text-slate-500">
+              Academy graduates placed with airline partners.
+            </p>
+          </div>
+        </div>
+
+        <div class="p-10 lg:p-14 flex flex-col justify-between aspect-square group bg-slate-50 hover:bg-slate-900 transition-colors duration-500 cursor-default relative overflow-hidden">
+          <div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1462331940025-496dfbfc7564?q=80&amp;w=800&amp;auto=format&amp;fit=crop')] bg-cover bg-center opacity-0 group-hover:opacity-10 transition-opacity duration-700 mix-blend-multiply grayscale"></div>
+          <span class="group-hover:text-white/60 transition-colors text-xs font-normal text-slate-500 tracking-widest font-mono z-10 relative">
+            AIRCRAFT FLEET
+          </span>
+          <div class="relative z-10 transform group-hover:-translate-y-4 transition-transform duration-500">
+            <div class="font-display font-normal text-[clamp(3.5rem,6vw,5.5rem)] text-slate-900 leading-none mb-2 group-hover:text-white transition-colors tracking-tighter">
+              <span class="count-up" data-target="15">0</span>
+              <span class="text-[clamp(1.75rem,3vw,3rem)] text-slate-400 group-hover:text-white/60">
+                Y
+              </span>
+            </div>
+            <p class="group-hover:text-white/80 transition-colors text-sm font-light text-slate-500">
+              Cirrus, Piper, Cessna — all G1000 equipped.
+            </p>
+          </div>
+        </div>
+
+        <div class="p-10 lg:p-14 flex flex-col justify-between aspect-square group bg-slate-50 hover:bg-slate-900 transition-colors duration-500 cursor-default relative overflow-hidden">
+          <div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1462331940025-496dfbfc7564?q=80&amp;w=800&amp;auto=format&amp;fit=crop')] bg-cover bg-center opacity-0 group-hover:opacity-10 transition-opacity duration-700 mix-blend-multiply grayscale"></div>
+          <span class="group-hover:text-white/60 transition-colors text-xs font-normal text-slate-500 tracking-widest font-mono z-10 relative">
+            JOB OFFERS
+          </span>
+          <div class="relative z-10 transform group-hover:-translate-y-4 transition-transform duration-500">
+            <div class="font-display font-normal text-[clamp(3.5rem,6vw,5.5rem)] text-slate-900 leading-none mb-2 flex items-start group-hover:text-white transition-colors tracking-tighter">
+              <span class="text-[clamp(1.75rem,3vw,3rem)] mt-2 mr-1 text-slate-400 group-hover:text-white/60">
+                $
+              </span>
+              <span class="count-up" data-target="4">0</span>
+              .2
+              <span class="text-[clamp(1.75rem,3vw,3rem)] text-slate-400 group-hover:text-white/60 mt-1">
+                B
+              </span>
+            </div>
+            <p class="group-hover:text-white/80 transition-colors text-sm font-light text-slate-500">
+              More conditional offers than any peer school nationally.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Manifest / Command Center Data Table -->
+
+    <!-- Testimonial -->
+
+    <!-- Upcoming Launch -->
+    <section class="border-b border-slate-200 bg-white relative overflow-hidden">
+      <div class="max-w-[100rem] mx-auto grid grid-cols-1 lg:grid-cols-2">
+        <!-- Sticky Massive Countdown Left -->
+
+        <!-- Scrollable Manifest List Right -->
+      </div>
+    </section>
+
+    <!-- Final CTA -->
+    <div class="bg-white relative z-20 px-[clamp(1.5rem,5vw,5rem)] py-[4rem] md:py-[8rem]">
+      <section class="cta-section relative w-full max-w-[90rem] mx-auto min-h-[60vh] py-20 flex flex-col items-center justify-center overflow-hidden text-center bg-[#06080c] rounded-3xl shadow-[0_20px_40px_-20px_rgba(0,0,0,0.1)]">
+        <!-- Background Photo with Parallax target -->
+        <video autoplay="" muted="" loop="" playsinline="" class="cta-bg-photo absolute inset-0 z-0 w-full h-[130%] -top-[15%] object-cover" style="filter: brightness(0.8) contrast(1.1) saturate(1.15);">
+          <source src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/user-files/ee77abb2-b67d-4ed9-bbf1-155a06f3baad/642c4e57-36d4-4a67-b403-0d13c769b912-1460279_Cockpit_View_1280x720-1-1-.mp4?v=1777486220669" type="video/mp4">
+        </video>
+
+        <!-- Gradient Overlay -->
+        <div class="absolute inset-0 z-10 bg-[#06080c]/50"></div>
+        <div class="absolute inset-0 z-10 bg-gradient-to-b from-[#06080c] via-transparent to-[#06080c] opacity-80"></div>
+
+        <!-- Animated Curtains -->
+
+        <!-- Content -->
+        <div class="relative z-30 w-full max-w-[50rem] mx-auto px-6 flex flex-col items-center">
+          <!-- Title -->
+          <h2 class="cta-title font-display font-normal text-[clamp(3rem,7vw,6.5rem)] tracking-tight text-white leading-[0.9] mb-6 flex flex-wrap justify-center gap-x-[1.5vw]">
+            <span class="word block">Ready</span>
+            <span class="word block">for</span>
+            <span class="word block">Takeoff?</span>
+          </h2>
+
+          <!-- Subtitle -->
+          <p class="cta-subtitle font-sans text-[clamp(1.125rem,1.25vw,1.25rem)] font-light text-white/90 max-w-[40ch] mx-auto mb-10 md:mb-12 leading-[1.6]">
+            Book a campus tour or schedule a discovery flight. Our admissions
+            team responds within 24 hours. Zero obligations.
+          </p>
+
+          <!-- Button & Secondary Link -->
+          <div class="cta-button flex flex-col items-center gap-4">
+            <a href="#admissions" class="group inline-flex items-center justify-center px-[48px] py-[18px] bg-[#1A5DAB] text-white text-sm font-medium tracking-widest uppercase rounded-full transition-all duration-300 hover:-translate-y-[3px] hover:bg-[#2B7CD4] hover:shadow-[0_0_20px_rgba(43,124,212,0.4)]">
+              BOOK A DISCOVERY FLIGHT
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="ml-2 transition-transform group-hover:translate-x-1">
+                <path d="M5 12h14"></path>
+                <path d="m12 5 7 7-7 7"></path>
+              </svg>
+            </a>
+            <a href="tel:8582794359" class="text-white/70 hover:text-white text-sm font-light transition-colors">
+              or call (858) 279-4359
+            </a>
+          </div>
+        </div>
+
+        <!-- Required GSAP Libraries for the Framer-level animation -->
+
+        <!-- Animation Logic -->
+      </section>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-[#f8fafc] border-t border-slate-200 relative pb-8 pt-16 md:pt-20 z-30">
+      <div class="max-w-[90rem] mx-auto px-[clamp(1.5rem,5vw,5rem)] flex flex-col lg:flex-row justify-between gap-12 lg:gap-16 border-b border-slate-200 pb-12 lg:pb-16">
+        <div class="flex flex-col justify-between max-w-xs">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/7779c4e9-cf43-4379-a162-96455d9c5618_320w.png" alt="Coast Flight Training Logo" class="md:w-40 w-32 h-auto object-contain mb-8 invert-0">
+          <div class="font-mono text-xs font-light text-slate-500 leading-[1.8] tracking-widest">
+            VELA SPACE SYSTEMS
+            <br>
+            TOULOUSE SPACE CENTER
+            <br>
+            ISO 14620 / AS9100D
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-10 md:gap-24 w-full lg:w-auto">
+          <div>
+            <h5 class="font-mono text-xs font-normal text-slate-900 tracking-[0.2em] mb-6 uppercase">
+              Platforms
+            </h5>
+            <ul class="flex flex-col gap-4 font-mono text-sm font-light text-slate-500">
+              <li>
+                <a href="#" class="hover:text-[#2B7CD4] transition-colors block">
+                  LEO Micro-Bus
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-[#2B7CD4] transition-colors block">
+                  GEO High-Power
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-[#2B7CD4] transition-colors block">
+                  Deep Space Hub
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div class="">
+            <h5 class="font-mono text-xs font-normal text-slate-900 tracking-[0.2em] mb-6 uppercase">
+              Company
+            </h5>
+            <ul class="flex flex-col gap-4 font-mono text-sm font-light text-slate-500">
+              <li>
+                <a href="#" class="hover:text-[#2B7CD4] transition-colors block">
+                  Manifesto
+                </a>
+              </li>
+              <li class="">
+                <a href="#" class="hover:text-[#2B7CD4] transition-colors flex items-center gap-2">
+                  Careers
+                  <span class="bg-[#1A5DAB] text-white px-1.5 py-0.5 text-[0.6rem] font-normal rounded-sm">
+                    HIRING
+                  </span>
+                </a>
+              </li>
+              <li class="">
+                <a href="#" class="hover:text-[#2B7CD4] transition-colors block">
+                  Press Room
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div class="col-span-2 md:col-span-1">
+            <h5 class="font-mono text-xs font-normal text-slate-900 tracking-[0.2em] mb-6 uppercase">
+              Network
+            </h5>
+            <ul class="flex flex-col gap-4 font-mono text-sm font-light text-slate-500">
+              <li>
+                <a href="#" class="hover:text-[#2B7CD4] transition-colors block">
+                  Twitter / X
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-[#2B7CD4] transition-colors block">
+                  LinkedIn
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-[#2B7CD4] transition-colors flex items-center gap-2">
+                  System Status
+                  <div class="w-1.5 h-1.5 bg-[#10B981] rounded-full animate-pulse"></div>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="w-full flex justify-center mt-6 md:mt-8">
+        <span class="font-mono text-xs font-light text-slate-400 tracking-widest uppercase text-center px-4">
+          © 2024 VELA SPACE. ALL RIGHTS RESERVED.
+        </span>
+      </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+
+          // Preloader logic
+          const preloader = document.getElementById('preloader');
+          if(preloader) {
+              setTimeout(() => {
+                  preloader.style.opacity = '0';
+                  setTimeout(() => preloader.remove(), 1000);
+              }, 1400);
+          }
+
+          // Framer-style Scroll Reveals
+          const revealElements = document.querySelectorAll('.reveal-up, .reveal-clip');
+          const revealObserver = new IntersectionObserver((entries) => {
+              entries.forEach(entry => {
+                  if (entry.isIntersecting) {
+                      entry.target.classList.add('is-visible');
+                      revealObserver.unobserve(entry.target);
+                  }
+              });
+          }, {
+              threshold: 0.1,
+              rootMargin: "0px 0px -50px 0px"
+          });
+
+          revealElements.forEach(el => revealObserver.observe(el));
+
+          // Metrics Count Up Animation
+          const countElements = document.querySelectorAll('.count-up');
+          const countObserver = new IntersectionObserver((entries) => {
+              entries.forEach(entry => {
+                  if (entry.isIntersecting) {
+                      const target = parseInt(entry.target.getAttribute('data-target'));
+                      const duration = 2000; // 2 seconds
+                      const frameDuration = 1000 / 60;
+                      const totalFrames = Math.round(duration / frameDuration);
+                      let frame = 0;
+
+                      const updateCount = () => {
+                          frame++;
+                          const progress = frame / totalFrames;
+                          const currentCount = Math.round(target * progress);
+
+                          if (frame < totalFrames) {
+                              entry.target.innerText = currentCount;
+                              requestAnimationFrame(updateCount);
+                          } else {
+                              entry.target.innerText = target;
+                          }
+                      };
+
+                      requestAnimationFrame(updateCount);
+                      countObserver.unobserve(entry.target);
+                  }
+              });
+          }, { threshold: 0.5 });
+
+          countElements.forEach(el => countObserver.observe(el));
+
+          // Interactive Systems Toggle
+          const systemItems = document.querySelectorAll('.system-item');
+          const blueprintLayers = document.querySelectorAll('.blueprint-layer');
+
+          systemItems.forEach(item => {
+              item.addEventListener('mouseenter', () => {
+                  const targetId = item.getAttribute('data-target');
+
+                  // Update indicators & text colors
+                  systemItems.forEach(i => {
+                      const indicator = i.querySelector('.indicator');
+                      const title = i.querySelector('h4');
+                      if (i === item) {
+                          indicator.classList.remove('bg-slate-300');
+                          indicator.classList.add('bg-[#1A5DAB]');
+                          title.classList.remove('text-slate-900');
+                          title.classList.add('text-[#1A5DAB]');
+                      } else {
+                          indicator.classList.add('bg-slate-300');
+                          indicator.classList.remove('bg-[#1A5DAB]');
+                          title.classList.add('text-slate-900');
+                          title.classList.remove('text-[#1A5DAB]');
+                      }
+                  });
+
+                  // Update blueprint visual layers
+                  blueprintLayers.forEach((layer, index) => {
+                      if (index.toString() === targetId) {
+                          layer.classList.remove('opacity-0', 'scale-95');
+                          layer.classList.add('opacity-100', 'scale-100', 'active');
+                      } else {
+                          layer.classList.add('opacity-0', 'scale-95');
+                          layer.classList.remove('opacity-100', 'scale-100', 'active');
+                      }
+                  });
+              });
+          });
+
+          // Countdown Timer Logic
+          const countdownEl = document.getElementById('launch-countdown');
+          if (countdownEl) {
+              let hours = 18;
+              let minutes = 4;
+              let seconds = 22;
+
+              setInterval(() => {
+                  seconds--;
+                  if (seconds < 0) {
+                      seconds = 59;
+                      minutes--;
+                      if (minutes < 0) {
+                          minutes = 59;
+                          hours--;
+                      }
+                  }
+
+                  const h = hours.toString().padStart(2, '0');
+                  const m = minutes.toString().padStart(2, '0');
+                  const s = seconds.toString().padStart(2, '0');
+                  countdownEl.innerText = `-${h}:${m}:${s}`;
+              }, 1000);
+          }
+
+          // Abstract Three.js Particle Background (WebGL Container)
+          const container = document.getElementById('webgl-container');
+          if (container && window.THREE) {
+              const scene = new THREE.Scene();
+              const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+              const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+
+              renderer.setSize(window.innerWidth, window.innerHeight);
+              renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+              container.appendChild(renderer.domElement);
+
+              const particlesGeometry = new THREE.BufferGeometry();
+              const particlesCount = 700;
+              const posArray = new Float32Array(particlesCount * 3);
+
+              for(let i = 0; i < particlesCount * 3; i++) {
+                  // Spread particles in a wide subtle cloud
+                  posArray[i] = (Math.random() - 0.5) * 20;
+              }
+
+              particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+              const particlesMaterial = new THREE.PointsMaterial({
+                  size: 0.015,
+                  color: 0x1A5DAB,
+                  transparent: true,
+                  opacity: 0.6,
+                  blending: THREE.AdditiveBlending
+              });
+
+              const particlesMesh = new THREE.Points(particlesGeometry, particlesMaterial);
+              scene.add(particlesMesh);
+
+              camera.position.z = 4;
+
+              // Mouse interaction for subtle parallax
+              let mouseX = 0;
+              let mouseY = 0;
+              let targetX = 0;
+              let targetY = 0;
+              const windowHalfX = window.innerWidth / 2;
+              const windowHalfY = window.innerHeight / 2;
+
+              document.addEventListener('mousemove', (event) => {
+                  mouseX = (event.clientX - windowHalfX);
+                  mouseY = (event.clientY - windowHalfY);
+              });
+
+              const animate = () => {
+                  requestAnimationFrame(animate);
+
+                  targetX = mouseX * 0.001;
+                  targetY = mouseY * 0.001;
+
+                  particlesMesh.rotation.y += 0.0005;
+                  particlesMesh.rotation.x += 0.0002;
+
+                  // Ease rotation towards mouse position
+                  particlesMesh.rotation.y += 0.05 * (targetX - particlesMesh.rotation.y);
+                  particlesMesh.rotation.x += 0.05 * (targetY - particlesMesh.rotation.x);
+
+                  renderer.render(scene, camera);
+              };
+
+              animate();
+
+              // Handle Resize
+              window.addEventListener('resize', () => {
+                  camera.aspect = window.innerWidth / window.innerHeight;
+                  camera.updateProjectionMatrix();
+                  renderer.setSize(window.innerWidth, window.innerHeight);
+              });
+          }
+
+          // Bento Card Mouse Hover Parallax Effect
+          const bentoCards = document.querySelectorAll('.bento-card');
+          bentoCards.forEach(card => {
+              card.addEventListener('mousemove', e => {
+                  const rect = card.getBoundingClientRect();
+                  const x = e.clientX - rect.left;
+                  const y = e.clientY - rect.top;
+                  card.style.setProperty('--mouse-x', `${x}px`);
+                  card.style.setProperty('--mouse-y', `${y}px`);
+              });
+          });
+
+      });
+    </script>
+  
+</body></html>

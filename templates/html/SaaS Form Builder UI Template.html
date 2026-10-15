@@ -1,0 +1,583 @@
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Form Builder UI</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body {
+font-family: 'Inter', sans-serif;
+}
+/* Custom scrollbar for a cleaner look */
+::-webkit-scrollbar {
+width: 6px;
+height: 6px;
+}
+::-webkit-scrollbar-track {
+background: transparent;
+}
+::-webkit-scrollbar-thumb {
+background: #e4e4e7;
+border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+background: #d4d4d8;
+}
+/* Hide number input spinners */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+-webkit-appearance: none;
+margin: 0;
+}
+</style>
+<script>
+tailwind.config = { theme: { extend: { colors: { highlands: { 50: '#ebfdf4', 100: '#dcfce7', 200: '#bbf7d0', 300: '#86efac', 400: '#4ade80', 500: '#009444', 600: '#007a38', 700: '#00632d', 800: '#004d23', 900: '#002e15' } } } } }
+</script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body class="bg-white text-zinc-900 h-screen w-screen overflow-hidden flex flex-col antialiased selection:bg-highlands-100 selection:text-highlands-900">
+    <!-- Top Navigation -->
+    <header class="h-14 border-b border-zinc-200 flex items-center justify-between px-4 bg-white shrink-0 z-10">
+      <div class="flex items-center gap-4">
+        <!-- Back/Logo -->
+        <a href="#" class="flex items-center justify-center w-8 h-8 rounded-md hover:bg-zinc-100 text-zinc-500 transition-colors">
+          <iconify-icon icon="solar:arrow-left-linear" width="20"></iconify-icon>
+        </a>
+        <div class="w-px h-5 bg-zinc-200"></div>
+        <!-- Form Title -->
+        <div class="flex items-center gap-2 group cursor-text rounded-md px-2 py-1 -ml-2 hover:bg-zinc-100 transition-colors">
+          <span class="text-sm font-semibold tracking-tight text-zinc-800">
+            Customer Onboarding Flow
+          </span>
+          <iconify-icon icon="solar:pen-linear" class="text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity" width="14"></iconify-icon>
+        </div>
+        <!-- Status Badge -->
+        <span class="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 ring-1 ring-inset ring-zinc-500/10">
+          Draft
+        </span>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <!-- History Actions -->
+        <div class="flex items-center gap-1 border-r border-zinc-200 pr-3 mr-1">
+          <button class="w-8 h-8 flex items-center justify-center rounded-md text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-colors disabled:opacity-50" disabled="">
+            <iconify-icon icon="solar:undo-left-linear" width="18" class=""></iconify-icon>
+          </button>
+          <button class="w-8 h-8 flex items-center justify-center rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 transition-colors">
+            <iconify-icon icon="solar:undo-right-linear" width="18" class=""></iconify-icon>
+          </button>
+        </div>
+
+        <button class="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 rounded-md transition-colors">
+          <iconify-icon icon="solar:play-circle-linear" width="18" class=""></iconify-icon>
+          Preview
+        </button>
+        <button class="flex items-center gap-2 px-4 py-1.5 text-sm font-medium text-white bg-zinc-900 hover:bg-zinc-800 rounded-md shadow-sm transition-colors">
+          Publish
+          <iconify-icon icon="solar:upload-linear" width="16"></iconify-icon>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 flex overflow-hidden bg-zinc-50/50">
+      <!-- Left Sidebar: Elements Library -->
+      <aside class="w-64 border-r border-zinc-200 bg-white flex flex-col shrink-0">
+        
+
+        <div class="flex-1 overflow-y-auto p-4 space-y-6">
+  <!-- Category: Layout -->
+  <div class="">
+    <h3 class="text-xs font-normal text-zinc-500 uppercase tracking-wider mb-3">
+      Layout &amp; Text
+    </h3>
+    <div class="grid grid-cols-2 gap-2">
+      <div class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg border border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm cursor-grab active:cursor-grabbing transition-all">
+        <iconify-icon icon="solar:text-field-linear" class="text-zinc-500" width="20"></iconify-icon>
+        <span class="text-xs font-light text-zinc-700 text-center">
+                  Heading
+                </span>
+      </div>
+      <div class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg border border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm cursor-grab active:cursor-grabbing transition-all">
+        <iconify-icon icon="solar:document-text-linear" class="text-zinc-500" width="20"></iconify-icon>
+        <span class="text-xs font-light text-zinc-700 text-center">
+                  Paragraph
+                </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category: Basic Fields -->
+  <div class="">
+    <h3 class="text-xs font-normal text-zinc-500 uppercase tracking-wider mb-3">Fields</h3>
+    <div class="grid grid-cols-2 gap-2">
+      <div class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg border border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm cursor-grab active:cursor-grabbing transition-all">
+        <iconify-icon icon="solar:letter-linear" class="text-zinc-500" width="20"></iconify-icon>
+        <span class="text-xs font-light text-zinc-700 text-center">
+                  Short Text
+                </span>
+      </div>
+      <div class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg border border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm cursor-grab active:cursor-grabbing transition-all">
+        <iconify-icon icon="solar:text-square-linear" class="text-zinc-500" width="20"></iconify-icon>
+        <span class="text-xs font-light text-zinc-700 text-center">
+                  Long Text
+                </span>
+      </div>
+            <div class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg border border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm cursor-grab active:cursor-grabbing transition-all">
+        <iconify-icon icon="solar:round-alt-arrow-down-linear" class="text-zinc-500" width="20"></iconify-icon>
+        <span class="text-xs font-light text-zinc-700 text-center">
+                  Dropdown
+                </span>
+      </div>
+      <div class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg border border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm cursor-grab active:cursor-grabbing transition-all">
+        <iconify-icon icon="solar:check-circle-linear" class="text-zinc-500" width="20"></iconify-icon>
+        <span class="text-xs font-light text-zinc-700 text-center">
+                  Single Choice
+                </span>
+      </div>
+      <div class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg border border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm cursor-grab active:cursor-grabbing transition-all">
+        <iconify-icon icon="solar:check-square-linear" class="text-zinc-500" width="20"></iconify-icon>
+        <span class="text-xs font-light text-zinc-700 text-center">
+                  Multiple Choice
+                </span>
+      </div>
+            <div class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg border border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm cursor-grab active:cursor-grabbing transition-all">
+        <iconify-icon icon="solar:calendar-linear" class="text-zinc-500" width="20"></iconify-icon>
+        <span class="text-xs font-light text-zinc-700 text-center">
+                  Date Picker
+                </span>
+      </div>
+      <div class="flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg border border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm cursor-grab active:cursor-grabbing transition-all">
+        <iconify-icon icon="solar:cloud-upload-linear" class="text-zinc-500" width="20"></iconify-icon>
+        <span class="text-xs font-light text-zinc-700 text-center">
+                  File Upload
+                </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category: Choices -->
+  <div class="">
+    <div class="grid grid-cols-2 gap-2">
+
+    </div>
+  </div>
+
+  <!-- Category: Advanced -->
+  <div class="">
+    <div class="grid grid-cols-2 gap-2">
+
+    </div>
+  </div>
+</div>
+      </aside>
+
+      <!-- Center Canvas: Form Builder -->
+      <section class="flex-1 flex flex-col relative overflow-hidden">
+        <!-- Step Navigation (Multi-step) -->
+        <div class="h-12 border-b border-zinc-200 bg-white/50 backdrop-blur-sm flex items-center px-6 gap-2 shrink-0 z-10">
+          <button class="px-3 py-1.5 text-sm font-medium bg-white border border-zinc-200 rounded-md shadow-sm text-zinc-800">1. Event &amp; Dates</button>
+          <div class="w-4 h-px bg-zinc-300"></div>
+          <button class="px-3 py-1.5 text-sm font-medium text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 rounded-md transition-colors flex items-center gap-2 group">
+            2. Company Info
+            <iconify-icon icon="solar:pen-linear" class="opacity-0 group-hover:opacity-100 transition-opacity" width="14"></iconify-icon>
+          </button>
+          <div class="w-4 h-px bg-zinc-300"></div>
+          <button class="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded-md transition-colors border border-dashed border-zinc-300">
+            <iconify-icon icon="solar:add-linear" width="18"></iconify-icon>
+          </button>
+        </div>
+
+        <!-- Canvas Area -->
+        <div class="flex-1 overflow-y-auto p-8 flex justify-center">
+          <!-- The Form Card -->
+          <div class="w-full max-w-2xl bg-white border border-zinc-200 shadow-sm rounded-xl pb-16 min-h-[600px] relative">
+            <!-- Form Header -->
+            <div class="p-8 border-b border-zinc-100 group relative">
+              <input type="text" value="Customer Onboarding Flow" class="w-full text-2xl font-semibold tracking-tight text-zinc-900 border-none p-0 focus:ring-0 placeholder:text-zinc-300 hover:bg-zinc-50 transition-colors rounded-md -ml-2 px-2 py-1 outline-none">
+              <textarea class="w-full text-sm text-zinc-500 mt-2 border-none p-0 focus:ring-0 resize-none overflow-hidden placeholder:text-zinc-300 hover:bg-zinc-50 transition-colors rounded-md -ml-2 px-2 py-1 outline-none" rows="2">Please complete this form to help us set up your workspace correctly. This should only take about 2 minutes.</textarea>
+            </div>
+
+            <!-- Drop Zone Indicator (Visual only) -->
+            <div class="mx-8 h-1 rounded-full opacity-0 pointer-events-none transition-opacity bg-highlands-500"></div>
+
+            <!-- Form Content Elements -->
+            <div class="flex flex-col py-2">
+              <!-- Element: Inactive Short Text -->
+              <div class="px-8 py-4 group hover:bg-zinc-50/80 transition-colors relative cursor-pointer border-l-2 border-transparent">
+                <!-- Drag Handle (Hover) -->
+                <div class="absolute left-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 cursor-grab text-zinc-300 hover:text-zinc-500 transition-all p-1">
+                  <iconify-icon icon="solar:menu-dots-bold" width="16" class=""></iconify-icon>
+                </div>
+
+                <label class="block text-sm font-medium text-zinc-800 mb-1.5 flex items-center gap-1">
+                  First Name
+                  <span class="text-red-500 text-xs">*</span>
+                </label>
+                <div class="w-full px-3 py-2 bg-white border border-zinc-200 rounded-md text-sm text-zinc-400 pointer-events-none shadow-sm shadow-zinc-100/50">
+                  Enter your first name
+                </div>
+              </div>
+
+              <!-- Element: Active/Selected Multiple Choice -->
+              <div class="px-8 py-5 border-l-2 relative cursor-default shadow-[inset_0_1px_0_rgba(228,228,231,0.5),inset_0_-1px_0_rgba(228,228,231,0.5)] bg-highlands-50/30 border-highlands-500">
+                <!-- Drag Handle (Active) -->
+                <div class="absolute left-2 top-1/2 -translate-y-1/2 cursor-grab text-zinc-400 hover:text-zinc-600 transition-all p-1">
+                  <iconify-icon icon="solar:menu-dots-bold" width="16"></iconify-icon>
+                </div>
+
+                <!-- Action Toolbar (Active) -->
+                <div class="absolute -right-3 -top-3 bg-white border border-zinc-200 shadow-sm rounded-lg flex items-center overflow-hidden z-10">
+                  <button class="w-8 h-8 flex items-center justify-center text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 transition-colors" title="Settings">
+                    <iconify-icon icon="solar:settings-linear" width="16" class=""></iconify-icon>
+                  </button>
+                  <div class="w-px h-4 bg-zinc-200"></div>
+                  <button class="w-8 h-8 flex items-center justify-center text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 transition-colors" title="Duplicate">
+                    <iconify-icon icon="solar:copy-linear" width="16" class=""></iconify-icon>
+                  </button>
+                  <div class="w-px h-4 bg-zinc-200"></div>
+                  <button class="w-8 h-8 flex items-center justify-center text-red-500 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete">
+                    <iconify-icon icon="solar:trash-bin-trash-linear" width="16"></iconify-icon>
+                  </button>
+                </div>
+
+                <label class="block text-sm font-medium text-zinc-900 mb-1">
+                  What is your primary role?
+                  <span class="text-red-500 text-xs">*</span>
+                </label>
+                <p class="text-xs text-zinc-500 mb-4">
+                  Select the option that best describes your daily
+                  responsibilities.
+                </p>
+
+                <div class="space-y-3 pointer-events-none">
+                  <div class="flex items-center gap-3">
+                    <div class="w-4 h-4 rounded-full border border-zinc-300 bg-white"></div>
+                    <span class="text-sm text-zinc-700">
+                      Engineering / Development
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="w-4 h-4 rounded-full border bg-white flex items-center justify-center relative border-highlands-600">
+                      <div class="w-2 h-2 rounded-full absolute bg-highlands-600"></div>
+                    </div>
+                    <span class="text-sm text-zinc-900 font-medium">
+                      Design / UX
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="w-4 h-4 rounded-full border border-zinc-300 bg-white"></div>
+                    <span class="text-sm text-zinc-700">
+                      Product Management
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="w-4 h-4 rounded-full border border-zinc-300 bg-white"></div>
+                    <span class="text-sm text-zinc-700 text-zinc-400">
+                      Other
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Drop Zone Indicator Between Elements (Visual only) -->
+              <div class="mx-8 py-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
+                <div class="h-px flex-1 bg-highlands-500"></div>
+                <div class="w-5 h-5 rounded-full border flex items-center justify-center shadow-sm bg-highlands-50 border-highlands-200 text-highlands-500">
+                  <iconify-icon icon="solar:add-linear" width="12"></iconify-icon>
+                </div>
+                <div class="h-px flex-1 bg-highlands-500"></div>
+              </div>
+
+              <!-- Element: Inactive Dropdown -->
+              <div class="px-8 py-4 group hover:bg-zinc-50/80 transition-colors relative cursor-pointer border-l-2 border-transparent mt-2">
+                <div class="absolute left-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 cursor-grab text-zinc-300 hover:text-zinc-500 transition-all p-1">
+                  <iconify-icon icon="solar:menu-dots-bold" width="16"></iconify-icon>
+                </div>
+
+                <label class="block text-sm font-medium text-zinc-800 mb-1.5 flex items-center gap-1">
+                  Company Size
+                </label>
+                <div class="w-full px-3 py-2 bg-white border border-zinc-200 rounded-md text-sm text-zinc-400 pointer-events-none flex justify-between items-center shadow-sm shadow-zinc-100/50">
+                  Select an option...
+                  <iconify-icon icon="solar:alt-arrow-down-linear" width="16" class="text-zinc-400"></iconify-icon>
+                </div>
+              </div>
+            </div>
+
+            <!-- Add Element Button -->
+            <div class="absolute bottom-[-1.25rem] left-1/2 -translate-x-1/2">
+              <button class="flex items-center gap-1.5 px-4 py-2 bg-white border border-zinc-200 shadow-sm rounded-full text-sm font-medium text-zinc-600 hover:text-zinc-900 hover:border-zinc-300 hover:shadow transition-all group">
+                <iconify-icon icon="solar:add-circle-linear" width="18" class="group-hover:scale-110 transition-transform text-highlands-500"></iconify-icon>
+                Add Question
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Sidebar: Settings Panel -->
+      <aside class="w-80 border-l border-zinc-200 bg-white flex flex-col shrink-0">
+        <!-- Context Header -->
+        <div class="p-4 border-b border-zinc-100 flex items-center gap-3">
+          <div class="w-8 h-8 rounded-md border flex items-center justify-center bg-highlands-50 border-highlands-100 text-highlands-600">
+            <iconify-icon icon="solar:check-circle-linear" width="18"></iconify-icon>
+          </div>
+          <div>
+            <h2 class="text-sm font-semibold tracking-tight text-zinc-900">
+              Single Choice
+            </h2>
+            <p class="text-xs text-zinc-500">Field properties</p>
+          </div>
+        </div>
+
+        <!-- Settings Tabs -->
+        <div class="px-4 pt-3 border-b border-zinc-100 flex gap-4">
+          <button class="text-sm font-medium border-b-2 pb-2 px-1 text-highlands-600 border-highlands-600">
+            General
+          </button>
+          <button class="text-sm font-medium text-zinc-500 hover:text-zinc-800 border-b-2 border-transparent pb-2 px-1 transition-colors">
+            Options
+          </button>
+          <button class="text-sm font-medium text-zinc-500 hover:text-zinc-800 border-b-2 border-transparent pb-2 px-1 transition-colors">
+            Logic
+          </button>
+        </div>
+
+        <!-- Settings Content -->
+        <div class="flex-1 overflow-y-auto p-5 space-y-6">
+          <!-- Field Label -->
+          <div class="">
+            <label class="block text-xs font-medium text-zinc-700 mb-1.5">
+              Question Label
+            </label>
+            <textarea class="w-full px-3 py-2 bg-white border border-zinc-200 rounded-md text-sm text-zinc-900 focus:outline-none focus:ring-2 transition-all resize-none focus:ring-highlands-500/20 focus:border-highlands-500" rows="2">What is your primary role?</textarea>
+          </div>
+
+          <!-- Help Text -->
+          <div class="">
+            <div class="flex justify-between items-end mb-1.5">
+              <label class="block text-xs font-medium text-zinc-700">
+                Description / Help Text
+              </label>
+              <span class="text-[10px] text-zinc-400">Optional</span>
+            </div>
+            <textarea class="w-full px-3 py-2 bg-white border border-zinc-200 rounded-md text-sm text-zinc-900 focus:outline-none focus:ring-2 transition-all resize-none focus:ring-highlands-500/20 focus:border-highlands-500" rows="2">Select the option that best describes your daily responsibilities.</textarea>
+          </div>
+
+          <div class="h-px bg-zinc-100"></div>
+
+          <!-- Validation Toggles -->
+          <div class="space-y-4">
+            <h3 class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+              Validation
+            </h3>
+
+            <!-- Required Toggle -->
+            <div class="flex items-center justify-between">
+              <div class="">
+                <span class="block text-sm font-medium text-zinc-900">
+                  Required field
+                </span>
+                <span class="block text-xs text-zinc-500">
+                  User must answer this question
+                </span>
+              </div>
+              <!-- Custom Toggle (Active) -->
+              <div class="w-9 h-5 rounded-full relative cursor-pointer shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)] transition-colors bg-highlands-600">
+                <div class="w-4 h-4 bg-white rounded-full absolute right-0.5 top-0.5 shadow-sm transform transition-transform"></div>
+              </div>
+            </div>
+
+            <!-- Hidden Toggle -->
+            <div class="flex items-center justify-between">
+              <div class="">
+                <span class="block text-sm font-medium text-zinc-900">
+                  Hidden from user
+                </span>
+                <span class="block text-xs text-zinc-500">
+                  Only visible in logic/admin
+                </span>
+              </div>
+              <!-- Custom Toggle (Inactive) -->
+              <div class="w-9 h-5 bg-zinc-200 rounded-full relative cursor-pointer shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] transition-colors">
+                <div class="w-4 h-4 bg-white border border-zinc-200 rounded-full absolute left-0.5 top-0.5 shadow-sm transform transition-transform"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="h-px bg-zinc-100"></div>
+
+          <!-- Choice Options Editor (Preview of what 'Options' tab might hold, placed here for visual completeness) -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                Choices
+              </h3>
+              <button class="text-xs font-medium text-highlands-600 hover:text-highlands-700">
+                Bulk Add
+              </button>
+            </div>
+
+            <div class="space-y-2">
+              <!-- Option Item -->
+              <div class="flex items-center gap-2 group">
+                <div class="cursor-grab text-zinc-300 hover:text-zinc-500">
+                  <iconify-icon icon="solar:menu-dots-bold" width="14"></iconify-icon>
+                </div>
+                <input type="text" value="Engineering / Development" class="flex-1 px-2.5 py-1.5 text-sm border border-zinc-200 rounded text-zinc-800 focus:outline-none focus:border-highlands-500">
+                <button class="text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <iconify-icon icon="solar:close-circle-linear" width="16"></iconify-icon>
+                </button>
+              </div>
+              <!-- Option Item -->
+              <div class="flex items-center gap-2 group">
+                <div class="cursor-grab text-zinc-300 hover:text-zinc-500">
+                  <iconify-icon icon="solar:menu-dots-bold" width="14"></iconify-icon>
+                </div>
+                <input type="text" value="Design / UX" class="flex-1 px-2.5 py-1.5 text-sm border border-zinc-200 rounded text-zinc-800 focus:outline-none focus:border-highlands-500">
+                <button class="text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <iconify-icon icon="solar:close-circle-linear" width="16"></iconify-icon>
+                </button>
+              </div>
+              <!-- Option Item -->
+              <div class="flex items-center gap-2 group">
+                <div class="cursor-grab text-zinc-300 hover:text-zinc-500">
+                  <iconify-icon icon="solar:menu-dots-bold" width="14"></iconify-icon>
+                </div>
+                <input type="text" value="Product Management" class="flex-1 px-2.5 py-1.5 text-sm border border-zinc-200 rounded text-zinc-800 focus:outline-none focus:border-highlands-500">
+                <button class="text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <iconify-icon icon="solar:close-circle-linear" width="16"></iconify-icon>
+                </button>
+              </div>
+              <!-- Option Item -->
+              <div class="flex items-center gap-2 group">
+                <div class="cursor-grab text-zinc-300 hover:text-zinc-500">
+                  <iconify-icon icon="solar:menu-dots-bold" width="14"></iconify-icon>
+                </div>
+                <input type="text" value="Other" class="flex-1 px-2.5 py-1.5 text-sm border border-zinc-200 rounded text-zinc-800 focus:outline-none focus:border-highlands-500">
+                <button class="text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <iconify-icon icon="solar:close-circle-linear" width="16"></iconify-icon>
+                </button>
+              </div>
+            </div>
+
+            <button class="w-full py-2 border border-dashed border-zinc-300 rounded-md text-xs font-medium text-zinc-600 hover:border-zinc-400 hover:text-zinc-800 transition-colors flex items-center justify-center gap-1 mt-2">
+              <iconify-icon icon="solar:add-linear" width="14"></iconify-icon>
+              Add Option
+            </button>
+
+            <div class="pt-2 flex items-center gap-2">
+              <!-- Custom Checkbox -->
+              <div class="w-4 h-4 rounded border border-zinc-300 bg-white flex items-center justify-center cursor-pointer">
+                <!-- unselected state -->
+              </div>
+              <label class="text-xs text-zinc-600 cursor-pointer">
+                Include "Other" option with text input
+              </label>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+  
+</body></html>

@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8" />
+<title>Inventory Manager</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/3/3.1.0/iconify.min.js"></script></head>
+<body class="min-h-screen bg-slate-950 text-slate-100 antialiased flex items-stretch justify-center">
+  <div id="app" class="w-full max-w-7xl mx-auto py-8 px-4 md:px-8 flex flex-col gap-6">
+    <!-- Top bar -->
+    <header class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div>
+        <div class="inline-flex items-center gap-2">
+          <span class="text-2xl font-semibold tracking-tight text-slate-50">iv</span>
+          <span class="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Inventory</span>
+        </div>
+        <h1 class="mt-3 text-2xl md:text-3xl font-semibold tracking-tight text-slate-50">
+          Inventory Management
+        </h1>
+        <p class="mt-1 text-base text-slate-400">
+          Track raw materials and products with live cost & stock calculations.
+        </p>
+      </div>
+      <div class="flex items-center gap-3">
+        <button
+          class="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/60 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800/80 transition"
+          onclick="exportCSV()"
+        >
+          <span class="iconify" data-icon="lucide:file-down" data-width="18" data-height="18" data-inline="false" style="stroke-width:1.5"></span>
+          Export CSV
+        </button>
+        <button
+          class="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/60 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800/80 transition"
+          onclick="openPdfPreview()"
+        >
+          <span class="iconify" data-icon="lucide:file-text" data-width="18" data-height="18" data-inline="false" style="stroke-width:1.5"></span>
+          PDF Preview
+        </button>
+      </div>
+    </header>
+
+    <!-- Tabs -->
+    <div class="flex flex-col gap-4">
+      <div class="inline-flex items-center gap-2 rounded-full bg-slate-900/60 border border-slate-800 p-1 max-w-md">
+        <button
+          id="tab-raw"
+          class="flex-1 rounded-full px-4 py-2 text-sm font-medium text-slate-300 data-[active=true]:bg-slate-100 data-[active=true]:text-slate-900 transition"
+          data-active="true"
+          onclick="switchTab('raw')"
+        >
+          Raw Materials
+        </button>
+        <button
+          id="tab-products"
+          class="flex-1 rounded-full px-4 py-2 text-sm font-medium text-slate-300 data-[active=true]:bg-slate-100 data-[active=true]:text-slate-900 transition"
+          data-active="false"
+          onclick="switchTab('products')"
+        >
+          Products
+        </button>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <main class="flex-1 flex flex-col gap-6">
+      <!-- Raw Materials Panel -->
+      <section id="panel-raw" class="flex flex-col gap-4">
+        <!-- Toolbar -->
+        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div class="flex flex-1 items-center gap-3">
+            <div class="relative flex-1 max-w-md">
+              <span class="iconify absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" data-icon="lucide:search" data-width="16" data-height="16" style="stroke-width:1.5"></span>
+              <input
+                id="rawSearch"
+                type="text"
+                placeholder="Enter material name or SKU"
+                class="w-full rounded-full border border-slate-800 bg-slate-900/80 pl-9 pr-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/60 focus:border-sky-500/60"
+                oninput="renderRawTable()"
+              />
+            </div>
+            <div class="hidden md:flex items-center gap-2 text-xs text-slate-500">
+              <span class="inline-flex h-2 w-2 rounded-full bg-rose-500"></span>
+              <span>Low stock items are highlighted.</span>
+            </div>
+          </div>
+          <button
+            class="inline-flex items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-sky-400 transition shadow-sm shadow-sky-500/30"
+            onclick="openRawModal()"
+          >
+            <span class="iconify" data-icon="lucide:plus" data-width="18" data-height="18" style="stroke-width:1.5"></span>
+            Add Material
+          </button>
+        </div>
+
+        <!-- Card with table -->
+        <div class="relative rounded-2xl border border-slate-800 bg-slate-950/60 shadow-sm shadow-slate-950/60 overflow-hidden">
+          <!-- Sticky header -->
+          <div class="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/90 backdrop-blur">
+            <div class="grid grid-cols-12 gap-3 px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-[0.16em]">
+              <div class="col-span-3">Name / SKU</div>
+              <div class="col-span-1 text-right">Qty</div>
+              <div class="col-span-1">Unit</div>
+              <div class="col-span-1 text-right">Unit Price</div>
+              <div class="col-span-2">Supplier</div>
+              <div class="col-span-2">Last Updated</div>
+              <div class="col-span-2 text-right">Actions</div>
+            </div>
+          </div>
+
+          <div id="rawTableBody" class="divide-y divide-slate-800 text-sm">
+            <!-- Rows populated by JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Products Panel -->
+      <section id="panel-products" class="hidden flex-col gap-4">
+        <!-- Toolbar -->
+        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div class="flex flex-1 items-center gap-3">
+            <div class="relative flex-1 max-w-md">
+              <span class="iconify absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" data-icon="lucide:search" data-width="16" data-height="16" style="stroke-width:1.5"></span>
+              <input
+                id="productSearch"
+                type="text"
+                placeholder="Search product name or SKU"
+                class="w-full rounded-full border border-slate-800 bg-slate-900/80 pl-9 pr-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/60 focus:border-sky-500/60"
+                oninput="renderProductsTable()"
+              />
+            </div>
+            <div class="hidden md:flex items-center gap-2 text-xs text-slate-500">
+              <span class="iconify" data-icon="lucide:info" data-width="14" data-height="14" style="stroke-width:1.5"></span>
+              <span>Cost is auto-calculated from raw materials.</span>
+            </div>
+          </div>
+          <button
+            class="inline-flex items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-sky-400 transition shadow-sm shadow-sky-500/30"
+            onclick="openProductModal()"
+          >
+            <span class="iconify" data-icon="lucide:plus" data-width="18" data-height="18" style="stroke-width:1.5"></span>
+            Add Product
+          </button>
+        </div>
+
+        <!-- Card with table -->
+        <div class="relative rounded-2xl border border-slate-800 bg-slate-950/60 shadow-sm shadow-slate-950/60 overflow-hidden">
+          <!-- Sticky header -->
+          <div class="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/90 backdrop-blur">
+            <div class="grid grid-cols-12 gap-3 px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-[0.16em]">
+              <div class="col-span-3">Product / SKU</div>
+              <div class="col-span-2 text-right">Qty in Stock</div>
+              <div class="col-span-2 text-right">Cost Price</div>
+              <div class="col-span-2 text-right">Selling Price</div>
+              <div class="col-span-2">Composition</div>
+              <div class="col-span-1 text-right">Actions</div>
+            </div>
+          </div>
+
+          <div id="productsTableBody" class="divide-y divide-slate-800 text-sm">
+            <!-- Rows populated by JS -->
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- RAW MATERIAL MODAL -->
+    <div
+      id="rawModal"
+      class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-950/70 backdrop-blur"
+      onclick="backdropClose(event, 'rawModal')"
+    >
+      <div class="w-full max-w-xl rounded-2xl border border-slate-800 bg-slate-950 shadow-lg shadow-slate-950/80" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+          <div>
+            <h2 id="rawModalTitle" class="text-lg font-semibold tracking-tight text-slate-50">
+              Add Raw Material
+            </h2>
+            <p class="mt-1 text-sm text-slate-400">
+              Maintain accurate stock levels with minimum stock alerts.
+            </p>
+          </div>
+          <button
+            class="rounded-full p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-100 transition"
+            onclick="closeRawModal()"
+          >
+            <span class="iconify" data-icon="lucide:x" data-width="18" data-height="18" style="stroke-width:1.5"></span>
+          </button>
+        </div>
+
+        <form class="px-5 py-4 flex flex-col gap-4" onsubmit="submitRawForm(event)">
+          <input type="hidden" id="rawEditIndex" />
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium text-slate-300">Name</label>
+              <input
+                id="rawName"
+                required
+                class="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/60 focus:border-sky-500/60"
+                placeholder="Steel Sheet"
+              />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium text-slate-300">SKU</label>
+              <input
+                id="rawSku"
+                required
+                class="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/60 focus:border-sky-500/60"
+                placeholder="ST-001"
+              />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium text-slate-300">Quantity</label>
+              <input
+                id="rawQuantity"
+                type="number"
+                min="0"
+                step="any"
+                required
+                class="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/60 focus:border-sky-500/60"
+                placeholder="100"
+              />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium text-slate-300">Unit</label>
+              <input
+                id="rawUnit"
+                required
+                class="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/60 focus:border-sky-500/60"
+                placeholder="pcs / L / kg"
+              />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium text-slate-300">Unit Price (AED)</label>
+              <input
+                id="rawUnitPrice"
+                type="number"
+                min="0"
+                step="any"
+                required
+                class="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/60 focus:border-sky-500/60"
+                placeholder="40"
+              />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium text-slate-300">Supplier</label>
+              <input
+                id="rawSupplier"
+                class="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/60 focus:border-sky-500/60"
+                placeholder="SteelCo"
+              />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="flex items-center justify-between text-xs font-medium text-slate-300">
+                <span>Minimum Stock</span>
+                <span class="text-[0.7rem] font-normal text-slate-500">Low stock highlighted in red</span>
+              </label>
+              <input
+                id="rawMinStock"
+                type="number"
+                min="0"
+                step="any"
+                class="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-rose-500/60 focus:border-rose-500/60"
+                placeholder="20"
+              />
+            </div>
+            <div class="flex flex-col gap-1.5 md:col-span-2">
+              <label class="text-xs font-medium text-slate-300">Notes</label>
+              <textarea
+                id="rawNotes"
+                rows="2"
+                class="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/60 focus:border-sky-500/60"
+                placeholder="Any handling or quality notes."
+              ></textarea>
+            </div>
+          </div>
+
+          <div class="mt-2 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-1 text-xs text-slate-500">
+              <span class="iconify" data-icon="lucide:bell" data-width="14" data-height="14" style="stroke-width:1.5"></span>
+              <span>Tooltip: “Low stock: refill soon”</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="rounded-full border border-slate-700 bg-slate-900/70 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800/90 transition"
+                onclick="closeRawModal()"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-sky-400 transition"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- PRODUCT MODAL -->
+    <div
+      id="productModal"
+      class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-950/70 backdrop-blur"
+      onclick="backdropClose(event, 'productModal')"
+    >
+      <div class="w-full max-w-3xl rounded-2xl border border-slate-800 bg-slate-950 shadow-lg shadow-slate-950/80" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+          <div>
+            <h2 id="productModalTitle" class="text-lg font-semibold tracking-tight text-slate-50">
+              Add Product
+            </h2>
+            <p class="mt-1 text-sm text-slate-400">
+              Select raw materials, define composition, and auto-calculate cost.
+            </p>
+          </div>
+          <button
+            class="rounded-full p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-100 transition"
+            onclick="closeProductModal()"
+          >
+            <span class="iconify" data-icon="lucide:x" data-width="18" data-height="18" style="stroke-width:1.5"></span>
+          </button>
+        </div>
+
+        <form class="px-5 py-4 flex flex-col gap-4" onsubmit="submitProductForm(event)">
+          <input type="hidden" id="productEditIndex" />
+
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <!-- Left: basic info -->
+            <div class="flex flex-col gap-3 lg:col-span-1">
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-medium text-slate-300">Product Name</label>
+                <input
+                  id="productName"
+                  required
+                  class="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/60 focus:border-sky-500/60"
+                  placeholder="Painted Steel Panel"
+                />
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-medium text-slate-300">SKU</label>
+                <input
+                  id="productSku"
+                  required
+                  class="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/60 focus:border-sky-500/60"
+                  placeholder="PSP-001"
+                />
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-medium text-slate-300">Quantity to Create</label>
+                <input
+                  id="productQuantity"
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
+                  value="10"
+                  class="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/60 focus:border-sky-500/60"
+                  oninput="updateProductCostSummary()"
+                />
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-medium text-slate-300">Selling Price per Unit (AED)</label>
+                <input
+                  id="productSellingPrice"
+                  type="number"
+                  min="0"
+                  step="any"
+                  required
+                  value="200"
+                  class="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/60 focus:border-sky-500/60"
+                  oninput="updateProductCostSummary()"
+                />
+              </div>
+              <div class="flex items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2">
+                <div class="flex items-center gap-2">
+                  <span class="iconify text-amber-400" data-icon="lucide:alert-circle" data-width="16" data-height="16" style="stroke-width:1.5"></span>
+                  <p class="text-xs text-amber-200">
+                    Optional override: manually confirm even if low stock.
+                  </p>
+                </div>
+                <label class="relative inline-flex cursor-pointer items-center">
+                  <input
+                    id="overrideInsufficient"
+                    type="checkbox"
+                    class="peer sr-only"
+                    onchange="updateProductCostSummary()"
+                  />
+                  <span
+                    class="h-4 w-7 rounded-full bg-slate-700 after:absolute after:left-0.5 after:top-0.5 after:h-3 after:w-3 after:rounded-full after:bg-slate-300 after:transition-all peer-checked:bg-sky-500 peer-checked:after:translate-x-3"
+                  ></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Right: composition -->
+            <div class="flex flex-col gap-3 lg:col-span-2">
+              <div class="flex items-center justify-between">
+                <h3 class="text-sm font-medium text-slate-200">Raw Material Composition</h3>
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800/90 transition"
+                  onclick="addCompositionRow()"
+                >
+                  <span class="iconify" data-icon="lucide:plus" data-width="14" data-height="14" style="stroke-width:1.5"></span>
+                  Add Material
+                </button>
+              </div>
+
+              <div class="rounded-xl border border-slate-800 bg-slate-950/70">
+                <div class="grid grid-cols-12 gap-2 border-b border-slate-800 px-3 py-2 text-[0.7rem] font-medium uppercase tracking-[0.16em] text-slate-400">
+                  <div class="col-span-4">Material</div>
+                  <div class="col-span-2 text-right">Qty / Unit</div>
+                  <div class="col-span-2 text-right">Available</div>
+                  <div class="col-span-2 text-right">Cost</div>
+                  <div class="col-span-2 text-right">Remove</div>
+                </div>
+                <div id="compositionBody" class="divide-y divide-slate-800 text-xs">
+                  <!-- Rows populated by JS -->
+                </div>
+              </div>
+
+              <!-- Summary -->
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div class="rounded-xl border border-slate-800 bg-slate-950/80 px-3 py-2">
+                  <div class="flex items-center justify-between text-[0.7rem] font-medium uppercase tracking-[0.16em] text-slate-400">
+                    <span>Total Cost</span>
+                    <span class="iconify text-slate-500" data-icon="lucide:calculator" data-width="14" data-height="14" style="stroke-width:1.5"></span>
+                  </div>
+                  <p id="summaryTotalCost" class="mt-1 text-base font-medium text-slate-100">
+                    AED 0.00
+                  </p>
+                </div>
+                <div class="rounded-xl border border-slate-800 bg-slate-950/80 px-3 py-2">
+                  <div class="flex items-center justify-between text-[0.7rem] font-medium uppercase tracking-[0.16em] text-slate-400">
+                    <span>Cost per Unit</span>
+                    <span class="iconify text-slate-500" data-icon="lucide:divide" data-width="14" data-height="14" style="stroke-width:1.5"></span>
+                  </div>
+                  <p id="summaryCostPerUnit" class="mt-1 text-base font-medium text-slate-100">
+                    AED 0.00
+                  </p>
+                </div>
+                <div class="rounded-xl border border-slate-800 bg-slate-950/80 px-3 py-2">
+                  <div class="flex items-center justify-between text-[0.7rem] font-medium uppercase tracking-[0.16em] text-slate-400">
+                    <span>Margin per Unit</span>
+                    <span class="iconify text-slate-500" data-icon="lucide:trending-up" data-width="14" data-height="14" style="stroke-width:1.5"></span>
+                  </div>
+                  <p id="summaryMargin" class="mt-1 text-base font-medium text-slate-100">
+                    AED 0.00
+                  </p>
+                </div>
+              </div>
+
+              <!-- Warning tooltip -->
+              <div id="insufficientWarning" class="hidden rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
+                Warning: “Insufficient Steel Sheets to create 10 units of Painted Steel Panel”
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-2 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-1 text-xs text-slate-500">
+              <span class="iconify" data-icon="lucide:info" data-width="14" data-height="14" style="stroke-width:1.5"></span>
+              <span>Stock is deducted from raw materials when you create this product.</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="rounded-full border border-slate-700 bg-slate-900/70 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800/90 transition"
+                onclick="closeProductModal()"
+              >
+                Cancel
+              </button>
+              <button
+                id="productSaveButton"
+                type="submit"
+                class="rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-sky-400 transition"
+              >
+                Save & Deduct Stock
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- SMALL TOAST -->
+    <div id="toast" class="pointer-events-none fixed bottom-4 right-4 z-50 hidden">
+      <div class="flex items-center gap-2 rounded-full border border-emerald-500/50 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100 shadow-lg shadow-emerald-500/20">
+        <span class="iconify text-emerald-400" data-icon="lucide:check-circle-2" data-width="16" data-height="16" style="stroke-width:1.5"></span>
+        <span id="toastMessage">Saved</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- DATA MODEL ---
+    let rawMaterials = [
+      {
+        name: "Steel Sheet",
+        sku: "ST-001",
+        quantity: 80, // already deducted by product example
+        unit: "pcs",
+        unitPrice: 40,
+        supplier: "SteelCo",
+        minStock: 20,
+        notes: "",
+        lastUpdated: "2025-12-01 10:00"
+      },
+      {
+        name: "Paint",
+        sku: "PNT-010",
+        quantity: 40,
+        unit: "L",
+        unitPrice: 15,
+        supplier: "ColorSupplies",
+        minStock: 10,
+        notes: "",
+        lastUpdated: "2025-12-01 10:05"
+      }
+    ];
+
+    let products = [
+      {
+        name: "Painted Steel Panel",
+        sku: "PSP-001",
+        quantity: 10,
+        sellingPrice: 200,
+        composition: [
+          { rawSku: "ST-001", qtyPerUnit: 2 },
+          { rawSku: "PNT-010", qtyPerUnit: 1 }
+        ],
+        totalCost: 1100, // 2*40*10 + 1*15*10
+        costPerUnit: 110,
+        createdAt: "2025-12-01 10:10"
+      }
+    ];
+
+    // --- UTILITIES ---
+    function formatCurrency(value) {
+      return "AED " + value.toFixed(2);
+    }
+
+    function formatDateNow() {
+      const d = new Date();
+      return (
+        d.getFullYear() +
+        "-" +
+        String(d.getMonth() + 1).padStart(2, "0") +
+        "-" +
+        String(d.getDate()).padStart(2, "0") +
+        " " +
+        String(d.getHours()).padStart(2, "0") +
+        ":" +
+        String(d.getMinutes()).padStart(2, "0")
+      );
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById("toast");
+      const msg = document.getElementById("toastMessage");
+      msg.textContent = message;
+      toast.classList.remove("hidden");
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => {
+        toast.classList.add("hidden");
+      }, 2000);
+    }
+
+    // --- TAB SWITCHING ---
+    function switchTab(tab) {
+      const rawBtn = document.getElementById("tab-raw");
+      const prodBtn = document.getElementById("tab-products");
+      const rawPanel = document.getElementById("panel-raw");
+      const prodPanel = document.getElementById("panel-products");
+
+      if (tab === "raw") {
+        rawBtn.dataset.active = "true";
+        prodBtn.dataset.active = "false";
+        rawPanel.classList.remove("hidden");
+        prodPanel.classList.add("hidden");
+      } else {
+        rawBtn.dataset.active = "false";
+        prodBtn.dataset.active = "true";
+        rawPanel.classList.add("hidden");
+        prodPanel.classList.remove("hidden");
+      }
+    }
+
+    // --- RAW MATERIALS TABLE ---
+    function renderRawTable() {
+      const body = document.getElementById("rawTableBody");
+      const query = (document.getElementById("rawSearch").value || "").toLowerCase().trim();
+      body.innerHTML = "";
+
+      rawMaterials
+        .filter((m) => {
+          if (!query) return true;
+          return (
+            m.name.toLowerCase().includes(query) ||
+            m.sku.toLowerCase().includes(query) ||
+            (m.supplier || "").toLowerCase().includes(query)
+          );
+        })
+        .forEach((m, index) => {
+          const lowStock = m.minStock != null && m.minStock !== "" && Number(m.quantity) < Number(m.minStock);
+          const row = document.createElement("div");
+          row.className =
+            "group grid grid-cols-12 gap-3 px-4 py-3 hover:bg-slate-900/60 transition";
+
+          row.innerHTML = `
+            <div class="col-span-3 flex flex-col">
+              <span class="text-sm font-medium ${
+                lowStock ? "text-rose-300" : "text-slate-100"
+              }">${m.name}</span>
+              <span class="text-xs text-slate-500">${m.sku}</span>
+            </div>
+            <div class="col-span-1 text-right flex items-center justify-end gap-1">
+              <span class="text-sm ${lowStock ? "text-rose-300 font-medium" : "text-slate-100"}">${
+            m.quantity
+          }</span>
+              ${
+                lowStock
+                  ? `<span class="relative group/tooltip">
+                      <span class="inline-flex h-1.5 w-1.5 rounded-full bg-rose-500"></span>
+                      <span class="pointer-events-none absolute -top-8 right-0 hidden w-max rounded-md bg-slate-900 px-2 py-1 text-[0.7rem] text-rose-100 border border-rose-500/40 group-hover/tooltip:block">
+                        Low stock: refill soon
+                      </span>
+                    </span>`
+                  : ""
+              }
+            </div>
+            <div class="col-span-1 flex items-center">
+              <span class="text-xs text-slate-300">${m.unit || "-"}</span>
+            </div>
+            <div class="col-span-1 text-right">
+              <span class="text-sm text-slate-100">${formatCurrency(Number(m.unitPrice) || 0)}</span>
+            </div>
+            <div class="col-span-2 flex flex-col">
+              <span class="text-sm text-slate-100">${m.supplier || "-"}</span>
+              ${
+                m.minStock
+                  ? `<span class="text-[0.7rem] text-slate-500">Min: ${m.minStock} ${m.unit || ""}</span>`
+                  : ""
+              }
+            </div>
+            <div class="col-span-2 flex items-center">
+              <span class="text-xs text-slate-400">${m.lastUpdated || "-"}</span>
+            </div>
+            <div class="col-span-2 flex items-center justify-end gap-2">
+              <button
+                class="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800/90 transition"
+                onclick="startRawInlineEdit(${index})"
+              >
+                <span class="iconify" data-icon="lucide:pencil" data-width="14" data-height="14" style="stroke-width:1.5"></span>
+                Edit
+              </button>
+              <button
+                class="inline-flex items-center gap-1 rounded-full border border-rose-700/70 bg-rose-900/40 px-3 py-1.5 text-xs text-rose-100 hover:bg-rose-900/70 transition"
+                onclick="deleteRaw(${index})"
+              >
+                <span class="iconify" data-icon="lucide:trash-2" data-width="14" data-height="14" style="stroke-width:1.5"></span>
+                Delete
+              </button>
+            </div>
+          `;
+          body.appendChild(row);
+        });
+
+      if (!body.children.length) {
+        const empty = document.createElement("div");
+        empty.className = "px-4 py-8 text-center text-sm text-slate-500";
+        empty.textContent = "No raw materials match this filter.";
+        body.appendChild(empty);
+      }
+
+      renderProductsTable(); // keep products cost in sync if stock changed
+    }
+
+    function startRawInlineEdit(index) {
+      const material = rawMaterials[index];
+      openRawModal(material, index);
+    }
+
+    function deleteRaw(index) {
+      if (!confirm("Delete this raw material?")) return;
+      rawMaterials.splice(index, 1);
+      renderRawTable();
+      renderProductsTable();
+      showToast("Raw material deleted");
+    }
+
+    // --- RAW MODAL ---
+    function openRawModal(material = null, index = null) {
+      document.getElementById("rawModal").classList.remove("hidden");
+      document.getElementById("rawModal").classList.add("flex");
+      document.getElementById("rawEditIndex").value = index != null ? index : "";
+      document.getElementById("rawModalTitle").textContent = index != null ? "Edit Raw Material" : "Add Raw Material";
+
+      if (material) {
+        document.getElementById("rawName").value = material.name || "";
+        document.getElementById("rawSku").value = material.sku || "";
+        document.getElementById("rawQuantity").value = material.quantity;
+        document.getElementById("rawUnit").value = material.unit || "";
+        document.getElementById("rawUnitPrice").value = material.unitPrice;
+        document.getElementById("rawSupplier").value = material.supplier || "";
+        document.getElementById("rawMinStock").value = material.minStock ?? "";
+        document.getElementById("rawNotes").value = material.notes || "";
+      } else {
+        document.getElementById("rawName").value = "";
+        document.getElementById("rawSku").value = "";
+        document.getElementById("rawQuantity").value = "";
+        document.getElementById("rawUnit").value = "";
+        document.getElementById("rawUnitPrice").value = "";
+        document.getElementById("rawSupplier").value = "";
+        document.getElementById("rawMinStock").value = "";
+        document.getElementById("rawNotes").value = "";
+      }
+    }
+
+    function closeRawModal() {
+      document.getElementById("rawModal").classList.add("hidden");
+      document.getElementById("rawModal").classList.remove("flex");
+    }
+
+    function submitRawForm(e) {
+      e.preventDefault();
+      const idxStr = document.getElementById("rawEditIndex").value;
+      const data = {
+        name: document.getElementById("rawName").value.trim(),
+        sku: document.getElementById("rawSku").value.trim(),
+        quantity: Number(document.getElementById("rawQuantity").value) || 0,
+        unit: document.getElementById("rawUnit").value.trim(),
+        unitPrice: Number(document.getElementById("rawUnitPrice").value) || 0,
+        supplier: document.getElementById("rawSupplier").value.trim(),
+        minStock: document.getElementById("rawMinStock").value
+          ? Number(document.getElementById("rawMinStock").value)
+          : null,
+        notes: document.getElementById("rawNotes").value.trim(),
+        lastUpdated: formatDateNow()
+      };
+
+      if (idxStr !== "") {
+        rawMaterials[Number(idxStr)] = data;
+        showToast("Raw material updated");
+      } else {
+        rawMaterials.push(data);
+        showToast("Raw material added");
+      }
+
+      closeRawModal();
+      renderRawTable();
+    }
+
+    // --- PRODUCTS TABLE ---
+    function renderProductsTable() {
+      const body = document.getElementById("productsTableBody");
+      const query = (document.getElementById("productSearch").value || "").toLowerCase().trim();
+      body.innerHTML = "";
+
+      products
+        .filter((p) => {
+          if (!query) return true;
+          return (
+            p.name.toLowerCase().includes(query) ||
+            p.sku.toLowerCase().includes(query)
+          );
+        })
+        .forEach((p, index) => {
+          // ensure cost recalculation from current raw prices
+          const { totalCost, costPerUnit } = recalcProductCost(p);
+          p.totalCost = totalCost;
+          p.costPerUnit = costPerUnit;
+
+          const compText = p.composition
+            .map((c) => {
+              const raw = rawMaterials.find((m) => m.sku === c.rawSku);
+              return raw ? `${c.qtyPerUnit} × ${raw.name}` : "";
+            })
+            .filter(Boolean)
+            .join(", ");
+
+          const row = document.createElement("div");
+          row.className =
+            "group grid grid-cols-12 gap-3 px-4 py-3 hover:bg-slate-900/60 transition";
+
+          row.innerHTML = `
+            <div class="col-span-3 flex flex-col">
+              <span class="text-sm font-medium text-slate-100">${p.name}</span>
+              <span class="text-xs text-slate-500">${p.sku}</span>
+            </div>
+            <div class="col-span-2 text-right">
+              <span class="text-sm text-slate-100">${p.quantity}</span>
+            </div>
+            <div class="col-span-2 text-right">
+              <span class="text-sm text-slate-100">${formatCurrency(p.costPerUnit || 0)}</span>
+            </div>
+            <div class="col-span-2 text-right">
+              <span class="text-sm text-slate-100">${formatCurrency(p.sellingPrice || 0)}</span>
+            </div>
+            <div class="col-span-2 flex flex-col">
+              <span class="text-xs text-slate-300">${compText || "-"}</span>
+            </div>
+            <div class="col-span-1 flex items-center justify-end gap-2">
+              <button
+                class="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-900/80 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-800/90 transition"
+                onclick="openProductModal(${index})"
+              >
+                <span class="iconify" data-icon="lucide:pencil" data-width="14" data-height="14" style="stroke-width:1.5"></span>
+              </button>
+              <button
+                class="inline-flex items-center gap-1 rounded-full border border-rose-700/70 bg-rose-900/40 px-2.5 py-1.5 text-xs text-rose-100 hover:bg-rose-900/70 transition"
+                onclick="deleteProduct(${index})"
+              >
+                <span class="iconify" data-icon="lucide:trash-2" data-width="14" data-height="14" style="stroke-width:1.5"></span>
+              </button>
+            </div>
+          `;
+          body.appendChild(row);
+        });
+
+      if (!body.children.length) {
+        const empty = document.createElement("div");
+        empty.className = "px-4 py-8 text-center text-sm text-slate-500";
+        empty.textContent = "No products match this filter.";
+        body.appendChild(empty);
+      }
+    }
+
+    function recalcProductCost(product) {
+      let totalCost = 0;
+      product.composition.forEach((c) => {
+        const raw = rawMaterials.find((m) => m.sku === c.rawSku);
+        if (!raw) return;
+        totalCost += raw.unitPrice * c.qtyPerUnit * product.quantity;
+      });
+      const costPerUnit = product.quantity ? totalCost / product.quantity : 0;
+      return { totalCost, costPerUnit };
+    }
+
+    function deleteProduct(index) {
+      if (!confirm("Delete this product? (Stock already deducted will not be restored in this prototype)")) return;
+      products.splice(index, 1);
+      renderProductsTable();
+      showToast("Product deleted");
+    }
+
+    // --- PRODUCT MODAL & COMPOSITION ---
+    let compositionRows = [];
+
+    function openProductModal(index = null) {
+      document.getElementById("productModal").classList.remove("hidden");
+      document.getElementById("productModal").classList.add("flex");
+      document.getElementById("productEditIndex").value = index != null ? index : "";
+      document.getElementById("insufficientWarning").classList.add("hidden");
+      document.getElementById("overrideInsufficient").checked = false;
+      compositionRows = [];
+
+      if (index != null) {
+        const p = products[index];
+        document.getElementById("productModalTitle").textContent = "Edit Product";
+        document.getElementById("productName").value = p.name;
+        document.getElementById("productSku").value = p.sku;
+        document.getElementById("productQuantity").value = p.quantity;
+        document.getElementById("productSellingPrice").value = p.sellingPrice;
+        compositionRows = p.composition.map((c) => ({
+          rawSku: c.rawSku,
+          qtyPerUnit: c.qtyPerUnit
+        }));
+      } else {
+        document.getElementById("productModalTitle").textContent = "Add Product";
+        document.getElementById("productName").value = "Painted Steel Panel";
+        document.getElementById("productSku").value = "PSP-001";
+        document.getElementById("productQuantity").value = 10;
+        document.getElementById("productSellingPrice").value = 200;
+        // default composition as per example
+        compositionRows = [
+          { rawSku: "ST-001", qtyPerUnit: 2 },
+          { rawSku: "PNT-010", qtyPerUnit: 1 }
+        ];
+      }
+
+      renderCompositionRows();
+      updateProductCostSummary();
+    }
+
+    function closeProductModal() {
+      document.getElementById("productModal").classList.add("hidden");
+      document.getElementById("productModal").classList.remove("flex");
+    }
+
+    function addCompositionRow() {
+      compositionRows.push({ rawSku: rawMaterials[0]?.sku || "", qtyPerUnit: 1 });
+      renderCompositionRows();
+      updateProductCostSummary();
+    }
+
+    function removeCompositionRow(idx) {
+      compositionRows.splice(idx, 1);
+      renderCompositionRows();
+      updateProductCostSummary();
+    }
+
+    function onCompositionChange(idx, field, value) {
+      if (field === "rawSku") {
+        compositionRows[idx].rawSku = value;
+      } else if (field === "qtyPerUnit") {
+        compositionRows[idx].qtyPerUnit = Number(value) || 0;
+      }
+      updateProductCostSummary();
+    }
+
+    function renderCompositionRows() {
+      const body = document.getElementById("compositionBody");
+      body.innerHTML = "";
+
+      if (!compositionRows.length) {
+        const empty = document.createElement("div");
+        empty.className = "px-3 py-3 text-center text-xs text-slate-500";
+        empty.textContent = "Add materials to define this product's composition.";
+        body.appendChild(empty);
+        return;
+      }
+
+      compositionRows.forEach((row, idx) => {
+        const raw = rawMaterials.find((m) => m.sku === row.rawSku) || rawMaterials[0] || null;
+        if (!raw && rawMaterials.length) {
+          row.rawSku = rawMaterials[0].sku;
+        }
+        const quantity = Number(row.qtyPerUnit) || 0;
+        const productQty = Number(document.getElementById("productQuantity").value) || 0;
+        const required = quantity * productQty;
+        const available = raw ? raw.quantity : 0;
+        const cost = raw ? raw.unitPrice * required : 0;
+        const insufficient = required > available;
+
+        const div = document.createElement("div");
+        div.className =
+          "grid grid-cols-12 gap-2 px-3 py-2 items-center";
+
+        div.innerHTML = `
+          <div class="col-span-4">
+            <select
+              class="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-sky-500/60 focus:border-sky-500/60"
+              onchange="onCompositionChange(${idx}, 'rawSku', this.value)"
+            >
+              ${rawMaterials
+                .map(
+                  (m) =>
+                    `<option value="${m.sku}" ${
+                      m.sku === row.rawSku ? "selected" : ""
+                    }>${m.name} (${m.sku})</option>`
+                )
+                .join("")}
+            </select>
+          </div>
+          <div class="col-span-2 text-right">
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value="${quantity || ""}"
+              class="w-full rounded-lg border ${
+                insufficient ? "border-rose-500/80" : "border-slate-700"
+              } bg-slate-900/80 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 ${
+          insufficient ? "focus:ring-rose-500/80" : "focus:ring-sky-500/60"
+        }"
+              placeholder="Qty"
+              onchange="onCompositionChange(${idx}, 'qtyPerUnit', this.value)"
+            />
+          </div>
+          <div class="col-span-2 text-right">
+            <div class="flex flex-col items-end">
+              <span class="text-xs ${
+                insufficient ? "text-rose-300" : "text-slate-100"
+              }">${available} ${raw ? raw.unit : ""}</span>
+              <span class="text-[0.7rem] text-slate-500">Need ${required || 0}</span>
+            </div>
+          </div>
+          <div class="col-span-2 text-right">
+            <span class="text-xs text-slate-100">${formatCurrency(cost || 0)}</span>
+          </div>
+          <div class="col-span-2 text-right">
+            <button
+              type="button"
+              class="inline-flex items-center justify-center rounded-full border border-slate-700 bg-slate-900/80 p-1.5 text-slate-300 hover:bg-slate-800/90 transition"
+              onclick="removeCompositionRow(${idx})"
+            >
+              <span class="iconify" data-icon="lucide:x" data-width="14" data-height="14" style="stroke-width:1.5"></span>
+            </button>
+          </div>
+        `;
+        body.appendChild(div);
+      });
+    }
+
+    function updateProductCostSummary() {
+      const qty = Number(document.getElementById("productQuantity").value) || 0;
+      const sellingPrice = Number(document.getElementById("productSellingPrice").value) || 0;
+      const override = document.getElementById("overrideInsufficient").checked;
+      let totalCost = 0;
+      let hasInsufficient = false;
+      let firstInsufficientMessage = "";
+
+      compositionRows.forEach((row) => {
+        const raw = rawMaterials.find((m) => m.sku === row.rawSku);
+        if (!raw) return;
+        const qtyPerUnit = Number(row.qtyPerUnit) || 0;
+        const required = qtyPerUnit * qty;
+        const available = raw.quantity;
+        totalCost += raw.unitPrice * required;
+        if (required > available && !hasInsufficient) {
+          hasInsufficient = true;
+          firstInsufficientMessage = `Insufficient ${raw.name} to create ${qty} units`;
+        }
+      });
+
+      const costPerUnit = qty ? totalCost / qty : 0;
+      const marginPerUnit = sellingPrice - costPerUnit;
+
+      document.getElementById("summaryTotalCost").textContent = formatCurrency(totalCost);
+      document.getElementById("summaryCostPerUnit").textContent = formatCurrency(costPerUnit);
+      document.getElementById("summaryMargin").textContent = formatCurrency(marginPerUnit);
+
+      const warning = document.getElementById("insufficientWarning");
+      const saveBtn = document.getElementById("productSaveButton");
+
+      if (hasInsufficient && !override) {
+        warning.classList.remove("hidden");
+        warning.textContent = `Warning: “${firstInsufficientMessage}”`;
+        saveBtn.disabled = true;
+        saveBtn.classList.add("opacity-60", "cursor-not-allowed");
+      } else {
+        warning.classList.toggle("hidden", !hasInsufficient);
+        if (hasInsufficient) {
+          warning.textContent = `Warning: “${firstInsufficientMessage}”`;
+        }
+        saveBtn.disabled = false;
+        saveBtn.classList.remove("opacity-60", "cursor-not-allowed");
+      }
+
+      renderCompositionRows(); // to refresh per-row insufficient styles
+    }
+
+    function submitProductForm(e) {
+      e.preventDefault();
+      const idxStr = document.getElementById("productEditIndex").value;
+      const quantity = Number(document.getElementById("productQuantity").value) || 0;
+      const name = document.getElementById("productName").value.trim();
+      const sku = document.getElementById("productSku").value.trim();
+      const sellingPrice = Number(document.getElementById("productSellingPrice").value) || 0;
+      const override = document.getElementById("overrideInsufficient").checked;
+
+      // Compute cost and check stock
+      let totalCost = 0;
+      let insufficientMaterials = [];
+      compositionRows.forEach((row) => {
+        const raw = rawMaterials.find((m) => m.sku === row.rawSku);
+        if (!raw) return;
+        const qtyPerUnit = Number(row.qtyPerUnit) || 0;
+        const required = qtyPerUnit * quantity;
+        totalCost += raw.unitPrice * required;
+        if (required > raw.quantity) {
+          insufficientMaterials.push({
+            name: raw.name,
+            required,
+            available: raw.quantity
+          });
+        }
+      });
+
+      if (insufficientMaterials.length && !override) {
+        const first = insufficientMaterials[0];
+        alert(
+          `Insufficient stock: ${first.name}. Required ${first.required}, available ${first.available}. Enable override to proceed.`
+        );
+        return;
+      }
+
+      const costPerUnit = quantity ? totalCost / quantity : 0;
+
+      // Deduct stock if new record
+      if (idxStr === "") {
+        compositionRows.forEach((row) => {
+          const raw = rawMaterials.find((m) => m.sku === row.rawSku);
+          if (!raw) return;
+          const qtyPerUnit = Number(row.qtyPerUnit) || 0;
+          const required = qtyPerUnit * quantity;
+          raw.quantity = Math.max(0, raw.quantity - required);
+          raw.lastUpdated = formatDateNow();
+        });
+      }
+
+      const productData = {
+        name,
+        sku,
+        quantity,
+        sellingPrice,
+        composition: compositionRows.map((r) => ({
+          rawSku: r.rawSku,
+          qtyPerUnit: Number(r.qtyPerUnit) || 0
+        })),
+        totalCost,
+        costPerUnit,
+        createdAt: formatDateNow()
+      };
+
+      if (idxStr !== "") {
+        products[Number(idxStr)] = productData;
+        showToast("Product updated");
+      } else {
+        products.push(productData);
+        showToast("Product created & stock deducted");
+      }
+
+      closeProductModal();
+      renderRawTable();
+      renderProductsTable();
+    }
+
+    // --- EXPORT & PDF PREVIEW (DEMO) ---
+    function exportCSV() {
+      const rows = [];
+      rows.push([
+        "Type",
+        "Name",
+        "SKU",
+        "Quantity",
+        "Unit",
+        "UnitPrice",
+        "Supplier",
+        "MinStock",
+        "Notes"
+      ]);
+      rawMaterials.forEach((m) => {
+        rows.push([
+          "RawMaterial",
+          m.name,
+          m.sku,
+          m.quantity,
+          m.unit,
+          m.unitPrice,
+          m.supplier,
+          m.minStock,
+          m.notes
+        ]);
+      });
+      rows.push([""]);
+      rows.push([
+        "Type",
+        "ProductName",
+        "SKU",
+        "Quantity",
+        "SellingPrice",
+        "TotalCost",
+        "CostPerUnit",
+        "Composition"
+      ]);
+      products.forEach((p) => {
+        const comp = p.composition
+          .map((c) => {
+            const raw = rawMaterials.find((m) => m.sku === c.rawSku);
+            return raw ? `${c.qtyPerUnit}x${raw.name}` : "";
+          })
+          .filter(Boolean)
+          .join(" + ");
+        rows.push([
+          "Product",
+          p.name,
+          p.sku,
+          p.quantity,
+          p.sellingPrice,
+          p.totalCost,
+          p.costPerUnit,
+          comp
+        ]);
+      });
+
+      const csvContent =
+        "data:text/csv;charset=utf-8," +
+        rows
+          .map((r) =>
+            r
+              .map((v) =>
+                v == null ? "" : `"${String(v).replace(/"/g, '""')}"`
+              )
+              .join(",")
+          )
+          .join("\n");
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "inventory_export.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    function openPdfPreview() {
+      alert("PDF Preview placeholder. In production, this would open a PDF preview of the inventory snapshot.");
+    }
+
+    // --- BACKDROP CLOSE ---
+    function backdropClose(event, modalId) {
+      if (event.target.id === modalId) {
+        document.getElementById(modalId).classList.add("hidden");
+        document.getElementById(modalId).classList.remove("flex");
+      }
+    }
+
+    // --- INIT ---
+    renderRawTable();
+    renderProductsTable();
+  </script>
+</body>
+</html>

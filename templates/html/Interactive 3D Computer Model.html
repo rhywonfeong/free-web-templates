@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Computer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background: #000; }
+        canvas { display: block; cursor: pointer; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; font-family: Arial; }
+    </style>
+<script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Serif:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Serif:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600;700&family=Inter&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="ui">
+        <div>Click power button, keyboard keys, or computer parts</div>
+        <div id="status">Status: Off</div>
+        <div id="typed">Typed: </div>
+    </div>
+    
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(5, 10, 5);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+
+        // Computer components
+        let computer = new THREE.Group();
+        let isOn = false;
+        let screenMaterial;
+        let typedText = "";
+        let keyMeshes = [];
+        let clickableObjects = [];
+
+        // Monitor
+        const monitorBase = new THREE.BoxGeometry(0.8, 0.1, 0.3);
+        const monitorBaseMesh = new THREE.Mesh(monitorBase, new THREE.MeshLambertMaterial({ color: 0x333333 }));
+        monitorBaseMesh.position.y = 0.05;
+        computer.add(monitorBaseMesh);
+
+        const monitorStand = new THREE.CylinderGeometry(0.05, 0.1, 0.3);
+        const monitorStandMesh = new THREE.Mesh(monitorStand, new THREE.MeshLambertMaterial({ color: 0x666666 }));
+        monitorStandMesh.position.y = 0.15;
+        computer.add(monitorStandMesh);
+
+        const monitorScreen = new THREE.BoxGeometry(1.2, 0.7, 0.05);
+        screenMaterial = new THREE.MeshLambertMaterial({ color: 0x000000 });
+        const monitorScreenMesh = new THREE.Mesh(monitorScreen, screenMaterial);
+        monitorScreenMesh.position.set(0, 0.65, 0);
+        computer.add(monitorScreenMesh);
+
+        // Screen content
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        
+        function updateScreen() {
+            ctx.fillStyle = isOn ? '#001122' : '#000000';
+            ctx.fillRect(0, 0, 512, 512);
+            
+            if (isOn) {
+                ctx.fillStyle = '#00ff00';
+                ctx.font = '20px monospace';
+                ctx.fillText('SYSTEM ONLINE', 30, 60);
+                ctx.fillText('Welcome User!', 30, 100);
+                ctx.fillText('Time: ' + new Date().toLocaleTimeString(), 30, 140);
+                ctx.fillText('> ' + typedText, 30, 200);
+                
+                // Blinking cursor
+                if (Math.floor(Date.now() / 500) % 2) {
+                    const textWidth = ctx.measureText('> ' + typedText).width;
+                    ctx.fillRect(30 + textWidth + 5, 185, 10, 20);
+                }
+            }
+        }
+
+        const screenTexture = new THREE.CanvasTexture(canvas);
+        const screenDisplayMaterial = new THREE.MeshLambertMaterial({ map: screenTexture });
+        const screenDisplay = new THREE.BoxGeometry(1.1, 0.6, 0.01);
+        const screenDisplayMesh = new THREE.Mesh(screenDisplay, screenDisplayMaterial);
+        screenDisplayMesh.position.set(0, 0.65, 0.026);
+        computer.add(screenDisplayMesh);
+
+        // Keyboard
+        const keyboard = new THREE.BoxGeometry(1.0, 0.05, 0.4);
+        const keyboardMesh = new THREE.Mesh(keyboard, new THREE.MeshLambertMaterial({ color: 0x222222 }));
+        keyboardMesh.position.set(0, 0.025, 0.8);
+        computer.add(keyboardMesh);
+
+        // Keys with letters
+        const keyLayout = [
+            ['1','2','3','4','5','6','7','8','9','0','-','='],
+            ['Q','W','E','R','T','Y','U','I','O','P','[',']'],
+            ['A','S','D','F','G','H','J','K','L',';',"'",'\\'],
+            ['Z','X','C','V','B','N','M',',','.','/','',''],
+            ['','','SPACE','','','','','','','','','']
+        ];
+
+        for (let i = 0; i < 5; i++) {
+            for (let j = 0; j < 12; j++) {
+                if (keyLayout[i] && keyLayout[i][j]) {
+                    const key = new THREE.BoxGeometry(
+                        keyLayout[i][j] === 'SPACE' ? 0.3 : 0.06, 
+                        0.02, 
+                        0.06
+                    );
+                    const keyMesh = new THREE.Mesh(key, new THREE.MeshLambertMaterial({ color: 0x444444 }));
+                    keyMesh.position.set(-0.4 + j * 0.08, 0.06, 0.6 + i * 0.08);
+                    keyMesh.userData = { 
+                        type: 'key', 
+                        char: keyLayout[i][j] === 'SPACE' ? ' ' : keyLayout[i][j],
+                        originalColor: 0x444444,
+                        originalY: 0.06
+                    };
+                    keyMeshes.push(keyMesh);
+                    clickableObjects.push(keyMesh);
+                    computer.add(keyMesh);
+                }
+            }
+        }
+
+        // Mouse
+        const mouse = new THREE.BoxGeometry(0.15, 0.05, 0.2);
+        const mouseMesh = new THREE.Mesh(mouse, new THREE.MeshLambertMaterial({ color: 0x555555 }));
+        mouseMesh.position.set(0.8, 0.025, 0.8);
+        mouseMesh.userData = { type: 'mouse' };
+        clickableObjects.push(mouseMesh);
+        computer.add(mouseMesh);
+
+        // CPU Tower
+        const cpu = new THREE.BoxGeometry(0.3, 1.0, 0.5);
+        const cpuMesh = new THREE.Mesh(cpu, new THREE.MeshLambertMaterial({ color: 0x444444 }));
+        cpuMesh.position.set(-1.5, 0.5, 0);
+        cpuMesh.userData = { type: 'cpu' };
+        clickableObjects.push(cpuMesh);
+        computer.add(cpuMesh);
+
+        // Power button
+        const powerButton = new THREE.CylinderGeometry(0.03, 0.03, 0.02);
+        const powerButtonMesh = new THREE.Mesh(powerButton, new THREE.MeshLambertMaterial({ 
+            color: isOn ? 0x00ff00 : 0x660000 
+        }));
+        powerButtonMesh.position.set(-1.35, 0.9, 0.26);
+        powerButtonMesh.userData = { type: 'power' };
+        clickableObjects.push(powerButtonMesh);
+        computer.add(powerButtonMesh);
+
+        scene.add(computer);
+
+        // Ground
+        const groundGeometry = new THREE.PlaneGeometry(10, 10);
+        const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Camera position
+        camera.position.set(2, 2, 3);
+        camera.lookAt(0, 0.5, 0);
+
+        // Mouse interaction
+        const raycaster = new THREE.Raycaster();
+        const mouse2D = new THREE.Vector2();
+
+        function animateKeyPress(keyMesh) {
+            // Key press animation
+            keyMesh.position.y = keyMesh.userData.originalY - 0.01;
+            keyMesh.material.color.setHex(0x666666);
+            
+            setTimeout(() => {
+                keyMesh.position.y = keyMesh.userData.originalY;
+                keyMesh.material.color.setHex(keyMesh.userData.originalColor);
+            }, 100);
+        }
+
+        renderer.domElement.addEventListener('click', (event) => {
+            mouse2D.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse2D.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse2D, camera);
+            const intersects = raycaster.intersectObjects(clickableObjects);
+            
+            if (intersects.length > 0) {
+                const clickedObject = intersects[0].object;
+                const userData = clickedObject.userData;
+                
+                switch(userData.type) {
+                    case 'power':
+                        isOn = !isOn;
+                        powerButtonMesh.material.color.setHex(isOn ? 0x00ff00 : 0x660000);
+                        document.getElementById('status').textContent = `Status: ${isOn ? 'On' : 'Off'}`;
+                        if (!isOn) {
+                            typedText = "";
+                            document.getElementById('typed').textContent = 'Typed: ';
+                        }
+                        break;
+                        
+                    case 'key':
+                        if (isOn) {
+                            animateKeyPress(clickedObject);
+                            if (userData.char === ' ') {
+                                typedText += ' ';
+                            } else {
+                                typedText += userData.char;
+                            }
+                            document.getElementById('typed').textContent = 'Typed: ' + typedText;
+                        }
+                        break;
+                        
+                    case 'mouse':
+                        if (isOn) {
+                            // Mouse click effect
+                            clickedObject.material.color.setHex(0x777777);
+                            setTimeout(() => {
+                                clickedObject.material.color.setHex(0x555555);
+                            }, 100);
+                        }
+                        break;
+                        
+                    case 'cpu':
+                        // CPU interaction
+                        clickedObject.material.color.setHex(0x666666);
+                        setTimeout(() => {
+                            clickedObject.material.color.setHex(0x444444);
+                        }, 200);
+                        break;
+                }
+            }
+        });
+
+        // Hover effect
+        renderer.domElement.addEventListener('mousemove', (event) => {
+            mouse2D.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse2D.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse2D, camera);
+            const intersects = raycaster.intersectObjects(clickableObjects);
+            
+            // Reset all hover states
+            clickableObjects.forEach(obj => {
+                if (obj.userData.type === 'key') {
+                    obj.material.color.setHex(obj.userData.originalColor);
+                }
+            });
+            
+            if (intersects.length > 0) {
+                const hoveredObject = intersects[0].object;
+                if (hoveredObject.userData.type === 'key') {
+                    hoveredObject.material.color.setHex(0x555555);
+                }
+                renderer.domElement.style.cursor = 'pointer';
+            } else {
+                renderer.domElement.style.cursor = 'default';
+            }
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            updateScreen();
+            screenTexture.needsUpdate = true;
+            
+            computer.rotation.y += 0.002;
+            
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

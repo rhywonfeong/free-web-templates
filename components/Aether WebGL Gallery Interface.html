@@ -1,0 +1,167 @@
+<div class="relative w-screen h-screen overflow-hidden cursor-crosshair"
+  style="background-color: #080808; color: #a1a1aa; font-family: 'Inter', sans-serif;">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300&family=Space+Mono&display=swap');
+
+    .mono {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+    }
+
+    .fade-transition {
+      transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), color 0.6s ease;
+    }
+
+    .whitespace-layout {
+      display: grid;
+      grid-template-columns: 100px 1fr 100px;
+      grid-template-rows: 100px 1fr 100px;
+      height: 100vh;
+      padding: 30px;
+      box-sizing: border-box;
+    }
+  </style>
+
+  <div id="loader"
+    class="fixed inset-0 z-[999] bg-[#080808] flex items-center justify-center transition-opacity duration-1000"
+    style="opacity: 1;">
+    <div class="mono text-zinc-200">INITIALIZING_AETHER_CORE</div>
+  </div>
+
+  <div class="relative z-10 w-full h-full pointer-events-none whitespace-layout">
+    <header class="col-start-1 col-end-4 flex justify-between items-start pointer-events-auto">
+      <div class="flex flex-col">
+        <h1 class="text-base tracking-[0.5em] text-white font-light">AETHER/UNIT</h1>
+        <div class="mono mt-2 opacity-40">OS.BUILD.7700</div>
+      </div>
+
+      <div class="flex gap-16 mono opacity-60">
+        <div>SYNC <span id="cpu-val" class="text-white">00</span></div>
+        <div>DATA <span id="mem-val" class="text-white">000</span></div>
+        <div id="clock" class="text-white">00:00:00</div>
+      </div>
+    </header>
+
+    <nav class="col-start-1 row-start-2 flex flex-col justify-center gap-10 pointer-events-auto">
+      <button class="mono text-left fade-transition hover:text-white">01 GALLERY</button>
+      <button class="mono text-left text-white fade-transition">02 SYSTEM</button>
+      <button class="mono text-left fade-transition hover:text-white">03 ARCHIVE</button>
+    </nav>
+
+    <aside class="col-start-3 row-start-2 flex flex-col justify-center items-end pointer-events-auto text-right">
+      <div class="mono opacity-40 mb-2">SECTOR</div>
+      <div id="sector-name" class="text-sm text-white tracking-[0.3em] uppercase fade-transition">---</div>
+      <div class="mt-10">
+        <div class="mono opacity-40">COORDS</div>
+        <div id="coords" class="mono text-zinc-300">0.000 0.000</div>
+      </div>
+    </aside>
+
+    <footer class="col-start-1 col-end-4 row-start-3 flex justify-between items-end pointer-events-auto">
+      <div class="mono opacity-40">PULL_TO_NAVIGATE</div>
+      <div class="flex flex-col items-end">
+        <div class="mono opacity-40">ENCRYPTION</div>
+        <div class="mono text-emerald-500">ACTIVE</div>
+      </div>
+    </footer>
+  </div>
+
+  <div id="webgl-container" class="fixed inset-0 z-0"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+  <script>
+    (function() {
+      const config = { speed: 1.0, damping: 0.04, gap: 4.5, itemH: 2.4, itemW: 4.2, n: 5 };
+      const data = [
+        { img: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=2000&auto=format&fit=crop', title: 'SYNTH_FIELD' },
+        { img: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2000&auto=format&fit=crop', title: 'BLOCK_GEOM' },
+        { img: 'https://images.unsplash.com/photo-1555680202-c86f0e12f086?q=80&w=2000&auto=format&fit=crop', title: 'LIGHT_TRACE' },
+        { img: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2000&auto=format&fit=crop', title: 'TECH_NOIR' },
+        { img: 'https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=2000&auto=format&fit=crop', title: 'CORE_PULSE' }
+      ];
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x080808);
+      const camera = new THREE.PerspectiveCamera(40, window.innerWidth/window.innerHeight, 0.1, 100);
+      camera.position.z = 8;
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      document.getElementById('webgl-container').appendChild(renderer.domElement);
+
+      const vShader = `varying vec2 vUv; uniform float uScroll; uniform float uIdx; uniform float uH;
+        void main() { vUv = uv; vec3 p = position; float off = (uIdx * 4.5) + uScroll;
+        off = mod(off + uH * 0.5, uH) - uH * 0.5; p.y += off;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0); }`;
+      const fShader = `uniform sampler2D uT; varying vec2 vUv;
+        void main() { vec4 t = texture2D(uT, vUv); float g = dot(t.rgb, vec3(0.3, 0.59, 0.11));
+        gl_FragColor = vec4(vec3(g * 0.9), 1.0); }`;
+
+      const geo = new THREE.PlaneGeometry(config.itemW, config.itemH);
+      const loader = new THREE.TextureLoader();
+      const meshes = [];
+      const totalH = config.gap * config.n;
+
+      data.forEach((item, i) => {
+        const mat = new THREE.ShaderMaterial({
+          uniforms: { uT: { value: loader.load(item.img) }, uIdx: { value: i }, uScroll: { value: 0 }, uH: { value: totalH } },
+          vertexShader: vShader, fragmentShader: fShader
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        scene.add(mesh);
+        meshes.push(mesh);
+      });
+
+      let scroll = 0, scrollTarget = 0;
+      window.addEventListener('wheel', (e) => scrollTarget -= e.deltaY * 0.0015);
+
+      const ui = { 
+        sec: document.getElementById('sector-name'), crd: document.getElementById('coords'),
+        cpu: document.getElementById('cpu-val'), mem: document.getElementById('mem-val'), clk: document.getElementById('clock')
+      };
+
+      function animate() {
+        scroll += (scrollTarget - scroll) * config.damping;
+        let active = 0, minD = Infinity;
+
+        meshes.forEach((m, i) => {
+          m.material.uniforms.uScroll.value = scroll;
+          let y = (( (i * 4.5) + scroll % totalH) + totalH) % totalH;
+          if (y > totalH/2) y -= totalH;
+          if (Math.abs(y) < minD) { minD = Math.abs(y); active = i; }
+        });
+
+        if (ui.sec.innerText !== data[active].title) {
+          ui.sec.innerText = data[active].title;
+          ui.crd.innerText = `${(Math.random()*15).toFixed(3)} ${(Math.random()*15).toFixed(3)}`;
+        }
+
+        ui.clk.innerText = new Date().toTimeString().split(' ')[0];
+        ui.cpu.innerText = (90 + Math.floor(Math.random()*9)).toString();
+        ui.mem.innerText = (1024 + Math.floor(Math.random()*256)).toString();
+        
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+      }
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      window.onload = () => {
+        setTimeout(() => {
+          const l = document.getElementById('loader');
+          l.style.opacity = '0';
+          setTimeout(() => l.style.display = 'none', 1000);
+        }, 1500);
+        animate();
+      };
+    })();
+  </script>
+</div>

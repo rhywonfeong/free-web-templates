@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FocusLens Pro - Professional Camera Experience</title>
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body, html {
+            font-family: 'JetBrains Mono', monospace;
+            background: #000;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            font-size: 14px;
+        }
+        .font-heading {
+            font-family: 'Geist Mono', monospace;
+            font-weight: 300;
+            letter-spacing: -0.02em;
+        }
+        #shader-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            z-index: 0;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
+        }
+        .viewfinder-grid {
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.2) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.2) 1px, transparent 1px);
+            background-size: 33.33% 33.33%;
+            opacity: 0.3;
+        }
+        .focus-ring {
+            animation: focus-pulse 2s ease-in-out infinite;
+            border: 2px solid #3b82f6;
+        }
+        @keyframes focus-pulse {
+            0%, 100% { opacity: 0.6; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.05); }
+        }
+        .shutter-button {
+            background: radial-gradient(circle, #fff 30%, #3b82f6 31%, #3b82f6 70%, #fff 71%);
+            transition: all 0.1s ease;
+        }
+        .shutter-button:active {
+            transform: scale(0.95);
+        }
+        .hero-text {
+            background: linear-gradient(135deg, #ffffff 0%, #f0f0f0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .float-icon {
+            animation: float-gentle 3s ease-in-out infinite;
+        }
+        @keyframes float-gentle {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-2px); }
+        }
+        .recording-dot {
+            animation: recording-blink 1s ease-in-out infinite;
+        }
+        @keyframes recording-blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+        .camera-float {
+            animation: camera-hover 4s ease-in-out infinite;
+        }
+        @keyframes camera-hover {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-10px) rotate(1deg); }
+        }
+    </style>
+    <script>
+        window.onload = function() {
+            const canvas = document.getElementById('shader-canvas');
+            const gl = canvas.getContext('webgl');
+            function resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+            }
+            resize();
+            window.addEventListener('resize', resize);
+            const vertexShaderSource = `
+                attribute vec2 aPosition;
+                void main() {
+                    gl_Position = vec4(aPosition, 0.0, 1.0);
+                }
+            `;
+            const fragmentShaderSource = `
+                precision highp float;
+                uniform float iTime;
+                uniform vec2 iResolution;
+                
+                float noise(vec2 p) {
+                    return fract(sin(dot(p.xy, vec2(12.9898, 78.233))) * 43758.5453);
+                }
+                
+                void main() {
+                    vec2 uv = gl_FragCoord.xy / iResolution.xy;
+                    float n = noise(uv * 200.0 + iTime * 2.0) * 0.02;
+                    float dist = length(uv - 0.5);
+                    float vignette = 1.0 - smoothstep(0.4, 1.0, dist);
+                    vec3 color = vec3(0.05, 0.08, 0.15);
+                    color += vec3(0.1, 0.2, 0.4) * (sin(iTime * 0.3 + uv.x * 2.0) * 0.3 + 0.3);
+                    color += n;
+                    color *= vignette;
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `;
+            function compileShader(type, source) {
+                const shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+                return shader;
+            }
+            const vertexShader = compileShader(gl.VERTEX_SHADER, vertexShaderSource);
+            const fragmentShader = compileShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+            gl.useProgram(program);
+            const buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+                -1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1,
+            ]), gl.STATIC_DRAW);
+            const aPosition = gl.getAttribLocation(program, 'aPosition');
+            gl.enableVertexAttribArray(aPosition);
+            gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
+            const iTimeLoc = gl.getUniformLocation(program, 'iTime');
+            const iResLoc = gl.getUniformLocation(program, 'iResolution');
+            function render(time) {
+                gl.uniform1f(iTimeLoc, time * 0.001);
+                gl.uniform2f(iResLoc, canvas.width, canvas.height);
+                gl.drawArrays(gl.TRIANGLES, 0, 6);
+                requestAnimationFrame(render);
+            }
+            requestAnimationFrame(render);
+        };
+    </script>
+</head>
+<body>
+    <canvas id="shader-canvas"></canvas>
+    
+    <!-- Navigation -->
+    <nav class="relative z-50 px-6 py-6">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="text-white font-medium text-lg font-heading">FocusLens_Pro</div>
+            <div class="hidden md:flex space-x-8 text-white/80 text-sm">
+                <a href="#" class="hover:text-white transition-colors">features</a>
+                <a href="#" class="hover:text-white transition-colors">gallery</a>
+                <a href="#" class="hover:text-white transition-colors">reviews</a>
+                <a href="#" class="hover:text-white transition-colors">download</a>
+            </div>
+            <button class="md:hidden text-white">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <div class="relative z-10 min-h-screen flex items-center justify-center px-6">
+        <div class="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
+            
+            <!-- Left Content -->
+            <div class="text-center lg:text-left space-y-8">
+                <div class="space-y-6">
+                    <h1 class="text-5xl lg:text-6xl font-heading hero-text leading-tight">
+                        professional
+                        <span class="block text-blue-500">camera_app</span>
+                        experience
+                    </h1>
+                    <p class="text-lg text-gray-300 max-w-lg leading-relaxed">
+                        capture_stunning_moments with advanced ai-powered camera controls, 
+                        professional-grade editing tools, and intuitive interface design.
+                    </p>
+                </div>
+
+                <!-- Features -->
+                <div class="space-y-3">
+                    <div class="flex items-center gap-3 text-gray-300 text-sm">
+                        <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        <span>professional_manual_controls</span>
+                    </div>
+                    <div class="flex items-center gap-3 text-gray-300 text-sm">
+                        <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        <span>ai_powered_auto_focus_system</span>
+                    </div>
+                    <div class="flex items-center gap-3 text-gray-300 text-sm">
+                        <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        <span>real_time_editing_capabilities</span>
+                    </div>
+                </div>
+
+                <!-- CTA Buttons -->
+                <div class="flex flex-col sm:flex-row gap-4 pt-4">
+                    <button class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-full text-sm font-medium transition-colors flex items-center justify-center gap-2">
+                        <i class="fas fa-download"></i>
+                        download_now
+                    </button>
+                    <button class="border border-white/30 text-white hover:bg-white/10 px-8 py-4 rounded-full text-sm font-medium transition-colors flex items-center justify-center gap-2">
+                        <i class="fas fa-play"></i>
+                        watch_demo
+                    </button>
+                </div>
+
+                <!-- Stats -->
+                <div class="grid grid-cols-3 gap-6 pt-8 border-t border-white/10">
+                    <div class="text-center">
+                        <div class="text-2xl font-heading text-white">4.9</div>
+                        <div class="text-xs text-gray-400">app_rating</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-heading text-white">2M+</div>
+                        <div class="text-xs text-gray-400">downloads</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-heading text-white">50K+</div>
+                        <div class="text-xs text-gray-400">reviews</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Content - Camera Interface -->
+            <div class="flex justify-center lg:justify-end">
+                <div class="camera-float">
+                    <div class="rounded-[54px] shadow-[0_50px_100px_-20px_rgba(59,130,246,0.3),0_30px_60px_-30px_rgba(0,0,0,0.8)] bg-[#1a1a1a] p-2 w-[320px] h-[640px] relative border border-blue-500/20">
+                        <div class="absolute top-0 left-1/2 transform -translate-x-1/2 w-[120px] h-[24px] bg-black rounded-b-[12px] z-50"></div>
+                        
+                        <div class="bg-black rounded-[42px] w-full h-full overflow-hidden relative">
+                            <div class="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-indigo-900/20 to-cyan-900/20">
+                                <div class="absolute inset-0 viewfinder-grid"></div>
+                            </div>
+
+                            <!-- Top UI -->
+                            <div class="absolute top-0 left-0 right-0 z-40 pt-8 pb-4 px-4">
+                                <div class="flex justify-between items-center">
+                                    <div class="flex items-center gap-2">
+                                        <div class="flex items-center gap-2 bg-black/50 backdrop-blur-md rounded-full px-2 py-1">
+                                            <div class="w-1.5 h-1.5 bg-red-500 rounded-full recording-dot"></div>
+                                            <span class="text-white text-xs">REC</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <button class="w-6 h-6 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center text-white float-icon">
+                                            <i class="fas fa-bolt text-xs text-cyan-400"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Focus Ring -->
+                            <div class="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
+                                <div class="w-16 h-16 rounded-full focus-ring"></div>
+                            </div>
+
+                            <!-- Side Controls -->
+                            <div class="absolute left-4 top-1/2 transform -translate-y-1/2 z-30">
+                                <div class="bg-blue-600/80 backdrop-blur-md rounded-full px-2 py-1 text-white text-xs font-medium">
+                                    ISO_400
+                                </div>
+                            </div>
+
+                            <!-- Bottom Controls -->
+                            <div class="absolute bottom-0 left-0 right-0 z-40 pb-6 px-4">
+                                <div class="bg-black/50 backdrop-blur-md rounded-full mb-4 flex justify-center">
+                                    <div class="flex items-center gap-4 px-4 py-2 rounded-full">
+                                        <span class="text-white/60 text-xs">VIDEO</span>
+                                        <span class="text-white font-medium text-xs">PHOTO</span>
+                                        <span class="text-white/60 text-xs">PORTRAIT</span>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center justify-between">
+                                    <button class="w-8 h-8 rounded-lg bg-gray-600 border border-white/30">
+                                        <div class="w-full h-full bg-gradient-to-br from-blue-400 to-cyan-500 rounded-lg"></div>
+                                    </button>
+                                    
+                                    <button class="shutter-button w-14 h-14 rounded-full shadow-xl relative">
+                                        <div class="absolute inset-1.5 rounded-full bg-white"></div>
+                                    </button>
+                                    
+                                    <button class="w-8 h-8 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center text-white">
+                                        <i class="fas fa-redo text-sm"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

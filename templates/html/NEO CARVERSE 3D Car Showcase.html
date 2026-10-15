@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="A global digital car universe with photorealistic 3D exploration, 360° rotation, zoom, fullscreen, and AR-ready viewing." />
+<meta name="theme-color" content="#05060a" />
+<title>NEO CARVERSE</title>
+<link rel="manifest" href="data:application/manifest+json,{
+&quot;name&quot;:&quot;NEO CARVERSE&quot;,
+&quot;short_name&quot;:&quot;CARVERSE&quot;,
+&quot;start_url&quot;:&quot;.&quot;,
+&quot;display&quot;:&quot;standalone&quot;,
+&quot;background_color&quot;:&quot;#05060a&quot;,
+&quot;theme_color&quot;:&quot;#05060a&quot;,
+&quot;icons&quot;:[]
+}" />
+<link rel="preconnect" href="https://cdn.tailwindcss.com" />
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://api.fontshare.com" />
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:dark}
+::selection{background:rgba(34,211,238,.25)}
+html{scroll-behavior:smooth}
+body{-webkit-tap-highlight-color: transparent}
+.no-scrollbar::-webkit-scrollbar{height:0;width:0}
+.no-scrollbar{scrollbar-width:none}
+</style>
+<script type="module">
+import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+const state = {
+route: "home",
+selected: null,
+modelsLoaded: false,
+viewers: new Map(),
+preferReduced: window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+};
+const CARS = [
+{
+id: "aether-gt",
+brand: "Aether",
+model: "GT One",
+year: "2026",
+tag: "Concept",
+accent: "from-cyan-400/20 via-sky-400/10 to-transparent",
+specs: { engine: "Dual e-motor", power: "640 hp", torque: "810 Nm", topSpeed: "205 mph", drivetrain: "AWD" },
+highlights: ["Active aero", "Glass roof", "Adaptive matrix lights"],
+},
+{
+id: "noir-rs",
+brand: "Noir",
+model: "RS Vanta",
+year: "2025",
+tag: "Track",
+accent: "from-sky-400/20 via-cyan-400/10 to-transparent",
+specs: { engine: "4.0L V8 TT", power: "710 hp", torque: "850 Nm", topSpeed: "210 mph", drivetrain: "RWD" },
+highlights: ["Carbon tub", "Magnetic dampers", "Ceramic brakes"],
+},
+{
+id: "solara-e",
+brand: "Solara",
+model: "Eclipse E",
+year: "2027",
+tag: "EV",
+accent: "from-cyan-300/20 via-sky-300/10 to-transparent",
+specs: { engine: "Tri e-motor", power: "980 hp", torque: "1100 Nm", topSpeed: "218 mph", drivetrain: "AWD" },
+highlights: ["Torque vectoring", "Fast charge", "AR HUD"],
+},
+{
+id: "kepler-s",
+brand: "Kepler",
+model: "S-9 Coupe",
+year: "2024",
+tag: "Signature",
+accent: "from-sky-300/20 via-cyan-300/10 to-transparent",
+specs: { engine: "3.0L I6 hybrid", power: "520 hp", torque: "650 Nm", topSpeed: "190 mph", drivetrain: "AWD" },
+highlights: ["Adaptive suspension", "Spatial audio", "Nano paint"],
+},
+{
+id: "ion-x",
+brand: "ION",
+model: "X Vector",
+year: "2026",
+tag: "Hyper",
+accent: "from-cyan-400/20 via-sky-400/10 to-transparent",
+specs: { engine: "Quad e-motor", power: "1200 hp", torque: "1400 Nm", topSpeed: "225 mph", drivetrain: "AWD" },
+highlights: ["Launch control", "Active cooling", "Carbon wheels"],
+}
+];
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+function setRoute(route, carId = null) {
+state.route = route;
+state.selected = carId ? CARS.find(c => c.id === carId) : null;
+const home = $("#home");
+const detail = $("#detail");
+const skip = $("#skip");
+if (route === "home") {
+home.classList.remove("hidden");
+detail.classList.add("hidden");
+skip.setAttribute("href", "#main");
+$("#pageTitle").textContent = "Explore every car on Earth — in 3D.";
+window.history.replaceState({}, "", "#/");
+} else {
+home.classList.add("hidden");
+detail.classList.remove("hidden");
+skip.setAttribute("href", "#detailMain");
+$("#pageTitle").textContent = `${state.selected.brand} ${state.selected.model} — 3D`;
+window.history.replaceState({}, "", `#/car/${state.selected.id}`);
+renderCarDetail(state.selected);
+}
+requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+}
+function initRouting() {
+const hash = window.location.hash || "#/";
+const match = hash.match(/^#\/car\/(.+)$/);
+if (match) {
+const id = match[1];
+const found = CARS.find(c => c.id === id);
+if (found) setRoute("detail", id);
+else setRoute("home");
+} else setRoute("home");
+window.addEventListener("hashchange", () => {
+const h = window.location.hash || "#/";
+const m = h.match(/^#\/car\/(.+)$/);
+if (m) {
+const id = m[1];
+const found = CARS.find(c => c.id === id);
+if (found) setRoute("detail", id);
+else setRoute("home");
+} else setRoute("home");
+});
+}
+function mountIcon(el) {
+if (!el) return;
+el.innerHTML = "";
+const icon = el.getAttribute("data-icon");
+const size = el.getAttribute("data-size") || "1.125rem";
+const stroke = el.getAttribute("data-stroke") || "1.5";
+const span = document.createElement("span");
+span.className = "inline-flex";
+span.style.width = size;
+span.style.height = size;
+span.style.display = "inline-flex";
+span.style.alignItems = "center";
+span.style.justifyContent = "center";
+span.innerHTML = `<span class="iconify" data-icon="${icon}" data-width="${size}" data-height="${size}" data-inline="false" data-flip="" data-rotate="" data-color="currentColor" data-stroke-width="${stroke}"></span>`;
+el.appendChild(span);
+}
+function mountAllIcons(root = document) {
+$$("[data-icon]", root).forEach(mountIcon);
+if (window.Iconify && window.Iconify.scan) window.Iconify.scan(root);
+}
+function buildCarCard(car) {
+const a = document.createElement("a");
+a.href = `#/car/${car.id}`;
+a.className =
+"group relative snap-start w-[18rem] sm:w-[20rem] shrink-0 rounded-2xl overflow-hidden border border-white/10 bg-white/[0.05] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.02)] hover:border-cyan-300/30 hover:bg-white/[0.07] transition duration-300 focus:outline-none focus:ring-2 focus:ring-cyan-300/30";
+a.setAttribute("aria-label", `Open ${car.brand} ${car.model}`);
+a.innerHTML = `
+<div class="absolute inset-0 bg-gradient-to-br ${car.accent} opacity-70"></div>
+<div class="relative p-5">
+<div class="flex items-start justify-between gap-3">
+<div class="min-w-0">
+<div class="text-xs tracking-wide text-white/60">${car.brand}</div>
+<div class="mt-1 text-lg sm:text-xl font-semibold tracking-tight text-white truncate">${car.model}</div>
+<div class="mt-1 flex items-center gap-2 text-xs text-white/60">
+<span>${car.year}</span>
+<span class="text-white/20">•</span>
+<span class="rounded-full border border-cyan-300/20 bg-cyan-300/10 text-cyan-100 px-2 py-0.5">${car.tag}</span>
+</div>
+</div>
+<div class="mt-0.5 rounded-xl border border-white/10 bg-black/30 backdrop-blur-md p-2 text-white/80 group-hover:text-white transition">
+<span data-icon="lucide:arrow-up-right" data-size="1.125rem" data-stroke="1.5"></span>
+</div>
+</div>
+<div class="mt-4 rounded-xl border border-white/10 bg-black/30 overflow-hidden">
+<div class="relative aspect-[16/9]">
+<canvas class="car-thumb absolute inset-0 w-full h-full" data-view="thumb" data-car="${car.id}"></canvas>
+<div class="absolute inset-0 bg-gradient-to-t from-black/40 via-black/0 to-black/0"></div>
+<div class="absolute left-3 bottom-3 right-3 flex items-center justify-between text-xs text-white/70">
+<div class="flex items-center gap-2">
+<span class="inline-flex items-center gap-1.5">
+<span class="inline-block h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.6)]"></span>
+Interactive 3D
+</span>
+</div>
+<div class="inline-flex items-center gap-1.5">
+<span data-icon="lucide:mouse-pointer-2" data-size="1rem" data-stroke="1.5"></span>
+Drag
+</div>
+</div>
+</div>
+</div>
+<div class="mt-4 grid grid-cols-2 gap-3 text-xs">
+<div class="rounded-xl border border-white/10 bg-black/25 p-3">
+<div class="text-white/50">Power</div>
+<div class="mt-1 font-medium text-white/90">${car.specs.power}</div>
+</div>
+<div class="rounded-xl border border-white/10 bg-black/25 p-3">
+<div class="text-white/50">Top speed</div>
+<div class="mt-1 font-medium text-white/90">${car.specs.topSpeed}</div>
+</div>
+</div>
+</div>
+`;
+return a;
+}
+function renderFeatured() {
+const rail = $("#featuredRail");
+rail.innerHTML = "";
+CARS.forEach(c => rail.appendChild(buildCarCard(c)));
+mountAllIcons(rail);
+}
+function renderBrands() {
+const brands = [
+"AETHER", "NOIR", "SOLARA", "KEPLER", "ION",
+"ASTRA", "ORIGIN", "VANTA", "LUMEN", "KAIRO"
+];
+const grid = $("#brandGrid");
+grid.innerHTML = "";
+brands.forEach((b) => {
+const btn = document.createElement("button");
+btn.className =
+"group rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl px-4 py-4 text-left hover:border-cyan-300/30 hover:bg-white/[0.06] transition duration-300 focus:outline-none focus:ring-2 focus:ring-cyan-300/30";
+btn.innerHTML = `
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<div class="text-xs text-white/50">Brand</div>
+<div class="mt-1 text-sm sm:text-base font-semibold tracking-tight text-white/90 truncate">${b}</div>
+</div>
+<div class="rounded-xl border border-white/10 bg-black/25 p-2 text-white/70 group-hover:text-cyan-100 group-hover:border-cyan-300/20 transition">
+<span data-icon="lucide:sparkles" data-size="1.125rem" data-stroke="1.5"></span>
+</div>
+</div>
+<div class="mt-3 h-px bg-gradient-to-r from-cyan-300/20 via-white/10 to-transparent"></div>
+<div class="mt-3 text-xs text-white/60">Hover glow • Quick browse</div>
+`;
+btn.addEventListener("click", () => {
+const q = $("#q");
+q.value = b.toLowerCase();
+q.focus();
+doSearch();
+});
+grid.appendChild(btn);
+});
+mountAllIcons(grid);
+}
+function doSearch() {
+const q = ($("#q").value || "").trim().toLowerCase();
+const results = $("#searchResults");
+const hint = $("#searchHint");
+if (!q) {
+results.innerHTML = "";
+hint.textContent = "Try “ion”, “gt”, or “v8”.";
+return;
+}
+const hits = CARS.filter(c => `${c.brand} ${c.model} ${c.year} ${c.tag}`.toLowerCase().includes(q));
+results.innerHTML = "";
+if (hits.length === 0) {
+hint.textContent = "No matches — refine your search.";
+return;
+}
+hint.textContent = `${hits.length} match${hits.length === 1 ? "" : "es"} found.`;
+hits.slice(0, 6).forEach((c) => {
+const a = document.createElement("a");
+a.href = `#/car/${c.id}`;
+a.className =
+"flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 hover:border-cyan-300/30 hover:bg-white/[0.06] transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30";
+a.innerHTML = `
+<div class="min-w-0">
+<div class="text-xs text-white/60">${c.brand}</div>
+<div class="text-sm font-medium text-white/90 truncate">${c.model}</div>
+</div>
+<div class="shrink-0 text-xs text-white/60 inline-flex items-center gap-2">
+<span class="rounded-full border border-cyan-300/20 bg-cyan-300/10 text-cyan-100 px-2 py-0.5">${c.tag}</span>
+<span data-icon="lucide:chevron-right" data-size="1.125rem" data-stroke="1.5" class="text-white/70"></span>
+</div>
+`;
+results.appendChild(a);
+});
+mountAllIcons(results);
+}
+function softSetText(id, value) {
+const el = $(id);
+if (el) el.textContent = value;
+}
+function renderCarDetail(car) {
+softSetText("#detailBrand", car.brand);
+softSetText("#detailModel", car.model);
+softSetText("#detailYear", car.year);
+softSetText("#detailTag", car.tag);
+const chips = $("#detailChips");
+chips.innerHTML = "";
+car.highlights.forEach(h => {
+const span = document.createElement("span");
+span.className = "inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/70 backdrop-blur";
+span.textContent = h;
+chips.appendChild(span);
+});
+const spec = car.specs;
+const rows = [
+["Engine", spec.engine, "lucide:cog"],
+["Power", spec.power, "lucide:zap"],
+["Torque", spec.torque, "lucide:activity"],
+["Top speed", spec.topSpeed, "lucide:gauge"],
+["Drivetrain", spec.drivetrain, "lucide:git-merge"],
+];
+const specGrid = $("#specGrid");
+specGrid.innerHTML = "";
+rows.forEach(([k, v, icon]) => {
+const card = document.createElement("div");
+card.className = "rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl p-4 hover:border-cyan-300/25 transition";
+card.innerHTML = `
+<div class="flex items-start justify-between gap-3">
+<div>
+<div class="text-xs text-white/55">${k}</div>
+<div class="mt-1 text-sm sm:text-base font-medium text-white/90">${v}</div>
+</div>
+<div class="rounded-xl border border-white/10 bg-black/25 p-2 text-white/70">
+<span data-icon="${icon}" data-size="1.125rem" data-stroke="1.5"></span>
+</div>
+</div>
+`;
+specGrid.appendChild(card);
+});
+mountAllIcons(specGrid);
+$("#viewerBadge").textContent = "Interactive 3D • Drag to rotate • Scroll/pinch to zoom";
+$("#arNote").textContent = "AR View: uses device Quick Look / Scene Viewer in production builds.";
+requestAnimationFrame(() => {
+initViewerIfNeeded("detailViewer", { quality: "high", interactive: true });
+});
+}
+function initViewerIfNeeded(canvasId, opts = {}) {
+const canvas = document.getElementById(canvasId);
+if (!canvas) return;
+if (state.viewers.has(canvas)) return;
+const renderer = new THREE.WebGLRenderer({
+canvas,
+antialias: true,
+alpha: true,
+powerPreference: "high-performance"
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = opts.quality === "high" ? 1.1 : 1.0;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+camera.position.set(3.2, 1.7, 4.2);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.enablePan = false;
+controls.rotateSpeed = 0.6;
+controls.minDistance = 2.2;
+controls.maxDistance = 7.0;
+controls.minPolarAngle = Math.PI * 0.12;
+controls.maxPolarAngle = Math.PI * 0.48;
+controls.autoRotate = !opts.interactive;
+controls.autoRotateSpeed = 0.7;
+const hemi = new THREE.HemisphereLight(0xbfefff, 0x0b0f14, 0.75);
+scene.add(hemi);
+const key = new THREE.DirectionalLight(0xe8fbff, 2.1);
+key.position.set(4, 5, 3);
+scene.add(key);
+const fill = new THREE.DirectionalLight(0x7dd3fc, 0.9);
+fill.position.set(-6, 2, 4);
+scene.add(fill);
+const rim = new THREE.DirectionalLight(0x22d3ee, 1.2);
+rim.position.set(-2, 3, -6);
+scene.add(rim);
+const floorGeo = new THREE.CircleGeometry(6, 64);
+const floorMat = new THREE.MeshStandardMaterial({
+color: 0x05070b,
+roughness: 0.25,
+metalness: 0.1,
+emissive: new THREE.Color(0x020307),
+emissiveIntensity: 0.85
+});
+const floor = new THREE.MeshloorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -0.72;
+scene.add(floor);
+const glowGeo = new THREE.RingGeometry(1.2, 2.5, 96);
+const glowMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.12, side: THREE.DoubleSide });
+const glow = new THREE.Mesh(glowGeo, glowMat);
+glow.rotation.x = -Math.PI / 2;
+glow.position.y = -0.715;
+scene.add(glow);
+const carGroup = new THREE.Group();
+scene.add(carGroup);
+const paint = new THREE.MeshPhysicalMaterial({
+color: 0x0b111a,
+metalness: 0.65,
+roughness: 0.18,
+clearcoat: 1.0,
+clearcoatRoughness: 0.12,
+sheen: 0.25,
+sheenRoughness: 0.7,
+reflectivity: 0.9
+});
+const glass = new THREE.MeshPhysicalMaterial({
+color: 0x7dd3fc,
+metalness: 0.0,
+roughness: 0.05,
+transmission: 1.0,
+thickness: 0.25,
+ior: 1.4,
+transparent: true,
+opacity: 0.85
+});
+const trim = new THREE.MeshStandardMaterial({
+color: 0x0b0f14,
+metalness: 0.8,
+roughness: 0.35
+});
+const emissive = new THREE.MeshStandardMaterial({
+color: 0x0a1017,
+emissive: new THREE.Color(0x22d3ee),
+emissiveIntensity: 1.35,
+roughness: 0.6,
+metalness: 0.2
+});
+const body = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.65, 1.45), paint);
+body.position.y = 0.0;
+body.geometry.computeVertexNormals();
+carGroup.add(body);
+const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.55, 1.25), glass);
+cabin.position.set(0.2, 0.48, 0);
+carGroup.add(cabin);
+const nose = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.8, 1.2, 24, 1, false, 0, Math.PI * 2), paint);
+nose.rotation.z = Math.PI / 2;
+nose.position.set(1.45, -0.05, 0);
+carGroup.add(nose);
+const diffuser = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.18, 1.1), trim);
+diffuser.position.set(-1.55, -0.22, 0);
+carGroup.add(diffuser);
+const wheelMat = new THREE.MeshStandardMaterial({ color: 0x0a0f16, metalness: 0.25, roughness: 0.65 });
+const rimMat = new THREE.MeshStandardMaterial({ color: 0x0c1722, metalness: 0.85, roughness: 0.22 });
+const wheelGeo = new THREE.CylinderGeometry(0.33, 0.33, 0.26, 28);
+const rimGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.28, 28);
+function wheel(x, z) {
+const g = new THREE.Group();
+const tire = new THREE.Mesh(wheelGeo, wheelMat);
+tire.rotation.z = Math.PI / 2;
+const rim = new THREE.Mesh(rimGeo, rimMat);
+rim.rotation.z = Math.PI / 2;
+g.add(tire);
+g.add(rim);
+g.position.set(x, -0.33, z);
+return g;
+}
+carGroup.add(wheel(1.05, 0.7));
+carGroup.add(wheel(1.05, -0.7));
+carGroup.add(wheel(-1.05, 0.7));
+carGroup.add(wheel(-1.05, -0.7));
+const hl1 = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.08, 0.6), emissive);
+hl1.position.set(1.62, 0.05, 0.42);
+const hl2 = hl1.clone();
+hl2.position.z = -0.42;
+carGroup.add(hl1, hl2);
+const under = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.06, 1.25), new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.07 }));
+under.position.set(0.0, -0.36, 0);
+carGroup.add(under);
+carGroup.rotation.y = -0.65;
+const ro = new ResizeObserver(() => {
+const rect = canvas.getBoundingClientRect();
+const w = Math.max(1, Math.floor(rect.width));
+const h = Math.max(1, Math.floor(rect.height));
+renderer.setSize(w, h, false);
+camera.aspect = w / h;
+camera.updateProjectionMatrix();
+});
+ro.observe(canvas);
+let isVisible = true;
+const io = new IntersectionObserver((entries) => {
+isVisible = entries.some(e => e.isIntersecting);
+}, { threshold: 0.08 });
+io.observe(canvas);
+let raf = 0;
+const tick = () => {
+raf = requestAnimationFrame(tick);
+if (!isVisible) return;
+if (!opts.interactive && !state.preferReduced) {
+carGroup.rotation.y += 0.0025;
+}
+if (!state.preferReduced) {
+glow.material.opacity = 0.10 + 0.03 * Math.sin(performance.now() * 0.001);
+}
+controls.update();
+renderer.render(scene, camera);
+};
+tick();
+state.viewers.set(canvas, { renderer, scene, camera, controls, carGroup, glow, io, ro, dispose() {
+cancelAnimationFrame(raf);
+io.disconnect();
+ro.disconnect();
+renderer.dispose();
+state.viewers.delete(canvas);
+}});
+canvas.addEventListener("wheel", (e) => {
+if (canvasId !== "detailViewer") return;
+e.preventDefault();
+const v = state.viewers.get(canvas);
+if (!v) return;
+const delta = e.deltaY > 0 ? 1 : -1;
+v.controls.dollyIn(delta > 0 ? 1.08 : 0.92);
+v.controls.update();
+}, { passive: false });
+let touchDist = null;
+canvas.addEventListener("touchstart", (e) => {
+if (canvasId !== "detailViewer") return;
+if (e.touches && e.touches.length === 2) {
+const dx = e.touches[0].clientX - e.touches[1].clientX;
+const dy = e.touches[0].clientY - e.touches[1].clientY;
+touchDist = Math.hypot(dx, dy);
+}
+}, { passive: true });
+canvas.addEventListener("touchmove", (e) => {
+if (canvasId !== "detailViewer") return;
+if (e.touches && e.touches.length === 2 && touchDist != null) {
+const dx = e.touches[0].clientX - e.touches[1].clientX;
+const dy = e.touches[0].clientY - e.touches[1].clientY;
+const nd = Math.hypot(dx, dy);
+const diff = nd - touchDist;
+const v = state.viewers.get(canvas);
+if (v) {
+v.controls.dollyIn(diff > 0 ? 0.98 : 1.02);
+v.controls.update();
+}
+touchDist = nd;
+}
+}, { passive: true });
+canvas.addEventListener("touchend", () => { touchDist = null; }, { passive: true });
+}
+function initThumbViewersLazy() {
+const canvases = $$(".car-thumb");
+const io = new IntersectionObserver((entries) => {
+entries.forEach((e) => {
+if (!e.isIntersecting) return;
+const c = e.target;
+initViewerIfNeeded(c.id || (c.id = `thumb_${Math.random().toString(16).slice(2)}`), { quality: "low", interactive: false });
+io.unobserve(c);
+});
+}, { threshold: 0.12 });
+canvases.forEach(c => io.observe(c));
+}
+function bindUI() {
+$("#q").addEventListener("input", doSearch);
+$("#searchBtn").addEventListener("click", () => { doSearch(); $("#q").focus(); });
+$("#homeBtn").addEventListener("click", (e) => { e.preventDefault(); setRoute("home"); });
+$("#logoBtn").addEventListener("click", (e) => { e.preventDefault(); setRoute("home"); });
+$("#rotateBtn").addEventListener("click", () => {
+const v = state.viewers.get($("#detailViewer"));
+if (!v) return;
+v.controls.autoRotate = !v.controls.autoRotate;
+$("#rotateBtnLabel").textContent = v.controls.autoRotate ? "Rotate: On" : "Rotate: Off";
+});
+$("#zoomInBtn").addEventListener("click", () => {
+const v = state.viewers.get($("#detailViewer"));
+if (!v) return;
+v.controls.dollyIn(0.92);
+v.controls.update();
+});
+$("#zoomOutBtn").addEventListener("click", () => {
+const v = state.viewers.get($("#detailViewer"));
+if (!v) return;
+v.controls.dollyIn(1.08);
+v.controls.update();
+});
+$("#fullscreenBtn").addEventListener("click", async () => {
+const wrap = $("#viewerWrap");
+try {
+if (!document.fullscreenElement) await wrap.requestFullscreen();
+else await document.exitFullscreen();
+} catch (_) {}
+});
+$("#arBtn").addEventListener("click", () => {
+const dlg = $("#arDialog");
+dlg.classList.remove("hidden");
+dlg.setAttribute("aria-hidden", "false");
+$("#arClose").focus();
+});
+$("#arClose").addEventListener("click", () => {
+const dlg = $("#arDialog");
+dlg.classList.add("hidden");
+dlg.setAttribute("aria-hidden", "true");
+});
+$("#backBtn").addEventListener("click", (e) => {
+e.preventDefault();
+setRoute("home");
+});
+$("#arDialog").addEventListener("click", (e) => {
+if (e.target.id === "arDialog") $("#arClose").click();
+});
+document.addEventListener("keydown", (e) => {
+if (e.key === "Escape") {
+const dlg = $("#arDialog");
+if (!dlg.classList.contains("hidden")) $("#arClose").click();
+}
+});
+}
+// Continuous background glow effect (subtle drift + breathing intensity)
+function animateBackground() {
+const a = $("#bgA");
+const b = $("#bgB");
+const c = $("#bgC");
+const pulse = $("#bgPulse");
+if (!a || !b || !c) return;
+if (state.preferReduced) {
+if (pulse) pulse.style.opacity = "0.35";
+return;
+}
+const tick = (t) => {
+const time = t * 0.00006;
+const x1 = 50 + 18 * Math.sin(time * 2.4);
+const y1 = 50 + 16 * Math.cos(time * 2.0);
+const x2 = 50 + 20 * Math.cos(time * 1.8);
+const y2 = 50 + 14 * Math.sin(time * 2.2);
+const x3 = 50 + 22 * Math.sin(time * 1.4);
+const y3 = 50 + 18 * Math.cos(time * 1.6);
+a.style.transform = `translate3d(${(x1 - 50) * 0.25}%, ${(y1 - 50) * 0.25}%, 0) scale(1.15)`;
+b.style.transform = `translate3d(${(x2 - 50) * 0.22}%, ${(y2 - 50) * 0.22}%, 0) scale(1.2)`;
+c.style.transform = `translate3d(${(x3 - 50) * 0.18}%, ${(y3 - 50) * 0.18}%, 0) scale(1.25)`;
+if (pulse) {
+const breathe = 0.55 + 0.20 * Math.sin(t * 0.0007) + 0.10 * Math.sin(t * 0.0013);
+pulse.style.opacity = String(breathe);
+}
+requestAnimationFrame(tick);
+};
+requestAnimationFrame(tick);
+}
+function attachThumbIds() {
+$$(".car-thumb").forEach((cv, i) => {
+if (!cv.id) cv.id = `thumb_${i}_${Math.random().toString(16).slice(2)}`;
+});
+}
+function init() {
+const s = document.createElement("script");
+s.src = "https://code.iconify.design/3/3.1.1/iconify.min.js";
+s.async = true;
+document.head.appendChild(s);
+renderFeatured();
+renderBrands();
+mountAllIcons(document);
+attachThumbIds();
+initThumbViewersLazy();
+bindUI();
+initRouting();
+initViewerIfNeeded("heroViewer", { quality: "high", interactive: false });
+animateBackground();
+if ("serviceWorker" in navigator) {
+const sw = `
+self.addEventListener('install', e => self.skipWaiting());
+self.addEventListener('activate', e => self.clients.claim());
+`;
+const blob = new Blob([sw], { type: "text/javascript" });
+const url = URL.createObjectURL(blob);
+navigator.serviceWorker.register(url).catch(() => {});
+}
+}
+window.addEventListener("DOMContentLoaded", init);
+</script></head>
+
+<body class="min-h-screen bg-[#05060a] text-white font-[Satoshi] antialiased selection:bg-cyan-300/20">
+  <a id="skip" href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[70] focus:rounded-xl focus:border focus:border-cyan-300/30 focus:bg-black/70 focus:px-4 focus:py-2 focus:text-sm focus:backdrop-blur-xl">
+    Skip to content
+  </a>
+
+  <!-- Animated cinematic background -->
+  <div aria-hidden="true" class="fixed inset-0 -z-10 overflow-hidden">
+    <div class="absolute inset-0 bg-[#05060a]"></div>
+
+    <div class="absolute inset-0 opacity-90">
+      <div id="bgA" class="absolute -inset-32 blur-3xl"
+        style="background: radial-gradient(closest-side, rgba(34,211,238,0.18), rgba(34,211,238,0.00) 65%);"></div>
+      <div id="bgB" class="absolute -inset-32 blur-3xl"
+        style="background: radial-gradient(closest-side, rgba(56,189,248,0.16), rgba(56,189,248,0.00) 62%);"></div>
+      <div id="bgC" class="absolute -inset-32 blur-3xl"
+        style="background: radial-gradient(closest-side, rgba(99,102,241,0.10), rgba(99,102,241,0.00) 68%);"></div>
+    </div>
+
+    <!-- Continuous glow pulse overlay (subtle breathing) -->
+    <div id="bgPulse" class="absolute inset-0 opacity-60"
+      style="background:
+        radial-gradient(1100px circle at 50% 30%, rgba(34,211,238,0.10), rgba(34,211,238,0.00) 60%),
+        radial-gradient(900px circle at 70% 70%, rgba(56,189,248,0.09), rgba(56,189,248,0.00) 62%),
+        radial-gradient(950px circle at 25% 75%, rgba(99,102,241,0.07), rgba(99,102,241,0.00) 64%);
+        filter: blur(40px);">
+    </div>
+
+    <!-- Flowing wave sheen -->
+    <div class="absolute inset-0 opacity-70">
+      <div class="absolute -inset-40"
+        style="background:
+          conic-gradient(from 180deg at 50% 50%,
+            rgba(34,211,238,0.00),
+            rgba(34,211,238,0.10),
+            rgba(56,189,248,0.00),
+            rgba(99,102,241,0.07),
+            rgba(34,211,238,0.00));
+          filter: blur(56px);">
+      </div>
+    </div>
+
+    <!-- Minimal particles -->
+    <div class="absolute inset-0"
+      style="background-image:
+        radial-gradient(circle at 12% 22%, rgba(255,255,255,0.06) 0.5px, transparent 1px),
+        radial-gradient(circle at 78% 34%, rgba(34,211,238,0.08) 0.5px, transparent 1px),
+        radial-gradient(circle at 62% 78%, rgba(255,255,255,0.05) 0.5px, transparent 1px),
+        radial-gradient(circle at 32% 66%, rgba(56,189,248,0.07) 0.5px, transparent 1px);
+        background-size: 22rem 22rem, 28rem 28rem, 26rem 26rem, 30rem 30rem;
+        background-repeat: repeat;">
+    </div>
+
+    <!-- Vignette -->
+    <div class="absolute inset-0"
+      style="background: radial-gradient(1200px circle at 50% 20%, rgba(0,0,0,0.10), rgba(0,0,0,0.78) 70%);">
+    </div>
+  </div>
+
+  <header class="sticky top-0 z-50 border-b border-white/10 bg-black/30 backdrop-blur-xl">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6">
+      <div class="flex h-16 items-center justify-between gap-4">
+        <a id="logoBtn" href="#/" class="group inline-flex items-center gap-3 focus:outline-none focus:ring-2 focus:ring-cyan-300/30 rounded-xl px-2 py-1">
+          <div class="h-9 w-9 rounded-xl border border-white/10 bg-white/[0.04] backdrop-blur-xl flex items-center justify-center shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+            <div class="text-sm font-semibold tracking-tight text-white/90">NC</div>
+          </div>
+          <div class="leading-tight">
+            <div class="text-sm font-semibold tracking-tight text-white/90">NEO CARVERSE</div>
+            <div class="text-xs text-white/50">Global 3D car universe</div>
+          </div>
+        </a>
+
+        <nav class="flex items-center gap-2">
+          <a id="homeBtn" href="#/" class="hidden sm:inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/80 hover:bg-white/[0.05] hover:border-cyan-300/25 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30">
+            <span data-icon="lucide:home" data-size="1.125rem" data-stroke="1.5"></span>
+            Home
+          </a>
+          <a href="#featured" class="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/80 hover:bg-white/[0.05] hover:border-cyan-300/25 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30">
+            <span data-icon="lucide:star" data-size="1.125rem" data-stroke="1.5"></span>
+            Featured
+          </a>
+          <a href="#brands" class="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/80 hover:bg-white/[0.05] hover:border-cyan-300/25 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30">
+            <span data-icon="lucide:grid-2x2" data-size="1.125rem" data-stroke="1.5"></span>
+            Brands
+          </a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <div class="sr-only" aria-hidden="false">
+    <h1 id="pageTitle">Explore every car on Earth — in 3D.</h1>
+  </div>
+
+  <main id="home" class="mx-auto max-w-7xl px-4 sm:px-6">
+    <section id="main" class="pt-8 sm:pt-12 pb-10 sm:pb-14">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch">
+        <div class="lg:col-span-5">
+          <div class="rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.02)] overflow-hidden">
+            <div class="p-6 sm:p-8">
+              <div class="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,0.10)]">
+                <span class="inline-block h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.7)]"></span>
+                No login • Instant 3D exploration
+              </div>
+
+              <h2 class="mt-5 text-3xl sm:text-4xl font-semibold tracking-tight text-white">
+                A global digital car universe — cinematic 3D, instantly.
+              </h2>
+              <p class="mt-3 text-sm sm:text-base text-white/65 leading-relaxed">
+                Explore brands, models, and next-gen concepts with interactive 360° rotation, zoom, fullscreen viewing, and AR-ready experiences — optimized for smooth performance across devices.
+              </p>
+
+              <div class="mt-6">
+                <div class="relative rounded-2xl border border-white/10 bg-black/30 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+                  <div class="flex items-center gap-2 p-2">
+                    <div class="ml-1 inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] p-2 text-white/75">
+                      <span data-icon="lucide:search" data-size="1.125rem" data-stroke="1.5"></span>
+                    </div>
+                    <label class="sr-only" for="q">Search</label>
+                    <input id="q" type="search" placeholder="Search brand or model (e.g., ion, gt, v8)"
+                      class="w-full bg-transparent text-sm sm:text-base text-white/90 placeholder:text-white/35 outline-none py-2" />
+                    <button id="searchBtn"
+                      class="inline-flex items-center gap-2 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-sm font-medium text-cyan-50 hover:bg-cyan-300/15 hover:border-cyan-300/35 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30">
+                      <span data-icon="lucide:arrow-right" data-size="1.125rem" data-stroke="1.5"></span>
+                      Go
+                    </button>
+                  </div>
+                  <div class="px-4 pb-3">
+                    <div id="searchHint" class="text-xs text-white/50">Try “ion”, “gt”, or “v8”.</div>
+                    <div id="searchResults" class="mt-3 grid grid-cols-1 gap-2"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-4">
+                  <div class="flex items-center gap-2 text-white/85">
+                    <span data-icon="lucide:rotate-3d" data-size="1.125rem" data-stroke="1.5"></span>
+                    <div class="text-sm font-medium">360° Control</div>
+                  </div>
+                  <div class="mt-2 text-xs text-white/55">Drag, touch, zoom — smooth and precise.</div>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-4">
+                  <div class="flex items-center gap-2 text-white/85">
+                    <span data-icon="lucide:sparkles" data-size="1.125rem" data-stroke="1.5"></span>
+                    <div class="text-sm font-medium">Studio Lighting</div>
+                  </div>
+                  <div class="mt-2 text-xs text-white/55">Realistic reflections and premium feel.</div>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-4">
+                  <div class="flex items-center gap-2 text-white/85">
+                    <span data-icon="lucide:scan-face" data-size="1.125rem" data-stroke="1.5"></span>
+                    <div class="text-sm font-medium">AR-ready</div>
+                  </div>
+                  <div class="mt-2 text-xs text-white/55">Mobile-first AR pipeline compatible.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="border-t border-white/10 bg-gradient-to-r from-cyan-300/10 via-white/0 to-sky-300/10 p-5 sm:p-6">
+              <div class="flex flex-wrap items-center gap-3 text-xs text-white/55">
+                <span class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1">
+                  <span data-icon="lucide:leaf" data-size="1rem" data-stroke="1.5"></span>
+                  Lazy-loaded 3D
+                </span>
+                <span class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1">
+                  <span data-icon="lucide:rocket" data-size="1rem" data-stroke="1.5"></span>
+                  60fps-first motion
+                </span>
+                <span class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1">
+                  <span data-icon="lucide:shield-check" data-size="1rem" data-stroke="1.5"></span>
+                  Accessible UI
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-7">
+          <div class="relative rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur-xl overflow-hidden shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+            <div class="absolute inset-0 bg-gradient-to-br from-cyan-300/10 via-transparent to-sky-300/10"></div>
+            <div class="relative p-5 sm:p-6">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <div class="text-xs text-white/55">Showroom</div>
+                  <div class="mt-1 text-lg sm:text-xl font-semibold tracking-tight text-white">Hero 3D Preview</div>
+                  <div class="mt-1 text-xs text-white/55">Auto-rotate • Real-time lighting • Subtle glow floor</div>
+                </div>
+                <div class="hidden sm:flex items-center gap-2">
+                  <div class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs text-white/65">
+                    <span class="inline-block h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.6)]"></span>
+                    Live
+                  </div>
+                </>
+              </div>
+
+              <div class="mt-4 rounded-2xl border border-white/10 bg-black/30 overflow">
+                <div class="relative aspect-[16/10]">
+                  <canvas id="heroViewer" class="absolute inset0 w-full h-full"></canvas>
+                  <div class="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/ via-black/0 to-black/0"></div>
+
+                  <div class="absolute left-4 bottom-4 right-4 items-center justify-between gap-3">
+                    <div class="inline-flex items-center gap-2 rounded-full border border-white/10-black/35 px-3 py-1 text-xs text-white/70 backdrop-blur-xl">
+                      <span data-icon="luc:rotate-3d" data-size="1rem" data-stroke="1.5"></span>
+                      Cinematic rotation                    </div>
+                    <a href="#featured" class="inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-xs font-medium text-cyan-50 hover:bg-cyan-300/15 hover:border-cyan-300/35 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30">
+                      Explore featured
+                      <span data-icon="lucide:arrow-down" data-size="1rem" data-stroke="1.5"></span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <div class="text-white/55">Controls</div>
+                  <div class="mt-1 text-white/85 font-medium">Drag / Touch</div>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <div class="text-white/55">Zoom</div>
+                  <div class="mt-1 text-white/85 font-medium">Scroll / Pinch</div>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <div class="text-white/55">Lighting</div>
+                  <div class="mt-1 text-white/85 font-medium">Studio HDR feel</div>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <div class="text-white/55">Mode</div>
+                  <div class="mt-1 text-white/85 font-medium">Dark glass</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="featured" class="pb-10 sm:pb-14">
+      <div class="flex items-end justify-between gap-4">
+        <div>
+          <h3 class="text-xl sm:text-2xl font-semibold tracking-tight text-white">Featured cars</h3>
+          <p class="mt-1 text-sm text-white/60">Horizontal snap browsing with interactive 3D previews.</p>
+        </div>
+        <div class="hidden sm:flex items-center gap-2 text-xs text-white/55">
+          <span data-icon="lucide:mouse" data-size="1rem" data-stroke="1.5"></span>
+          Scroll
+          <span class="text-white/20">•</span>
+          Snap
+        </div>
+      </div>
+
+      <div class="mt-5">
+        <div id="featuredRail" class="no-scrollbar flex gap-4 overflow-x-auto snap-x snap-mandatory pb-2"></div>
+      </div>
+    </section>
+
+    <section id="brands" class="pb-14 sm:pb-20">
+      <div>
+        <h3 class="text-xl sm:text-2xl font-semibold tracking-tight text-white">Browse by brand</h3>
+        <p class="mt-1 text-sm text-white/60">A glowing grid of brands for fast discovery.</p>
+      </div>
+
+      <div id="brandGrid" class="mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4"></div>
+    </section>
+
+    <footer class="pb-10">
+      <div class="rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-6 sm:p-8">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <div class="text-sm font-semibold tracking-tight text-white/90">NEO CARVERSE</div>
+            <div class="mt-1 text-xs text-white/55">Prototype: interactive viewer, lazy thumbnails, AR-ready entry points.</div>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-xs text-white/55">
+            <span class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1">
+              <span data-icon="lucide:smartphone" data-size="1rem" data-stroke="1.5"></span>
+              Mobile-first
+            </span>
+            <span class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1">
+              <span data-icon="lucide:badge-check" data-size="1rem" data-stroke="1.5"></span>
+              Accessible
+            </span>
+            <span class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1">
+              <span data-icon="lucide:layers" data-size="1rem" data-stroke="1.5"></span>
+              PWA-ready
+            </span>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </main>
+
+  <main id="detail" class="hidden mx-auto max-w-7xl px-4 sm:px-6">
+    <section id="detailMain" class="pt-8 sm:pt-12 pb-12 sm:pb-16">
+      <div class="flex items-start justify-between gap-4">
+        <a id="backBtn" href="#/" class="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/80 hover:bg-white/[0.05] hover:border-cyan-300/25 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30">
+          <span data-icon="lucide:arrow-left" data-size="1.125rem" data-stroke="1.5"></span>
+          Back
+        </a>
+        <div class="hidden sm:flex items-center gap-2">
+          <div class="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,0.10)]">
+            <span data-icon="lucide:badge" data-size="1rem" data-stroke="1.5"></span>
+            No login required
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+        <div class="lg:col-span-7">
+          <div id="viewerWrap" class="relative rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur-xl overflow-hidden shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+            <div class="absolute inset-0 bg-gradient-to-br from-cyan-300/10 via-transparent to-sky-300/10"></div>
+
+            <div class="relative p-5 sm:p-6">
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                  <div class="text-xs text-white/55" id="detailBrand">Brand</div>
+                  <div class="mt-1 text-xl sm:text-2xl font-semibold tracking-tight text-white truncate">
+                    <span id="detailModel">Model</span>
+                  </div>
+                  <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/60">
+                    <span class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-1 backdrop-blur-xl">
+                      <span data-icon="lucide:calendar" data-size="1rem" data-stroke="1.5"></span>
+                      <span id="detailYear">—</span>
+                    </span>
+                    <span class="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-cyan-100">
+                      <span data-icon="lucide:sparkle" data-size="1rem" data-stroke="1.5"></span>
+                      <span id="detailTag">—</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div class="hidden sm:flex items-center gap-2">
+                  <button id="rotateBtn" class="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white/80 hover:bg-black/45 hover:border-cyan-300/25 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30">
+                    <span data-icon="lucide:refresh-cw" data-size="1.125rem" data-stroke="1.5"></span>
+                    <span id="rotateBtnLabel">Rotate: Off</span>
+                  </button>
+
+                  <button id="fullscreenBtn" class="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white/80 hover:bg-black/45 hover:border-cyan-300/25 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30">
+                    <span data-icon="lucide:fullscreen" data-size="1.125rem" data-stroke="1.5"></span>
+                    Fullscreen
+                  </button>
+
+                  <button id="arBtn" class="inline-flex items-center gap-2 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-sm font-medium text-cyan-50 hover:bg-cyan-300/15 hover:border-cyan-300/35 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30 shadow-[0_0_36px_rgba(34,211,238,0.12)]">
+                    <span data-icon="lucide:scan" data-size="1.125rem" data-stroke="1.5"></span>
+                    AR View
+                  </button>
+                </div>
+              </div>
+
+              <div class="mt-4 rounded-2xl border border-white/10 bg-black/30 overflow-hidden">
+                <div class="relative aspect-[16/11]">
+                  <canvas id="detailViewer" class="absolute inset-0 w-full h-full"></canvas>
+                  <div class="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/45 via-black/0 to-black/0"></div>
+
+                  <div class="sm:hidden absolute left-3 right-3 bottom-3 flex items-center justify-between gap-2">
+                    <button id="zoomOutBtn" class="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-black/45 px-3 py-2 text-sm text-white/80 backdrop-blur-xl hover:border-cyan-300/25 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30" aria-label="Zoom out">
+                      <span data-icon="lucide:minus" data-size="1.125rem" data-stroke="1.5"></span>
+                    </button>
+                    <button id="rotateBtnMobile" class="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-black/45 px-4 py-2 text-sm text-white/80 backdrop-blur-xl hover:border-cyan-300/25 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30">
+                      <span data-icon="lucide:refresh-cw" data-size="1.125rem" data-stroke="1.5"></span>
+                      Rotate
+                    </button>
+                    <button id="zoomInBtn" class="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-black/45 px-3 py-2 text-sm text-white/80 backdrop-blur-xl hover:border-cyan-300/25 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30" aria-label="Zoom in">
+                      <span data-icon="lucide:plus" data-size="1.125rem" data-stroke="1.5"></span>
+                    </button>
+                  </div>
+
+                  <div class="absolute left-4 top-4 hidden sm:flex items-center gap-2">
+                    <div class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/35 px-3 py-1 text-xs text-white/70 backdrop-blur-xl">
+                      <span class="inline-block h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.6)]"></span>
+                      <span id="viewerBadge">Interactive 3D</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div id="detailChips" class="flex flex-wrap items-center gap-2"></div>
+                <div class="hidden sm:flex items-center gap-2">
+                  <button id="zoomOutBtnDesktop" class="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/80 hover:bg-white/[0.05] hover:border-cyan-300/25 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30">
+                    <span data-icon="lucide:minus" data-size="1.125rem" data-stroke="1.5"></span>
+                    Zoom out
+                  </button>
+                  <button id="zoomInBtnDesktop" class="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/80 hover:bg-white/[0.05] hover:border-cyan-300/25 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30">
+                    <span data-icon="lucide:plus" data-size="1.125rem" data-stroke="1.5"></span>
+                    Zoom in
+                  </button>
+                </div>
+              </div>
+
+              <div class="mt-3 text-xs text-white/50" id="arNote"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-5">
+          <div class="rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.02)] overflow-hidden">
+            <div class="p-6 sm:p-7">
+              <h3 class="text-lg sm:text-xl font-semibold tracking-tight text-white">Specs</h3>
+              <p class="mt-1 text-sm text-white/60">Core performance and drivetrain details.</p>
+
+              <div id="specGrid" class="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3"></div>
+
+              <div class="mt-6 rounded-2xl border border-white/10 bg-black/25 p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <div class="text-sm font-semibold tracking-tight text-white/90">Gallery</div>
+                  <div class="text-xs text-white/55">Optional</div>
+                </div>
+                <div class="mt-3 grid grid-cols-3 gap-2">
+                  <div class="aspect-[4/3] rounded-xl border border-white/10 bg-gradient-to-br from-white/10 via-white/0 to-cyan-300/10"></div>
+                  <div class="aspect-[4/3] rounded-xl border border-white/10 bg-gradient-to-br from-white/10 via-white/0 to-sky-300/10"></div>
+                  <div class="aspect-[4/3] rounded-xl border border-white/10 bg-gradient-to-br from-white/10 via-white/0 to-indigo-300/10"></div>
+                </div>
+                <div class="mt-3 text-xs text-white/55">In production: real studio images + interior shots.</div>
+              </div>
+
+              <div class="mt-6 grid grid-cols-1 gap-3">
+                <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <div class="flex items-center gap-2 text-white/85">
+                    <span data-icon="lucide:cpu" data-size="1.125rem" data-stroke="1.5"></span>
+                    <div class="text-sm font-medium">Performance strategy</div>
+                  </div>
+                  <div class="mt-2 text-xs text-white/55 leading-relaxed">
+                    Lazy-load 3D assets, progressive LOD, and responsive rendering with intersection-based pausing to preserve battery and keep motion smooth.
+                  </div>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <div class="flex items-center gap-2 text-white/85">
+                    <span data-icon="lucide:glasses" data-size="1.125rem" data-stroke="1.5"></span>
+                    <div class="text-sm font-medium">Showroom feel</div>
+                  </div>
+                  <div class="mt-2 text-xs text-white/55 leading-relaxed">
+                    Soft floor glow + studio rim lights for a premium reflective silhouette. Replace the procedural model with photoreal assets for final quality.
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-6">
+                <a href="#/ " class="sr-only">Home</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        window.addEventListener("DOMContentLoaded", () => {
+          const zi = document.getElementById("zoomInBtnDesktop");
+          const zo = document.getElementById("zoomOutBtnDesktop");
+          const zi2 = document.getElementById("zoomInBtn");
+          const zo2 = document.getElementById("zoomOutBtn");
+          const rMobile = document.getElementById("rotateBtnMobile");
+          if (zi && zi2) zi.addEventListener("click", () => zi2.click());
+          if (zo && zo2) zo.addEventListener("click", () => zo2.click());
+          if (rMobile) rMobile.addEventListener("click", () => document.getElementById("rotateBtn").click());
+        });
+      </script>
+    </section>
+  </main>
+
+  <div id="arDialog" class="hidden fixed inset-0 z-[80] p-4 sm:p-6" aria-hidden="true" role="dialog" aria-modal="true" aria-label="AR View">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+    <div class="relative mx-auto max-w-xl rounded-3xl border border-white/10 bg-white/[0.05] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.02)] overflow-hidden">
+      <div class="p-6 sm:p-7">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <div class="text-xs text-white/55">AR View</div>
+            <div class="mt-1 text-lg sm:text-xl font-semibold tracking-tight text-white">Ready for mobile AR pipelines</div>
+          </div>
+          <button id="arClose" class="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-white/80 hover:bg-black/45 hover:border-cyan-300/25 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30" aria-label="Close">
+            <span data-icon="lucide:x" data-size="1.125rem" data-stroke="1.5"></span>
+          </button>
+        </div>
+
+        <div class="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4 text-sm text-white/70 leading-relaxed">
+          This prototype shows the entry point and UI behavior. In production, connect:
+          <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div class="flex items-center gap-2 text-white/85">
+                <span data-icon="lucide:apple" data-size="1.125rem" data-stroke="1.5"></span>
+                <div class="text-sm font-medium">iOS</div>
+              </div>
+              <div class="mt-2 text-white/55">USDZ + Quick Look via <span class="text-white/70">rel="ar"</span>.</div>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div class="flex items-center gap-2 text-white/85">
+                <span data-icon="lucide:android" data-size="1.125rem" data-stroke="1.5"></span>
+                <div class="text-sm font-medium">Android</div>
+              </div>
+              <div class="mt-2 text-white/55">glTF/GLB via Scene Viewer intent.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-5 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+          <div class="text-xs text-white/50">Tip: keep AR models optimized with LOD + compressed textures.</div>
+          <div class="flex items-center gap-2">
+            <button class="inline-flex items-center gap-2 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-sm font-medium text-cyan-50 hover:bg-cyan-300/15 hover:border-cyan-300/35 transition focus:outline-none focus:ring-2 focus:ring-cyan-300/30"
+              onclick="document.getElementById('arClose').click()">
+              <span data-icon="lucide:check" data-size="1.125rem" data-stroke="1.5"></span>
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="border-t border-white/10 bg-gradient-to-r from-cyan-300/10 via-white/0 to-sky-300/10 p-5 sm:p-6">
+        <div class="flex flex-wrap items-center gap-2 text-xs text-white/55">
+          <span class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1">
+            <span data-icon="lucide:package" data-size="1rem" data-stroke="1.5"></span>
+            GLB + USDZ builds
+          </span>
+          <span class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1">
+            <span data-icon="lucide:image" data-size="1rem" data-stroke="1.5"></span>
+            KTX2 textures
+          </span>
+          <span class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1">
+            <span data-icon="lucide:badge-check" data-size="1rem" data-stroke="1.5"></span>
+            Safe defaults
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

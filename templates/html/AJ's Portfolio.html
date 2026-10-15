@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en" class="dark"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Humain Demand - Outbound Engineering</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@1,500&display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Inter', sans-serif; background-color: #050505; color: #e5e5e5; }
+.font-serif-italic { font-family: 'Playfair Display', serif; font-style: italic; }
+/* Custom Scrollbar for dark theme */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #0a0a0a; }
+::-webkit-scrollbar-thumb { background: #262626; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #404040; }
+/* --- Modal & UI Animations --- */
+#booking-modal, #exit-intent-modal { transition: opacity 0.3s ease-in-out; }
+#booking-modal.hidden, #exit-intent-modal.hidden { opacity: 0; pointer-events: none; }
+#booking-modal:not(.hidden), #exit-intent-modal:not(.hidden) { opacity: 1; pointer-events: auto; }
+@keyframes slideInUp {
+from { transform: translateY(20px); opacity: 0; }
+to { transform: translateY(0); opacity: 1; }
+}
+.animate-slide-up { animation: slideInUp 0.6s ease-out forwards; }
+/* --- Engine Animations --- */
+@keyframes rotate-slow {
+0% { transform: rotate(0deg); }
+100% { transform: rotate(360deg); }
+}
+@keyframes rotate-slow-reverse {
+0% { transform: rotate(360deg); }
+100% { transform: rotate(0deg); }
+}
+@keyframes flow-inward {
+0% { stroke-dashoffset: 100; opacity: 0; }
+20% { opacity: 1; stroke: #3b82f6; }
+80% { opacity: 1; stroke: #3b82f6; }
+100% { stroke-dashoffset: 0; opacity: 0; }
+}
+@keyframes beam-drop-main {
+0% { top: -100%; height: 50%; opacity: 0; background: linear-gradient(to bottom, transparent, #3b82f6, transparent); }
+30% { opacity: 1; }
+60% { top: 100%; height: 50%; opacity: 0; }
+100% { top: 100%; height: 50%; opacity: 0; }
+}
+@keyframes beam-horizontal-expand {
+0%, 25% { width: 0; left: 50%; opacity: 0; background: linear-gradient(to right, transparent, #3b82f6, transparent); }
+35% { opacity: 1; }
+50% { width: 100%; left: 0; opacity: 1; }
+75% { opacity: 0; }
+100% { width: 100%; left: 0; opacity: 0; }
+}
+@keyframes beam-drop-feeder {
+0%, 40% { top: -100%; height: 50%; opacity: 0; background: linear-gradient(to bottom, transparent, #3b82f6, transparent); }
+50% { opacity: 1; }
+80% { top: 100%; height: 50%; opacity: 0; }
+100% { top: 100%; height: 50%; opacity: 0; }
+}
+@keyframes float-card {
+0%, 100% { transform: translateY(0); }
+50% { transform: translateY(-6px); }
+}
+.animate-spin-slow { animation: rotate-slow 60s linear infinite; }
+.animate-spin-slow-reverse { animation: rotate-slow-reverse 60s linear infinite; }
+.animate-flow-in { stroke-dasharray: 10 100; animation: flow-inward 3s linear infinite; }
+.animate-pulse-main { animation: beam-drop-main 3s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+.animate-pulse-expand { animation: beam-horizontal-expand 3s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+.animate-pulse-feeder { animation: beam-drop-feeder 3s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+.animate-float-card { animation: float-card 6s ease-in-out infinite; }
+.delay-1 { animation-delay: 0.5s; }
+.delay-2 { animation-delay: 1s; }
+.delay-3 { animation-delay: 1.5s; }
+.mask-radial { mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, #000 70%, transparent 100%); }
+.btn-glow {
+position: relative;
+}
+.btn-glow::before {
+content: '';
+position: absolute;
+top: -1px; left: -1px; right: -1px; bottom: -1px;
+border-radius: 9999px;
+background: linear-gradient(to right, #3b82f6, #2563eb);
+z-index: -1;
+opacity: 0.5;
+transition: opacity 0.3s;
+}
+.btn-glow:hover::before { opacity: 0.8; }
+@keyframes shimmer {
+0% { transform: translateX(-100%); }
+100% { transform: translateX(100%); }
+}
+/* FAQ Accordion Transition */
+.faq-answer {
+max-height: 0;
+overflow: hidden;
+transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease-in-out;
+opacity: 0;
+}
+.faq-item.active .faq-answer {
+max-height: 200px; /* Approximate max height */
+opacity: 1;
+}
+.faq-item.active .faq-icon {
+transform: rotate(45deg);
+}
+/* --- New Feature Animations --- */
+@keyframes float {
+0% { transform: translateY(0px); }
+50% { transform: translateY(-8px); }
+100% { transform: translateY(0px); }
+}
+.animate-float {
+animation: float 5s ease-in-out infinite;
+}
+@keyframes reveal {
+from { opacity: 0; transform: translateY(4px) scale(0.95); }
+to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.reveal-delay-1 { animation: reveal 0.5s ease-out forwards 0.5s; opacity: 0; }
+.reveal-delay-2 { animation: reveal 0.5s ease-out forwards 0.8s; opacity: 0; }
+.reveal-delay-3 { animation: reveal 0.5s ease-out forwards 1.1s; opacity: 0; }
+@keyframes pulse-slow {
+0%, 100% { opacity: 0.08; transform: scale(1); }
+50% { opacity: 0.12; transform: scale(1.1); }
+}
+.animate-pulse-slow {
+animation: pulse-slow 6s ease-in-out infinite;
+}
+</style><link id="all-fonts-link-font-geist" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-geist">.font-geist { font-family: 'Geist', sans-serif !important; }</style><link id="all-fonts-link-font-roboto" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-roboto">.font-roboto { font-family: 'Roboto', sans-serif !important; }</style><link id="all-fonts-link-font-montserrat" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-montserrat">.font-montserrat { font-family: 'Montserrat', sans-serif !important; }</style><link id="all-fonts-link-font-poppins" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-poppins">.font-poppins { font-family: 'Poppins', sans-serif !important; }</style><link id="all-fonts-link-font-playfair" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;900&display=swap"><style id="all-fonts-style-font-playfair">.font-playfair { font-family: 'Playfair Display', serif !important; }</style><link id="all-fonts-link-font-instrument-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:wght@400;500;600;700&display=swap"><style id="all-fonts-style-font-instrument-serif">.font-instrument-serif { font-family: 'Instrument Serif', serif !important; }</style><link id="all-fonts-link-font-merriweather" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700;900&display=swap"><style id="all-fonts-style-font-merriweather">.font-merriweather { font-family: 'Merriweather', serif !important; }</style><link id="all-fonts-link-font-bricolage" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-bricolage">.font-bricolage { font-family: 'Bricolage Grotesque', sans-serif !important; }</style><link id="all-fonts-link-font-jakarta" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-jakarta">.font-jakarta { font-family: 'Plus Jakarta Sans', sans-serif !important; }</style><link id="all-fonts-link-font-manrope" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-manrope">.font-manrope { font-family: 'Manrope', sans-serif !important; }</style><link id="all-fonts-link-font-space-grotesk" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-space-grotesk">.font-space-grotesk { font-family: 'Space Grotesk', sans-serif !important; }</style><link id="all-fonts-link-font-work-sans" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-work-sans">.font-work-sans { font-family: 'Work Sans', sans-serif !important; }</style><link id="all-fonts-link-font-pt-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Serif:wght@400;700&display=swap"><style id="all-fonts-style-font-pt-serif">.font-pt-serif { font-family: 'PT Serif', serif !important; }</style><link id="all-fonts-link-font-geist-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-geist-mono">.font-geist-mono { font-family: 'Geist Mono', monospace !important; }</style><link id="all-fonts-link-font-space-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap"><style id="all-fonts-style-font-space-mono">.font-space-mono { font-family: 'Space Mono', monospace !important; }</style><link id="all-fonts-link-font-quicksand" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-quicksand">.font-quicksand { font-family: 'Quicksand', sans-serif !important; }</style><link id="all-fonts-link-font-nunito" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-nunito">.font-nunito { font-family: 'Nunito', sans-serif !important; }</style><link id="all-fonts-link-font-newsreader" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400..800&display=swap"><style id="all-fonts-style-font-newsreader">.font-newsreader { font-family: 'Newsreader', serif !important; }</style><link id="all-fonts-link-font-google-sans-flex" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600;700&display=swap"><style id="all-fonts-style-font-google-sans-flex">.font-google-sans-flex { font-family: 'Google Sans Flex', sans-serif !important; }</style><link id="all-fonts-link-font-oswald" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-oswald">.font-oswald { font-family: 'Oswald', sans-serif !important; }</style><link id="all-fonts-link-font-dm-sans" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-dm-sans">.font-dm-sans { font-family: 'DM Sans', sans-serif !important; }</style><link id="all-fonts-link-font-cormorant" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-cormorant">.font-cormorant { font-family: 'Cormorant Garamond', serif !important; }</style></head>
+  <body class="antialiased overflow-x-hidden selection:bg-[#3b82f6] selection:text-white text-neutral-200 bg-[#050505]">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <!-- Top Announcement Bar -->
+    
+
+    <!-- Navigation -->
+    <nav class="sticky top-0 z-40 bg-[#050505]/80 backdrop-blur-md border-b border-white/5">
+  <div class="flex max-w-7xl mr-auto ml-auto pt-4 pr-6 pb-4 pl-6 items-center justify-between">
+    <div class="flex flex-col md:flex-row gap-4">
+      <a href="#" class="text-xl font-semibold tracking-tight flex items-center gap-2">
+
+
+      </a>
+      <div class="flex flex-wrap text-sm font-medium text-neutral-400 gap-x-6 gap-y-4 items-center">
+        <a href="https://www.lyraun.com/digitalart" class="hover:text-white transition-colors">
+          Digital Art
+        </a>
+
+        <a href="https://www.lyraun.com/concepts" class="hover:text-white transition-colors">
+          Proposals
+        </a>
+
+        <a href="https://www.lyraun.com/marketing" class="hover:text-white transition-colors">
+          Marketing
+        </a>
+
+
+      </div>
+    </div>
+    <div class="flex gap-4 items-center">
+
+  <!-- Contact Button -->
+  <button onclick="toggleModal(true)" class="hover:bg-neutral-200 transition-all flex items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-medium text-black shadow-[0_0_15px_rgba(255,255,255,0.1)]">
+    Contact Me
+  </button>
+
+  <!-- Download Resume Button -->
+  
+
+</div></div></nav>
+
+    <!-- Hero Section -->
+    <main class="overflow-hidden pt-16 pb-24 relative">
+  <!-- Accent Blob -->
+  <div class="-translate-x-1/2 blur-[120px] -z-10 pointer-events-none bg-[#3b82f6] opacity-10 w-[1000px] h-[500px] rounded-full absolute top-0 left-1/2">
+  </div>
+
+  <div class="z-10 text-center max-w-5xl mr-auto ml-auto pr-6 pb-0 pl-6 relative">
+    <div class="inline-flex gap-2 hover:border-[#3b82f6]/30 transition-colors cursor-default bg-neutral-900/50 border-white/10 border rounded-full mb-8 pt-1 pr-4 pb-1 pl-1 shadow-sm backdrop-blur-sm items-center">
+      <span class="text-[10px] flex items-center gap-1 font-semibold text-white bg-[#1d4ed8] rounded-full pt-0.5 pr-2 pb-0.5 pl-2 shadow-sm">Graphic Designer</span>
+      <span class="text-sm font-medium text-neutral-300">Arturo J. Galaviz III</span>
+    </div>
+
+    <h1 class="leading-[1.1] md:text-5xl text-5xl font-semibold text-white tracking-tight max-w-5xl mr-auto mb-6 ml-auto">
+      Hi, welcome to my portfoilio <br class="hidden md:block">
+      <span class="font-normal text-[#3b82f6] font-serif-italic drop-shadow-[0_0_15px_rgba(59,130,246,0.3)]">My goal is to inspire</span>
+    </h1>
+
+    <p class="md:text-xl leading-relaxed text-lg font-normal text-neutral-400 max-w-none mr-auto mb-10 ml-auto">I’m AJ
+      Galaviz, a graphic designer driven by pure passion and an obsessive curiosity for how ideas take shape visually.
+      Everything I know has been learned through hands-on experience through experimentation, long nights, failed
+      attempts, refinement, and an unwillingness to settle for “good enough.” Design, for me, was never about checking a
+      box or following a prescribed path. It was about the pull to create and the need to understand how visuals can
+      communicate something deeper than words alone.</p>
+
+
+    <div class="z-10 animate-slide-up w-full max-w-7xl mr-auto ml-auto pr-6 pl-6 relative top-10" style="animation-delay: 0.2s">
+      <div class="text-center mb-8">
+        <p class="uppercase text-xs font-semibold text-neutral-500 tracking-[0.2em]">Creative Partnerships &amp;
+          Inspired Collaborations</p>
+      </div>
+
+      <!-- Ticker Container -->
+      <div class="relative overflow-hidden w-full" style="mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent); -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);">
+
+        <!-- Animated Track -->
+        <div class="flex items-center gap-16 animate-ticker w-max">
+          <!-- Logo Set 1 -->
+          <div class="flex gap-16 shrink-0 gap-x-16 gap-y-16 items-center">
+            <span class="hover:text-white transition-colors duration-300 cursor-default text-2xl font-bold text-neutral-600 font-roboto">Univ. Michigan</span>
+            <span class="hover:text-white transition-colors duration-300 cursor-default text-2xl italic text-neutral-600 font-instrument-serif">THE WATERMARK GROUP</span>
+            <span class="hover:text-white transition-colors duration-300 cursor-default uppercase text-xl font-medium text-neutral-600 tracking-tight font-space-grotesk">Southwest Research Institute </span>
+            <span class="hover:text-white transition-colors duration-300 cursor-default text-2xl font-semibold italic text-neutral-600 font-playfair">FedEx</span>
+            <span class="hover:text-white transition-colors duration-300 cursor-default text-2xl font-bold text-neutral-600 tracking-tighter font-dm-sans">NASA</span>
+            <span class="hover:text-white transition-colors duration-300 cursor-default text-2xl font-extrabold text-neutral-600 font-manrope">HEB </span>
+            <span class="hover:text-white transition-colors duration-300 cursor-default text-2xl font-black italic text-neutral-600 font-roboto">UTSA</span>
+          </div>
+
+          <!-- Logo Set 2 (Duplicate for loop) -->
+          <div class="flex items-center gap-16 shrink-0">
+            <span class="hover:text-white transition-colors duration-300 cursor-default text-2xl font-bold italic text-neutral-600 font-bricolage">APL</span>
+            <span class="hover:text-white transition-colors duration-300 cursor-default text-2xl italic text-neutral-600 font-instrument-serif">IMAGE 360</span>
+            <span class="hover:text-white transition-colors duration-300 cursor-default uppercase text-xl font-medium text-neutral-600 tracking-tight font-space-grotesk">Corporate Cup</span>
+            <span class="hover:text-white transition-colors duration-300 cursor-default text-2xl font-semibold italic text-neutral-600 font-playfair">LYRAUN</span>
+            <span class="hover:text-white transition-colors duration-300 cursor-default text-2xl font-bold text-neutral-600 tracking-tighter font-dm-sans">HEB</span>
+            <span class="text-2xl font-manrope font-extrabold text-neutral-600 hover:text-white transition-colors duration-300 cursor-default">BOLT</span>
+            <span class="text-2xl font-merriweather font-black italic text-neutral-600 hover:text-white transition-colors duration-300 cursor-default">Aura</span>
+          </div>
+
+          <!-- Logo Set 3 (Duplicate for wide screens) -->
+          <div class="flex items-center gap-16 shrink-0">
+            <span class="text-2xl font-bricolage font-bold text-neutral-600 hover:text-white transition-colors duration-300 cursor-default">Nexus</span>
+            <span class="text-2xl font-instrument-serif italic text-neutral-600 hover:text-white transition-colors duration-300 cursor-default">Vantage</span>
+            <span class="text-xl font-space-grotesk font-medium text-neutral-600 hover:text-white transition-colors duration-300 cursor-default tracking-tight uppercase">Echo<span class="text-[#3b82f6]">.ai</span></span>
+            <span class="text-2xl font-playfair font-semibold italic text-neutral-600 hover:text-white transition-colors duration-300 cursor-default">Helix</span>
+            <span class="text-2xl font-dm-sans font-bold tracking-tighter text-neutral-600 hover:text-white transition-colors duration-300 cursor-default">Stratis</span>
+            <span class="text-2xl font-manrope font-extrabold text-neutral-600 hover:text-white transition-colors duration-300 cursor-default">BOLT</span>
+            <span class="text-2xl font-merriweather font-black italic text-neutral-600 hover:text-white transition-colors duration-300 cursor-default">Aura</span>
+          </div>
+        </div>
+      </div>
+
+      <style>
+        @keyframes ticker-slide {
+          0% {
+            transform: translateX(0);
+          }
+
+          100% {
+            transform: translateX(-33.333%);
+          }
+        }
+
+        .animate-ticker {
+          animation: ticker-slide 40s linear infinite;
+        }
+
+        .animate-ticker:hover {
+          animation-play-state: paused;
+        }
+      </style>
+    </div>
+
+    <!-- VSL Section -->
+    <div class="max-w-5xl mx-auto relative group">
+      <div class="absolute -inset-1 bg-gradient-to-b from-[#3b82f6]/20 to-transparent rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity">
+      </div>
+      
+    </div>
+  </div>
+</main>
+
+    <!-- Credibility Statistics -->
+    <section class="border-y bg-[#0a0a0a] border-white/5">
+      <div class="max-w-7xl mr-auto ml-auto">
+        <div class="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-white/5">
+          <div class="py-12 px-6 flex flex-col items-center justify-center text-center group hover:bg-white/[0.02] transition-colors">
+            <div class="md:text-5xl group-hover:text-[#3b82f6] transition-colors text-4xl font-semibold text-white tracking-tight mb-2">Adobe Suite</div>
+            <div class="uppercase flex gap-2 text-sm font-medium text-neutral-500 tracking-wide gap-x-2 gap-y-2 items-center">PhotoShop / Ai / inDesign / After Effects</div>
+          </div>
+          <div class="flex flex-col group hover:bg-white/[0.02] transition-colors text-center pt-12 pr-6 pb-12 pl-6 items-center justify-center">
+            <div class="md:text-5xl group-hover:text-[#50C878] transition-colors text-4xl font-semibold text-white tracking-tight mb-2">
+  CorelDraw</div>
+            <div class="uppercase flex gap-2 text-sm font-medium text-neutral-500 tracking-wide gap-x-2 gap-y-2 items-center">Preferred  Vector Program</div>
+          </div>
+          <div class="flex flex-col group hover:bg-white/[0.02] transition-colors text-center pt-12 pr-6 pb-12 pl-6 items-center justify-center">
+  <div class="md:text-5xl group-hover:text-[#ED5F5F] transition-colors text-4xl font-semibold text-white tracking-tight mb-2">
+  Web Design</div>
+  <div class="uppercase flex text-sm font-medium text-neutral-500 tracking-wide gap-x-2 gap-y-2 items-center">Animation
+    / 3D / UI / Marketing</div>
+</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pain Points (Modified) -->
+    <section class="bg-[#050505] border-white/5 border-b pt-32 pb-32 relative">
+  <div class="pointer-events-none absolute top-0 right-0 bottom-0 left-0"></div>
+
+  <div class="z-10 max-w-7xl mr-auto ml-auto pr-6 pl-6 relative">
+    <!-- Header -->
+    <div class="text-center mb-20">
+      <h2 class="reveal md:text-6xl text-5xl leading-[1.1] font-semibold text-white tracking-tight transition-all duration-700 opacity-100 translate-y-0">
+  sooo...
+  <span class="font-normal font-serif italic">What do I do?</span>
+</h2>
+    </div>
+
+    <!-- Grid Cards -->
+    <div class="flex flex-wrap gap-6 mb-20 justify-center">
+      <!-- Card 1 -->
+      <div class="md:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)] hover:bg-neutral-900 transition-colors duration-300 group hover:border-indigo-500/30 bg-neutral-900/50 w-full border-white/5 border rounded-2xl pt-8 pr-8 pb-8 pl-8">
+        <div class="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-500 mb-6 group-hover:scale-110 transition-transform duration-300">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="users" aria-hidden="true" class="lucide lucide-users w-5 h-5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><path d="M16 3.128a4 4 0 0 1 0 7.744"></path><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><circle cx="9" cy="7" r="4"></circle></svg>
+        </div>
+        <p class="leading-relaxed text-lg font-medium text-neutral-300">My days consists of translating complex ideas
+          into clear, engaging visuals that communicate purpose, emotion, and intent without over-explaining.</p>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="md:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)] hover:bg-neutral-900 transition-colors duration-300 group hover:border-zinc-500/30 bg-neutral-900/50 w-full border-white/5 border rounded-2xl pt-8 pr-8 pb-8 pl-8">
+        <div class="flex group-hover:scale-110 transition-transform duration-300 text-zinc-400 bg-zinc-700/10 w-12 h-12 border-zinc-700/20 border rounded-xl mb-6 items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="badge-check" class="lucide lucide-badge-check lucide-ghost w-[20px] h-[20px]" aria-hidden="true" data-icon-set="lucide" data-icon-replaced="true" style="color: rgb(161, 161, 170); width: 20px; height: 20px;"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"></path><path d="m9 12 2 2 4-4"></path></svg>
+        </div>
+        <p class="leading-relaxed text-lg font-medium text-neutral-300">Design logos, typography, and color that stay
+          consistent, recognizable, and adaptable across platforms.</p>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="md:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)] hover:bg-neutral-900 transition-colors duration-300 group hover:border-red-900/30 bg-neutral-900/50 w-full border-white/5 border rounded-2xl pt-8 pr-8 pb-8 pl-8">
+        <div class="flex group-hover:scale-110 transition-transform duration-300 text-red-500 bg-red-500/10 w-12 h-12 border-red-500/20 border rounded-xl mb-6 items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="activity" aria-hidden="true" class="lucide lucide-activity w-5 h-5"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg>
+        </div>
+        <p class="leading-relaxed text-lg font-medium text-neutral-300">I help shape ideas early exploring direction,
+          mood, and structure so the final design feels thoughtful, not forced.</p>
+      </div>
+
+      <!-- Card 4 -->
+      <div class="w-full md:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)] bg-neutral-900/50 border border-white/5 rounded-2xl p-8 hover:bg-neutral-900 transition-colors duration-300 group hover:border-orange-900/30">
+        <div class="w-12 h-12 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-500 mb-6 group-hover:scale-110 transition-transform duration-300">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="thumbs-up" class="lucide lucide-thumbs-up lucide-thumbs-down w-[20px] h-[20px]" aria-hidden="true" data-icon-set="lucide" data-icon-replaced="true" style="color: rgb(249, 115, 22); width: 20px; height: 20px;"><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"></path><path d="M7 10v12"></path></svg>
+        </div>
+        <p class="leading-relaxed text-lg font-medium text-neutral-300">I organize information through layout,
+          hierarchy, and flow, making content easy to understand and visually compelling.</p>
+      </div>
+
+      <!-- Card 5 -->
+      <div class="w-full md:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)] bg-neutral-900/50 border border-white/5 rounded-2xl p-8 hover:bg-neutral-900 transition-colors duration-300 group hover:border-yellow-900/30">
+        <div class="w-12 h-12 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-500 mb-6 group-hover:scale-110 transition-transform duration-300">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="search" aria-hidden="true" class="lucide lucide-search w-5 h-5"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg>
+        </div>
+        <p class="leading-relaxed text-lg font-medium text-neutral-300">I work closely with clients to refine their
+          vision and deliver polished, production-ready designs with intention.</p>
+      </div>
+    </div>
+
+    <!-- CTA Action Area -->
+    <div class="flex flex-col items-center text-center">
+      <button onclick="toggleModal(true)" class="relative group">
+            <div class="absolute -inset-1 bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] rounded-xl blur opacity-30 group-hover:opacity-60 transition duration-500"></div>
+            <a href="https://www.lyraun.com/discover" class="">
+  </a><a href="https://www.lyraun.com/the-callizers" class="">
+  <div class="hover:from-[#2563eb] hover:to-[#3b82f6] flex gap-3 transition-all text-xl font-semibold text-white bg-gradient-to-r from-[#1d4ed8] to-[#2563eb] border-white/10 border rounded-xl pt-5 pr-12 pb-5 pl-12 relative shadow-2xl gap-x-3 gap-y-3 items-center">
+    Featured Work
+  </div>
+</a>
+
+          </button>
+
+      <div class="flex flex-col md:flex-row gap-3 text-sm text-neutral-400 mt-8 gap-x-3 gap-y-3 items-center">
+        <div class="flex items-center gap-2">
+
+
+        </div>
+        <span class="">*My work spans multiple design disciplines, each shaped by purpose and intent. Explore the tabs above to see how each area comes to life.</span>
+      </div>
+
+      <div class="mt-6 inline-flex items-center gap-2 bg-white/5 rounded-full px-4 py-1.5 border border-white/10 backdrop-blur-sm">
+        <div class="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></div>
+        <span class="text-xs font-medium text-neutral-300">Updated June 2026</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+    <!-- WHAT WE DO SECTION -->
+    
+
+    <!-- Services / What We Do (UPDATED) -->
+    
+
+    <!-- The Engine of Growth -->
+    <section class="overflow-hidden flex flex-col text-white bg-[#050505] w-full border-white/5 border-b pt-20 pb-40 relative items-center">
+      <div class="mask-radial pointer-events-none absolute top-0 right-0 bottom-0 left-0"></div>
+      <!-- Engine Glow -->
+      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#3b82f6] rounded-full blur-[150px] opacity-[0.05] pointer-events-none"></div>
+
+      <div class="z-10 text-center w-full max-w-4xl mb-2 pr-6 pl-6 relative">
+  <h2 class="reveal md:text-6xl text-4xl font-semibold tracking-tight mb-6 pb-4 bg-clip-text text-transparent bg-gradient-to-b from-white via-white/90 to-white/50 transition-all duration-700 opacity-100 translate-y-0">
+    Creative Process
+  </h2>
+
+  <p class="reveal leading-relaxed text-lg font-light text-neutral-400 max-w-2xl mx-auto transition-all duration-700 delay-150 opacity-100 translate-y-0">
+    Inspiration and problem-solving come from a mix of platforms and tools
+  </p>
+</div>
+
+      <div class="flex flex-col w-full max-w-[1400px] relative items-center">
+        <!-- Orbit Animation -->
+        <div class="relative w-[500px] h-[500px] flex items-center justify-center z-20 scale-75 md:scale-100 origin-bottom">
+          <div class="absolute inset-0 animate-spin-slow">
+            <svg class="absolute inset-0 w-full h-full text-white/5" viewBox="0 0 600 600">
+              <g class="stroke-current stroke-[1]">
+                <line x1="300" y1="50" x2="300" y2="220" class="animate-flow-in"></line>
+                <line x1="550" y1="300" x2="380" y2="300" class="animate-flow-in delay-1"></line>
+                <line x1="300" y1="550" x2="300" y2="380" class="animate-flow-in delay-2"></line>
+                <line x1="50" y1="300" x2="220" y2="300" class="animate-flow-in delay-3"></line>
+                <line x1="476" y1="123" x2="356" y2="243" class="animate-flow-in delay-1"></line>
+                <line x1="476" y1="476" x2="356" y2="356" class="animate-flow-in delay-2"></line>
+                <line x1="123" y1="476" x2="243" y2="356" class="animate-flow-in delay-3"></line>
+                <line x1="123" y1="123" x2="243" y2="243" class="animate-flow-in"></line>
+              </g>
+            </svg>
+            <!-- Orbit Icons -->
+            <div class="absolute top-[50px] left-1/2 -translate-x-1/2 -translate-y-1/2 animate-spin-slow-reverse">
+              <div class="flex z-20 bg-center bg-neutral-900 w-14 h-14 bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/41740e06-4acf-426b-ae34-8ab70f73020c_320w.jpg)] bg-cover border-white/10 border rounded-xl shadow-[0_0_20px_rgba(0,0,0,0.5)] items-center justify-center"></div>
+            </div>
+            <div class="absolute top-[123px] right-[123px] translate-x-1/2 -translate-y-1/2 animate-spin-slow-reverse">
+              <div class="flex bg-center bg-neutral-900 w-14 h-14 bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/f910c8c5-28c8-4c1d-a302-76d319187115_320w.png)] bg-cover border-white/10 border rounded-xl shadow-lg items-center justify-center"></div>
+            </div>
+            <div class="absolute top-1/2 right-[50px] translate-x-1/2 -translate-y-1/2 animate-spin-slow-reverse">
+              <div class="flex bg-neutral-900 w-14 h-14 bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/586107f6-37c2-4a42-8b97-0fc30fe826ed_320w.png)] bg-cover bg-center border-white/10 border rounded-xl shadow-lg items-center justify-center"></div>
+            </div>
+            <div class="absolute bottom-[123px] right-[123px] translate-x-1/2 translate-y-1/2 animate-spin-slow-reverse">
+              <div class="flex bg-neutral-900 w-14 h-14 border-white/10 border rounded-xl shadow-lg items-center justify-center"><img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/88c0ec1e-6e38-4c65-a902-3ca90c8e3613_320w.png" alt="" class="absolute inset-0 w-full h-full object-cover"></div>
+            </div>
+            <div class="absolute bottom-[50px] left-1/2 -translate-x-1/2 translate-y-1/2 animate-spin-slow-reverse">
+              <div class="flex bg-neutral-900 w-14 h-14 bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/6d1e9816-733e-425a-a746-ad90e56d482d_320w.png)] bg-cover bg-center border-white/10 border rounded-xl shadow-lg items-center justify-center"></div>
+            </div>
+            <div class="absolute bottom-[123px] left-[123px] -translate-x-1/2 translate-y-1/2 animate-spin-slow-reverse">
+              <div class="flex bg-center bg-neutral-900 w-14 h-14 bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b573fd37-d3dd-4e18-bc4e-3501d000f48a_320w.webp)] bg-cover border-white/10 border rounded-xl shadow-lg items-center justify-center"></div>
+            </div>
+            <div class="absolute top-1/2 left-[50px] -translate-x-1/2 -translate-y-1/2 animate-spin-slow-reverse">
+              <div class="flex bg-neutral-900 w-14 h-14 bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/5018fedd-9ea6-425c-9073-ce5717a6155b_320w.png)] bg-cover bg-center border-white/10 border rounded-xl shadow-lg items-center justify-center"></div>
+            </div>
+            <div class="absolute top-[123px] left-[123px] -translate-x-1/2 -translate-y-1/2 animate-spin-slow-reverse">
+              <div class="flex bg-neutral-900 w-14 h-14 border-white/10 border rounded-xl shadow-lg items-center justify-center"><img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b828e18c-68d3-4714-bd0b-c33b0bcffae9_320w.png" alt="" class="absolute inset-0 w-full h-full object-cover"></div>
+            </div>
+          </div>
+
+          <div class="absolute z-30 flex items-center justify-center">
+            <div class="w-28 h-28 bg-[#0a0a0a] rounded-3xl border border-[#3b82f6]/30 flex items-center justify-center shadow-[0_0_50px_rgba(59,130,246,0.2)] relative overflow-hidden ring-1 ring-white/10">
+              <div class="absolute inset-0 bg-[#3b82f6]/10 animate-pulse"></div>
+              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="lightbulb" class="lucide lucide-lightbulb lucide-layers z-10 relative w-[48px] h-[48px]" aria-hidden="true" data-icon-set="lucide" data-icon-replaced="true" style="color: rgb(255, 255, 255); width: 48px; height: 48px;"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"></path><path d="M9 18h6"></path><path d="M10 22h4"></path></svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Distribution System -->
+        <div class="relative w-full max-w-4xl h-32 -mt-20 z-10 px-4 hidden md:block">
+          <div class="absolute left-1/2 -translate-x-px top-0 w-[1px] h-[40%] bg-white/5 overflow-hidden">
+            <div class="w-full h-full bg-gradient-to-b from-transparent via-[#3b82f6] to-transparent absolute animate-pulse-main"></div>
+          </div>
+          <div class="absolute top-[40%] left-1/2 -translate-x-1/2 w-[50%] h-[1px] bg-white/5 overflow-hidden">
+            <div class="absolute inset-0 bg-gradient-to-r from-transparent via-[#3b82f6] to-transparent animate-pulse-expand"></div>
+          </div>
+          <div class="absolute top-[40%] left-[25%] -translate-x-px w-[1px] h-[60%] bg-white/5 overflow-hidden">
+             <div class="w-full h-full bg-gradient-to-b from-transparent via-[#3b82f6] to-transparent absolute animate-pulse-feeder"></div>
+          </div>
+          <div class="absolute top-[40%] left-[75%] -translate-x-px w-[1px] h-[60%] bg-white/5 overflow-hidden">
+             <div class="w-full h-full bg-gradient-to-b from-transparent via-[#3b82f6] to-transparent absolute animate-pulse-feeder"></div>
+          </div>
+        </div>
+
+        <!-- Results Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 z-20 md:mt-0 w-full max-w-4xl mt-4 pr-4 pl-4 relative gap-x-6 gap-y-6">
+          <div class="group relative bg-neutral-900 border border-white/10 rounded-xl overflow-hidden shadow-2xl transition-all hover:border-[#3b82f6]/30 animate-float-card" style="animation-delay: 0s;">
+            <div class="p-5 flex flex-col h-full">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="flex text-[10px] font-bold text-black bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] w-7 h-7 rounded-full items-center justify-center">AJ</div>
+                <div class="flex flex-col">
+                  <span class="text-xs font-semibold text-neutral-200">Photo Shop Project - xSTLR_01</span>
+                  <span class="text-[10px] text-neutral-500">Last Updated: 12 hours ago</span>
+                </div>
+                <div class="ml-auto text-neutral-600"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="reply" aria-hidden="true" class="lucide lucide-reply w-3.5 h-3.5"><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path><path d="m9 17-5-5 5-5"></path></svg></div>
+              </div>
+              <div class="aspect-video overflow-hidden flex bg-black/50 w-full bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/a1b5401a-a838-4e32-8316-e1457582e7a5_800w.jpg)] bg-cover bg-center border-white/5 border rounded-lg mb-3 relative items-center justify-center">
+                <span class="text-xs text-neutral-500"></span>
+              </div>
+              
+            </div>
+          </div>
+          <!-- Card 2 -->
+          <div class="group relative bg-neutral-900 border border-white/10 rounded-xl overflow-hidden shadow-2xl transition-all hover:border-[#3b82f6]/30 animate-float-card" style="animation-delay: 0.5s;">
+             <div class="p-5 flex flex-col h-full">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="flex text-[10px] font-bold text-white bg-gradient-to-br from-purple-400 to-purple-600 w-7 h-7 rounded-full items-center justify-center">AJ</div>
+                <div class="flex flex-col">
+                  <span class="text-xs font-semibold text-neutral-200">Website - Buy &amp; Sell Merch Shop (LYRAUN)</span>
+                  <span class="text-[10px] text-neutral-500">Last Updated: 2025</span>
+                </div>
+                <div class="ml-auto text-neutral-600"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="reply" aria-hidden="true" class="lucide lucide-reply w-3.5 h-3.5"><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path><path d="m9 17-5-5 5-5"></path></svg></div>
+              </div>
+              <div class="aspect-video overflow-hidden flex bg-black/50 w-full bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/c4ba8b85-a8cd-4e3b-b207-38181cc99a95_800w.jpg)] bg-cover bg-center border-white/5 border rounded-lg mb-3 relative items-center justify-center">
+                <span class="text-xs text-neutral-500"></span>
+              </div>
+              <div class="mt-auto pt-2 flex items-center gap-1.5 border-t border-white/5">
+                
+                
+              </div>
+            </div>
+          </div>
+          <!-- Card 3 -->
+           <div class="group relative bg-neutral-900 border border-white/10 rounded-xl overflow-hidden shadow-2xl transition-all hover:border-[#3b82f6]/30 animate-float-card" style="animation-delay: 1s;">
+             <div class="p-5 flex flex-col h-full">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="flex text-[10px] font-bold text-white bg-gradient-to-br from-orange-400 to-red-600 w-7 h-7 rounded-full items-center justify-center">AJ</div>
+                <div class="flex flex-col">
+                  <span class="text-xs font-semibold text-neutral-200">ProCreate Project: Mysterious Beings</span>
+                  <span class="text-[10px] text-neutral-500">Finalized: Dec. 07 2025</span>
+                </div>
+                <div class="ml-auto text-neutral-600"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="reply" aria-hidden="true" class="lucide lucide-reply w-3.5 h-3.5"><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path><path d="m9 17-5-5 5-5"></path></svg></div>
+              </div>
+              <div class="aspect-video overflow-hidden flex bg-black/50 w-full bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/cc44da1f-68f1-45e8-9248-1fba39287694_800w.jpg)] bg-cover bg-center border-white/5 border rounded-lg mb-3 relative items-center justify-center">
+                <span class="text-xs text-neutral-500"></span>
+              </div>
+              
+            </div>
+          </div>
+          <!-- Card 4 -->
+           <div class="group relative bg-neutral-900 border border-white/10 rounded-xl overflow-hidden shadow-2xl transition-all hover:border-[#3b82f6]/30 animate-float-card" style="animation-delay: 1.5s;">
+             <div class="p-5 flex flex-col h-full">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="flex text-[10px] font-bold text-white bg-gradient-to-br from-teal-400 to-teal-600 w-7 h-7 rounded-full items-center justify-center">AJ</div>
+                <div class="flex flex-col">
+                  <span class="text-xs font-semibold text-neutral-200">CorelDraw Project - MDMS (System Interface)</span>
+                  <span class="text-[10px] text-neutral-500">Last Updated: Oct. 10 2025</span>
+                </div>
+                <div class="ml-auto text-neutral-600"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="reply" aria-hidden="true" class="lucide lucide-reply w-3.5 h-3.5"><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path><path d="m9 17-5-5 5-5"></path></svg></div>
+              </div>
+              <div class="aspect-video overflow-hidden flex bg-black/50 w-full bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/f63c8644-8a34-405d-84a9-2650d486681e_800w.jpg)] bg-cover bg-center border-white/5 border rounded-lg mb-3 relative items-center justify-center">
+                <span class="text-xs text-neutral-500"></span>
+              </div>
+              
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROCESS / PHASES SECTION -->
+    <section class="bg-[#050505] pt-24 pb-24 relative" id="playbook">
+  <div class="absolute inset-0 bg-gradient-to-b from-[#1d4ed8]/20 via-[#050505] to-[#1d4ed8]/20 opacity-20 pointer-events-none">
+  </div>
+
+  <div class="max-w-5xl z-10 mr-auto ml-auto pr-6 pl-6 relative">
+    <!-- Header -->
+    <div class="text-center mb-24">
+      <div class="inline-flex items-center gap-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-full px-4 py-1.5 mb-6">
+        <span class="w-2 h-2 rounded-full bg-[#3b82f6] animate-pulse"></span>
+        <span class="uppercase text-xs font-medium text-white tracking-wide">VISION</span>
+      </div>
+      <h2 class="reveal md:text-6xl text-4xl leading-[1.1] font-semibold text-white tracking-tight drop-shadow-sm transition-all duration-700 opacity-100 translate-y-0">
+        How Can I Help?
+      </h2>
+    </div>
+
+    <!-- Stacking Cards Container -->
+    <div class="relative w-full">
+      <!-- PHASE 1: Research -->
+      <div class="sticky top-24 z-10 mb-12">
+        <div class="bg-neutral-900 rounded-[2.5rem] p-8 md:p-12 shadow-2xl ring-1 ring-white/5 flex flex-col md:flex-row gap-12 relative overflow-hidden min-h-[500px] border border-white/5">
+          <div class="md:w-1/2 flex flex-col justify-center">
+            <div class="flex items-center gap-3 mb-6">
+              <div class="bg-[#3b82f6]/10 text-[#3b82f6] p-2 rounded-lg border border-[#3b82f6]/20"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="search" aria-hidden="true" class="lucide lucide-search w-6 h-6"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg></div>
+              <span class="uppercase text-sm font-semibold text-[#3b82f6] tracking-wide">Step 1</span>
+            </div>
+            <h3 class="text-3xl font-semibold text-white tracking-tight mb-4">Understanding First</h3>
+            <p class="leading-relaxed text-neutral-400 mb-8">Before starting a project I like to take time to understand
+              client goals, constraints, and vision before design begins. Clarity at the start leads to stronger
+              results.</p>
+
+            <div class="space-y-4">
+              <div class="flex items-start gap-3">
+                <div class="mt-1 bg-[#2563eb]/20 p-1 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3 text-[#3b82f6]"><path d="M20 6 9 17l-5-5"></path></svg></div>
+                <span class="text-sm font-medium text-neutral-300">Clarify goals, constraints, and expectations</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <div class="mt-1 bg-[#2563eb]/20 p-1 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3 text-[#3b82f6]"><path d="M20 6 9 17l-5-5"></path></svg></div>
+                <span class="text-sm font-medium text-neutral-300">Identify what success should look like</span>
+              </div>
+            </div>
+          </div>
+          <div class="md:w-1/2 overflow-hidden flex flex-col bg-center bg-black/40 bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/1627df90-8f5b-4fc5-962e-fedbe1654e30_1600w.jpg)] bg-cover border-white/10 border rounded-2xl pt-6 pr-6 pb-6 pl-6 relative justify-center">
+
+          </div>
+        </div>
+      </div>
+
+      <!-- PHASE 2: Signal Mapping -->
+      <div class="sticky top-28 z-20 mb-12">
+        <div class="md:p-12 flex flex-col md:flex-row gap-12 overflow-hidden min-h-[500px] bg-neutral-900 border-white/5 border ring-white/5 ring-1 rounded-[2.5rem] pt-8 pr-8 pb-8 pl-8 relative shadow-2xl gap-x-12 gap-y-12">
+          <div class="md:w-1/2 flex flex-col justify-center">
+            <div class="flex items-center gap-3 mb-6">
+              <div class="bg-purple-900/30 text-purple-400 p-2 rounded-lg border border-purple-500/20"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="network" aria-hidden="true" class="lucide lucide-network w-6 h-6"><rect x="16" y="16" width="6" height="6" rx="1"></rect><rect x="2" y="16" width="6" height="6" rx="1"></rect><rect x="9" y="2" width="6" height="6" rx="1"></rect><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"></path><path d="M12 12V8"></path></svg></div>
+              <span class="uppercase text-sm font-semibold text-purple-400 tracking-wide">Step 2</span>
+            </div>
+            <h3 class="text-3xl font-semibold text-white tracking-tight mb-4">Strategic Direction</h3>
+            <p class="leading-relaxed text-neutral-400 mb-8">I help define a clear visual direction so decisions feel
+              intentional, not reactive.
+              This keeps the work focused and aligned.</p>
+
+            <div class="space-y-4">
+              <div class="flex items-start gap-3">
+                <div class="mt-1 bg-[#2563eb]/20 p-1 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3 text-[#3b82f6]"><path d="M20 6 9 17l-5-5"></path></svg></div>
+                <span class="text-sm font-medium text-neutral-300">Establish visual direction and tone</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <div class="mt-1 bg-[#2563eb]/20 p-1 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3 text-[#3b82f6]"><path d="M20 6 9 17l-5-5"></path></svg></div>
+                <span class="text-sm font-medium text-neutral-300">Align design decisions with the bigger picture</span>
+              </div>
+            </div>
+          </div>
+          <div class="md:w-1/2 overflow-hidden flex flex-col bg-center font-mono bg-black bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/6be3d26a-9c4d-4d72-9846-be700d9fdf2e_1600w.jpg)] bg-cover border-white/10 border rounded-2xl pt-6 pr-6 pb-6 pl-6 relative justify-center">
+
+
+          </div>
+        </div>
+      </div>
+
+      <!-- PHASE 3: 1:1 Outreach -->
+      <div class="sticky top-32 z-30 mb-12">
+        <div class="md:p-12 flex flex-col md:flex-row gap-12 overflow-hidden min-h-[500px] bg-neutral-900 border-white/5 border ring-white/5 ring-1 rounded-[2.5rem] pt-8 pr-8 pb-8 pl-8 relative shadow-2xl gap-x-12 gap-y-12">
+          <div class="md:w-1/2 flex flex-col justify-center">
+            <div class="flex items-center gap-3 mb-6">
+              <div class="bg-blue-900/30 text-blue-400 p-2 rounded-lg border border-blue-500/20"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="expand" class="lucide lucide-expand lucide-send w-[24px] h-[24px]" aria-hidden="true" data-icon-set="lucide" data-icon-replaced="true" style="color: rgb(96, 165, 250); width: 24px; height: 24px;"><path d="m15 15 6 6"></path><path d="m15 9 6-6"></path><path d="M21 16v5h-5"></path><path d="M21 8V3h-5"></path><path d="M3 16v5h5"></path><path d="m3 21 6-6"></path><path d="M3 8V3h5"></path><path d="M9 9 3 3"></path></svg></div>
+              <span class="uppercase text-sm font-semibold text-blue-400 tracking-wide">Step 3</span>
+            </div>
+            <h3 class="text-3xl font-semibold text-white tracking-tight mb-4">Collaborative Refinement</h3>
+            <p class="leading-relaxed text-neutral-400 mb-8">Feedback is part of the process, not an afterthought.
+              We refine together until the vision feels right.</p>
+
+            <div class="space-y-4">
+              <div class="flex gap-3 gap-x-3 gap-y-3 items-start">
+                <div class="mt-1 bg-[#2563eb]/20 p-1 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3 text-[#3b82f6]"><path d="M20 6 9 17l-5-5"></path></svg></div>
+                <span class="text-sm font-medium text-neutral-300">Review, adjust, and refine through feedback</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <div class="mt-1 bg-[#2563eb]/20 p-1 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3 text-[#3b82f6]"><path d="M20 6 9 17l-5-5"></path></svg></div>
+                <span class="text-sm font-medium text-neutral-300">Strengthen the work without losing the vision</span>
+              </div>
+            </div>
+          </div>
+          <div class="md:w-1/2 overflow-hidden flex flex-col bg-center bg-black/40 bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/74132569-e7ca-4f54-b265-ee46862e394d_1600w.jpg)] bg-cover border-white/10 border rounded-2xl pt-6 pr-6 pb-6 pl-6 relative justify-center">
+
+          </div>
+        </div>
+      </div>
+
+      <!-- PHASE 4: Reply Handling -->
+      <div class="sticky top-36 z-40 mb-12">
+        <div class="bg-neutral-900 rounded-[2.5rem] p-8 md:p-12 shadow-2xl ring-1 ring-white/5 flex flex-col md:flex-row gap-12 relative overflow-hidden min-h-[500px] border border-white/5">
+          <div class="md:w-1/2 flex flex-col justify-center">
+            <div class="flex items-center gap-3 mb-6">
+              <div class="bg-teal-900/30 text-teal-400 p-2 rounded-lg border border-teal-500/20"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="calendar-check" aria-hidden="true" class="lucide lucide-calendar-check w-6 h-6"><path d="M8 2v3"></path><path d="M16 2v3"></path><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18"></path><path d="m9 15 2 2 4-4"></path></svg></div>
+              <span class="uppercase text-sm font-semibold text-teal-400 tracking-wide">Step 4</span>
+            </div>
+            <h3 class="text-3xl font-semibold text-white tracking-tight mb-4">Finished With Intent</h3>
+            <p class="leading-relaxed text-neutral-400 mb-8">The final result is polished, usable, and built to last.
+              Design that serves its purpose beyond delivery.</p>
+
+            <div class="space-y-4">
+              <div class="flex items-start gap-3">
+                <div class="mt-1 bg-[#2563eb]/20 p-1 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3 text-[#3b82f6]"><path d="M20 6 9 17l-5-5"></path></svg></div>
+                <span class="text-sm font-medium text-neutral-300">Deliver polished, ready-to-use design</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <div class="mt-1 bg-[#2563eb]/20 p-1 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check w-3 h-3 text-[#3b82f6]"><path d="M20 6 9 17l-5-5"></path></svg></div>
+                <span class="text-sm font-medium text-neutral-300">Ensure the final result serves its purpose</span>
+              </div>
+            </div>
+          </div>
+          <div class="md:w-1/2 overflow-hidden flex flex-col bg-black/40 bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/9df310ce-a18e-4cd0-ba39-ee83941ce321_1600w.png)] bg-cover bg-center border-white/10 border rounded-2xl pt-6 pr-6 pb-6 pl-6 relative items-center justify-center">
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+    <!-- FAQ Section -->
+    
+
+    <!-- Final CTA -->
+    <section class="py-32 relative overflow-hidden flex items-center justify-center">
+      <div class="bg-[#3b82f6]/5 absolute top-0 right-0 bottom-0 left-0"></div>
+      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#3b82f6] rounded-full blur-[200px] opacity-20 pointer-events-none"></div>
+      
+      <div class="relative z-10 text-center max-w-2xl px-6">
+        <h2 class="text-5xl font-bold text-white tracking-tight mb-6">Let's bring your Vision to Life!</h2>
+        <p class="text-xl text-neutral-400 mb-10">Contact me Today!</p>
+        <a href="mailto:Galavizaj@icloud.com" class="">
+  <button class="btn-glow hover:scale-105 transition-transform text-lg font-semibold text-white bg-[#3b82f6] rounded-full pt-4 pr-10 pb-4 pl-10 shadow-lg">galavizaj@icloud.com</button>
+</a>
+        <p class="text-sm text-neutral-500 mt-6">For Freelance: Every project is unique. Final pricing is determined by the scope, complexity, timeline, and creative direction required. Before any work begins, a clear estimate is provided so there are no surprises.</p>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-black border-white/10 border-t pt-16 pb-8">
+  <div class="max-w-7xl mr-auto ml-auto pr-6 pl-6">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
+      <div class="col-span-1 md:col-span-1">
+        <a href="#" class="block text-xl font-bold text-white tracking-tight mb-6">Arturo J Galaviz III</a>
+        <p class="leading-relaxed text-sm text-neutral-500">Design isn’t just what I do—it’s how I think, how I solve
+          problems, and how I help ideas move forward.</p>
+      </div>
+
+      <div class="">
+        <h4 class="font-medium text-white mb-4">Education</h4>
+        <ul class="space-y-3 text-sm text-neutral-500">
+          <li class=""><a href="#" class="hover:text-[#3b82f6] transition-colors">High School Diploma</a></li>
+          <li class=""><a href="#" class="hover:text-[#3b82f6] transition-colors">Associate's Science Degree of Arts</a></li>
+
+        </ul>
+      </div>
+
+      <div class="">
+        <h4 class="font-medium text-white mb-4">Company </h4>
+        <ul class="space-y-3 text-sm text-neutral-500">
+          <li class=""><a href="#" class="hover:text-[#3b82f6] transition-colors">Southwest Research Institute
+              (current)</a></li>
+          <li class=""><a href="#" class="hover:text-[#3b82f6] transition-colors">HEB 2019 - 2022</a></li>
+
+        </ul>
+      </div>
+
+      <div class="">
+        <h4 class="font-medium text-white mb-4">Web Design</h4>
+        <ul class="space-y-3 text-sm text-neutral-500">
+          <li class=""><a href="#" class="hover:text-[#3b82f6] transition-colors">Aura.Build / Square Space</a></li>
+          <li class=""><a href="#" class="hover:text-[#3b82f6] transition-colors">Spline.Design</a></li>
+
+        </ul>
+      </div>
+    </div>
+
+    <div class="border-t border-white/5 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+      <p class="text-xs text-neutral-600">© 2026 </p>
+      <div class="flex gap-6">
+        <a href="#" class="text-neutral-600 hover:text-white transition-colors"></a>
+        <a href="#" class="text-neutral-600 hover:text-white transition-colors"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="badge-check" class="lucide lucide-badge-check lucide-linkedin w-[20px] h-[20px]" aria-hidden="true" data-icon-set="lucide" data-icon-replaced="true" style="color: rgb(255, 255, 255); width: 20px; height: 20px;"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"></path><path d="m9 12 2 2 4-4"></path></svg></a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+    <script>
+  window.addEventListener('load', () => {
+    document.querySelectorAll('.reveal').forEach(el => {
+      el.classList.remove('opacity-0', 'translate-y-4')
+      el.classList.add('opacity-100', 'translate-y-0')
+    })
+  })
+</script>
+
+
+  <!-- Contact Modal -->
+  <div class="fixed z-[100] hidden top-0 right-0 bottom-0 left-0" id="booking-modal">
+  
+    <!-- Background overlay -->
+    <div class="bg-black/80 absolute inset-0 backdrop-blur-sm" onclick="toggleModal(false)">
+    </div>
+  
+    <!-- Modal card -->
+    <div class="-translate-x-1/2 -translate-y-1/2 bg-[#0a0a0a] w-full max-w-md border border-white/10 rounded-2xl p-8 absolute top-1/2 left-1/2 shadow-2xl">
+  
+      <!-- Close button -->
+      <button onclick="toggleModal(false)" class="absolute top-4 right-4 text-neutral-500 hover:text-white transition">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 6 6 18"></path>
+          <path d="m6 6 12 12"></path>
+        </svg>
+      </button>
+  
+      <!-- Content -->
+      <div class="text-center space-y-6">
+        <div>
+          <h3 class="text-2xl font-semibold text-white mb-2">
+            Contact Me
+          </h3>
+          <p class="text-sm text-neutral-400">
+            Direct contact — no forms, no friction.
+          </p>
+        </div>
+  
+        <div class="space-y-3 text-sm">
+          <p class="text-white">
+            <span class="text-neutral-400">Phone:</span>
+            <a href="tel:12103895779" class="ml-1 hover:text-[#3b82f6] transition-colors">
+              210.389.5779
+            </a>
+          </p>
+  
+          <p class="text-white">
+            <span class="text-neutral-400">Email:</span>
+            <a href="mailto:galavizaj@icloud.com" class="ml-1 hover:text-[#3b82f6] transition-colors">
+              galavizaj@icloud.com
+            </a>
+          </p>
+        </div>
+  
+        <button onclick="toggleModal(false)" class="mt-4 w-full bg-[#3b82f6] hover:bg-[#2563eb] text-white font-medium py-3 rounded-lg transition-colors">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+    <!-- Script Logic -->
+    <script>
+        // Modal Logic
+        function toggleModal(show) {
+            const modal = document.getElementById('booking-modal');
+            if (show) {
+                modal.classList.remove('hidden');
+                document.body.style.overflow = 'hidden';
+            } else {
+                modal.classList.add('hidden');
+                document.body.style.overflow = 'auto';
+            }
+        }
+
+        // FAQ Accordion Logic
+        function toggleFaq(button) {
+            const item = button.parentElement;
+            const isActive = item.classList.contains('active');
+            
+            // Close all items
+            document.querySelectorAll('.faq-item').forEach(el => {
+                el.classList.remove('active');
+            });
+
+            // If it wasn't active before, open it
+            if (!isActive) {
+                item.classList.add('active');
+            }
+        }
+
+        // Initialize Lucide Icons
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+    </script>
+  
+</body></html>

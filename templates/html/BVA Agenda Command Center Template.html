@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bigger Vision — Agenda Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://code.iconify.design/iconify-icon/1.0.8/iconify-icon.min.js"></script>
+<style>
+:root{
+--bg-0:#0e0e11; --bg-1:#16161b; --bg-2:#1c1c22; --bg-3:#23232b;
+--line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.12);
+--tx-1:#ededf0; --tx-2:#9c9ca6; --tx-3:#65656f;
+--accent:#c6f25c; --accent-dim:rgba(198,242,92,.14); --accent-line:rgba(198,242,92,.35);
+--today:#ff6b6b; --today-dim:rgba(255,107,107,.14);
+--high:#f2a93d; --high-dim:rgba(242,169,61,.14);
+--ease-out:cubic-bezier(.23,1,.32,1); --ease-io:cubic-bezier(.77,0,.175,1);
+--r:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:"Hanken Grotesk",-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg-0);color:var(--tx-1);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow:hidden}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(900px 500px at 8% -8%, rgba(198,242,92,.06), transparent 60%),radial-gradient(800px 600px at 110% 110%, rgba(255,107,107,.04), transparent 55%)}
+.app{position:relative;z-index:1;display:flex;height:100vh;width:100vw}
+.side{width:312px;flex:0 0 312px;height:100%;background:var(--bg-1);border-right:1px solid var(--line);display:flex;flex-direction:column}
+.brand{padding:26px 24px 18px;border-bottom:1px solid var(--line)}
+.brand-row{display:flex;align-items:center;gap:11px}
+.brand-mark{width:11px;height:11px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--accent-dim);flex:0 0 auto}
+.brand-name{font-family:"Bricolage Grotesque";font-weight:700;font-size:18px;letter-spacing:-.01em;line-height:1}
+.brand-sub{font-family:"JetBrains Mono";font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--tx-3);margin-top:10px}
+.sync-wrap{display:flex;align-items:center;justify-content:space-between;margin-top:12px;gap:8px}
+.sync{flex:1;min-width:0;display:flex;align-items:center;gap:7px;font-family:"JetBrains Mono";font-size:10px;letter-spacing:.03em;color:var(--tx-3)}
+.sync-dot{width:6px;height:6px;border-radius:50%;background:var(--tx-3);transition:background .2s}
+.sync.saved .sync-dot{background:var(--accent)}
+.sync.saving .sync-dot{background:var(--high);animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.35}}
+.save-btn{display:flex;align-items:center;gap:5px;font-family:"JetBrains Mono";font-size:9.5px;background:var(--bg-2);border:1px solid var(--line);color:var(--tx-2);padding:5px 8px;border-radius:6px;cursor:pointer;transition:all .15s;flex:0 0 auto;text-transform:uppercase;letter-spacing:.05em;font-weight:500;outline:none}
+.save-btn:hover{background:var(--bg-3);color:var(--tx-1)}
+.save-btn.saved{background:var(--accent-dim);color:var(--accent);border-color:var(--accent-line)}
+.overall{margin-top:16px}
+.overall-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.overall-lab{font-family:"JetBrains Mono";font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--tx-2)}
+.overall-num{font-family:"JetBrains Mono";font-size:11px;color:var(--tx-1);font-weight:500}
+.overall-num b{color:var(--accent)}
+.bar{height:5px;border-radius:99px;background:var(--bg-3);overflow:hidden}
+.bar > i{display:block;height:100%;border-radius:99px;background:var(--accent);width:0;transition:width .5s var(--ease-out)}
+.nav{flex:1;overflow-y:auto;padding:14px 12px 24px}
+.nav::-webkit-scrollbar{width:9px}
+.nav::-webkit-scrollbar-thumb{background:var(--bg-3);border-radius:99px;border:3px solid var(--bg-1)}
+.nav-head{font-family:"JetBrains Mono";font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--tx-3);padding:10px 12px 8px}
+.item{width:100%;text-align:left;border:0;background:transparent;cursor:pointer;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:10px;color:var(--tx-2);position:relative;transition:background .18s var(--ease-out),color .18s var(--ease-out);font-family:inherit}
+.item:not(.active):hover{background:var(--bg-2);color:var(--tx-1)}
+.item.active{background:var(--accent-dim);color:var(--tx-1)}
+.item.active::before{content:"absolute";position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;border-radius:0 3px 3px 0;background:var(--accent)}
+.item-dot{width:6px;height:6px;border-radius:50%;flex:0 0 auto;background:var(--tx-3);transition:background .18s}
+.item.has-today .item-dot{background:var(--today);box-shadow:0 0 0 3px var(--today-dim)}
+.item.has-high .item-dot{background:var(--high)}
+.item.done-all .item-dot{background:var(--accent)}
+.item-name{flex:1;font-size:13.5px;font-weight:500;letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item-count{font-family:"JetBrains Mono";font-size:10.5px;color:var(--tx-3);flex:0 0 auto;font-weight:500;letter-spacing:.02em}
+.item.active .item-count{color:var(--tx-2)}
+.item-count.complete{color:var(--accent)}
+.item.special{margin-bottom:6px}
+.item.special .item-name{font-weight:600}
+.badge-mini{font-family:"JetBrains Mono";font-size:9px;font-weight:600;letter-spacing:.06em;padding:2px 6px;border-radius:6px;background:var(--today-dim);color:var(--today);flex:0 0 auto}
+.divider{height:1px;background:var(--line);margin:12px 14px}
+.main{flex:1;height:100%;overflow-y:auto;position:relative}
+.main::-webkit-scrollbar{width:11px}
+.main::-webkit-scrollbar-thumb{background:var(--bg-2);border-radius:99px;border:3px solid var(--bg-0)}
+.wrap{max-width:760px;margin:0 auto;padding:46px 48px 120px}
+.head{margin-bottom:30px}
+.eyebrow{display:flex;align-items:center;gap:9px;font-family:"JetBrains Mono";font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--tx-3);margin-bottom:14px}
+.eyebrow .pip{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.eyebrow.today .pip{background:var(--today)}
+h1.title{font-family:"Bricolage Grotesque";font-weight:700;font-size:38px;line-height:1.02;letter-spacing:-.025em;margin-bottom:14px}
+.meta{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-family:"JetBrains Mono";font-size:11.5px;color:var(--tx-2)}
+.meta .sep{width:3px;height:3px;border-radius:50%;background:var(--tx-3)}
+.meta b{color:var(--accent);font-weight:500}
+.note-chip{margin-top:16px;display:inline-flex;align-items:flex-start;gap:9px;padding:10px 14px;border-radius:10px;background:var(--today-dim);border:1px solid rgba(255,107,107,.2);font-size:12.5px;color:#ffb3b3;max-width:560px;line-height:1.45}
+.note-chip svg{flex:0 0 auto;margin-top:1px}
+.hbar{margin-top:22px;height:6px;border-radius:99px;background:var(--bg-2);overflow:hidden;max-width:560px}
+.hbar > i{display:block;height:100%;border-radius:99px;background:var(--accent);width:0;transition:width .55s var(--ease-out)}
+.section{margin-top:30px}
+.section-lab{font-family:"JetBrains Mono";font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--tx-3);margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.section-lab::after{content:"";flex:1;height:1px;background:var(--line)}
+.task{--tdelay:0ms;display:flex;gap:13px;padding:15px 16px;border-radius:var(--r);background:var(--bg-1);border:1px solid var(--line);margin-bottom:9px;opacity:0;transform:translateY(7px);animation:rise .42s var(--ease-out) forwards;animation-delay:var(--tdelay);transition:border-color .2s var(--ease-out),background .2s var(--ease-out)}
+@keyframes rise{to{opacity:1;transform:translateY(0)}}
+.task-body{flex:1;min-width:0}
+.task-top{display:flex;align-items:flex-start;gap:10px}
+.task-name{font-size:14.5px;font-weight:500;line-height:1.4;letter-spacing:-.006em;color:var(--tx-1);transition:color .25s var(--ease-out)}
+.task.done .task-name{color:var(--tx-3);text-decoration:line-through;text-decoration-color:var(--tx-3)}
+.task-note{font-size:12.5px;color:var(--tx-2);line-height:1.5;margin-top:6px;max-width:600px}
+.task.done .task-note{color:var(--tx-3)}
+.client-tag{font-family:"JetBrains Mono";font-size:9.5px;letter-spacing:.06em;color:var(--tx-3);text-transform:uppercase;margin-bottom:7px;font-weight:500}
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;flex:0 0 auto;padding-top:1px}
+.badge{font-family:"JetBrains Mono";font-size:9.5px;font-weight:600;letter-spacing:.07em;padding:3px 7px;border-radius:7px;white-space:nowrap}
+.badge.today{background:var(--today-dim);color:var(--today)}
+.badge.high{background:var(--high-dim);color:var(--high)}
+.badge.date{background:var(--bg-3);color:var(--tx-2)}
+.cb{flex:0 0 auto;width:21px;height:21px;border-radius:7px;margin-top:1px;border:1.8px solid var(--line-2);background:transparent;cursor:pointer;padding:0;display:grid;place-items:center;position:relative;transition:border-color .16s var(--ease-out),background .16s var(--ease-out),transform .1s var(--ease-out)}
+.cb:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cb svg{width:13px;height:13px;color:var(--bg-0)}
+.cb svg path{stroke-dasharray:18;stroke-dashoffset:18;transition:stroke-dashoffset .18s var(--ease-out)}
+.cb.on{background:var(--accent);border-color:var(--accent)}
+.cb.on svg path{stroke-dashoffset:0}
+.cb.partial{border-color:var(--accent-line)}
+.cb.partial::after{content:"";width:9px;height:2px;border-radius:2px;background:var(--accent)}
+.cb:active{transform:scale(.9)}
+.subs{margin-top:13px;margin-left:2px;padding-left:16px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:2px}
+.sub{display:flex;gap:11px;align-items:flex-start;padding:6px 4px;border-radius:8px;transition:background .15s}
+.sub-name{font-size:12.8px;color:var(--tx-2);line-height:1.45;transition:color .2s}
+.sub.done .sub-name{color:var(--tx-3);text-decoration:line-through}
+.cb.sm{width:17px;height:17px;border-radius:6px;border-width:1.6px}
+.cb.sm svg{width:10px;height:10px}
+@media (hover:hover) and (pointer:fine){
+.task:hover{border-color:var(--line-2);background:var(--bg-2)}
+.cb:not(.on):hover{border-color:var(--accent-line)}
+.sub:hover{background:var(--bg-2)}
+}
+.allclear{margin-top:40px;text-align:center;padding:40px;color:var(--tx-3);font-family:"JetBrains Mono";font-size:12px;letter-spacing:.05em}
+.allclear b{color:var(--accent);display:block;font-size:15px;margin-bottom:6px;font-family:"Bricolage Grotesque";letter-spacing:-.01em}
+@media (prefers-reduced-motion:reduce){.task{animation:none;opacity:1;transform:none}.cb svg path{transition:none}*{transition-duration:.01ms !important}}
+@media (max-width:820px){
+body{overflow:auto}
+.app{flex-direction:column;height:auto}
+.side{width:100%;flex:none;border-right:0;border-bottom:1px solid var(--line)}
+.nav{max-height:none;overflow:visible}
+.main{height:auto;overflow:visible}
+.wrap{padding:32px 22px 80px}
+h1.title{font-size:30px}
+}
+</style>
+<script src="https://cdn.tailwindcss.com"></script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="brand-row"><span class="brand-mark"></span><span class="brand-name">Agenda Command</span></div>
+      <div class="brand-sub">Bigger Vision Agency</div>
+      
+      <div class="sync-wrap">
+        <div class="sync" id="sync"><span class="sync-dot"></span><span id="syncTxt">Connecting...</span></div>
+        <button class="save-btn" id="saveBtn">
+          <iconify-icon icon="solar:diskette-linear" width="13" stroke-width="1.5"></iconify-icon> Save
+        </button>
+      </div>
+
+      <div class="overall">
+        <div class="overall-top"><span class="overall-lab">Overall</span><span class="overall-num" id="ovNum"><b>0</b> / 0</span></div>
+        <div class="bar"><i id="ovBar"></i></div>
+      </div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+  </aside>
+  <main class="main" id="main"><div class="wrap" id="wrap"></div></main>
+</div>
+
+<script>
+/* ============ DATA ============ */
+const CLIENTS = [
+  { id:"el", name:"Electric Loft", space:"Electric Loft", tasks:[
+    { id:"el1", name:"Set up venue for today's event", pri:"u", due:"today", section:"Venue — Today", note:"Polish the floor first, before any furniture goes down.", subs:[
+      {id:"el1a",name:"Polish the upstairs floor (do this first)"},
+      {id:"el1b",name:"Mop the staircase"},
+      {id:"el1c",name:"Set up tables and chairs (after the floor)"},
+      {id:"el1d",name:"Set up pipe and drape"},
+      {id:"el1e",name:"Put linens on all tables"},
+      {id:"el1f",name:"Position all trash bags"},
+      {id:"el1g",name:"Stock restrooms — toilet paper + paper towels"},
+      {id:"el1h",name:"Clear the fridge of ice (one bag OK to leave)"},
+      {id:"el1i",name:"Buy air freshener"} ]},
+    { id:"el2", name:"10:00 AM venue walkthrough", pri:"u", due:"today", section:"Venue — Today", note:"Conflicts with the CA Greenworks board meeting at 10:00 — decide who covers it." },
+    { id:"el3", name:"Text today's scheduled event", pri:"u", due:"today", section:"Venue — Today" },
+    { id:"el4", name:"Finalize pages + update review section (all pages)", pri:"n", section:"Website" },
+    { id:"el5", name:"Update vendor page", pri:"n", section:"Website" },
+    { id:"el6", name:"Run QA — verify everything connected + working", pri:"h", section:"Website", note:"Do this last, after the page work and before any promo goes out." },
+    { id:"el7", name:"Prep socials (new website + vendor signups)", pri:"n", section:"Website", note:"Stage now; push only after QA confirms the site is clean." },
+    { id:"el8", name:"Port SEO checklist + strategy into ClickUp", pri:"n", section:"Website" },
+    { id:"el9", name:"Connect Claude to Nurturely via API", pri:"n", section:"Website" } ]},
+
+  { id:"eg", name:"Evergreen OC", space:"Evergreen OC", tasks:[
+    { id:"eg1", name:"Submit A2P verification", pri:"h" },
+    { id:"eg2", name:"Set up Google review reply manager", pri:"n" },
+    { id:"eg3", name:"Provide current Google review report (baseline)", pri:"n", note:"Before-picture to show the lift once review requests start firing." },
+    { id:"eg4", name:"Complete landing page (convert template → Elementor JSON)", pri:"n" },
+    { id:"eg5", name:"Set up + test Meadow integration", pri:"n" } ]},
+
+  { id:"sg", name:"Sage Event Space", space:"TEMP list (move to own space)", parked:true, tasks:[
+    { id:"sg1", name:"Submit A2P verification", pri:"h" },
+    { id:"sg2", name:"Load the event snapshot (do first)", pri:"n", note:"The foundation — workflows, pipeline, and payments all build on it." },
+    { id:"sg3", name:"Update all workflows with their offer", pri:"n" },
+    { id:"sg4", name:"Set up pipeline + payment automations", pri:"n" },
+    { id:"sg5", name:"Update event-space pricing on the website", pri:"n", note:"Keep matched to the offer in the workflows." },
+    { id:"sg6", name:"Set up the walkthrough", pri:"n" },
+    { id:"sg7", name:"Set up the next training call", pri:"n", note:"Book after the build is live, so you train on a working system." } ]},
+
+  { id:"fz", name:"Fraztax", space:"Fraztax", tasks:[
+    { id:"fz1", name:"Submit A2P verification", pri:"h" },
+    { id:"fz2", name:"Contact chat support — email visibility / permissions", pri:"h", note:"Ask both: (1) can admins restrict which users see emails from specific senders? (2) can an admin send email AS a user, or is it one shared inbox?" },
+    { id:"fz3", name:"Create automation workflows", pri:"n" },
+    { id:"fz4", name:"Identify the pipeline", pri:"n", note:"Map this before the workflows — they reference the stages." },
+    { id:"fz5", name:"Publish the site", pri:"h", note:"Publish only after the pre-publish steps below.", subs:[
+      {id:"fz5a",name:"Create the forms + connect them to the new site"},
+      {id:"fz5b",name:"Load the resources page on the Vibe builder"},
+      {id:"fz5c",name:"Update logo — name: Fraztax, subtitle: Taxes and Accounting"},
+      {id:"fz5d",name:"Publish the site"} ]} ]},
+
+  { id:"cg", name:"California Greenworks", space:"California Greenworks", tasks:[
+    { id:"cg1", name:"Submit website to Mike & Nancy for review", pri:"u", due:"today", note:"Send before the 10:00 board meeting today." },
+    { id:"cg2", name:"Submit A2P verification", pri:"h" },
+    { id:"cg3", name:"Migrate email list: Constant Contact → Nurturely", pri:"h", subs:[
+      {id:"cg3a",name:"Export from Constant Contact with the right Nurturely tagging (first)"},
+      {id:"cg3b",name:"Import the CSV into Nurturely"} ]} ]},
+
+  { id:"rf", name:"Rockford Ave", space:"Rockford Ave", tasks:[
+    { id:"rf1", name:"Finalize + publish site (unlocks IDX)", pri:"h", note:"Publishing triggers IDX approval — don't sit on it once ready.", subs:[
+      {id:"rf1a",name:"Finalize the site + update the About page"},
+      {id:"rf1b",name:"Modify the landing pages for each agent"},
+      {id:"rf1c",name:"Update all agent images"},
+      {id:"rf1d",name:"Update logo in the menu header (visible or removed)"},
+      {id:"rf1e",name:"Ensure all emails are connected to the site"},
+      {id:"rf1f",name:"Connect the IDX"},
+      {id:"rf1g",name:"Publish live → kicks off IDX approval"} ]},
+    { id:"rf2", name:"Audit Follow Up Boss → identify Nurturely optimizations", pri:"n", note:"Do this first on the CRM side — it tells you what to build." },
+    { id:"rf3", name:"Build Nurturely workflows + automations (Stacey + agents)", pri:"n" },
+    { id:"rf4", name:"Create pipelines", pri:"n" } ]},
+
+  { id:"gg", name:"G&G Boxing", space:"GNG Boxing", tasks:[
+    { id:"gg1", name:"Get site approved and live today", pri:"u", due:"today", subs:[
+      {id:"gg1a",name:"Draft + send the review email"},
+      {id:"gg1b",name:"Get them on a call for approval"},
+      {id:"gg1c",name:"Publish the site live on Nurturely"},
+      {id:"gg1d",name:"Verify it's live and working"} ]},
+    { id:"gg2", name:"Create new payment link (test before go-live)", pri:"h", due:"today" },
+    { id:"gg3", name:"Member signup / cancellation flow", pri:"n" },
+    { id:"gg4", name:"Cancel old SiteGround subscription", pri:"h", note:"Only after the new site is confirmed live — otherwise downtime." } ]},
+
+  { id:"sl", name:"Sweat Logic", space:"Sweat Logic", tasks:[
+    { id:"sl1", name:"Content pass across the site", pri:"n", note:"Carry the same humanized standard into the new pages too.", subs:[
+      {id:"sl1a",name:"Update all pages"},
+      {id:"sl1b",name:"Remove the AI hyphens (em-dashes)"},
+      {id:"sl1c",name:"Correct messaging on the product / service cards"} ]},
+    { id:"sl2", name:"Add events page", pri:"n" },
+    { id:"sl3", name:"Add coach page + coach training page", pri:"n" },
+    { id:"sl4", name:"Embed new images across the site", pri:"n" },
+    { id:"sl5", name:"Connect payment links to wellness platform", pri:"n" } ]},
+
+  { id:"rc", name:"Randy Casango — Foundry", space:"Foundry", tasks:[
+    { id:"rc1", name:"Submit A2P verification", pri:"h" },
+    { id:"rc2", name:"Schedule Nurturely onboarding", pri:"n" },
+    { id:"rc3", name:"Create sitemap for full site (do first)", pri:"n", note:"The blueprint — defines what gets built." },
+    { id:"rc4", name:"Build landing page + full site", pri:"n", note:"Flyer not yet uploaded — drop it in chat when ready.", subs:[
+      {id:"rc4a",name:"Reposition her flyer for web (visual anchor)"},
+      {id:"rc4b",name:"Add imagery / photos across the site"} ]} ]},
+
+  { id:"kb", name:"KannaBeast", space:"Kanna Beast", tasks:[
+    { id:"kb1", name:"Export Kive images → convert HEIC to JPEG", pri:"n", note:"Do early — unblocks the product/design work. (Confirm product name: 'bait'?)" },
+    { id:"kb2", name:"Pull Klaviyo report", pri:"n", note:"Do before optimizing — tells you what to build." },
+    { id:"kb3", name:"Run analytics report", pri:"n" },
+    { id:"kb4", name:"Update + optimize Klaviyo (off the report)", pri:"n" },
+    { id:"kb5", name:"Product concepts and designs", pri:"n" },
+    { id:"kb6", name:"Write + optimize blogs from the blog strategy", pri:"n" },
+    { id:"kb7", name:"Email campaigns (shape off Klaviyo report)", pri:"n" } ]},
+
+  { id:"ys", name:"Yellow School — Fallon", space:"Mason Aces", tasks:[
+    { id:"ys1", name:"Create social media post", pri:"n" },
+    { id:"ys2", name:"Optimize Google Business Profile", pri:"n", note:"Fold into the SEO strategy as a local pillar." },
+    { id:"ys3", name:"Complete website resize + optimize images", pri:"n" },
+    { id:"ys4", name:"Create SEO strategy", pri:"n", note:"The umbrella that GMB + technical cleanup feed into." } ]},
+
+  { id:"bv", name:"Bigger Vision Agency", space:"Bigger Vision Agency", tasks:[
+    { id:"bv1", name:"Connect all APIs to the cloud (for reporting)", pri:"h", note:"Your Railway / SiteScore direction — off the local Mac Mini." },
+    { id:"bv2", name:"Get JJ's website live", pri:"h" },
+    { id:"bv3", name:"Get Edgar's Gravity Excel website live", pri:"h" },
+    { id:"bv4", name:"Contact Ronnie for event details (do first)", pri:"h", note:"Confirms the booth and shapes the presentation." },
+    { id:"bv5", name:"Pay for Nurturely booth (with Ronnie)", pri:"n" },
+    { id:"bv6", name:"Presentation strategy for June 5th", pri:"h", due:"jun5" },
+    { id:"bv7", name:"Schedule call with Melody (Nurturely demo)", pri:"n" },
+    { id:"bv8", name:"Onboarding — Steve's client", pri:"n" },
+    { id:"bv9", name:"Onboarding — Steve's sister", pri:"n" },
+    { id:"bv10", name:"Invoice Chi-town + launch trader campaign automation", pri:"n" } ]},
+];
+
+const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none"><path d="M4.5 12.5l5 5 10-11" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const STORE_KEY = "bva-agenda-state-live";
+
+/* ============ LIVE SYNC STORE ============ */
+let bucketId = window.location.hash.substring(1) || localStorage.getItem("bva-last-bucket") || "";
+
+const Store = {
+  async load() {
+    if (bucketId) {
+      localStorage.setItem("bva-last-bucket", bucketId);
+      if (window.location.hash.substring(1) !== bucketId) {
+        window.history.replaceState(null, null, `#${bucketId}`);
+      }
+      try {
+        const res = await fetch(`https://kvdb.io/${bucketId}/state`);
+        if (res.ok) {
+          const txt = await res.text();
+          if (txt) {
+            const parsed = JSON.parse(txt);
+            localStorage.setItem(STORE_KEY, txt);
+            return parsed;
+          }
+        }
+      } catch(e) { console.warn("Live sync check failed", e); }
+    }
+    // Fallback locally
+    try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch(e) { return {}; }
+  },
+
+  async save(s) {
+    const str = JSON.stringify(s);
+    try { localStorage.setItem(STORE_KEY, str); } catch(e){}
+
+    if (!bucketId) {
+      try {
+        const res = await fetch('https://kvdb.io/', { method: 'POST' });
+        if (res.ok) {
+          bucketId = await res.text();
+          localStorage.setItem("bva-last-bucket", bucketId);
+          window.history.replaceState(null, null, `#${bucketId}`);
+        } else return false;
+      } catch(e) { return false; }
+    }
+
+    if (bucketId) {
+      try {
+        const res = await fetch(`https://kvdb.io/${bucketId}/state`, {
+          method: 'POST', body: str
+        });
+        return res.ok;
+      } catch(e) { return false; }
+    }
+    return false;
+  }
+};
+
+/* ============ STATE ============ */
+let state = {};
+let active = "today";
+let saving = false;
+let lastLocal = 0;
+let lastSerialized = "{}";
+
+/* ============ HELPERS ============ */
+const allTasks   = () => CLIENTS.flatMap(c => c.tasks);
+const leavesOf   = (t) => (t.subs && t.subs.length) ? t.subs : [t];
+const clientLeaves = (c) => c.tasks.flatMap(leavesOf);
+const todayTasks = () => CLIENTS.flatMap(c => c.tasks.filter(t => t.due === "today").map(t => ({...t, _client:c.name})));
+const todayLeaves = () => todayTasks().flatMap(leavesOf);
+
+function progressOf(leaves){ const total = leaves.length; const done = leaves.filter(l => state[l.id]).length; return {done, total, pct: total ? done/total : 0}; }
+function taskDone(t){ return leavesOf(t).every(l => state[l.id]); }
+function taskPartial(t){ const lv = leavesOf(t); return !!t.subs && lv.some(l => state[l.id]) && !lv.every(l => state[l.id]); }
+function clientProgress(c){ return progressOf(clientLeaves(c)); }
+function overallProgress(){ return progressOf(CLIENTS.flatMap(clientLeaves)); }
+function clientHasToday(c){ return c.tasks.some(t => t.due === "today" && !taskDone(t)); }
+function clientHasHigh(c){ return c.tasks.some(t => t.pri === "h" && !taskDone(t)); }
+
+function badgesFor(t){
+  let h = "";
+  if(t.due === "today") h += '<span class="badge today">TODAY</span>';
+  else if(t.due === "jun5") h += '<span class="badge date">JUN 5</span>';
+  if(t.pri === "h" && t.due !== "today") h += '<span class="badge high">HIGH</span>';
+  return h;
+}
+function setSync(cls, txt){ const s = document.getElementById("sync"); if(!s) return; s.className = "sync" + (cls ? " "+cls : ""); document.getElementById("syncTxt").textContent = txt; }
+
+/* ============ SIDEBAR ============ */
+function renderNav(){
+  const nav = document.getElementById("nav");
+  const td = todayLeaves();
+  const tdDone = td.filter(l => state[l.id]).length;
+  let h = '<div class="nav-head">Priority</div>';
+  h += navItem({ id:"today", name:"Today's Fires", special:true, count:`${tdDone}/${td.length}`, today: td.length > tdDone });
+  h += '<div class="divider"></div><div class="nav-head">Clients</div>';
+  CLIENTS.forEach(c => {
+    const p = clientProgress(c);
+    h += navItem({ id:c.id, name:c.name, count:`${p.done}/${p.total}`, today:clientHasToday(c), high:!clientHasToday(c)&&clientHasHigh(c), complete:p.done===p.total });
+  });
+  nav.innerHTML = h;
+  nav.querySelectorAll(".item").forEach(el => el.addEventListener("click", () => { active = el.dataset.id; renderMain(); renderNav(); }));
+  const ov = overallProgress();
+  document.getElementById("ovNum").innerHTML = `<b>${ov.done}</b> / ${ov.total}`;
+  requestAnimationFrame(() => { document.getElementById("ovBar").style.width = ov.pct*100 + "%"; });
+}
+function navItem(o){
+  const cls = ["item"];
+  if(o.id === active) cls.push("active");
+  if(o.special) cls.push("special");
+  if(o.today) cls.push("has-today"); else if(o.high) cls.push("has-high");
+  if(o.complete) cls.push("done-all");
+  const countCls = o.complete ? "item-count complete" : "item-count";
+  const right = (o.special && o.today)
+    ? `<span class="badge-mini">${o.count}</span>`
+    : `<span class="${countCls}">${o.complete ? '✓' : o.count}</span>`;
+  return `<button class="${cls.join(' ')}" data-id="${o.id}"><span class="item-dot"></span><span class="item-name">${o.name}</span>${right}</button>`;
+}
+
+/* ============ MAIN ============ */
+function renderMain(){
+  const wrap = document.getElementById("wrap");
+  document.getElementById("main").scrollTop = 0;
+  wrap.innerHTML = (active === "today") ? renderTodayView() : renderClientView(CLIENTS.find(c => c.id === active));
+  wire(wrap);
+}
+function renderTodayView(){
+  const tasks = todayTasks();
+  const pr = progressOf(todayLeaves());
+  let h = `<div class="head">
+    <div class="eyebrow today"><span class="pip"></span>Time-critical · flagged for today</div>
+    <h1 class="title">Today's Fires</h1>
+    <div class="meta"><span><b>${pr.done}</b> of ${pr.total} steps cleared</span><span class="sep"></span><span>${tasks.length} fires</span></div>
+    <div class="hbar"><i id="hbar"></i></div></div>`;
+  if(!tasks.length){ h += allClear(); return h; }
+  let i = 0; h += '<div class="section">';
+  tasks.forEach(t => { h += taskRow(t, i++, {showClient:true}); });
+  h += '</div>'; return h;
+}
+function renderClientView(c){
+  const p = clientProgress(c);
+  let h = `<div class="head">
+    <div class="eyebrow"><span class="pip"></span>${c.space}</div>
+    <h1 class="title">${c.name}</h1>
+    <div class="meta"><span><b>${p.done}</b> of ${p.total} steps done</span><span class="sep"></span><span>${c.tasks.length} task${c.tasks.length>1?'s':''}</span></div>`;
+  if(c.parked) h += `<div class="note-chip">${warnSvg()}<span>Parked in a temporary list. Create a dedicated <b>Sage Event Space</b> in ClickUp and move these tasks over.</span></div>`;
+  h += `<div class="hbar"><i id="hbar"></i></div></div>`;
+  const sections = [];
+  c.tasks.forEach(t => { const key = t.section || "__none"; let g = sections.find(s=>s.key===key); if(!g){ g={key,label:t.section||null,items:[]}; sections.push(g);} g.items.push(t); });
+  let i = 0;
+  sections.forEach(sec => { h += '<div class="section">'; if(sec.label) h += `<div class="section-lab">${sec.label}</div>`; sec.items.forEach(t => { h += taskRow(t, i++, {}); }); h += '</div>'; });
+  if(p.done === p.total) h += allClear();
+  return h;
+}
+function taskRow(t, idx, opt){
+  const done = taskDone(t), partial = taskPartial(t);
+  const delay = Math.min(idx*42, 520);
+  let cbCls = "cb"; if(done) cbCls += " on"; else if(partial) cbCls += " partial";
+  let h = `<div class="task ${done?'done':''}" style="--tdelay:${delay}ms" data-task="${t.id}">`;
+  h += `<button class="${cbCls}" data-cb="task" data-id="${t.id}" role="checkbox" aria-checked="${done}" aria-label="${t.name}">${CHECK_SVG}</button>`;
+  h += `<div class="task-body">`;
+  if(opt.showClient && t._client) h += `<div class="client-tag">${t._client}</div>`;
+  h += `<div class="task-top"><span class="task-name">${t.name}</span><span class="badges">${badgesFor(t)}</span></div>`;
+  if(t.note) h += `<div class="task-note">${t.note}</div>`;
+  if(t.subs){
+    h += `<div class="subs">`;
+    t.subs.forEach(s => { const sd = !!state[s.id];
+      h += `<div class="sub ${sd?'done':''}" data-sub-row="${s.id}"><button class="cb sm ${sd?'on':''}" data-cb="sub" data-id="${s.id}" data-parent="${t.id}" role="checkbox" aria-checked="${sd}" aria-label="${s.name}">${CHECK_SVG}</button><span class="sub-name">${s.name}</span></div>`; });
+    h += `</div>`;
+  }
+  h += `</div></div>`;
+  return h;
+}
+function allClear(){ return `<div class="allclear"><b>All clear.</b>Every step in this view is done.</div>`; }
+function warnSvg(){ return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
+
+/* ============ INTERACTION ============ */
+function wire(scope){
+  scope.querySelectorAll("[data-cb]").forEach(btn => {
+    btn.addEventListener("click", () => onToggle(btn));
+    btn.addEventListener("keydown", e => { if(e.key===" "||e.key==="Enter"){ e.preventDefault(); onToggle(btn); } });
+  });
+  const hb = scope.querySelector("#hbar");
+  if(hb){ const pr = (active==="today") ? progressOf(todayLeaves()) : progressOf(clientLeaves(CLIENTS.find(x=>x.id===active))); requestAnimationFrame(() => { hb.style.width = pr.pct*100 + "%"; }); }
+}
+function applyMuts(obj, muts){ muts.forEach(m => { if(m.val) obj[m.id] = true; else delete obj[m.id]; }); }
+
+async function onToggle(btn){
+  const id = btn.dataset.id; let muts = [];
+  if(btn.dataset.cb === "task"){
+    const t = allTasks().find(x => x.id === id);
+    if(t.subs && t.subs.length){ const nv = !taskDone(t); t.subs.forEach(s => muts.push({id:s.id, val:nv})); }
+    else muts.push({id, val: !state[id]});
+  } else muts.push({id, val: !state[id]});
+  
+  applyMuts(state, muts); // Update interface instantly
+  refreshMainInPlace(); renderNav();
+  
+  // Push live update to the cloud
+  lastLocal = Date.now(); saving = true; setSync("saving", "Saving to cloud...");
+  const latest = await Store.load();
+  applyMuts(latest, muts);
+  const ok = await Store.save(latest);
+  state = latest; lastSerialized = JSON.stringify(latest); saving = false;
+  refreshMainInPlace(); renderNav();
+  setSync(ok ? "saved" : "", ok ? "Cloud synced ✓" : "Offline — saved locally");
+  if(ok) setTimeout(() => setSync("saved", "Live Shared Board"), 1500);
+}
+
+// Background poller keeps everyone viewing the same live data
+async function poll(){
+  if(saving || Date.now() - lastLocal < 2500) return;
+  const latest = await Store.load();
+  const ser = JSON.stringify(latest);
+  if(ser !== lastSerialized){ 
+    state = latest; lastSerialized = ser; 
+    refreshMainInPlace(); renderNav(); 
+    setSync("saved", "Updated by teammate"); 
+    setTimeout(() => setSync("saved", "Live Shared Board"), 1600); 
+  }
+}
+
+function refreshMainInPlace(){
+  const wrap = document.getElementById("wrap");
+  wrap.querySelectorAll("[data-task]").forEach(row => {
+    const t = allTasks().find(x => x.id === row.dataset.task);
+    const done = taskDone(t), partial = taskPartial(t);
+    row.classList.toggle("done", done);
+    const cb = row.querySelector('[data-cb="task"]');
+    cb.classList.toggle("on", done); cb.classList.toggle("partial", !done && partial); cb.setAttribute("aria-checked", done);
+  });
+  wrap.querySelectorAll("[data-sub-row]").forEach(sr => {
+    const sd = !!state[sr.dataset.subRow];
+    sr.classList.toggle("done", sd);
+    const cb = sr.querySelector('[data-cb="sub"]'); cb.classList.toggle("on", sd); cb.setAttribute("aria-checked", sd);
+  });
+  const hb = wrap.querySelector("#hbar");
+  const pr = (active==="today") ? progressOf(todayLeaves()) : progressOf(clientLeaves(CLIENTS.find(x=>x.id===active)));
+  if(hb) hb.style.width = pr.pct*100 + "%";
+  const m = wrap.querySelector(".meta b"); if(m) m.textContent = pr.done;
+  if(pr.total && pr.done === pr.total && !wrap.querySelector(".allclear")) renderMain();
+}
+
+/* ============ MANUAL SAVE BUTTON ============ */
+document.getElementById("saveBtn").addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
+  if (btn.classList.contains("saved")) return;
+  
+  const ogHTML = btn.innerHTML;
+  btn.innerHTML = '<iconify-icon icon="solar:cloud-upload-linear" width="13" stroke-width="1.5"></iconify-icon> Saving';
+  
+  saving = true;
+  setSync("saving", "Saving to cloud...");
+  const ok = await Store.save(state);
+  saving = false;
+  
+  btn.classList.add("saved");
+  btn.innerHTML = '<iconify-icon icon="solar:check-circle-linear" width="13" stroke-width="1.5"></iconify-icon> Saved';
+  setSync(ok ? "saved" : "", ok ? "Cloud synced ✓" : "Offline — saved locally");
+  
+  setTimeout(() => { 
+    btn.innerHTML = ogHTML; 
+    btn.classList.remove("saved"); 
+    setSync("saved", "Live Shared Board");
+  }, 2000);
+});
+
+/* ============ INIT ============ */
+(async function init(){
+  state = await Store.load();
+  lastSerialized = JSON.stringify(state);
+  
+  // Create shared cloud container if one doesn't exist yet
+  if(!bucketId) await Store.save(state);
+  
+  setSync("saved", "Live Shared Board");
+  renderNav(); renderMain();
+  setInterval(poll, 4000); // Check cloud every 4 seconds for teammate updates
+})();
+</script>
+</body>
+</html>

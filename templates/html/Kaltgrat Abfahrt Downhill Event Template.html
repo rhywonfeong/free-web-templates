@@ -1,0 +1,1240 @@
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KALTGRAT ABFAHRT · 84. Auflage</title>
+<meta name="description" content="The 84th running of the Kaltgrat downhill. 2 050 metres, 860 vertical, six named sections and one pitch at 85 per cent.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wdth,wght@50..150,100..900&amp;family=Archivo:ital,wdth,wght@0,62..125,100..900&amp;family=Martian+Mono:wdth,wght@75..112.5,100..800&amp;display=swap" rel="stylesheet">
+<style>
+/* ============================================================== TOKENS
+Three tiers, one direction. Components reference the semantic layer
+only, never a primitive and never a raw value. */
+:root{
+/* primitive */
+--night-900:#0B0E12; --night-800:#11151B; --night-700:#171C24;
+--snow-100:#EEF3F8;  --snow-300:#C2CBD6;  --snow-500:#8A94A2;
+--acid-500:#D7FF3E;  --acid-600:#B9E01F;  --warn-500:#FF6B3D;
+/* semantic */
+--ground:var(--night-900); --surface:var(--night-800); --surface-raised:var(--night-700);
+--text-primary:var(--snow-100); --text-secondary:var(--snow-300); --text-muted:var(--snow-500);
+--line:rgba(238,243,248,.14); --line-soft:rgba(238,243,248,.07);
+--action:var(--acid-500); --action-quiet:var(--acid-600); --alert:var(--warn-500);
+/* type · ratio 1.333, five steps, fluid with a rem term so browser zoom survives */
+--step--1:clamp(.8rem,.78rem+.1vw,.86rem);
+--step-0:clamp(1rem,.96rem+.2vw,1.125rem);
+--step-1:clamp(1.33rem,1.24rem+.45vw,1.5rem);
+--step-2:clamp(1.78rem,1.5rem+1.25vw,2.37rem);
+--step-3:clamp(2.37rem,1.75rem+3vw,4.2rem);
+/* space · 4 8 16 24 32 48 64 96, nothing else */
+--s-3xs:4px; --s-2xs:8px; --s-xs:16px; --s-sm:24px; --s-md:32px;
+--s-lg:48px; --s-xl:64px; --s-2xl:96px;
+--measure:66ch;
+--ease:cubic-bezier(.2,0,0,1);
+--dur:180ms;
+--radius-pill:999px; --radius-panel:16px; --radius-data:4px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%; overflow-x:clip}
+body{margin:0; background:var(--ground); color:var(--text-primary);
+font-family:Archivo,system-ui,sans-serif; font-size:var(--step-0); line-height:1.55;
+font-variant-numeric:tabular-nums; overflow-x:clip; -webkit-font-smoothing:antialiased}
+h1,h2,h3{margin:0; font-weight:800; letter-spacing:-.03em; line-height:.98;
+font-family:Anybody,Archivo,system-ui,sans-serif; font-stretch:85%}
+h2{font-size:var(--step-2)}
+p{margin:0; max-width:var(--measure)}
+img,svg{max-width:100%}
+button{font:inherit; color:inherit}
+.mono{font-family:"Martian Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+.label{font-family:"Martian Mono",ui-monospace,monospace; font-size:var(--step--1);
+letter-spacing:.2em; text-transform:uppercase; color:var(--text-muted)}
+.lede{font-size:var(--step-1); color:var(--text-secondary); line-height:1.5; margin-top:var(--s-sm)}
+.wrap{max-width:1280px; margin:0 auto; padding:0 var(--s-lg)}
+.rule{height:1px; background:var(--line); border:0; margin:0}
+:where(a,button,[tabindex]):focus-visible{outline:2px solid var(--action); outline-offset:2px; border-radius:var(--radius-data)}
+section{padding:var(--s-2xl) 0}
+.rv{opacity:0; transform:translateY(18px); animation:rv .5s var(--ease) forwards}
+@keyframes rv{to{opacity:1; transform:none}}
+.d1{animation-delay:.06s}.d2{animation-delay:.12s}.d3{animation-delay:.18s}.d4{animation-delay:.24s}
+.io{opacity:0; transform:translateY(22px); transition:opacity .5s var(--ease), transform .5s var(--ease)}
+.io.in{opacity:1; transform:none}
+@media (prefers-reduced-motion:reduce){
+html{scroll-behavior:auto}
+.rv,.io{animation:none !important; opacity:1 !important; transform:none !important; transition:none !important}
+*{animation-duration:.01ms !important; transition-duration:.01ms !important}
+}
+/* ========================================================= 01 · COVER
+Sequenced like an ad open. Timing beam, plate settle, wordmark mask-up per
+letter, athlete rise, corner ticks draw, furniture stagger, numbers count.
+One curve throughout, no bounce, and every step resolves under reduced motion. */
+.cover{position:relative; min-height:100svh; overflow:hidden; isolation:isolate; padding:0}
+/* 0.00s · a timing beam crosses the frame */
+.beam{position:absolute; z-index:4; left:0; top:0; height:2px; width:100%;
+background:linear-gradient(90deg, transparent, var(--action), transparent);
+transform:scaleX(0); transform-origin:left;
+animation:beam 1.15s var(--ease) both}
+@keyframes beam{
+0%{transform:scaleX(0); opacity:1}
+55%{transform:scaleX(1); transform-origin:left; opacity:1}
+56%{transform:scaleX(1); transform-origin:right}
+100%{transform:scaleX(0); transform-origin:right; opacity:0}
+}
+/* 0.15s · the plate settles, then breathes for as long as you stay */
+.cover__plate{position:absolute; inset:0; z-index:0;
+animation:drift 30s ease-in-out 2s infinite alternate}
+.cover__plate img{width:100%; height:100%; object-fit:cover; object-position:50% 42%;
+filter:saturate(.84) contrast(1.08) brightness(.74); will-change:transform; transform:translateZ(0);
+animation:plateIn 1.9s var(--ease) .15s both}
+@keyframes plateIn{from{opacity:0; transform:scale(1.14)} to{opacity:1; transform:scale(1)}}
+@keyframes drift{from{transform:scale(1)} to{transform:scale(1.05)}}
+.cover__plate::after{content:""; position:absolute; inset:0; background:
+linear-gradient(180deg, rgba(11,14,18,.72) 0%, rgba(11,14,18,.18) 40%, rgba(11,14,18,.96) 100%),
+linear-gradient(90deg, rgba(11,14,18,.72) 0%, rgba(11,14,18,0) 46%)}
+/* 0.55s · the wordmark masks up, letter by letter */
+.cover__type{position:absolute; z-index:1; left:0; right:0; top:42%; text-align:center; pointer-events:none}
+.cover__type h1{font-size:clamp(3.6rem,15.4vw,15rem); line-height:.82; letter-spacing:-.045em;
+font-stretch:112%; color:var(--snow-100); mix-blend-mode:screen; opacity:.93; overflow:hidden;
+padding-bottom:.06em}
+.cover__type h1 span{display:inline-block; transform:translateY(112%);
+animation:letterUp .78s var(--ease) both;
+animation-delay:calc(.55s + var(--i) * 55ms)}
+@keyframes letterUp{to{transform:translateY(0)}}
+/* 0.95s · the athlete arrives */
+.cover__racer{position:absolute; z-index:2; left:66%; bottom:-6%; width:min(58vw,860px);
+transform:translateX(-50%); animation:racerIn 1.15s var(--ease) .95s both}
+@keyframes racerIn{
+from{opacity:0; transform:translateX(-50%) translateY(70px) scale(1.05)}
+to{opacity:1; transform:translateX(-50%) translateY(0) scale(1)}
+}
+.cover__racer img{width:100%; height:auto; display:block; filter:drop-shadow(0 40px 60px rgba(0,0,0,.55))}
+.cover__grid{position:relative; z-index:3; min-height:100svh; display:grid;
+grid-template-rows:auto 1fr auto; padding:var(--s-md) var(--s-lg)}
+.cover__top{display:flex; justify-content:space-between; align-items:start; gap:var(--s-sm); flex-wrap:wrap}
+.cover__bottom{display:grid; grid-template-columns:1fr auto; gap:var(--s-md); align-items:end}
+.stamp{display:inline-flex; align-items:center; gap:var(--s-2xs); border:1px solid var(--line);
+padding:var(--s-3xs) var(--s-2xs); border-radius:var(--radius-data)}
+.stamp b{color:var(--action); font-weight:500}
+.meta{display:grid; gap:var(--s-3xs)}
+.meta dt{font-family:"Martian Mono",monospace; font-size:var(--step--1);
+letter-spacing:.2em; text-transform:uppercase; color:var(--text-muted)}
+.meta dd{margin:0; font-size:var(--step-1); font-weight:600; letter-spacing:-.01em}
+/* 1.25s · the corner ticks draw out from their corners */
+.reg{position:absolute; z-index:3; width:22px; height:22px; opacity:.5}
+.reg::before,.reg::after{content:""; position:absolute; background:var(--snow-100)}
+.reg::before{left:0; top:50%; width:100%; height:1px; transform:scaleX(0);
+animation:tick .5s var(--ease) 1.25s both}
+.reg::after{top:0; left:50%; height:100%; width:1px; transform:scaleY(0);
+animation:tickY .5s var(--ease) 1.32s both}
+@keyframes tick{to{transform:scaleX(1)}}
+@keyframes tickY{to{transform:scaleY(1)}}
+.reg--tl{top:var(--s-sm); left:var(--s-sm)} .reg--tr{top:var(--s-sm); right:var(--s-sm)}
+.reg--bl{bottom:var(--s-sm); left:var(--s-sm)} .reg--br{bottom:var(--s-sm); right:var(--s-sm)}
+/* 1.35s onward · the furniture, one item at a time */
+.ci{opacity:0; transform:translateY(16px); animation:ci .62s var(--ease) both;
+animation-delay:calc(1.35s + var(--i,0) * 90ms)}
+@keyframes ci{to{opacity:1; transform:none}}
+.cover .rule{transform:scaleX(0); transform-origin:left;
+animation:ruleIn .85s var(--ease) 1.3s both}
+@keyframes ruleIn{to{transform:scaleX(1)}}
+@media (prefers-reduced-motion:reduce){
+.beam{display:none}
+.cover__plate,.cover__plate img,.cover__type h1 span,.cover__racer,
+.reg::before,.reg::after,.ci,.cover .rule{animation:none !important;
+opacity:1 !important; transform:none !important}
+.cover__racer{transform:translateX(-50%) !important}
+}
+/* ========================================================== 02 · FACE */
+.face{position:relative; height:620vh; padding:0}
+.face__sticky{position:sticky; top:0; height:100svh; overflow:hidden; isolation:isolate}
+.face__panes{position:absolute; inset:0}
+.pane{position:absolute; inset:0; opacity:0; transition:opacity .7s var(--ease)}
+.pane.is-on{opacity:1}
+.pane img{width:100%; height:100%; object-fit:cover;
+filter:saturate(.8) contrast(1.1) brightness(.72); transform:scale(1.06) translateZ(0); will-change:transform;
+transition:transform 1.6s var(--ease)}
+.pane.is-on img{transform:scale(1)}
+.face__scrim{position:absolute; inset:0; z-index:1; background:
+linear-gradient(180deg, rgba(11,14,18,.9) 0%, rgba(11,14,18,.15) 42%, rgba(11,14,18,.92) 100%),
+linear-gradient(90deg, rgba(11,14,18,.86) 0%, rgba(11,14,18,0) 58%)}
+.face__ui{position:relative; z-index:2; height:100svh; max-width:1280px; margin:0 auto;
+padding:var(--s-xl) var(--s-lg); display:grid; grid-template-rows:auto 1fr auto}
+.face__num{font-family:"Martian Mono",monospace; font-size:var(--step--1);
+letter-spacing:.2em; color:var(--action)}
+.face__name{font-size:clamp(3rem,9vw,8rem); line-height:.88; letter-spacing:-.045em;
+font-stretch:125%; margin-top:var(--s-xs)}
+.face__sub{color:var(--text-secondary); font-size:var(--step-1); margin-top:var(--s-sm); max-width:40ch}
+.face__mid{align-self:center}
+.face__foot{display:flex; gap:var(--s-xl); align-items:end; flex-wrap:wrap}
+.face__stat{display:grid; gap:var(--s-3xs)}
+.face__stat dt{font-family:"Martian Mono",monospace; font-size:var(--step--1);
+letter-spacing:.2em; text-transform:uppercase; color:var(--text-muted)}
+.face__stat dd{margin:0; font-size:var(--step-2); font-weight:700; letter-spacing:-.02em}
+.face__stat--hot dd{color:var(--action)}
+/* a real UI component: each segment's HEIGHT is its share of the 2 050 m */
+.index{position:absolute; z-index:2; right:var(--s-lg); top:50%; transform:translateY(-50%);
+height:min(58svh,470px); width:210px; display:flex; flex-direction:column; gap:var(--s-3xs)}
+.index__seg{position:relative; display:flex; align-items:center; gap:var(--s-xs);
+border-right:2px solid var(--line); padding-right:var(--s-xs);
+transition:border-color var(--dur) var(--ease)}
+.index__seg::after{content:""; position:absolute; right:-2px; top:0; width:2px; height:0;
+background:var(--action); transition:height .45s var(--ease)}
+.index__seg.is-past::after,.index__seg.is-on::after{height:100%}
+.index__seg span{font-family:"Martian Mono",monospace; font-size:11px; letter-spacing:.14em;
+text-transform:uppercase; color:var(--text-muted); margin-left:auto; text-align:right;
+transition:color var(--dur) var(--ease)}
+.index__seg.is-on span{color:var(--action)}
+/* ========================================================= 03 · TRACE */
+.trace{position:relative; isolation:isolate; overflow:hidden;
+border-top:1px solid var(--line); border-bottom:1px solid var(--line)}
+.trace__ice{position:absolute; inset:0; z-index:0}
+.trace__ice img{width:100%; height:100%; object-fit:cover;
+filter:saturate(.22) brightness(.46) contrast(1.06); will-change:transform; transform:translateZ(0)}
+.trace__ice::after{content:""; position:absolute; inset:0; background:
+linear-gradient(180deg, rgba(11,14,18,.92) 0%, rgba(11,14,18,.74) 45%, rgba(11,14,18,.94) 100%)}
+.trace > .wrap{position:relative; z-index:1}
+.trace__head{display:grid; grid-template-columns:auto 1fr; gap:var(--s-2xl); align-items:end}
+.trace__key{display:flex; gap:var(--s-lg); align-self:end}
+.trace__key div{display:grid; gap:var(--s-3xs)}
+.trace__key dt{font-family:"Martian Mono",monospace; font-size:var(--step--1);
+letter-spacing:.2em; text-transform:uppercase; color:var(--text-muted)}
+.trace__key dd{margin:0; font-family:"Martian Mono",monospace; font-size:var(--step-1); font-weight:500}
+.trace__key .hot{color:var(--action)}
+/* the chart breaks the container and runs the full width of the viewport */
+.chart{margin:var(--s-xl) 0 0; padding:0}
+.chart svg{width:100%; height:auto; display:block}
+.chart__line{stroke-dasharray:2600; stroke-dashoffset:2600; transition:stroke-dashoffset 1.6s var(--ease)}
+.chart.in .chart__line{stroke-dashoffset:0}
+.chart figcaption{margin-top:var(--s-sm); color:var(--text-muted); font-size:var(--step--1)}
+/* ========================================================== 04 · SPEC
+The kit laid out and shot once, then interrogated. Hotspots sit on the real
+objects; the popup assembles rather than appears. */
+.kit{position:relative; margin-top:var(--s-xl); overflow:hidden; background:var(--night-900);
+width:100%; margin-left:0}
+.kit > img{width:100%; display:block; filter:contrast(1.06) brightness(.96);
+will-change:transform; transform:translateZ(0)}
+/* the ground colour bleeds in at the edges so the photograph joins the page */
+.kit::after{content:""; position:absolute; inset:0; pointer-events:none; background:
+linear-gradient(90deg, var(--ground) 0%, rgba(11,14,18,0) 12%, rgba(11,14,18,0) 88%, var(--ground) 100%),
+linear-gradient(180deg, var(--ground) 0%, rgba(11,14,18,0) 14%, rgba(11,14,18,0) 86%, var(--ground) 100%)}
+.hs{position:absolute; left:var(--x); top:var(--y); transform:translate(-50%,-50%);
+width:44px; height:44px; padding:0; border:0; background:none; cursor:pointer;
+display:grid; place-items:center}
+.hs__ring{position:absolute; inset:0; border:1px solid rgba(215,255,62,.45);
+border-radius:var(--radius-pill); transform:scale(.62);
+transition:transform .28s var(--ease), border-color .28s var(--ease), opacity .28s var(--ease)}
+.hs__dot{width:6px; height:6px; border-radius:var(--radius-pill); background:var(--action);
+box-shadow:0 0 0 4px rgba(215,255,62,.14); transition:transform .28s var(--ease)}
+/* a quiet pulse so the page reads as live, one ring at a time */
+.hs::after{content:""; position:absolute; inset:0; border:1px solid rgba(215,255,62,.5);
+border-radius:var(--radius-pill); opacity:0; animation:ping 3.6s var(--ease) infinite;
+animation-delay:calc(var(--n) * .45s)}
+@keyframes ping{
+0%{transform:scale(.62); opacity:.7} 45%{transform:scale(1.25); opacity:0} 100%{opacity:0}}
+.hs:hover .hs__ring,.hs:focus-visible .hs__ring{transform:scale(1); border-color:var(--action)}
+.hs:hover .hs__dot,.hs:focus-visible .hs__dot{transform:scale(1.5)}
+.hs.is-on .hs__ring{transform:scale(1); border-color:var(--action)}
+/* the popup: clip up, scale in, brackets draw, rows stagger */
+.kitpop{position:absolute; z-index:5; width:620px; pointer-events:none;
+background:var(--night-800); border:1px solid var(--line);
+border-radius:var(--radius-data); padding:var(--s-sm); opacity:0; visibility:hidden;
+transform:translate(-50%,8px) scale(.94); clip-path:inset(0 0 100% 0)}
+.kitpop.is-on{visibility:visible; animation:popIn .34s var(--ease) forwards}
+@keyframes popIn{
+0%{opacity:0; transform:translate(-50%,8px) scale(.94); clip-path:inset(0 0 100% 0)}
+60%{opacity:1}
+100%{opacity:1; transform:translate(-50%,0) scale(1); clip-path:inset(0 0 0% 0)}}
+/* corner brackets, drawn */
+.kitpop b.br{position:absolute; width:12px; height:12px; border:1px solid var(--action); opacity:0}
+.kitpop.is-on b.br{animation:brIn .3s var(--ease) .14s forwards}
+@keyframes brIn{to{opacity:.9}}
+.kitpop b.br:nth-of-type(1){top:-1px; left:-1px; border-right:0; border-bottom:0}
+.kitpop b.br:nth-of-type(2){top:-1px; right:-1px; border-left:0; border-bottom:0}
+.kitpop b.br:nth-of-type(3){bottom:-1px; left:-1px; border-right:0; border-top:0}
+.kitpop b.br:nth-of-type(4){bottom:-1px; right:-1px; border-left:0; border-top:0}
+.kitpop__scan{position:absolute; left:0; top:0; height:1px; width:100%; background:var(--action);
+transform:scaleX(0); transform-origin:left}
+.kitpop.is-on .kitpop__scan{animation:scan .5s var(--ease) .06s forwards}
+@keyframes scan{to{transform:scaleX(1)}}
+.kitpop__grid{display:grid; grid-template-columns:300px 1fr; gap:var(--s-sm); align-items:start}
+.kitpop__left{display:grid; gap:var(--s-xs)}
+.kitpop__media{margin:0; border:1px solid var(--line-soft);
+border-radius:var(--radius-data); overflow:hidden; background:var(--night-900); aspect-ratio:16/9;
+position:relative}
+.kitpop__media::after{content:attr(data-cap); position:absolute; left:8px; bottom:6px;
+font-family:"Martian Mono",monospace; font-size:10px; letter-spacing:.14em;
+text-transform:uppercase; color:var(--text-muted); opacity:.75}
+.kitpop__media img,.kitpop__media video{width:100%; height:100%; object-fit:contain; display:block}
+.kitpop h3{font-size:var(--step-1); letter-spacing:-.02em}
+.kitpop__sub{font-family:"Martian Mono",monospace; font-size:var(--step--1);
+letter-spacing:.16em; text-transform:uppercase; color:var(--text-muted); margin-top:var(--s-3xs)}
+.kitpop dl{margin:var(--s-xs) 0 0; display:grid; gap:var(--s-3xs);
+border-top:1px solid var(--line-soft); padding-top:var(--s-xs)}
+.kitpop dl div{display:flex; justify-content:space-between; gap:var(--s-xs);
+align-items:baseline; opacity:0; transform:translateY(6px)}
+.kitpop dt{flex:0 1 auto; min-width:0}
+.kitpop dd{flex:0 0 auto; white-space:nowrap; text-align:right}
+.kitpop.is-on dl div{animation:rowIn .3s var(--ease) forwards;
+animation-delay:calc(.16s + var(--r) * 55ms)}
+@keyframes rowIn{to{opacity:1; transform:none}}
+.kitpop dt{color:var(--text-muted); font-size:var(--step--1)}
+.kitpop dd{margin:0; font-family:"Martian Mono",monospace; font-size:var(--step--1); font-weight:500}
+.kitpop .hot{color:var(--action)}
+.kitpop__note{margin:0; padding-top:var(--s-xs); border-top:1px solid var(--line-soft);
+font-size:var(--step--1); line-height:1.5; color:var(--text-muted); max-width:46ch; opacity:0}
+.kitpop.is-on .kitpop__note{animation:rowIn .3s var(--ease) .42s forwards}
+@media (prefers-reduced-motion:reduce){
+.hs::after{animation:none; opacity:0}
+.kitpop.is-on,.kitpop.is-on b.br,.kitpop.is-on dl div,.kitpop.is-on .kitpop__scan{
+animation:none !important; opacity:1 !important; transform:translate(-50%,-10px) !important;
+clip-path:none !important}
+.kitpop.is-on{transform:translate(-50%,0) !important}
+.kitpop.is-on dl div{transform:none !important}
+}
+/* ========================================================= 05 · START */
+.start__head{display:flex; justify-content:space-between; align-items:end; gap:var(--s-md); flex-wrap:wrap}
+.start__head h2{margin-top:var(--s-xs)}
+.start__filters{display:flex; gap:var(--s-2xs); flex-wrap:wrap}
+.chip{background:transparent; border:1px solid var(--line); color:var(--text-secondary);
+padding:var(--s-2xs) var(--s-xs); border-radius:var(--radius-pill); cursor:pointer;
+font-size:var(--step--1); transition:background var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease)}
+.chip:hover{border-color:var(--text-muted)}
+.chip.is-on{background:var(--action); border-color:var(--action); color:var(--night-900); font-weight:600}
+.sheet{margin-top:var(--s-lg); border-top:1px solid var(--line)}
+/* the athlete card: small, follows the row, flag plus four numbers */
+.start{position:relative}
+.row{cursor:default}
+.card{position:fixed; z-index:20; width:268px; pointer-events:none; opacity:0;
+transform:translateY(6px); transition:opacity .16s var(--ease), transform .16s var(--ease);
+background:var(--surface-raised); border:1px solid var(--line);
+border-radius:var(--radius-data); padding:var(--s-xs); box-shadow:0 18px 40px rgba(0,0,0,.55)}
+.card.is-on{opacity:1; transform:none}
+.card__top{display:flex; align-items:center; gap:var(--s-2xs)}
+.card__flag{width:26px; height:18px; flex:0 0 auto; border:1px solid var(--line-soft); display:block}
+.card__name{font-weight:600; letter-spacing:-.01em}
+.card__nat{margin-left:auto; font-family:"Martian Mono",monospace;
+font-size:var(--step--1); color:var(--text-muted)}
+.card__stats{display:grid; grid-template-columns:1fr 1fr; gap:var(--s-2xs) var(--s-xs);
+margin-top:var(--s-xs); padding-top:var(--s-xs); border-top:1px solid var(--line-soft)}
+.card__stats div{display:grid; gap:var(--s-3xs)}
+.card__stats dt{font-family:"Martian Mono",monospace; font-size:10px; letter-spacing:.16em;
+text-transform:uppercase; color:var(--text-muted)}
+.card__stats dd{margin:0; font-family:"Martian Mono",monospace; font-size:var(--step-0); font-weight:500}
+.card__stats .hot{color:var(--action)}
+.rest{margin-top:var(--s-sm); color:var(--text-muted); font-size:var(--step--1)}
+.rest b{color:var(--text-primary); font-weight:600}
+.sheet__head,.row{display:grid; grid-template-columns:64px 1fr 96px 96px; gap:var(--s-sm);
+padding:var(--s-2xs) 0; align-items:baseline}
+.sheet__head{font-family:"Martian Mono",monospace; font-size:var(--step--1); letter-spacing:.16em;
+text-transform:uppercase; color:var(--text-muted); padding:var(--s-xs) 0; border-bottom:1px solid var(--line)}
+.row{border-bottom:1px solid var(--line-soft)}
+.row:hover{background:var(--surface)}
+.row b{font-family:"Martian Mono",monospace; font-weight:500; color:var(--text-muted)}
+.row .nat,.row .st{font-family:"Martian Mono",monospace; color:var(--text-muted); font-size:var(--step--1)}
+.row.is-red b,.row.is-red .name{color:var(--action)}
+.row .seed{font-size:var(--step--1); color:var(--text-muted)}
+/* ========================================================== 06 · MTN */
+.mtn__intro{margin-bottom:var(--s-lg)}
+/* the stage is a viewport onto the photograph, and the photograph moves behind it */
+.mtn__stage{position:relative; width:100vw; margin-left:calc(50% - 50vw);
+height:min(78vh,760px); overflow:hidden; background:var(--night-900); isolation:isolate}
+.mtn__cam{position:absolute; inset:0; will-change:transform;
+transform:scale(var(--fz,1)) translate(var(--tx,0%), var(--ty,0%));
+transition:transform 1.15s cubic-bezier(.16,1,.3,1)}
+.mtn__cam img{width:100%; height:100%; display:block; object-fit:cover;
+filter:saturate(.42) brightness(.6) contrast(1.16)}
+.mtn__marks{position:absolute; inset:0}
+/* a marker sits at a real point on the piste and keeps its size while the camera zooms */
+.mk{position:absolute; left:var(--x); top:var(--y); width:0; height:0;
+transform:scale(calc(1 / var(--fz,1))); transition:transform 1.15s cubic-bezier(.16,1,.3,1)}
+.mk__dot{position:absolute; left:-5px; top:-5px; width:10px; height:10px; border-radius:50%;
+background:var(--action); box-shadow:0 0 0 4px rgba(215,255,62,.16)}
+.mk.is-gone .mk__dot{background:var(--alert); box-shadow:0 0 0 4px rgba(255,107,61,.16)}
+.mk__ring{position:absolute; left:-22px; top:-22px; width:44px; height:44px; border-radius:50%;
+border:1px solid rgba(215,255,62,.5); opacity:0; transform:scale(.5);
+transition:opacity .5s var(--ease), transform .5s var(--ease)}
+.mk.is-on .mk__ring{opacity:1; transform:scale(1)}
+.mk__id{position:absolute; left:14px; top:-9px; font-family:"Martian Mono",monospace;
+font-size:11px; letter-spacing:.12em; color:var(--snow-100); opacity:.55;
+transition:opacity .4s var(--ease)}
+.mk.is-on .mk__id{opacity:1}
+/* everything but the focused point falls away */
+.mtn__spot{position:absolute; inset:0; pointer-events:none; z-index:1;
+background:radial-gradient(circle at var(--sx,50%) var(--sy,50%), rgba(11,14,18,0) 0 14%,
+rgba(11,14,18,.5) 38%, rgba(11,14,18,.86) 78%);
+opacity:0; transition:opacity .9s var(--ease), background 1.15s cubic-bezier(.16,1,.3,1)}
+.mtn__stage.is-live .mtn__spot{opacity:1}
+/* a measuring frame, drawn once the camera settles */
+.mtn__frame{position:absolute; left:var(--sx,50%); top:var(--sy,50%);
+width:min(46vw,520px); height:min(30vh,300px);
+transform:translate(-50%,-50%); pointer-events:none; z-index:2; opacity:0;
+transition:opacity .5s var(--ease) .35s, left 1.15s cubic-bezier(.16,1,.3,1),
+top 1.15s cubic-bezier(.16,1,.3,1)}
+.mtn__stage.is-live .mtn__frame{opacity:.7}
+.mtn__frame i{position:absolute; width:18px; height:18px; border:1px solid var(--action)}
+.mtn__frame i:nth-child(1){left:0; top:0; border-right:0; border-bottom:0}
+.mtn__frame i:nth-child(2){right:0; top:0; border-left:0; border-bottom:0}
+.mtn__frame i:nth-child(3){left:0; bottom:0; border-right:0; border-top:0}
+.mtn__frame i:nth-child(4){right:0; bottom:0; border-left:0; border-top:0}
+.mtn__hud{position:absolute; z-index:3; left:var(--s-md); top:var(--s-md); display:flex;
+gap:var(--s-sm); font-size:11px; letter-spacing:.14em; color:var(--text-muted); opacity:0;
+transition:opacity .6s var(--ease)}
+.mtn__stage.is-live .mtn__hud{opacity:.85}
+.panel{position:absolute; z-index:3; left:var(--s-md); bottom:var(--s-md); width:min(430px,64%);
+background:rgba(11,14,18,.82); backdrop-filter:blur(14px);
+border:1px solid var(--line); border-radius:var(--radius-data); padding:var(--s-sm);
+clip-path:inset(0 0 100% 0)}
+.mtn__stage.is-live .panel{animation:panelIn .6s var(--ease) forwards}
+@keyframes panelIn{to{clip-path:inset(0 0 0% 0)}}
+.panel__top{display:flex; justify-content:space-between; align-items:baseline; gap:var(--s-xs)}
+.panel h3{font-size:var(--step-1)}
+.panel__state{font-family:"Martian Mono",monospace; font-size:var(--step--1); color:var(--action)}
+.panel__state.is-gone{color:var(--alert)}
+.panel__meta{display:flex; gap:var(--s-sm); margin-top:var(--s-3xs); color:var(--text-muted);
+font-family:"Martian Mono",monospace; font-size:var(--step--1)}
+.panel p{margin-top:var(--s-2xs); color:var(--text-secondary); font-size:var(--step--1)}
+/* the rail replaces the old tab row: four rows that read as a list of places */
+.mtn__rail{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; margin-top:var(--s-md);
+background:var(--line-soft); border:1px solid var(--line-soft); border-radius:var(--radius-data);
+overflow:hidden}
+.zn{position:relative; display:grid; gap:var(--s-3xs); padding:var(--s-sm);
+background:var(--night-900); border:0; text-align:left; cursor:pointer; color:inherit;
+transition:background .4s var(--ease)}
+.zn:hover,.zn:focus-visible{background:var(--night-800)}
+.zn.is-on{background:var(--night-800)}
+.zn::after{content:""; position:absolute; left:0; right:0; top:0; height:2px;
+background:var(--action); transform:scaleX(0); transform-origin:left;
+transition:transform .5s var(--ease)}
+.zn.is-gone::after{background:var(--alert)}
+.zn.is-on::after{transform:scaleX(1)}
+.zn__id{font-family:"Martian Mono",monospace; font-size:11px; letter-spacing:.16em;
+color:var(--text-muted)}
+.zn__n{font-size:var(--step-0); font-weight:600; letter-spacing:-.01em}
+.zn__m{font-family:"Martian Mono",monospace; font-size:11px; color:var(--text-muted)}
+.zn.is-gone .zn__m{color:var(--alert)}
+@media (max-width:860px){
+.mtn__rail{grid-template-columns:repeat(2,1fr)}
+.mtn__stage{height:min(64vh,560px)}
+.panel{width:auto; right:var(--s-md)}
+.mtn__frame{width:74vw; height:26vh}
+}
+@media (prefers-reduced-motion:reduce){
+.mtn__cam,.mk{transition:none}
+.mtn__stage.is-live .panel{animation:none; clip-path:none}
+}
+/* ======================================================== 07 · ENTRY */
+.entry{position:relative; isolation:isolate; overflow:hidden}
+.entry__plate{position:absolute; inset:0; z-index:0}
+.entry__plate img{width:100%; height:100%; object-fit:cover; object-position:50% 60%;
+filter:saturate(.7) brightness(.5); will-change:transform; transform:translateZ(0)}
+.entry__plate::after{content:""; position:absolute; inset:0; background:
+linear-gradient(180deg, var(--ground) 0%, rgba(11,14,18,.82) 34%, rgba(11,14,18,.94) 100%)}
+.entry .wrap{position:relative; z-index:1}
+.entry h2{margin-top:var(--s-xs)}
+.waves{display:grid; grid-template-columns:repeat(3,1fr); gap:var(--s-sm); margin-top:var(--s-xl)}
+.wave{border:1px solid var(--line); border-radius:var(--radius-panel); padding:var(--s-md);
+display:grid; gap:var(--s-xs); align-content:start; background:var(--surface)}
+.wave header{display:flex; justify-content:space-between; gap:var(--s-xs);
+font-family:"Martian Mono",monospace; font-size:var(--step--1);
+color:var(--text-muted); letter-spacing:.12em; text-transform:uppercase}
+.wave__price{font-size:var(--step-2); font-weight:600; letter-spacing:-.02em}
+.wave__note{color:var(--text-secondary); font-size:var(--step--1)}
+.wave.is-live{border-color:var(--action); background:var(--surface-raised)}
+.wave.is-live .wave__state{color:var(--action)}
+.wave.is-gone{position:relative; overflow:hidden; border-color:var(--line-soft)}
+.wave.is-gone .wave__price{color:var(--text-muted)}
+.wave.is-gone .wave__state{color:var(--alert)}
+.wave.is-gone::after{content:""; position:absolute; inset:0; pointer-events:none;
+background:repeating-linear-gradient(-45deg, transparent 0 10px, rgba(255,107,61,.07) 10px 20px)}
+.btn{margin-top:var(--s-2xs); border:1px solid var(--line); background:transparent;
+padding:var(--s-xs) var(--s-sm); border-radius:var(--radius-pill); cursor:pointer;
+transition:background var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease)}
+.btn:hover:not(:disabled){border-color:var(--text-primary)}
+.btn:disabled{opacity:.5; cursor:not-allowed}
+.btn--go{background:var(--action); border-color:var(--action); color:var(--night-900); font-weight:600}
+.btn--go:hover{background:var(--action-quiet); border-color:var(--action-quiet)}
+.foot{border-top:1px solid var(--line); padding:var(--s-lg) 0}
+.foot__grid{display:flex; justify-content:space-between; gap:var(--s-sm); flex-wrap:wrap;
+color:var(--text-muted); font-size:var(--step--1)}
+.foot strong{color:var(--text-primary)}
+@media (max-width:1100px){
+.spec__grid,.mtn__grid{grid-template-columns:1fr}
+.face__stage{grid-template-columns:200px 1fr; gap:var(--s-lg)}
+.waves{grid-template-columns:1fr}
+}
+@media (max-width:900px){
+.wrap{padding:0 var(--s-sm)}
+.cover__top{gap:var(--s-2xs)}
+.cover__top .mono{display:none}
+.cover__top .label{letter-spacing:.1em; font-size:11px}
+/* the athlete moves right and down so the data column stays clear, and the
+data sits on its own scrim so it reads over whatever is behind it */
+.cover__racer{width:132vw; left:76%; bottom:-1%}
+.cover__bottom{position:relative; margin:0 calc(var(--s-sm) * -1) calc(var(--s-sm) * -1);
+padding:var(--s-sm); background:linear-gradient(180deg, rgba(11,14,18,0) 0%, rgba(11,14,18,.86) 34%, rgba(11,14,18,.96) 100%)}
+.cover__bottom > div:first-child > div{gap:var(--s-sm) var(--s-md) !important}
+.meta dd{font-size:var(--step-0)}
+.cover__grid{padding:var(--s-sm)}
+.cover__bottom{grid-template-columns:1fr}
+.cover__racer{width:112vw; left:58%; bottom:-4%}
+.cover__type{top:28%}
+.face{height:auto}
+.face__sticky{position:static; height:auto; padding:var(--s-xl) var(--s-sm)}
+.face__stage{grid-template-columns:1fr}
+.profile{display:none}
+.face__item{opacity:1; border-color:var(--action)}
+.sheet__head,.row{grid-template-columns:44px 1fr 64px}
+.sheet__head span:nth-child(4),.row .st{display:none}
+}
+</style>
+<script src="https://cdn.tailwindcss.com"></script></head>
+<body>
+
+<!-- ==================================================== 01 · COVER -->
+<header class="cover">
+  <span class="beam" aria-hidden="true"></span>
+  <div class="cover__plate"><img src="https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/face.webp" alt="The Kaltgrat piste at dawn, seen from below the finish."></div>
+  <div class="cover__type"><h1 id="wordmark">KALTGRAT</h1></div>
+  <div class="cover__racer"><img src="https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/racer.png" alt="A downhill racer in a full aerodynamic tuck."></div>
+  <span class="reg reg--tl"></span><span class="reg reg--tr"></span>
+  <span class="reg reg--bl"></span><span class="reg reg--br"></span>
+  <div class="cover__grid">
+    <div class="cover__top">
+      <div class="label ci" style="--i:0">Kaltgrat&nbsp;·&nbsp;Abfahrt&nbsp;·&nbsp;84.&nbsp;Auflage</div>
+      <div class="label mono ci" style="--i:1">FIS&nbsp;WC&nbsp;/&nbsp;DH&nbsp;/&nbsp;KGT&nbsp;·&nbsp;Doc&nbsp;84-01</div>
+    </div>
+    <div></div>
+    <div class="cover__bottom">
+      <div>
+        <hr class="rule">
+        <div style="display:flex; flex-wrap:wrap; gap:var(--s-lg); margin-top:var(--s-sm)">
+          <dl class="meta ci" style="--i:2"><dt>Date</dt><dd>17 January</dd></dl>
+          <dl class="meta ci" style="--i:3"><dt>Starters</dt><dd data-to="68"></dd></dl>
+          <dl class="meta ci" style="--i:4"><dt>Vertical</dt><dd data-to="860" data-suffix=" m"></dd></dl>
+          <dl class="meta ci" style="--i:5"><dt>Course</dt><dd data-to="2050" data-suffix=" m" data-group="1"></dd></dl>
+          <dl class="meta ci" style="--i:6"><dt>Steepest</dt><dd data-to="85" data-suffix=" %"></dd></dl>
+        </div>
+      </div>
+      <div class="label mono ci" style="--i:7"><span class="stamp">Start <b>11:30</b></span></div>
+    </div>
+  </div>
+</header>
+
+<!-- ================================================= 02 · THE FACE -->
+<section class="face" id="face" aria-label="The six named sections of the Kaltgrat course">
+  <div class="face__sticky">
+    <div class="face__panes" id="panes"></div>
+    <div class="face__scrim"></div>
+    <div class="index" id="index" aria-hidden="true"></div>
+    <div class="face__ui">
+      <div>
+        <div class="label">The face</div>
+      </div>
+      <div class="face__mid">
+        <h2 class="face__name" id="fName">Der Start</h2>
+        <p class="face__sub" id="fNote">A standing start straight onto injected ice.</p>
+      </div>
+      <div class="face__foot">
+        <dl class="face__stat"><dt>Length</dt><dd id="fLen">240 m</dd></dl>
+        <dl class="face__stat face__stat--hot"><dt>Gradient</dt><dd id="fGrad">42%</dd></dl>
+        <dl class="face__stat"><dt>Entry speed</dt><dd id="fSpd">0 km/h</dd></dl>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================ 03 · THE TRACE -->
+<section class="trace" aria-labelledby="trace-h">
+  <div class="trace__ice"><img src="https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/ice.webp" alt="" aria-hidden="true"></div>
+  <div class="wrap">
+    <div class="trace__head">
+      <div>
+        <div class="label">The trace</div>
+        <h2 id="trace-h">The winning run, plotted.</h2>
+      </div>
+      <dl class="trace__key">
+        <div><dt>Time</dt><dd>1:11.84</dd></div>
+        <div><dt>Average</dt><dd>103 km/h</dd></div>
+        <div><dt>Peak</dt><dd class="hot">142 km/h</dd></div>
+        <div><dt>Airborne</dt><dd>4.1 s</dd></div>
+      </dl>
+    </div>
+    <figure class="chart io" id="chart">
+      <svg viewBox="0 0 1200 460" preserveAspectRatio="none" role="img" aria-label="Speed against distance, peaking at 142 kilometres per hour in the Zielschuss.">
+        <g id="chartGrid"></g><g id="chartBands"></g>
+        <path id="speedPath" class="chart__line" fill="none" stroke="#D7FF3E" stroke-width="3" vector-effect="non-scaling-stroke" d="M80 392 C 150 340, 190 262, 240 200 C 300 128, 330 158, 370 214 C 400 258, 430 206, 470 172 C 540 112, 610 126, 690 154 C 760 180, 800 154, 860 124 C 930 90, 1000 66, 1120 56"></path>
+        <g id="chartMarks"></g>
+      </svg>
+    </figure>
+    <p class="lede" style="margin-top:var(--s-md)">It peaks entering the Zielschuss, where the
+      course stops asking questions and simply requires that nobody moves.</p>
+  </div>
+</section>
+
+<!-- ================================================= 04 · THE SPEC -->
+<section class="spec" aria-labelledby="spec-h">
+  <div class="wrap">
+    <div class="label">Equipment</div>
+    <h2 id="spec-h">What is allowed down this face.</h2>
+    <p class="lede">Eight things, measured in the start hut on race morning. Nothing here is a
+      guideline, and a suit that reads under thirty is withdrawn rather than adjusted.</p>
+
+    <div class="kit io" id="kit">
+      <img src="https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/kit-lay.webp" alt="Downhill racing equipment laid out and photographed from above.">
+      <div class="kitpop" id="kitpop" role="tooltip" aria-live="polite"></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- =========================================== 05 · THE START LIST -->
+<section class="start" aria-labelledby="start-h">
+  <div class="wrap">
+    <div class="start__head">
+      <div><div class="label">Start list</div>
+        <h2 id="start-h">Sixty-eight down the same ice.</h2></div>
+      <div class="label mono">Red group · first fifteen</div>
+    </div>
+    <div class="sheet">
+      <div class="sheet__head"><span>Bib</span><span>Athlete</span><span>Nation</span><span>Start</span></div>
+      <div id="sheetBody"></div>
+    </div>
+    <div class="card" id="card" role="tooltip" aria-hidden="true"></div>
+    <p class="rest">And <b>53 more</b>, seeded on FIS points and drawn in reverse order. The red
+      group runs first because the ice is only ever this good once.</p>
+  </div>
+</section>
+
+<!-- ============================================= 06 · THE MOUNTAIN -->
+<section class="mtn" aria-labelledby="mtn-h">
+  <div class="wrap mtn__intro">
+    <div class="label">The mountain</div>
+    <h2 id="mtn-h">Where to stand.</h2>
+    <p class="lede">Four zones on the face and one of them is already gone. Gondola times are from
+      the village station. First lift 07:20.</p>
+  </div>
+
+  <div class="mtn__stage io" id="mtnStage">
+    <div class="mtn__cam" id="mtnCam">
+      <img src="https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/aerial.webp" alt="Aerial view of the Kaltgrat face, the piste running through spruce forest.">
+      <div class="mtn__marks" id="mtnMarks"></div>
+    </div>
+    <div class="mtn__spot" aria-hidden="true"></div>
+    <div class="mtn__frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="mtn__hud mono" aria-hidden="true">
+      <span id="hudAlt">1 840 m</span><span id="hudPos">47.0412 N · 12.7188 E</span>
+    </div>
+    <div class="panel" id="zonePanel" role="status" aria-live="polite"></div>
+  </div>
+
+  <div class="wrap">
+    <div class="mtn__rail" role="group" aria-label="Choose a spectator zone" id="zoneTabs"></div>
+  </div>
+</section>
+
+<!-- ==================================================== 07 · ENTRY -->
+<section class="entry" aria-labelledby="entry-h">
+  <div class="entry__plate"><img src="https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/arena.webp" alt="The Kaltgrat finish arena at dusk, crowd along the barriers."></div>
+  <div class="wrap">
+    <div class="label">Entry</div>
+    <h2 id="entry-h">Three waves. One is already gone.</h2>
+    <div class="waves">
+      <article class="wave is-gone io">
+        <header><span>Wave 01</span><span class="wave__state">Sold out</span></header>
+        <p class="wave__price mono">CHF 45</p>
+        <p class="wave__note">Finish arena, standing. Released 12 September and gone in nine minutes.</p>
+        <button class="btn" disabled="">Sold out</button>
+      </article>
+      <article class="wave is-live io">
+        <header><span>Wave 02</span><span class="wave__state">On sale</span></header>
+        <p class="wave__price mono">CHF 68</p>
+        <p class="wave__note">Zielschuss bank and finish arena, with the gondola from the village
+          until 10:00.</p>
+        <button class="btn btn--go">Take a place · <span id="clock" class="mono">02:14:06</span></button>
+      </article>
+      <article class="wave io">
+        <header><span>Wave 03</span><span class="wave__state">14 January</span></header>
+        <p class="wave__price mono">CHF 68</p>
+        <p class="wave__note">Released only if the Zange holds. If the course is shortened this
+          wave does not open at all.</p>
+        <button class="btn" disabled="">Not yet</button>
+      </article>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap foot__grid">
+    <div><strong>KALTGRAT ABFAHRT</strong> · <span class="mono">84. Auflage · 17 January</span></div>
+    <div class="mono">Kaltgrat Rennverein · Doc 84-01 · Rev 12</div>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = (n, a = {}) => { const e = document.createElementNS(NS, n);
+    for (const k in a) e.setAttribute(k, a[k]); return e; };
+  const pad = n => String(n).padStart(2, '0');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* -------------------------------------------------- 01 · the hero open */
+  const wm = $('#wordmark');
+  if (wm) {
+    const txt = wm.textContent.trim();
+    wm.setAttribute('aria-label', txt);
+    wm.textContent = '';
+    [...txt].forEach((ch, i) => {
+      const sp = document.createElement('span');
+      sp.textContent = ch; sp.style.setProperty('--i', i);
+      sp.setAttribute('aria-hidden', 'true');
+      wm.appendChild(sp);
+    });
+  }
+  /* the numbers arrive counting, the way a title card would */
+  const group = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\u2009');
+  document.querySelectorAll('.cover [data-to]').forEach((node) => {
+    const to = +node.dataset.to, suf = node.dataset.suffix || '', grp = node.dataset.group === '1';
+    if (reduce) { node.textContent = (grp ? group(to) : to) + suf; return; }
+    node.textContent = '0' + suf;
+    const dur = 900, delay = 1500 + (+((node.closest('.ci') || {}).style?.getPropertyValue('--i') || 0)) * 90;
+    setTimeout(() => {
+      const t0 = performance.now();
+      const step = (now) => {
+        const t = Math.min(1, (now - t0) / dur);
+        const e = 1 - Math.pow(1 - t, 3);
+        const v = Math.round(to * e);
+        node.textContent = (grp ? group(v) : v) + suf;
+        if (t < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }, delay);
+  });
+
+  /* ---------------------------------------------- 02 · the six sections */
+  const SEC = [
+    {n:'Der Start',      img:'s1-start',      len:'240 m', grad:'42%', spd:'0 km/h',   note:'A standing start straight onto injected ice. Nine seconds to full speed.'},
+    {n:'Die Zange',      img:'s2-zange',      len:'310 m', grad:'85%', spd:'96 km/h',  note:'The steepest pitch in the sport. It has never been taken well, only survived.'},
+    {n:'Das Wasserloch', img:'s3-wasserloch', len:'180 m', grad:'31%', spd:'118 km/h', note:'The compression at the base of the Zange. Four point two g, measured.'},
+    {n:'Die Traverse',   img:'s4-traverse',   len:'620 m', grad:'18%', spd:'104 km/h', note:'Nine seconds of held tuck with no gates at all. The longest quiet on the course.'},
+    {n:'Die Kante',      img:'s5-kante',      len:'290 m', grad:'61%', spd:'121 km/h', note:'Sixty-eight metres of air off the lip, landing on a cambered right-hander.'},
+    {n:'Zielschuss',     img:'s6-zielschuss', len:'410 m', grad:'24%', spd:'142 km/h', note:'Peak speed. Nothing left to do but stay small and let it run.'},
+  ];
+  const ASSET_BASE = (document.querySelector('.cover__plate img')?.getAttribute('src') || 'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/x')
+        .replace(/[^/]+$/, '');
+  const LENS = [240, 310, 180, 620, 290, 410], TOTAL = 2050;
+  const panes = $('#panes'), index = $('#index');
+  SEC.forEach((sc, i) => {
+    const d = document.createElement('div');
+    d.className = 'pane' + (i === 0 ? ' is-on' : '');
+    d.innerHTML = '<img src="' + ASSET_BASE + sc.img + '.webp" alt="' + sc.n + '." loading="' +
+      (i ? 'lazy' : 'eager') + '" />';
+    panes.appendChild(d);
+    const seg = document.createElement('div');
+    seg.className = 'index__seg' + (i === 0 ? ' is-on' : '');
+    seg.style.flex = LENS[i] + ' 0 0';                 // height IS the share of 2 050 m
+    seg.innerHTML = '<span>' + sc.n + '</span>';
+    index.appendChild(seg);
+  });
+  const paneEls = Array.from(panes.children), segEls = Array.from(index.children);
+  const F = {n:$('#fName'), note:$('#fNote'), len:$('#fLen'), grad:$('#fGrad'), spd:$('#fSpd')};
+  const face = $('#face');
+  let cur = -1;
+  const paint = (i) => {
+    if (i === cur) return; cur = i; const sc = SEC[i];
+    paneEls.forEach((e, k) => e.classList.toggle('is-on', k === i));
+    segEls.forEach((e, k) => {
+      e.classList.toggle('is-on', k === i);
+      e.classList.toggle('is-past', k < i);
+    });
+    F.n.textContent = sc.n; F.note.textContent = sc.note;
+    F.len.textContent = sc.len; F.grad.textContent = sc.grad; F.spd.textContent = sc.spd;
+  };
+  {
+    const onScroll = () => {
+      const r = face.getBoundingClientRect();
+      const total = r.height - innerHeight;
+      if (total <= 0) { paint(0); return; }
+      const t = Math.min(1, Math.max(0, -r.top / total));
+      paint(Math.min(SEC.length - 1, Math.floor(t * SEC.length)));
+    };
+    addEventListener('scroll', onScroll, {passive:true});
+    addEventListener('resize', onScroll);
+    onScroll();
+  }
+
+  /* --------------------------------------------------------- 03 · trace */
+  const grid = $('#chartGrid'), bands = $('#chartBands'), marks = $('#chartMarks');
+  [0,40,80,120,160].forEach(v => {
+    const y = 400 - (v / 160) * 360;
+    grid.appendChild(el('line', {x1:80, y1:y, x2:1160, y2:y, stroke:'rgba(238,243,248,.09)'}));
+    const t = el('text', {x:46, y:y + 4, fill:'#8A94A2', 'font-size':'13',
+      'font-family':'Martian Mono, monospace'});
+    t.textContent = v; grid.appendChild(t);
+  });
+  const yl = el('text', {x:46, y:30, fill:'#8A94A2', 'font-size':'12',
+    'font-family':'Martian Mono, monospace'});
+  yl.textContent = 'km/h'; grid.appendChild(yl);
+  let acc = 0;
+  SEC.forEach((s, i) => {
+    const x0 = 80 + (acc / 2050) * 1080; acc += LENS[i];
+    const x1 = 80 + (acc / 2050) * 1080;
+    if (i % 2 === 0) bands.appendChild(el('rect', {x:x0, y:40, width:x1 - x0, height:360,
+      fill:'rgba(238,243,248,.028)'}));
+    const t = el('text', {x:(x0 + x1) / 2, y:428, fill:'#8A94A2', 'font-size':'12',
+      'text-anchor':'middle', 'font-family':'Martian Mono, monospace'});
+    t.textContent = s.n; bands.appendChild(t);
+  });
+  [['12.06',390],['21.44',470],['38.90',690],['52.17',860],['1:11.84',1120]].forEach(m => {
+    marks.appendChild(el('line', {x1:m[1], y1:40, x2:m[1], y2:400,
+      stroke:'rgba(215,255,62,.28)', 'stroke-dasharray':'3 4'}));
+    const t = el('text', {x:m[1], y:30, fill:'#D7FF3E', 'font-size':'13', 'text-anchor':'middle',
+      'font-family':'Martian Mono, monospace'});
+    t.textContent = m[0]; marks.appendChild(t);
+  });
+  marks.appendChild(el('circle', {cx:1120, cy:56, r:5, fill:'#D7FF3E'}));
+  const pk = el('text', {x:1106, y:96, fill:'#EEF3F8', 'font-size':'15', 'text-anchor':'end',
+    'font-family':'Martian Mono, monospace'});
+  pk.textContent = '142 km/h'; marks.appendChild(pk);
+
+  /* ------------------------------------------------- 04 · the kit hotspots */
+  /* positions read off the photograph itself, not guessed */
+  const KIT = [
+    {x:'50%', y:'24%', n:'Skis', s:'Downhill, pair', cap:'Base grind, race morning',
+     video:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/skis-360.mp4', poster:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/skis.webp',
+     r:[['Length, min','218 cm',1],['Side-cut radius','45 m min',0],['Waist','65-68 mm',0],
+        ['Base','sintered, race grind',0],['Binding plate','50 mm stack max',0],['Weight, pair','7.4 kg',0]],
+     note:'Measured at the start hut. A ski under length is withdrawn, not shortened to fit.'},
+    {x:'18%', y:'53%', n:'Boots', s:'Four buckle', cap:'Sole gauge, cold',
+     video:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/boots-360.mp4', poster:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/boots.webp',
+     r:[['Sole height, max','43 mm',1],['Flex','150',0],['Measured','cold, race morning',0],
+        ['Shell','one piece, no lifters',0],['Cuff canting','±1.5°',0]],
+     note:'Warm plastic reads thinner. Every boot is gauged before the athlete puts it on.'},
+    {x:'37%', y:'52%', n:'Helmet', s:'Hard shell', cap:'FIS mark, rear shell',
+     video:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/helmet-360.mp4', poster:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/helmet.webp',
+     r:[['Standard','FIS RH 2013',1],['Chin guard','fixed, one piece',0],['Vents','closed for downhill',0],
+        ['Shell','carbon over EPS',0],['Ear pads','sewn, not clipped',0],['Weight','1.42 kg',0]],
+     note:'The chin guard is one piece with the shell. Anything bolted on is refused at the gate.'},
+    {x:'47%', y:'58%', n:'Goggles', s:'Cylindrical', cap:'Double lens, vented frame',
+     video:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/goggles-360.mp4', poster:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/goggles.webp',
+     r:[['Lens','double, anti-fog',0],['Tint','mirrored + low light',0],['Retention','over the helmet',0],
+        ['Frame','vented, soft edge',0],['Spare carried','one, start hut',0]],
+     note:'Two pairs go up the hill. The face is in shadow to the Wasserloch and bright after it.'},
+    {x:'65%', y:'43%', n:'Poles', s:'Bent, carbon', cap:'Sweep at the grip',
+     video:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/poles-360.mp4', poster:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/poles.webp',
+     r:[['Length','135 cm',0],['Bend','swept to the body',0],['Basket','race, 45 mm',0],
+        ['Grip','moulded, no strap',0],['Tip','carbide, 4 mm',0]],
+     note:'Bent to sit inside the tuck. Straight poles cost frontal area and nothing else.'},
+    {x:'59%', y:'66%', n:'Race suit', s:'One piece', cap:'Weave, 40x magnification',
+     video:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/suit-360.mp4', poster:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/suit.webp',
+     r:[['Air permeability','30 l/m²/s min',1],['Measured at','three points',0],['Under suit','permitted, one layer',0],
+        ['Seams','bonded, no external tape',0],['Padding','hip and shin only',0]],
+     note:'Under thirty and the suit is withdrawn rather than adjusted. There is no second measurement.'},
+    {x:'72%', y:'66%', n:'Back protector', s:'Mandatory', cap:'Segment overlap',
+     video:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/back-360.mp4', poster:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/back.webp',
+     r:[['Standard','EN 1621-2',1],['Worn','under the suit',0],['Checked','at the start gate',0],
+        ['Coverage','C7 to L5',0],['Segments','14, overlapping',0]],
+     note:'Checked by hand at the gate, over the suit, every run. It is the only item touched twice.'},
+    {x:'86%', y:'65%', n:'Gloves', s:'Leather palm', cap:'Knuckle guard, punch bar',
+     video:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/gloves-360.mp4', poster:'https://cdn.jsdelivr.net/gh/VanhDc/aura-assets@kaltgrat-v1/kaltgrat/gloves.webp',
+     r:[['Knuckle','hard guard',0],['Cuff','inside the sleeve',0],['Grip','punch bar rated',0],
+        ['Palm','goat, single panel',0],['Lining','none, for feel',0]],
+     note:'Rated to take a gate at ninety. The cuff goes inside the sleeve so it cannot scoop air.'},
+  ];
+  const kit = $('#kit'), pop = $('#kitpop');
+  if (reduce) KIT.forEach((k) => { if (k.video) { k.media = k.poster; k.video = null; } });
+  if (kit && pop) {
+    const showKit = (i, hs) => {
+      const k = KIT[i];
+      pop.innerHTML = '<span class="kitpop__scan"></span>' +
+        '<b class="br"></b><b class="br"></b><b class="br"></b><b class="br"></b>' +
+        '<div class="kitpop__grid"><div class="kitpop__left">' +
+        (k.video
+          ? '<figure class="kitpop__media" data-cap="' + (k.cap || '') + '"><video src="' + k.video + '" poster="' + k.poster +
+            '" autoplay muted loop playsinline preload="metadata"></video></figure>'
+          : k.media ? '<figure class="kitpop__media" data-cap="' + (k.cap || '') + '"><img src="' + k.media + '" alt="" /></figure>' : '') +
+        (k.note ? '<p class="kitpop__note">' + k.note + '</p>' : '') +
+        '</div><div class="kitpop__body"><h3>' + k.n + '</h3><div class="kitpop__sub">' + k.s + '</div><dl>' +
+        k.r.map((row, j) => '<div style="--r:' + j + '"><dt>' + row[0] + '</dt><dd' +
+          (row[2] ? ' class="hot"' : '') + '>' + row[1] + '</dd></div>').join('') + '</dl>' +
+        '</div>';
+      // place above the marker, clamped inside the photograph
+      const box = kit.getBoundingClientRect(), m = hs.getBoundingClientRect();
+      let left = m.left - box.left + m.width / 2;
+      const w = 620, pad = 12;
+      left = Math.max(w / 2 + pad, Math.min(box.width - w / 2 - pad, left));
+      pop.style.left = left + 'px';
+      pop.classList.remove('is-on');
+      pop.style.visibility = 'hidden'; pop.style.top = '0px';
+      const ph = pop.offsetHeight;                        // measure with content in
+      const markerY = m.top - box.top;
+      const above = markerY - ph - 18, below = markerY + 30;
+      // The popover must satisfy TWO constraints at once, and they are different:
+      // .kit clips to the photograph, so anything outside it is simply invisible; and the
+      // viewport clips to the screen. Clamp into the intersection of the two.
+      const vh = window.innerHeight, vpad = 10;
+      const lo = Math.max(vpad, vpad - box.top);
+      const hi = Math.min(box.height - ph - vpad, vh - vpad - ph - box.top);
+      const fits = (t) => t >= lo && t <= hi;
+      let top = fits(above) ? above : fits(below) ? below : (above < lo ? lo : below);
+      pop.style.top = (hi < lo ? lo : Math.min(Math.max(top, lo), hi)) + 'px';
+      pop.style.visibility = '';
+      void pop.offsetWidth; pop.classList.add('is-on');
+      hsEls.forEach((e, k2) => e.classList.toggle('is-on', k2 === i));
+    };
+    const hideKit = () => { pop.classList.remove('is-on'); hsEls.forEach(e => e.classList.remove('is-on')); };
+    const hsEls = KIT.map((k, i) => {
+      const b = document.createElement('button');
+      b.className = 'hs'; b.type = 'button';
+      b.style.setProperty('--x', k.x); b.style.setProperty('--y', k.y); b.style.setProperty('--n', i);
+      b.setAttribute('aria-label', k.n + ', ' + k.s);
+      b.innerHTML = '<span class="hs__ring"></span><span class="hs__dot"></span>';
+      b.addEventListener('mouseenter', () => showKit(i, b));
+      b.addEventListener('focus', () => showKit(i, b));
+      b.addEventListener('click', (e) => { e.preventDefault(); showKit(i, b); });
+      kit.appendChild(b);
+      return b;
+    });
+    kit.addEventListener('mouseleave', hideKit);
+    kit.addEventListener('focusout', (e) => { if (!kit.contains(e.relatedTarget)) hideKit(); });
+  }
+
+  /* ---------------------------------------------------- 05 · start list */
+  const NAMES = [
+    ['Marco Ritzel','SUI'],['Tobias Ehrenberger','AUT'],['Luca Ferrero','ITA'],['Aksel Fjeld','NOR'],
+    ['Jean-Baptiste Roux','FRA'],['Dominik Haas','AUT'],['Bryce Halloran','USA'],['Matthias Brunner','SUI'],
+    ['Erik Sandvik','NOR'],['Andrea Comelli','ITA'],['Rok Petric','SLO'],['Felix Wagner','GER'],
+    ['Sam Lachance','CAN'],['Gabriel Morand','FRA'],['Jonas Steiner','SUI'],['Peter Lindl','AUT'],
+    ['Nico Bergamin','ITA'],['Ole Kvamme','NOR'],['Tanner Reid','USA'],['Silvan Achermann','SUI'],
+    ['Theo Barrault','FRA'],['Lukas Reiner','AUT'],['Matic Zupan','SLO'],['Jan Hofstetter','SUI'],
+    ['Davide Ruggeri','ITA'],['Henrik Aasen','NOR'],['Cole Marchetti','USA'],['Moritz Kandler','GER'],
+    ['Elias Frei','SUI'],['Julien Perret','FRA'],['Christoph Brandl','AUT'],['Owen Pratt','CAN'],
+    ['Simone Baldi','ITA'],['Sindre Holt','NOR'],['Manuel Egger','AUT'],['Rafael Ott','SUI'],
+    ['Blaz Kern','SLO'],['Antoine Vallet','FRA'],['Tomas Hruby','CZE'],['Wyatt Dolan','USA'],
+    ['Fabio Menotti','ITA'],['Lars Nyheim','NOR'],['Sebastian Klar','GER'],['Noah Bissig','SUI'],
+    ['Cyprien Faure','FRA'],['Georg Steinlechner','AUT'],['Marc Devereux','CAN'],['Pietro Salvi','ITA'],
+    ['Even Rustad','NOR'],['Jonah Keller','USA'],['Robin Ammann','SUI'],['Zan Novak','SLO'],
+    ['Emile Chastain','FRA'],['Florian Pichler','AUT'],['Kasper Lunde','NOR'],['Diego Fantini','ITA'],
+    ['Milan Dvorak','CZE'],['Aaron Sutter','SUI'],['Hugo Delacroix','FRA'],['Benedikt Mayr','GER'],
+    ['Trevor Nash','USA'],['Stefan Url','AUT'],['Nils Berger','SUI'],['Loris Cattaneo','ITA'],
+    ['Hakon Vik','NOR'],['Quentin Vasseur','FRA'],['Miha Rebolj','SLO'],['Colton Reeve','CAN'],
+  ];
+  /* small, honest flags. Simplified where the real thing has fine detail. */
+  const FLAG = {
+    SUI:'<rect width="3" height="2" fill="#D52B1E"/><rect x="1.25" y=".4" width=".5" height="1.2" fill="#fff"/><rect x=".7" y=".95" width="1.6" height=".5" fill="#fff"/>',
+    AUT:'<rect width="3" height="2" fill="#ED2939"/><rect y=".667" width="3" height=".667" fill="#fff"/>',
+    ITA:'<rect width="3" height="2" fill="#009246"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#CE2B37"/>',
+    NOR:'<rect width="3" height="2" fill="#BA0C2F"/><rect x=".75" width=".5" height="2" fill="#fff"/><rect y=".75" width="3" height=".5" fill="#fff"/><rect x=".875" width=".25" height="2" fill="#00205B"/><rect y=".875" width="3" height=".25" fill="#00205B"/>',
+    FRA:'<rect width="3" height="2" fill="#002395"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#ED2939"/>',
+    USA:'<rect width="3" height="2" fill="#fff"/><g fill="#B22234"><rect width="3" height=".154"/><rect y=".308" width="3" height=".154"/><rect y=".615" width="3" height=".154"/><rect y=".923" width="3" height=".154"/><rect y="1.231" width="3" height=".154"/><rect y="1.538" width="3" height=".154"/><rect y="1.846" width="3" height=".154"/></g><rect width="1.2" height="1.077" fill="#3C3B6E"/>',
+    CAN:'<rect width="3" height="2" fill="#fff"/><rect width=".75" height="2" fill="#D80621"/><rect x="2.25" width=".75" height="2" fill="#D80621"/><path d="M1.5 .45 l.13 .34 .3-.13-.14 .35 .33.05-.28 .2 .12 .18-.34-.05.02 .45h-.24l.02-.45-.34 .05 .12-.18-.28-.2 .33-.05-.14-.35 .3 .13z" fill="#D80621"/>',
+    SLO:'<rect width="3" height="2" fill="#fff"/><rect y=".667" width="3" height=".667" fill="#0B4EA2"/><rect y="1.333" width="3" height=".667" fill="#D50000"/>',
+    GER:'<rect width="3" height="2" fill="#000"/><rect y=".667" width="3" height=".667" fill="#DD0000"/><rect y="1.333" width="3" height=".667" fill="#FFCE00"/>',
+    CZE:'<rect width="3" height="1" fill="#fff"/><rect y="1" width="3" height="1" fill="#D7141A"/><path d="M0 0 L1.5 1 L0 2Z" fill="#11457E"/>',
+  };
+  const flagSvg = (n) => '<svg class="card__flag" viewBox="0 0 3 2" role="img" aria-label="' + n +
+    '">' + (FLAG[n] || '<rect width="3" height="2" fill="#222932"/>') + '</svg>';
+
+  /* career numbers for the red group, in start order */
+  const STATS = [
+    [7,'21','2nd','143.8'],[3,'14','1st','141.2'],[2,'9','4th','142.6'],[5,'18','3rd','144.1'],
+    [1,'6','9th','140.4'],[9,'27','1st','145.0'],[0,'3','12th','139.8'],[4,'16','5th','142.9'],
+    [2,'11','7th','141.6'],[6,'19','2nd','143.3'],[1,'5','14th','140.1'],[0,'4','11th','139.2'],
+    [3,'12','6th','142.2'],[2,'8','8th','141.0'],[8,'24','1st','144.6'],
+  ];
+
+  const START = 11 * 3600 + 30 * 60, GAP = 80;
+  const ROWS = NAMES.map((p, i) => {
+    const bib = i + 1, s = START + i * GAP;
+    return {bib, name:p[0], nat:p[1], st: STATS[i] || null,
+      seed: bib <= 15 ? 'red' : bib <= 30 ? '2' : '3',
+      start: pad(Math.floor(s / 3600)) + ':' + pad(Math.floor(s / 60) % 60) + ':' + pad(s % 60)};
+  });
+  const body = $('#sheetBody');
+  const seedLabel = s => s === 'red' ? 'Red group' : s === '2' ? 'Second seed' : 'Third seed';
+  const draw = () => {
+    body.innerHTML = '';
+    ROWS.filter(r => r.seed === 'red').forEach(r => {
+      const d = document.createElement('div');
+      d.className = 'row' + (r.seed === 'red' ? ' is-red' : '');
+      d.tabIndex = 0;
+      d._row = r;
+      d.innerHTML = '<b>' + pad(r.bib) + '</b><span class="name">' + r.name +
+        '</span><span class="nat">' + r.nat + '</span><span class="st">' + r.start + '</span>';
+      body.appendChild(d);
+    });
+  };
+  draw();
+
+  /* hover card: flag, name, four numbers. Follows the row, never leaves the viewport. */
+  const card = $('#card');
+  const place = (x, y) => {
+    const w = 268, h = card.offsetHeight || 156;
+    card.style.left = Math.max(16, Math.min(innerWidth - w - 16, x + 20)) + 'px';
+    card.style.top  = Math.max(16, Math.min(innerHeight - h - 16, y - h / 2)) + 'px';
+  };
+  const showCard = (row, x, y) => {
+    const r = row._row; if (!r || !r.st) return;
+    const [wins, pod, best, top] = r.st;
+    card.innerHTML =
+      '<div class="card__top">' + flagSvg(r.nat) +
+      '<span class="card__name">' + r.name + '</span>' +
+      '<span class="card__nat">' + r.nat + '</span></div>' +
+      '<dl class="card__stats">' +
+      '<div><dt>World Cup wins</dt><dd>' + wins + '</dd></div>' +
+      '<div><dt>Podiums</dt><dd>' + pod + '</dd></div>' +
+      '<div><dt>Best here</dt><dd>' + best + '</dd></div>' +
+      '<div><dt>Top speed</dt><dd class="hot">' + top + '</dd></div></dl>';
+    card.classList.add('is-on'); card.setAttribute('aria-hidden', 'false');
+    place(x, y);
+  };
+  const hideCard = () => { card.classList.remove('is-on'); card.setAttribute('aria-hidden', 'true'); };
+  body.addEventListener('mouseover', (e) => {
+    const row = e.target.closest('.row'); if (!row) return;
+    showCard(row, e.clientX, e.clientY);
+  });
+  body.addEventListener('mousemove', (e) => {
+    if (card.classList.contains('is-on')) place(e.clientX, e.clientY);
+  });
+  body.addEventListener('mouseleave', hideCard);
+  body.addEventListener('focusin', (e) => {
+    const row = e.target.closest('.row');
+    if (row) { const b = row.getBoundingClientRect(); showCard(row, b.left + 240, b.top + b.height / 2); }
+  });
+  body.addEventListener('focusout', hideCard);
+  addEventListener('scroll', hideCard, {passive:true});
+
+  /* ------------------------------------------------------ 06 · the map */
+  /* Coordinates read off the photograph itself, on the snow, top of the run to the finish.
+     The previous set came from the removed SVG overlay and sat in the trees. */
+  const ZONES = [
+    {id:'D', n:'Traverse-Kanzel', cap:400,  gon:'34 min', x:24, y:30, alt:'1 840 m', pos:'47.0412 N · 12.7188 E',
+     state:'On sale',
+     note:'The quiet one. Nine seconds of tuck, no gates, and almost nobody standing here.'},
+    {id:'C', n:'Kante-Tribune',   cap:900,  gon:'26 min', x:52, y:33, alt:'1 612 m', pos:'47.0388 N · 12.7241 E',
+     state:'Sold out', gone:true,
+     note:'Head on to the jump. 68 metres of air, coming straight at you.'},
+    {id:'B', n:'Zielschuss-Bank', cap:1800, gon:'18 min', x:72, y:46, alt:'1 344 m', pos:'47.0361 N · 12.7296 E',
+     state:'On sale',
+     note:'Side on to the fastest point of the race. You hear them well before you see them.'},
+    {id:'A', n:'Zielarena',       cap:4200, gon:'12 min', x:88, y:68, alt:'1 090 m', pos:'47.0334 N · 12.7352 E',
+     state:'On sale',
+     note:'The last 400 metres and the podium. Loud, and the only zone with the finish clock.'},
+  ];
+  const stage = $('#mtnStage'), cam = $('#mtnCam'), mkWrap = $('#mtnMarks'),
+        panel = $('#zonePanel'), rail = $('#zoneTabs'),
+        hudAlt = $('#hudAlt'), hudPos = $('#hudPos');
+  if (stage && cam) {
+    const ZOOM = 2.35;
+    let current = -1, countTimer = null;
+
+    /* the capacity counts up rather than appearing, because the number is the point */
+    const countTo = (el, target) => {
+      clearInterval(countTimer);
+      if (reduce) { el.textContent = target.toLocaleString('en-GB').replace(/,/g, ' '); return; }
+      const t0 = performance.now(), dur = 700;
+      countTimer = setInterval(() => {
+        const k = Math.min(1, (performance.now() - t0) / dur);
+        const v = Math.round(target * (1 - Math.pow(1 - k, 3)));
+        el.textContent = v.toLocaleString('en-GB').replace(/,/g, ' ');
+        if (k === 1) clearInterval(countTimer);
+      }, 16);
+    };
+
+    const markEls = ZONES.map((z, i) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'mk' + (z.gone ? ' is-gone' : '');
+      b.style.setProperty('--x', z.x + '%'); b.style.setProperty('--y', z.y + '%');
+      b.setAttribute('aria-label', z.id + ', ' + z.n);
+      b.innerHTML = '<span class="mk__ring"></span><span class="mk__dot"></span>' +
+                    '<span class="mk__id mono">' + z.id + '</span>';
+      b.addEventListener('click', () => show(i));
+      mkWrap.appendChild(b);
+      return b;
+    });
+
+    const railEls = ZONES.map((z, i) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'zn' + (z.gone ? ' is-gone' : '');
+      b.innerHTML = '<span class="zn__id">' + z.id + '</span><span class="zn__n">' + z.n +
+        '</span><span class="zn__m">' + z.gon + ' · ' + z.state + '</span>';
+      b.addEventListener('click', () => show(i));
+      rail.appendChild(b);
+      return b;
+    });
+
+    function show(i) {
+      if (i === current) return;
+      current = i;
+      const z = ZONES[i];
+      /* move the photograph so this point sits in the middle of the frame, then push in.
+         translate is applied before scale, so the point lands centre and stays there. */
+      /* A translate of t% is applied before the scale, so it shifts the image by t% * ZOOM.
+         Past (ZOOM-1)/2 of the frame the photograph stops covering and its edge slides in,
+         which is what happened at zone A. Clamp, then put the spotlight wherever the marker
+         actually ended up rather than assuming it is centred. */
+      const lim = 100 * (ZOOM - 1) / (2 * ZOOM);
+      const tx = Math.max(-lim, Math.min(lim, 50 - z.x));
+      const ty = Math.max(-lim, Math.min(lim, 50 - z.y));
+      cam.style.setProperty('--fz', ZOOM);
+      cam.style.setProperty('--tx', tx + '%');
+      cam.style.setProperty('--ty', ty + '%');
+      const sx = 50 + (z.x + tx - 50) * ZOOM, sy = 50 + (z.y + ty - 50) * ZOOM;
+      stage.style.setProperty('--sx', sx + '%');
+      stage.style.setProperty('--sy', sy + '%');
+      markEls.forEach((m, k) => { m.style.setProperty('--fz', ZOOM); m.classList.toggle('is-on', k === i); });
+      railEls.forEach((r, k) => r.classList.toggle('is-on', k === i));
+      hudAlt.textContent = z.alt; hudPos.textContent = z.pos;
+      panel.innerHTML = '<div class="panel__top"><h3>' + z.id + ' · ' + z.n +
+        '</h3><span class="panel__state' + (z.gone ? ' is-gone' : '') + '">' + z.state +
+        '</span></div><div class="panel__meta"><span><b id="znCap">0</b> places</span><span>' +
+        z.gon + ' by gondola</span></div><p>' + z.note + '</p>';
+      countTo($('#znCap'), z.cap);
+      stage.classList.remove('is-live'); void stage.offsetWidth; stage.classList.add('is-live');
+    }
+
+    /* open on the finish arena the first time the section is reached */
+    new IntersectionObserver((es, o) => {
+      es.forEach((e) => { if (e.isIntersecting) { show(3); o.disconnect(); } });
+    }, { threshold: .35 }).observe(stage);
+  }
+
+  /* ---------------------------------------------------- 07 · the clock */
+  const clock = $('#clock');
+  if (clock && !reduce) {
+    let t = 2 * 3600 + 14 * 60 + 6;
+    setInterval(() => { t = Math.max(0, t - 1);
+      clock.textContent = pad(Math.floor(t / 3600)) + ':' + pad(Math.floor(t / 60) % 60) + ':' + pad(t % 60);
+    }, 1000);
+  }
+
+  /* ----------------------------------------------------------- reveals */
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+  }), {threshold:.18});
+  document.querySelectorAll('.io').forEach(n => io.observe(n));
+
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href="#"]'); if (a) e.preventDefault();
+  });
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.18/dist/lenis.min.js"></script>
+<script>
+(() => {
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (still || typeof Lenis === 'undefined') return;
+  // lerp, not duration. `duration` restarts a timed animation on every wheel event, and a
+  // trackpad fires dozens a second, so each one re-targets and the scroll reads as jumping.
+  // lerp eases continuously toward wherever the target currently is, which is what "weighted"
+  // is supposed to feel like.
+  const lenis = new Lenis({
+    lerp: 0.085,                          // lower is heavier. below ~0.05 it feels laggy
+    smoothWheel: true,
+    wheelMultiplier: 1,
+    syncTouch: false                      // leave native inertia alone on touch
+  });
+  const raf = (t) => { lenis.raf(t); requestAnimationFrame(raf); };
+  requestAnimationFrame(raf);
+  // in-page anchors go through Lenis so they arrive with the same weight
+  document.querySelectorAll('a[href^="#"]:not([href="#"])').forEach((a) => {
+    a.addEventListener('click', (e) => {
+      const t = document.querySelector(a.getAttribute('href'));
+      if (t) { e.preventDefault(); lenis.scrollTo(t, { offset: 0 }); }
+    });
+  });
+  window.__lenis = lenis;
+})();
+</script>
+
+
+</body></html>

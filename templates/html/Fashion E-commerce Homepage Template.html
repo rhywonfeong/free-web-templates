@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ETHER EARTH</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font-family: 'Inter', sans-serif; }
+.grid-item { overflow: hidden; }
+.grid-item img {
+width: 100%;
+height: 100%;
+object-fit: cover;
+transition: transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.grid-item:hover img { transform: scale(1.03); }
+.k-badge {
+width: 32px;
+height: 32px;
+background: #1a1a1a;
+color: white;
+display: flex;
+align-items: center;
+justify-content: center;
+font-weight: 600;
+font-size: 14px;
+}
+.flower-badge {
+width: 32px;
+height: 32px;
+background: transparent;
+color: #4ade80;
+display: flex;
+align-items: center;
+justify-content: center;
+font-size: 20px;
+}
+</style>
+<style id="ether-product-interaction">
+.ether-product { position: relative; }
+.ether-product-symbol { position: absolute; top: 14px; right: 14px; z-index: 5; font-family: 'Space Mono', ui-monospace, SFMono-Regular, monospace; font-size: 14px; line-height: 1; color: rgba(255,255,255,0.95); mix-blend-mode: difference; pointer-events: none; transition: opacity 0.5s cubic-bezier(0.25,0.46,0.45,0.94); user-select: none; }
+.ether-product-symbol .ether-sym-x { display: inline; transition: opacity 0.5s cubic-bezier(0.25,0.46,0.45,0.94); }
+.ether-product-symbol .ether-sym-deg { display: inline; opacity: 0; position: absolute; top: 0; right: 0; transition: opacity 0.5s cubic-bezier(0.25,0.46,0.45,0.94); font-size: 18px; }
+.ether-product.is-active .ether-product-symbol .ether-sym-x { opacity: 0; }
+.ether-product.is-active .ether-product-symbol .ether-sym-deg { opacity: 1; }
+.ether-product-meta { position: absolute; left: 16px; right: 16px; bottom: 16px; z-index: 5; opacity: 0; transition: opacity 0.6s cubic-bezier(0.25,0.46,0.45,0.94); pointer-events: none; color: #ffffff; mix-blend-mode: difference; }
+.ether-product.is-active .ether-product-meta { opacity: 1; }
+.ether-product-meta .ether-meta-deg { font-family: 'Space Mono', ui-monospace, monospace; font-size: 14px; line-height: 1; margin-bottom: 8px; opacity: 0.85; }
+.ether-product-meta .ether-meta-title { font-family: 'Space Mono', ui-monospace, SFMono-Regular, monospace; font-size: 11px; font-weight: 400; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 6px; color: #ffffff; }
+.ether-product-meta .ether-meta-desc { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 300; line-height: 1.5; letter-spacing: 0.02em; color: rgba(255,255,255,0.85); max-width: 320px; }
+@media (prefers-reduced-motion: reduce) { .ether-product-symbol, .ether-product-symbol .ether-sym-x, .ether-product-symbol .ether-sym-deg, .ether-product-meta { transition: none !important; } }
+</style>
+<link id="all-fonts-link-font-geist" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-geist">
+.font-geist { font-family: 'Geist', sans-serif !important; }
+</style><link id="all-fonts-link-font-space-grotesk" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-space-grotesk">
+.font-space-grotesk { font-family: 'Space Grotesk', sans-serif !important; }
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body class="text-neutral-900 bg-white" style="margin:0;padding:0;">
+    <nav style="position: fixed; top: 0px; left: 0px; width: 100%; z-index: 9999; background: transparent;" class="">
+      <style class="">
+        .etha-pill {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 20px;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          color: #fff;
+          font-family: 'Inter', sans-serif;
+          font-size: 10px;
+          font-weight: 500;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          cursor: pointer;
+          transition: background 0.3s ease, border-color 0.3s ease;
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          white-space: nowrap;
+          user-select: none;
+        }
+        .etha-pill:hover {
+          background: rgba(255, 255, 255, 0.15);
+          border-color: rgba(255, 255, 255, 0.22);
+        }
+        .etha-pill[aria-expanded="true"] {
+          background: rgba(255, 255, 255, 0.2);
+          border-color: rgba(255, 255, 255, 0.28);
+        }
+        .etha-pill-arrow {
+          width: 10px;
+          height: 10px;
+          flex-shrink: 0;
+          transition: transform 0.3s ease;
+        }
+        .etha-pill[aria-expanded="true"] .etha-pill-arrow {
+          transform: rotate(180deg);
+        }
+        .etha-pill-sm {
+          padding: 8px 18px;
+          font-size: 10px;
+        }
+        .etha-logo {
+          font-family: 'Inter', sans-serif;
+          font-size: 18px;
+          font-weight: 500;
+          letter-spacing: 0.25em;
+          text-transform: uppercase;
+          color: #fff;
+          text-decoration: none;
+          white-space: nowrap;
+        }
+
+        /* Contained dropdown - the ONLY dropdown style */
+        .etha-contained-drop {
+          position: absolute;
+          top: calc(100% + 8px);
+          left: 50%;
+          transform: translateX(-50%) translateY(-12px);
+          width: 90vw;
+          max-width: 720px;
+          background: rgba(34, 85, 51, 0.38);
+          backdrop-filter: blur(40px) saturate(1.4);
+          -webkit-backdrop-filter: blur(40px) saturate(1.4);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 20px;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25), 0 8px 24px rgba(0, 0, 0, 0.15);
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+          z-index: 100;
+          overflow: hidden;
+        }
+        .etha-contained-drop.etha-wide {
+          max-width: 880px;
+        }
+        .etha-contained-drop.etha-drop-open {
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
+          pointer-events: auto;
+        }
+        .etha-contained-drop-inner {
+          padding: 32px 36px;
+        }
+        .etha-drop-section-title {
+          font-family: 'Inter', sans-serif;
+          font-size: 10px;
+          font-weight: 500;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: rgba(255, 255, 255, 0.35);
+          margin-bottom: 8px;
+        }
+        .etha-drop-cat-link {
+          display: block;
+          font-family: 'Inter', sans-serif;
+          font-size: 15px;
+          font-weight: 400;
+          color: rgba(255, 255, 255, 0.85);
+          text-decoration: none;
+          padding: 10px 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+          transition: color 0.25s ease, padding-left 0.25s ease;
+          letter-spacing: -0.01em;
+        }
+        .etha-drop-cat-link:last-child { border-bottom: none; }
+        .etha-drop-cat-link:hover {
+          color: #ffffff;
+          padding-left: 6px;
+        }
+        .etha-drop-viewall {
+          font-family: 'Inter', sans-serif;
+          font-size: 12px;
+          font-weight: 500;
+          color: rgba(255, 255, 255, 0.5);
+          text-decoration: none;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          transition: color 0.25s ease;
+        }
+        .etha-drop-viewall:hover { color: rgba(255, 255, 255, 0.9); }
+        .etha-collection-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 16px;
+          padding: 16px 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+          text-decoration: none;
+          transition: opacity 0.25s ease;
+        }
+        .etha-collection-item:last-child { border-bottom: none; }
+        .etha-collection-item:hover { opacity: 0.75; }
+        .etha-collection-thumb-wrap {
+          width: 52px;
+          height: 52px;
+          border-radius: 12px;
+          flex-shrink: 0;
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.08);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+        }
+        .etha-collection-thumb-wrap img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .etha-collection-name {
+          font-family: 'Inter', sans-serif;
+          font-size: 15px;
+          font-weight: 500;
+          color: #ffffff;
+          letter-spacing: -0.01em;
+          margin-bottom: 3px;
+        }
+        .etha-collection-desc {
+          font-family: 'Inter', sans-serif;
+          font-size: 12px;
+          font-weight: 400;
+          color: rgba(255, 255, 255, 0.5);
+          line-height: 1.45;
+        }
+        .etha-world-col-title {
+          font-family: 'Inter', sans-serif;
+          font-size: 10px;
+          font-weight: 500;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: rgba(255, 255, 255, 0.35);
+          margin-bottom: 12px;
+        }
+        .etha-world-link {
+          display: block;
+          font-family: 'Inter', sans-serif;
+          font-size: 14px;
+          font-weight: 400;
+          color: rgba(255, 255, 255, 0.8);
+          text-decoration: none;
+          padding: 9px 0;
+          transition: color 0.25s ease, padding-left 0.25s ease;
+        }
+        .etha-world-link:hover {
+          color: #ffffff;
+          padding-left: 4px;
+        }
+        .etha-nav-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: -1;
+          display: none;
+        }
+        .etha-nav-overlay.etha-overlay-active { display: block; }
+
+        /* Mobile */
+        .etha-mobile-toggle {
+          display: none;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          color: #fff;
+          cursor: pointer;
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+        }
+        .etha-mobile-panel {
+          display: none;
+          position: absolute;
+          top: calc(100% + 8px);
+          left: 16px;
+          right: 16px;
+          background: rgba(34, 85, 51, 0.38);
+          backdrop-filter: blur(40px) saturate(1.4);
+          -webkit-backdrop-filter: blur(40px) saturate(1.4);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 20px;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+          padding: 8px;
+          opacity: 0;
+          transform: translateY(-12px);
+          transition: opacity 0.35s ease, transform 0.35s ease;
+          pointer-events: none;
+          z-index: 100;
+          max-height: 75vh;
+          overflow-y: auto;
+        }
+        .etha-mobile-panel.etha-mobile-active {
+          opacity: 1;
+          transform: translateY(0);
+          pointer-events: auto;
+        }
+        .etha-mob-acc-btn {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+          background: none;
+          border: none;
+          color: #fff;
+          font-family: 'Inter', sans-serif;
+          font-size: 14px;
+          font-weight: 400;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          cursor: pointer;
+          padding: 14px 16px;
+          border-radius: 12px;
+          transition: background 0.2s ease;
+        }
+        .etha-mob-acc-btn:hover { background: rgba(255, 255, 255, 0.06); }
+        .etha-mob-acc-btn svg { transition: transform 0.3s ease; flex-shrink: 0; }
+        .etha-mob-acc-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+        .etha-mob-acc-body {
+          max-height: 0;
+          overflow: hidden;
+          transition: max-height 0.35s ease;
+          padding: 0 16px;
+        }
+        .etha-mob-acc-body.etha-acc-open { max-height: 500px; }
+        .etha-mob-acc-body a {
+          display: block;
+          font-family: 'Inter', sans-serif;
+          font-size: 13px;
+          color: rgba(255, 255, 255, 0.6);
+          text-decoration: none;
+          padding: 10px 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+          transition: color 0.2s ease;
+        }
+        .etha-mob-acc-body a:last-child { border-bottom: none; }
+        .etha-mob-acc-body a:hover { color: rgba(255, 255, 255, 0.95); }
+        .etha-mob-section {
+          border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .etha-mob-section:last-of-type { border-bottom: none; }
+
+        @media (max-width: 768px) {
+          .etha-nav-center-pills, .etha-nav-right-pills { display: none !important; }
+          .etha-mobile-toggle { display: flex !important; }
+          .etha-contained-drop { display: none !important; }
+          .etha-mobile-panel { display: block; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .etha-contained-drop, .etha-mobile-panel, .etha-pill-arrow, .etha-mob-acc-btn svg, .etha-mob-acc-body {
+            transition: none !important;
+          }
+        }
+      </style>
+
+      <div class="flex md:px-10 md:py-6 w-full pt-4 pr-6 pb-4 pl-6 relative items-center justify-between">
+        <!-- Logo -->
+        <a href="/" class="etha-logo relative z-20 transition-opacity duration-200 ease-out opacity-95 hover:opacity-100" style="text-decoration:none;">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/0c825cde-0a20-4812-bb3f-d8bfea8804c1_800w.png" alt="Ether" class="w-auto h-[100px] object-contain" style="display: block; filter: brightness(0) invert(1)">
+        </a>
+
+        <style>
+          /* === GLASS LEVEL 4 — WILD TEXTURED GLASS === */
+
+          /* SVG noise texture for cathedral/hammered glass effect */
+          .glass-wild-texture-svg {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 1;
+            border-radius: inherit;
+            overflow: hidden;
+          }
+          .glass-wild-texture-svg::before {
+            content: '';
+            position: absolute;
+            inset: -50%;
+            width: 200%;
+            height: 200%;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+            background-size: 128px 128px;
+            opacity: 0.07;
+            mix-blend-mode: overlay;
+            border-radius: inherit;
+          }
+
+          /* Second organic texture layer — water-glass ripple */
+          .glass-wild-texture-svg::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='warp'%3E%3CfeTurbulence type='turbulence' baseFrequency='0.04 0.06' numOctaves='3' seed='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.12'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23warp)'/%3E%3C/svg%3E");
+            background-size: 200px 200px;
+            opacity: 0.06;
+            mix-blend-mode: soft-light;
+            border-radius: inherit;
+          }
+
+          /* Inner highlight layer */
+          .glass-wild-highlight {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 2;
+            border-radius: inherit;
+            background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, transparent 40%, transparent 60%, rgba(255,255,255,0.03) 100%);
+          }
+
+          /* === PILL GLASS TREATMENT === */
+          .etha-pill.glass-wild {
+            position: relative;
+            background: rgba(34, 85, 51, 0.42);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px) saturate(1.3);
+            -webkit-backdrop-filter: blur(20px) saturate(1.3);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+            transition: background 280ms ease-out, border-color 280ms ease-out, transform 280ms ease-out, filter 280ms ease-out;
+            overflow: hidden;
+            isolation: isolate;
+          }
+
+          .etha-pill.glass-wild:hover {
+            background: rgba(34, 85, 51, 0.52);
+            border-color: rgba(255, 255, 255, 0.18);
+            transform: translateY(-1px);
+            filter: brightness(1.05);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+          }
+
+          .etha-pill.glass-wild[aria-expanded="true"] {
+            background: rgba(34, 85, 51, 0.55);
+            border-color: rgba(255, 255, 255, 0.22);
+          }
+
+          /* === STATUS DOT === */
+          .etha-pill .etha-status-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            display: block;
+            background: radial-gradient(circle at 45% 45%, #5a9e78, #2d6b4a 60%, #1e4d35 100%);
+            box-shadow: 0 0 4px 1px rgba(45, 107, 74, 0.25), 0 0 8px 2px rgba(45, 107, 74, 0.1);
+            transition: transform 280ms ease, box-shadow 280ms ease, background 280ms ease;
+            flex-shrink: 0;
+          }
+
+          .etha-pill:hover .etha-status-dot {
+            background: radial-gradient(circle at 45% 45%, #6db88a, #3a7d5a 60%, #245a3e 100%);
+            box-shadow: 0 0 5px 1.5px rgba(55, 130, 88, 0.35), 0 0 10px 3px rgba(55, 130, 88, 0.15);
+            transform: scale(1.08);
+          }
+
+          /* === MEGA MENU DROPDOWN GLASS TREATMENT === */
+          .etha-contained-drop.glass-wild {
+            background: rgba(28, 72, 44, 0.45);
+            backdrop-filter: blur(22px) saturate(1.4);
+            -webkit-backdrop-filter: blur(22px) saturate(1.4);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18), 0 4px 16px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            overflow: hidden;
+            isolation: isolate;
+            transition: opacity 250ms cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 250ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+          }
+
+          .etha-contained-drop.glass-wild.etha-drop-open {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+            pointer-events: auto;
+          }
+
+          /* Dropdown texture overlay — applied via pseudo on inner container */
+          .etha-contained-drop.glass-wild > .etha-contained-drop-inner {
+            position: relative;
+            z-index: 3;
+          }
+
+          .etha-contained-drop.glass-wild::before {
+            content: '';
+            position: absolute;
+            inset: -50%;
+            width: 200%;
+            height: 200%;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise2'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='5' stitchTiles='stitch' seed='5'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise2)'/%3E%3C/svg%3E");
+            background-size: 150px 150px;
+            opacity: 0.065;
+            mix-blend-mode: overlay;
+            pointer-events: none;
+            z-index: 1;
+            border-radius: inherit;
+          }
+
+          .etha-contained-drop.glass-wild::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(160deg, rgba(255,255,255,0.05) 0%, transparent 35%, transparent 65%, rgba(255,255,255,0.025) 100%);
+            pointer-events: none;
+            z-index: 2;
+            border-radius: inherit;
+          }
+        </style>
+
+        <!-- Center Pills (Desktop) -->
+        <div class="etha-nav-center-pills absolute left-1/2 -translate-x-1/2 flex items-center gap-2" role="menubar">
+          <button class="etha-pill glass-wild group" aria-expanded="false" role="menuitem" aria-haspopup="true" style="position:relative;overflow:hidden;isolation:isolate" id="nav-btn-shop">
+            <span class="glass-wild-texture-svg"></span>
+            <span class="glass-wild-highlight"></span>
+            <span class="etha-status-dot" style="position:relative;z-index:3;"></span>
+            <span class="text-[11px] group-hover:text-white uppercase font-medium text-white/90 tracking-wide font-geist" style="position:relative;z-index:3">
+              Shop
+            </span>
+            <svg class="etha-pill-arrow" width="10" height="10" viewBox="0 0 10 10" fill="none" style="position:relative;z-index:3;">
+              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </button>
+          <button class="etha-pill glass-wild group" id="nav-btn-collection" aria-expanded="false" role="menuitem" aria-haspopup="true" style="position:relative;overflow:hidden;isolation:isolate;">
+            <span class="glass-wild-texture-svg"></span>
+            <span class="glass-wild-highlight"></span>
+            <span class="etha-status-dot" style="position:relative;z-index:3;"></span>
+            <span class="text-[11px] group-hover:text-white uppercase font-medium text-white/90 tracking-wide font-geist" style="position:relative;z-index:3;">
+              Collections
+            </span>
+            <svg class="etha-pill-arrow" width="10" height="10" viewBox="0 0 10 10" fill="none" style="position:relative;z-index:3;">
+              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </button>
+          <button class="etha-pill glass-wild group" aria-expanded="false" role="menuitem" aria-haspopup="true" id="nav-btn-world" style="position:relative;overflow:hidden;isolation:isolate;">
+            <span class="glass-wild-texture-svg"></span>
+            <span class="glass-wild-highlight"></span>
+            <span class="etha-status-dot" style="position:relative;z-index:3;"></span>
+            <span class="text-[11px] group-hover:text-white uppercase font-medium text-white/90 tracking-wide font-geist" style="position:relative;z-index:3;">
+              World
+            </span>
+            <svg class="etha-pill-arrow w-[10px] h-[10px]" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke-width="2" data-icon-replaced="true" style="width: 10px; height: 10px; color: rgb(255, 255, 255);position:relative;z-index:3;">
+              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </button>
+
+          <!-- SHOP Dropdown -->
+          <div class="etha-contained-drop glass-wild" id="nav-drop-shop" role="menu" aria-label="Shop menu" style="max-width:420px;width:420px;">
+            <div class="etha-contained-drop-inner" style="padding:24px 28px 28px 28px;display:flex;flex-direction:column;gap:0;">
+              <div style="display:flex;align-items:center;gap:0;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:999px;padding:3px;margin-bottom:20px;width:fit-content;">
+                <button data-shop-filter="all" class="etha-shop-seg-btn etha-shop-seg-active font-geist" style="padding:7px 20px;border-radius:999px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:11px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;transition:all 0.25s ease;background:rgba(255,255,255,0.14);color:#ffffff;">
+                  All
+                </button>
+                <button data-shop-filter="women" class="etha-shop-seg-btn font-geist" style="padding:7px 20px;border-radius:999px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:11px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;transition:all 0.25s ease;background:rgba(255,255,255,0.14);color:#ffffff;">
+                  Women
+                </button>
+                <button data-shop-filter="men" class="etha-shop-seg-btn font-geist" style="padding:7px 20px;border-radius:999px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:11px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;transition:all 0.25s ease;background:rgba(255,255,255,0.14);color:#ffffff;">
+                  Men
+                </button>
+              </div>
+              <p class="etha-drop-section-title font-geist" style="margin-bottom:6px;font-size:10px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.35);">
+                Categories
+              </p>
+              <div data-shop-list="all" style="display:flex;flex-direction:column;">
+                <a href="#" class="etha-drop-cat-link font-geist" style="font-size: 14px; padding: 11px 0px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.85); text-decoration: none; display: block; letter-spacing: -0.01em;">
+                  Outerwear
+                </a>
+                <a href="#" class="etha-drop-cat-link font-geist" style="font-size: 14px; padding: 11px 0px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.85); text-decoration: none; display: block; letter-spacing: -0.01em;">
+                  Tops
+                </a>
+                <a href="#" class="etha-drop-cat-link font-geist" style="font-size: 14px; padding: 11px 0px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.85); text-decoration: none; display: block; letter-spacing: -0.01em;">
+                  Bottoms
+                </a>
+                <a href="#" class="etha-drop-cat-link font-geist" style="font-size: 14px; padding: 11px 0px; border-bottom: none; color: rgba(255, 255, 255, 0.85); text-decoration: none; display: block; letter-spacing: -0.01em;">
+                  Accessories
+                </a>
+              </div>
+              <div data-shop-list="women" style="flex-direction: column; display: none;">
+                <a href="#" class="etha-drop-cat-link font-geist" style="font-size: 14px; padding: 11px 0px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.85); text-decoration: none; display: block; letter-spacing: -0.01em;">
+                  Outerwear
+                </a>
+                <a href="#" class="etha-drop-cat-link font-geist" style="font-size: 14px; padding: 11px 0px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.85); text-decoration: none; display: block; letter-spacing: -0.01em;">
+                  Dresses
+                </a>
+                <a href="#" class="etha-drop-cat-link font-geist" style="font-size: 14px; padding: 11px 0px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.85); text-decoration: none; display: block; letter-spacing: -0.01em;">
+                  Tops
+                </a>
+                <a href="#" class="etha-drop-cat-link font-geist" style="font-size: 14px; padding: 11px 0px; border-bottom: none; color: rgba(255, 255, 255, 0.85); text-decoration: none; display: block; letter-spacing: -0.01em;">
+                  Accessories
+                </a>
+              </div>
+              <div data-shop-list="men" style="flex-direction: column; display: none;">
+                <a href="#" class="etha-drop-cat-link font-geist" style="font-size: 14px; padding: 11px 0px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.85); text-decoration: none; display: block; letter-spacing: -0.01em;">
+                  Outerwear
+                </a>
+                <a href="#" class="etha-drop-cat-link font-geist" style="font-size: 14px; padding: 11px 0px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.85); text-decoration: none; display: block; letter-spacing: -0.01em;">
+                  Shirts
+                </a>
+                <a href="#" class="etha-drop-cat-link font-geist" style="font-size: 14px; padding: 11px 0px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.85); text-decoration: none; display: block; letter-spacing: -0.01em;">
+                  Bottoms
+                </a>
+                <a href="#" class="etha-drop-cat-link font-geist" style="font-size: 14px; padding: 11px 0px; border-bottom: none; color: rgba(255, 255, 255, 0.85); text-decoration: none; display: block; letter-spacing: -0.01em;">
+                  Accessories
+                </a>
+              </div>
+              <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.06);">
+                <a href="#" style="font-family:'Inter',sans-serif;font-size:12px;font-weight:500;color:rgba(255,255,255,0.5);text-decoration:none;letter-spacing:0.08em;text-transform:uppercase;transition:color 0.25s ease;" class="font-geist">
+                  View All →
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- COLLECTIONS Dropdown -->
+          <div class="etha-contained-drop glass-wild" id="nav-drop-collection" role="menu" aria-label="Collections menu" style="max-width:420px;width:420px;">
+            <div class="etha-contained-drop-inner" style="padding:28px 32px;">
+              <div style="display:flex;flex-direction:column;gap:0;">
+                <a href="#" style="display: flex; align-items: center; gap: 16px; padding: 14px 0px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); text-decoration: none;">
+                  <div style="width:48px;height:48px;border-radius:12px;flex-shrink:0;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);overflow:hidden;">
+                    <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/7dc27b8a-06e6-401c-8ce1-ae764d88eb47_1600w.png?w=120&q=80" alt="Cosmos" style="width:100%;height:100%;object-fit:cover;">
+                  </div>
+                  <div>
+                    <div style="font-family: Inter, sans-serif; font-size: 14px; font-weight: 500; color: rgb(255, 255, 255); letter-spacing: -0.01em; margin-bottom: 2px;" class="font-geist">
+                      COSMOS
+                    </div>
+                    <div style="font-family: Inter, sans-serif; font-size: 12px; font-weight: 400; color: rgba(255, 255, 255, 0.5); line-height: 1.4;" class="font-geist">
+                      Upcycled leather jackets and statement pieces.
+                    </div>
+                  </div>
+                </a>
+                <a href="#" style="display: flex; align-items: center; gap: 16px; padding: 14px 0px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); text-decoration: none;">
+                  <div style="width:48px;height:48px;border-radius:12px;flex-shrink:0;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);overflow:hidden;">
+                    <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/f47a0318-7a78-45cc-b280-c510190c8182_1600w.png?w=120&q=80" alt="Land" style="width:100%;height:100%;object-fit:cover;">
+                  </div>
+                  <div>
+                    <div style="font-family: Inter, sans-serif; font-size: 14px; font-weight: 500; color: rgb(255, 255, 255); letter-spacing: -0.01em; margin-bottom: 2px;" class="font-geist">
+                      LAND
+                    </div>
+                    <div style="font-family: Inter, sans-serif; font-size: 12px; font-weight: 400; color: rgba(255, 255, 255, 0.5); line-height: 1.4;" class="font-geist">
+                      Recycled nylon and technical outdoor garments.
+                    </div>
+                  </div>
+                </a>
+                <a href="#" style="display: flex; align-items: center; gap: 16px; padding: 14px 0px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); text-decoration: none;">
+                  <div style="width:48px;height:48px;border-radius:12px;flex-shrink:0;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);overflow:hidden;">
+                    <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b779dc3f-8379-4858-a8a4-1149caabe96d_320w.png?w=800&q=80" alt="Soil" style="width:100%;height:100%;object-fit:cover;" class="object-cover w-full h-auto">
+                  </div>
+                  <div>
+                    <div style="font-family: Inter, sans-serif; font-size: 14px; font-weight: 500; color: rgb(255, 255, 255); letter-spacing: -0.01em; margin-bottom: 2px;" class="font-geist">
+                      SOIL
+                    </div>
+                    <div style="font-family: Inter, sans-serif; font-size: 12px; font-weight: 400; color: rgba(255, 255, 255, 0.5); line-height: 1.4;" class="font-geist">
+                      Organic cotton workwear and foundational pieces.
+                    </div>
+                  </div>
+                </a>
+                <a href="#" style="display: flex; align-items: center; gap: 16px; padding: 14px 0px; border-bottom: none; text-decoration: none;">
+                  <div style="width:48px;height:48px;border-radius:12px;flex-shrink:0;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);overflow:hidden;">
+                    <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/964dfbee-b21d-4d39-b008-45fba5518f3b_320w.png" alt="Sanctuary" style="width:100%;height:100%;object-fit:cover;" class="object-cover w-full h-auto">
+                  </div>
+                  <div>
+                    <div style="font-family: Inter, sans-serif; font-size: 14px; font-weight: 500; color: rgb(255, 255, 255); letter-spacing: -0.01em; margin-bottom: 2px;" class="font-geist">
+                      SANCTUARY
+                    </div>
+                    <div style="font-family: Inter, sans-serif; font-size: 12px; font-weight: 400; color: rgba(255, 255, 255, 0.5); line-height: 1.4;" class="font-geist">
+                      Homeware and ritual objects.
+                    </div>
+                  </div>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- WORLD Dropdown -->
+          <div class="etha-contained-drop glass-wild" id="nav-drop-world" role="menu" aria-label="World menu" style="max-width:420px;width:420px;">
+            <div class="etha-contained-drop-inner" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:28px;padding:28px 32px;">
+              <div>
+                <p style="font-family:'Inter',sans-serif;font-size:10px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.35);margin-bottom:12px;" class="font-geist">
+                  Explore
+                </p>
+                <a href="#" class="etha-world-link font-geist">Lookbook</a>
+                <a href="#" class="etha-world-link font-geist">Campaign</a>
+              </div>
+              <div>
+                <p style="font-family:'Inter',sans-serif;font-size:10px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.35);margin-bottom:12px;" class="font-geist">
+                  Stories
+                </p>
+                <a href="#" class="etha-world-link font-geist">Journal</a>
+                <a href="#" class="etha-world-link font-geist">
+                  Behind the Scenes
+                </a>
+              </div>
+              <div>
+                <p style="font-family:'Inter',sans-serif;font-size:10px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.35);margin-bottom:12px;" class="font-geist">
+                  About
+                </p>
+                <a href="#" class="etha-world-link font-geist">Our Story</a>
+                <a href="#" class="etha-world-link font-geist">
+                  Responsibility
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Pills -->
+        <div class="flex items-center gap-3 relative z-20">
+          <div class="etha-nav-right-pills flex items-center gap-2">
+            <a href="#" class="etha-pill etha-pill-sm glass-wild transition-colors text-white font-geist" style="text-decoration: none;position:relative;overflow:hidden;isolation:isolate;">
+              <span class="glass-wild-texture-svg"></span>
+              <span class="glass-wild-highlight"></span>
+              <span style="position:relative;z-index:3;">Cart (0)</span>
+            </a>
+          </div>
+          <button class="etha-mobile-toggle" id="nav-mobile-btn" aria-expanded="false" aria-label="Toggle menu">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Mobile Menu Panel -->
+        <div class="etha-mobile-panel" id="nav-mobile-panel">
+          <div class="etha-mob-section">
+            <button class="etha-mob-acc-btn" aria-expanded="false" data-target="mob-shop">
+              <span class="font-geist">Shop</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 9 6 6 6-6"></path>
+              </svg>
+            </button>
+            <div class="etha-mob-acc-body" id="mob-shop">
+              <div style="display:flex;align-items:center;gap:0;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:999px;padding:3px;margin:8px 0 12px 0;width:fit-content;">
+                <button data-mob-shop-filter="all" class="etha-mob-shop-seg-active font-geist" style="padding:6px 16px;border-radius:999px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:11px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;background:rgba(255,255,255,0.14);color:#ffffff;transition:all 0.25s ease;">
+                  All
+                </button>
+                <button data-mob-shop-filter="women" style="padding:6px 16px;border-radius:999px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:11px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;background:rgba(255,255,255,0.14);color:#ffffff;transition:all 0.25s ease;" class="font-geist">
+                  Women
+                </button>
+                <button data-mob-shop-filter="men" style="padding:6px 16px;border-radius:999px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:11px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;background:rgba(255,255,255,0.14);color:#ffffff;transition:all 0.25s ease;" class="font-geist">
+                  Men
+                </button>
+              </div>
+              <div data-mob-shop-list="all">
+                <a href="#" class="font-geist">Outerwear</a>
+                <a href="#" class="font-geist">Tops</a>
+                <a href="#" class="font-geist">Bottoms</a>
+                <a href="#" class="font-geist">Knitwear</a>
+                <a href="#" class="font-geist">Accessories</a>
+              </div>
+              <div data-mob-shop-list="women" style="display: none;">
+                <a href="#" class="font-geist">Outerwear</a>
+                <a href="#" class="font-geist">Dresses</a>
+                <a href="#" class="font-geist">Tops</a>
+                <a href="#" class="font-geist">Accessories</a>
+              </div>
+              <div data-mob-shop-list="men" style="display: none;">
+                <a href="#" class="font-geist">Outerwear</a>
+                <a href="#" class="font-geist">Shirts</a>
+                <a href="#" class="font-geist">Bottoms</a>
+                <a href="#" class="font-geist">Accessories</a>
+              </div>
+              <a href="#" style="color:rgba(255,255,255,0.4);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;" class="font-geist">
+                View All →
+              </a>
+            </div>
+          </div>
+          <div class="etha-mob-section">
+            <button class="etha-mob-acc-btn" aria-expanded="false" data-target="mob-coll">
+              <span class="font-geist">Collections</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 9 6 6 6-6"></path>
+              </svg>
+            </button>
+            <div class="etha-mob-acc-body" id="mob-coll">
+              <a href="#" style="display:flex;flex-direction:column;gap:2px;padding:12px 0;">
+                <span style="color: rgba(255, 255, 255, 0.9); font-weight: 500; font-size: 14px;" class="font-geist">
+                  Cosmos
+                </span>
+                <span style="color: rgba(255, 255, 255, 0.4); font-size: 12px;" class="font-geist">
+                  Upcycled leather jackets &amp; statement pieces.
+                </span>
+              </a>
+              <a href="#" style="display:flex;flex-direction:column;gap:2px;padding:12px 0;">
+                <span style="color: rgba(255, 255, 255, 0.9); font-weight: 500; font-size: 14px;" class="font-geist">
+                  Land
+                </span>
+                <span style="color: rgba(255, 255, 255, 0.4); font-size: 12px;" class="font-geist">
+                  Recycled nylon &amp; technical outdoor garments.
+                </span>
+              </a>
+              <a href="#" style="display:flex;flex-direction:column;gap:2px;padding:12px 0;">
+                <span style="color: rgba(255, 255, 255, 0.9); font-weight: 500; font-size: 14px;" class="font-geist">
+                  Soil
+                </span>
+                <span style="color: rgba(255, 255, 255, 0.4); font-size: 12px;" class="font-geist">
+                  Organic cotton workwear &amp; foundational pieces.
+                </span>
+              </a>
+              <a href="#" style="display:flex;flex-direction:column;gap:2px;padding:12px 0;">
+                <span style="color: rgba(255, 255, 255, 0.9); font-weight: 500; font-size: 14px;" class="font-geist">
+                  Sanctuary
+                </span>
+                <span style="color: rgba(255, 255, 255, 0.4); font-size: 12px;" class="font-geist">
+                  Homeware, incense &amp; ritual objects.
+                </span>
+              </a>
+            </div>
+          </div>
+          <div class="etha-mob-section">
+            <button class="etha-mob-acc-btn" aria-expanded="false" data-target="mob-world">
+              <span class="font-geist">World</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 9 6 6 6-6"></path>
+              </svg>
+            </button>
+            <div class="etha-mob-acc-body" id="mob-world">
+              <a href="#" class="font-geist">Lookbook</a>
+              <a href="#" class="font-geist">Campaign</a>
+              <a href="#" class="font-geist">Journal</a>
+              <a href="#" class="font-geist">Behind the Scenes</a>
+              <a href="#" class="font-geist">Our Story</a>
+              <a href="#" class="font-geist">Responsibility</a>
+            </div>
+          </div>
+          <div style="padding:12px 8px 8px;display:flex;gap:8px;">
+            <a href="#" class="etha-pill etha-pill-sm font-geist" style="text-decoration: none; flex: 1 1 0%; justify-content: center; font-size: 11px;">
+              Log In
+            </a>
+            <a href="#" class="etha-pill etha-pill-sm font-geist" style="text-decoration: none; flex: 1 1 0%; justify-content: center; font-size: 11px;">
+              Cart (0)
+            </a>
+          </div>
+        </div>
+
+        <!-- Click-away overlay -->
+        <div class="etha-nav-overlay" id="nav-overlay"></div>
+
+        <!-- Segmented Toggle Script -->
+        <script>
+          (function() {
+                  var segBtns = document.querySelectorAll('[data-shop-filter]');
+                  var shopLists = document.querySelectorAll('[data-shop-list]');
+                  segBtns.forEach(function(btn) {
+                    btn.addEventListener('click', function(e) {
+                      e.stopPropagation();
+                      var filter = btn.getAttribute('data-shop-filter');
+                      segBtns.forEach(function(b) {
+                        b.style.background = 'transparent';
+                        b.style.color = 'rgba(255,255,255,0.5)';
+                      });
+                      btn.style.background = 'rgba(255,255,255,0.14)';
+                      btn.style.color = '#ffffff';
+                      shopLists.forEach(function(list) {
+                        list.style.display = list.getAttribute('data-shop-list') === filter ? 'flex' : 'none';
+                      });
+                    });
+                  });
+                  var mobSegBtns = document.querySelectorAll('[data-mob-shop-filter]');
+                  var mobShopLists = document.querySelectorAll('[data-mob-shop-list]');
+                  mobSegBtns.forEach(function(btn) {
+                    btn.addEventListener('click', function(e) {
+                      e.stopPropagation();
+                      var filter = btn.getAttribute('data-mob-shop-filter');
+                      mobSegBtns.forEach(function(b) {
+                        b.style.background = 'transparent';
+                        b.style.color = 'rgba(255,255,255,0.5)';
+                      });
+                      btn.style.background = 'rgba(255,255,255,0.14)';
+                      btn.style.color = '#ffffff';
+                      mobShopLists.forEach(function(list) {
+                        list.style.display = list.getAttribute('data-mob-shop-list') === filter ? 'block' : 'none';
+                      });
+                    });
+                  });
+                })();
+        </script>
+      </div>
+
+      <script class="">
+        (function() {
+          var menus = ['shop', 'collection', 'world'];
+          var activeMenu = null;
+          var overlay = document.getElementById('nav-overlay');
+
+          function closeAllDrops() {
+            menus.forEach(function(name) {
+              var btn = document.getElementById('nav-btn-' + name);
+              var drop = document.getElementById('nav-drop-' + name);
+              if (btn) btn.setAttribute('aria-expanded', 'false');
+              if (drop) drop.classList.remove('etha-drop-open');
+            });
+            if (overlay) overlay.classList.remove('etha-overlay-active');
+            activeMenu = null;
+          }
+
+          menus.forEach(function(name) {
+            var btn = document.getElementById('nav-btn-' + name);
+            if (!btn) return;
+            btn.addEventListener('click', function(e) {
+              e.stopPropagation();
+              if (activeMenu === name) {
+                closeAllDrops();
+                return;
+              }
+              closeAllDrops();
+              var drop = document.getElementById('nav-drop-' + name);
+              btn.setAttribute('aria-expanded', 'true');
+              if (drop) drop.classList.add('etha-drop-open');
+              if (overlay) overlay.classList.add('etha-overlay-active');
+              activeMenu = name;
+            });
+          });
+
+          if (overlay) overlay.addEventListener('click', closeAllDrops);
+
+          document.addEventListener('click', function(e) {
+            if (activeMenu) {
+              var drop = document.getElementById('nav-drop-' + activeMenu);
+              var btn = document.getElementById('nav-btn-' + activeMenu);
+              if (drop && !drop.contains(e.target) && btn && !btn.contains(e.target)) {
+                closeAllDrops();
+              }
+            }
+          });
+
+          document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+              closeAllDrops();
+              closeMobile();
+            }
+          });
+
+          // Mobile
+          var mobileBtn = document.getElementById('nav-mobile-btn');
+          var mobilePanel = document.getElementById('nav-mobile-panel');
+
+          function closeMobile() {
+            if (mobileBtn) mobileBtn.setAttribute('aria-expanded', 'false');
+            if (mobilePanel) mobilePanel.classList.remove('etha-mobile-active');
+          }
+
+          if (mobileBtn && mobilePanel) {
+            mobileBtn.addEventListener('click', function(e) {
+              e.stopPropagation();
+              var isOpen = mobileBtn.getAttribute('aria-expanded') === 'true';
+              if (isOpen) { closeMobile(); } else {
+                mobileBtn.setAttribute('aria-expanded', 'true');
+                mobilePanel.classList.add('etha-mobile-active');
+              }
+            });
+          }
+
+          // Mobile accordions
+          document.querySelectorAll('.etha-mob-acc-btn').forEach(function(trigger) {
+            trigger.addEventListener('click', function() {
+              var targetId = trigger.getAttribute('data-target');
+              var target = document.getElementById(targetId);
+              var isOpen = trigger.getAttribute('aria-expanded') === 'true';
+              document.querySelectorAll('.etha-mob-acc-btn').forEach(function(t) {
+                t.setAttribute('aria-expanded', 'false');
+                var tid = t.getAttribute('data-target');
+                var el = document.getElementById(tid);
+                if (el) el.classList.remove('etha-acc-open');
+              });
+              if (!isOpen && target) {
+                trigger.setAttribute('aria-expanded', 'true');
+                target.classList.add('etha-acc-open');
+              }
+            });
+          });
+        })();
+      </script>
+    </nav>
+
+    <!-- Main Content -->
+    <main style="margin:0;padding:0;" class="">
+      <div class="grid-item relative w-full h-[60vh] md:h-[80vh] bg-neutral-200 cursor-pointer">
+        <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/4ea40774-7441-4074-9e74-6e07b8c7cb05_3840w.png" alt="Hero image" class="w-full h-full object-cover absolute top-0 right-0 bottom-0 left-0">
+        <!-- 
+  EDITORIAL HERO SYSTEM NOTES:
+  - Typography: Using Space Mono for metadata index. Geist for headings/body.
+  - Update index number sequentially per campaign (e.g., 001, 002).
+  - Replace collection title and description for seasonal drops.
+-->
+        <div class="absolute inset-x-0 bottom-0 h-[60%] md:h-1/2 bg-gradient-to-t from-black/50 via-black/10 to-transparent pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 p-6 pb-8 md:p-12 md:pb-12 z-10 flex flex-col justify-end text-white pointer-events-none hero-editorial">
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400&display=swap');
+            @keyframes editorial-reveal {
+              0% { opacity: 0; transform: translateY(12px); }
+              100% { opacity: 1; transform: translateY(0); }
+            }
+            .hero-editorial {
+              animation: editorial-reveal 1.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.5s both;
+            }
+            .editorial-meta {
+              font-family: 'Space Mono', ui-monospace, SFMono-Regular, monospace;
+            }
+          </style>
+          <div class="flex flex-col gap-6 md:gap-8">
+            <span class="editorial-meta text-[10px] md:text-[11px] tracking-[0.25em] text-white/60 uppercase">
+              001
+            </span>
+            <div class="flex flex-col gap-3">
+              <h2 class="font-geist text-[11px] md:text-[12px] uppercase tracking-[0.2em] font-medium text-white/95">
+                Ether — SUMMER '026
+              </h2>
+              <p class="font-geist text-[12px] md:text-[13px] leading-[1.7] text-white/70 max-w-[280px] md:max-w-[340px] font-light tracking-[0.02em]">
+                Garments shaped through natural texture, utility, and organic
+                form. Soil explores grounded silhouettes through cotton,
+                structure, and lived-in materiality.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-0">
+        <div class="grid-item relative aspect-[3/4] bg-neutral-300 cursor-pointer ether-product">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2d3c35f4-a5a0-4ac3-9d55-77f9c687c50a_1600w.png" alt="Model in brown jacket" class="object-cover absolute top-0 right-0 bottom-0 left-0" onclick="window.location.href='/product'" role="button">
+          <!-- symbol element: x (inactive) -> ° (active) -->
+          <div class="ether-product-symbol" aria-hidden="true">
+            <span class="ether-sym-x">x</span>
+            <span class="ether-sym-deg">°</span>
+          </div>
+          <!-- product meta: change title/description here -->
+          <div class="ether-product-meta">
+            <div class="ether-meta-deg">°</div>
+            <div class="ether-meta-title">RECONSTRUCTED LEATHER COAT</div>
+            <div class="ether-meta-desc">
+              Upcycled leather outerwear rebuilt through age, wear, and
+              preservation.
+            </div>
+          </div>
+        </div>
+        <div class="grid-item relative aspect-[3/4] bg-neutral-100 cursor-pointer ether-product">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/d774c29d-b97d-42d7-9d68-18917ff6603b_1600w.png?w=800&q=80" alt="Model in patterned shirt" class="object-cover absolute top-0 right-0 bottom-0 left-0 -multi">
+          <!-- symbol element: x (inactive) -> ° (active) -->
+          <div class="ether-product-symbol" aria-hidden="true">
+            <span class="ether-sym-x">x</span>
+            <span class="ether-sym-deg">°</span>
+          </div>
+          <!-- product meta: change title/description here -->
+          <div class="ether-product-meta">
+            <div class="ether-meta-deg">°</div>
+            <div class="ether-meta-title">PRINTED ARCHIVE SHIRT</div>
+            <div class="ether-meta-desc">
+              Lightweight cotton shirt patterned through layered studio prints.
+            </div>
+          </div>
+        </div>
+        <div class="grid-item relative aspect-[3/4] bg-amber-800 cursor-pointer ether-product">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/7dc27b8a-06e6-401c-8ce1-ae764d88eb47_1600w.png?w=800&q=80" alt="Detail shot with warm tones" class="object-cover absolute top-0 right-0 bottom-0 left-0 -multi">
+          <!-- symbol element: x (inactive) -> ° (active) -->
+          <div class="ether-product-symbol" aria-hidden="true">
+            <span class="ether-sym-x">x</span>
+            <span class="ether-sym-deg">°</span>
+          </div>
+          <!-- product meta: change title/description here -->
+          <div class="ether-product-meta">
+            <div class="ether-meta-deg">°</div>
+            <div class="ether-meta-title">EARTH TONE STUDY</div>
+            <div class="ether-meta-desc">
+              A material exploration in warm pigment, raw cotton, and natural
+              dye.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-0">
+        <div class="grid-item relative aspect-[3/4] md:aspect-auto md:h-[90vh] bg-black cursor-pointer ether-product">
+          <img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=800&q=80&auto=format&fit=crop" alt="Model with crochet hat" class="absolute inset-0" style="object-position:center top;">
+          <div class="bg-black/30 bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/3cd81e28-7b78-43b1-942e-42c3f995951c_1600w.png)] bg-cover bg-center absolute inset-0"></div>
+          <!-- symbol element: x (inactive) -> ° (active) -->
+          <div class="ether-product-symbol" aria-hidden="true">
+            <span class="ether-sym-x">x</span>
+            <span class="ether-sym-deg">°</span>
+          </div>
+          <!-- product meta: change title/description here -->
+          <div class="ether-product-meta">
+            <div class="ether-meta-deg">°</div>
+            <div class="ether-meta-title">HAND-CROCHETED HEADPIECE</div>
+            <div class="ether-meta-desc">
+              Slow-made knit accessory shaped from undyed regenerative wool.
+            </div>
+          </div>
+        </div>
+        <div class="grid-item relative aspect-[3/4] md:aspect-auto md:h-[90vh] bg-neutral-200 cursor-pointer ether-product">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/548ad8cf-65d4-4ce5-833e-5da3aadb1616_1600w.png" alt="Model in brown shirt" class="object-cover absolute inset-0">
+          <!-- symbol element: x (inactive) -> ° (active) -->
+          <div class="ether-product-symbol" aria-hidden="true">
+            <span class="ether-sym-x">x</span>
+            <span class="ether-sym-deg">°</span>
+          </div>
+          <!-- product meta: change title/description here -->
+          <div class="ether-product-meta">
+            <div class="ether-meta-deg">°</div>
+            <div class="ether-meta-title">UTILITY OVERSHIRT — UMBER</div>
+            <div class="ether-meta-desc">
+              Mid-weight workwear cut from organic cotton, finished in earth
+              umber.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-0">
+        <div class="grid-item relative aspect-[3/4] bg-neutral-100 cursor-pointer ether-product">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/f47a0318-7a78-45cc-b280-c510190c8182_1600w.png?w=800&q=80" alt="Model in black outfit" class="object-cover absolute inset-0">
+          <!-- symbol element: x (inactive) -> ° (active) -->
+          <div class="ether-product-symbol" aria-hidden="true">
+            <span class="ether-sym-x">x</span>
+            <span class="ether-sym-deg">°</span>
+          </div>
+          <!-- product meta: change title/description here -->
+          <div class="ether-product-meta">
+            <div class="ether-meta-deg">°</div>
+            <div class="ether-meta-title">TECHNICAL FIELD ENSEMBLE</div>
+            <div class="ether-meta-desc">
+              Recycled nylon system designed for movement, weather, and quiet
+              utility.
+            </div>
+          </div>
+        </div>
+        <div class="grid-item relative aspect-[3/4] bg-neutral-200 cursor-pointer ether-product">
+          <video src="https://videos.pexels.com/video-files/6604479/6604479-hd_1920_1080_25fps.mp4" poster="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/4f537f8a-583d-494e-aa01-9ed0f54e2877_1600w.png?w=800&q=80" class="w-full h-full object-cover absolute inset-0" autoplay="" loop="" muted="" playsinline=""></video>
+          <!-- symbol element: x (inactive) -> ° (active) -->
+          <div class="ether-product-symbol" aria-hidden="true">
+            <span class="ether-sym-x">x</span>
+            <span class="ether-sym-deg">°</span>
+          </div>
+          <!-- product meta: change title/description here -->
+          <div class="ether-product-meta">
+            <div class="ether-meta-deg">°</div>
+            <div class="ether-meta-title">MOTION STUDY — 026</div>
+            <div class="ether-meta-desc">
+              Garment in motion. A study of fabric behaviour under natural
+              light.
+            </div>
+          </div>
+        </div>
+        <div class="grid-item relative aspect-[3/4] bg-amber-100 cursor-pointer ether-product">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/83af9431-e13a-4f98-beee-73415ac90f3d_1600w.png?w=800&q=80" alt="Model in terracotta shirt" class="absolute inset-0">
+          <!-- symbol element: x (inactive) -> ° (active) -->
+          <div class="ether-product-symbol" aria-hidden="true">
+            <span class="ether-sym-x">x</span>
+            <span class="ether-sym-deg">°</span>
+          </div>
+          <!-- product meta: change title/description here -->
+          <div class="ether-product-meta">
+            <div class="ether-meta-deg">°</div>
+            <div class="ether-meta-title">TERRACOTTA LINEN SHIRT</div>
+            <div class="ether-meta-desc">
+              Loose-cut shirt in pigment-dyed linen — a quiet study in warmth.
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-neutral-200 border-t mt-0">
+      <div class="z-10 w-full relative" style="background-color:#2d4a3e;position:relative;">
+        <style>
+          .etha-seed-footer { background-color: #2d4a3e; color: #ffffff; font-family: 'Inter', sans-serif; position: relative; z-index: 2; }
+          .etha-seed-inner { max-width: 1440px; margin: 0 auto; padding: 72px 56px 56px 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 64px; }
+          .etha-seed-statement { font-size: clamp(28px, 3.5vw, 44px); font-weight: 400; line-height: 1.2; letter-spacing: -0.025em; color: #ffffff; margin-bottom: 32px; }
+          .etha-seed-subline { font-size: 14px; font-weight: 400; color: rgba(255, 255, 255, 0.7); line-height: 1.5; margin-bottom: 4px; }
+          .etha-seed-consent { font-size: 12px; font-weight: 400; color: rgba(255, 255, 255, 0.45); line-height: 1.5; margin-bottom: 20px; }
+          .etha-seed-cols-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 32px; }
+          .etha-seed-col-heading { font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255, 255, 255, 0.4); margin-bottom: 16px; }
+          .etha-seed-col-links { display: flex; flex-direction: column; gap: 10px; }
+          .etha-seed-col-link { font-size: 14px; font-weight: 400; color: rgba(255, 255, 255, 0.85); text-decoration: none; transition: opacity 0.25s ease; display: block; }
+          .etha-seed-col-link:hover { opacity: 0.6; }
+          .etha-underlay-section { position: relative; z-index: 1; width: 100%; height: 100vh; min-height: 600px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #0a0a0a; }
+          .etha-underlay-bg { position: absolute; inset: 0; background-image: url('https://images.unsplash.com/photo-1451186859696-371d9477be93?w=1920&q=80'); background-size: cover; background-position: center; opacity: 0.5; }
+          .etha-underlay-text { position: relative; z-index: 2; font-family: 'Inter', sans-serif; font-size: clamp(48px, 10vw, 160px); font-weight: 300; letter-spacing: -0.04em; color: #ffffff; text-align: center; opacity: 0; filter: blur(12px); transform: translateY(30px); transition: opacity 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), filter 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+          .etha-underlay-text.etha-revealed { opacity: 1; filter: blur(0px); transform: translateY(0); }
+          .etha-underlay-sub { position: relative; z-index: 2; font-size: 13px; font-weight: 400; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(255, 255, 255, 0.5); text-align: center; margin-top: 16px; opacity: 0; transition: opacity 1.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.3s; }
+          .etha-underlay-sub.etha-revealed { opacity: 1; }
+          @media (max-width: 1023px) { .etha-seed-inner { grid-template-columns: 1fr; padding: 56px 32px 48px 32px; gap: 48px; } }
+          @media (max-width: 639px) { .etha-seed-inner { padding: 40px 20px 36px 20px; gap: 40px; } .etha-seed-cols-row { grid-template-columns: 1fr 1fr; gap: 28px; } .etha-underlay-section { height: 70vh; min-height: 400px; } }
+          @media (max-width: 479px) { .etha-seed-cols-row { grid-template-columns: 1fr; gap: 32px; } }
+        </style>
+
+        <div class="etha-seed-footer">
+          <div class="etha-seed-inner">
+            <div style="display:flex;flex-direction:column;gap:0;max-width:560px;" class="">
+              <div style="aspect-ratio:1/1;max-height:88px;max-width:88px;border:1px solid rgba(255,255,255,0.2);border-radius:14px;display:flex;align-items:center;justify-content:center;padding:16px;margin-bottom:40px;">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/0c825cde-0a20-4812-bb3f-d8bfea8804c1_800w.png" alt="ETHA Logo" style="height:100%;width:100%;object-fit:contain;filter:brightness(0) invert(1);display:block;">
+              </div>
+              <h2 class="etha-seed-statement">
+                Modern utility, crafted in London, rooted in material honesty.
+              </h2>
+              <p class="etha-seed-subline">
+                Studio notes, drops, and new releases — to your inbox.
+              </p>
+              <p class="etha-seed-consent">
+                By signing up you consent to receive ETHA emails.
+              </p>
+              <div style="position:relative;width:100%;max-width:440px;margin-bottom:16px;">
+                <input type="email" placeholder="Sign Up For Our Newsletter" style="width: 100%; background: rgba(255, 255, 255, 0.06); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 22px; padding: 16px 56px 16px 24px; color: rgb(255, 255, 255); font-size: 14px; font-family: Inter, sans-serif; font-weight: 400;" onfocus="this.style.borderColor='rgba(255,255,255,0.3)'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'">
+                <button aria-label="Submit" style="position:absolute;right:6px;top:50%;width:40px;height:40px;border-radius:50%;background:transparent;border:none;color:rgba(255,255,255,0.7);cursor:pointer;display:flex;align-items:center;justify-content:center;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 12h14"></path>
+                    <path d="m12 5 7 7-7 7"></path>
+                  </svg>
+                </button>
+              </div>
+              <div style="display:inline-flex;width:fit-content;flex-direction:column;gap:4px;background:rgba(255,255,255,0.06);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.12);border-radius:22px;padding:14px 24px;">
+                <span style="font-size:11px;font-weight:400;color:rgba(255,255,255,0.45);letter-spacing:0.02em;">
+                  UK Time (Europe/London)
+                </span>
+                <span id="etha-seed-clock" style="font-family:'Geist Mono',ui-monospace,SFMono-Regular,monospace;font-size:13px;font-weight:500;color:rgba(255,255,255,0.7);letter-spacing:0.04em;">21:16:09</span>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:40px;" class="">
+              <div class="etha-seed-cols-row">
+                <div>
+                  <p class="etha-seed-col-heading">Products</p>
+                  <div class="etha-seed-col-links">
+                    <a href="#" class="etha-seed-col-link">cosmos</a>
+                    <a href="#" class="etha-seed-col-link">land</a>
+                    <a href="#" class="etha-seed-col-link">soil</a>
+                    <a href="#" class="etha-seed-col-link">sanctuary</a>
+                  </div>
+                </div>
+                <div>
+                  <p class="etha-seed-col-heading">Brand</p>
+                  <div class="etha-seed-col-links">
+                    <a href="#" class="etha-seed-col-link">about</a>
+                    <a href="#" class="etha-seed-col-link">materials</a>
+                    <a href="#" class="etha-seed-col-link">journal</a>
+                  </div>
+                </div>
+                <div>
+                  <p class="etha-seed-col-heading">Inquire</p>
+                  <div class="etha-seed-col-links">
+                    <a href="#" class="etha-seed-col-link">contact</a>
+                    <a href="#" class="etha-seed-col-link">stockists</a>
+                    <a href="#" class="etha-seed-col-link">press</a>
+                    <a href="#" class="etha-seed-col-link">collaborations</a>
+                  </div>
+                </div>
+              </div>
+              <div class="etha-seed-cols-row">
+                <div class="">
+                  <p class="etha-seed-col-heading">Help</p>
+                  <div class="etha-seed-col-links">
+                    <a href="#" class="etha-seed-col-link">
+                      shipping &amp; returns
+                    </a>
+                    <a href="#" class="etha-seed-col-link">size guide</a>
+                    <a href="#" class="etha-seed-col-link">f.a.q</a>
+                  </div>
+                </div>
+                <div>
+                  <p class="etha-seed-col-heading">Social</p>
+                  <div class="etha-seed-col-links">
+                    <a href="#" class="etha-seed-col-link">instagram</a>
+                    <a href="#" class="etha-seed-col-link">email</a>
+                  </div>
+                </div>
+                <div>
+                  <p class="etha-seed-col-heading">Legal</p>
+                  <div class="etha-seed-col-links">
+                    <a href="#" class="etha-seed-col-link">
+                      terms &amp; conditions
+                    </a>
+                    <a href="#" class="etha-seed-col-link">privacy policy</a>
+                    <a href="#" class="etha-seed-col-link">accessibility</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="border-top:1px solid rgba(255,255,255,0.08);padding:20px 56px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;max-width:1440px;margin:0 auto;" class="">
+            <p style="color:rgba(255,255,255,0.4);font-size:12px;font-weight:400;">
+              © 2026 ether° all rights reserved.
+            </p>
+            <p style="color:rgba(255,255,255,0.25);font-size:11px;font-weight:400;letter-spacing:0.04em;">
+              Built in London
+            </p>
+          </div>
+        </div>
+
+        <div class="etha-underlay-section" id="etha-underlay">
+          <div class="etha-underlay-bg"></div>
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;" class="">
+            <div class="etha-underlay-text" id="etha-underlay-text">ether°</div>
+            <div class="etha-underlay-sub" id="etha-underlay-sub">
+              Explore the world of ETHA
+            </div>
+          </div>
+        </div>
+
+        <script>
+          (function() {
+            function updateClock() {
+              var el = document.getElementById('etha-seed-clock');
+              if (!el) return;
+              try {
+                var fmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+                el.textContent = fmt.format(new Date());
+              } catch(e) {
+                var n = new Date();
+                el.textContent = String(n.getUTCHours()).padStart(2,'0') + ':' + String(n.getUTCMinutes()).padStart(2,'0') + ':' + String(n.getUTCSeconds()).padStart(2,'0');
+              }
+            }
+            updateClock();
+            setInterval(updateClock, 1000);
+
+            var underlayText = document.getElementById('etha-underlay-text');
+            var underlaySub = document.getElementById('etha-underlay-sub');
+            if (underlayText) {
+              var obs = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
+                  if (entry.isIntersecting) {
+                    underlayText.classList.add('etha-revealed');
+                    if (underlaySub) underlaySub.classList.add('etha-revealed');
+                  }
+                });
+              }, { threshold: 0.2, rootMargin: '0px 0px -50px 0px' });
+              obs.observe(underlayText);
+            }
+          })();
+        </script>
+      </div>
+    </footer>
+
+    <script>
+      lucide.createIcons();
+    </script>
+
+    <script id="ether-product-interaction-js">
+      (function(){var products=document.querySelectorAll('.ether-product');function clearAll(){products.forEach(function(p){p.classList.remove('is-active');});}products.forEach(function(p){p.addEventListener('mouseenter',function(){clearAll();p.classList.add('is-active');});p.addEventListener('mouseleave',function(){p.classList.remove('is-active');});p.addEventListener('focusin',function(){clearAll();p.classList.add('is-active');});p.addEventListener('focusout',function(){p.classList.remove('is-active');});});})();
+    </script>
+  
+</body></html>

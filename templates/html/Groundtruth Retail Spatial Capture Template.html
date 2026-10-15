@@ -1,0 +1,2568 @@
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script><meta charset="utf-8"><title>GROUNDTRUTH</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Spatial capture for retail. We scan trading interiors and hand back measurable, queryable geometry.">
+<style>
+:root{
+/* the void, measured off the reference at native resolution · #4e5050 */
+--void:#4e5050;
+--void-lift:#585a5a;
+--ink:#f2f3f1;
+--ink-dim:#b9bcba;
+--ink-faint:#8b8f8d;
+--line:rgba(255,255,255,.16);
+--chartreuse:#d0ff14;
+--blue:#243ccf;
+--teal:#2e97b1;
+--crimson:#e31e5c;
+--nav:56px;
+--mono:ui-monospace,SFMono-Regular,Menlo,"Roboto Mono",monospace;
+--sans:"Helvetica Neue",Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+margin:0;background:var(--void);color:var(--ink);
+font-family:var(--sans);font-size:16px;line-height:1.5;
+-webkit-font-smoothing:antialiased;
+overflow-x:hidden;
+}
+img,video,canvas{max-width:100%;display:block}
+a{color:inherit}
+/* ── fixed bar · a fixed bar STAYS fixed, it never hides on scroll direction ───── */
+.nav{
+position:fixed;inset:0 0 auto 0;height:var(--nav);z-index:60;
+display:flex;align-items:center;justify-content:space-between;
+padding:0 clamp(16px,3vw,40px);
+background:rgba(78,80,80,.82);backdrop-filter:blur(14px);
+border-bottom:1px solid var(--line);
+}
+.nav__mark{font:600 13px/1 var(--mono);letter-spacing:.16em}
+.nav__links{display:flex;gap:clamp(14px,2.4vw,30px);font:500 12px/1 var(--mono);letter-spacing:.09em;color:var(--ink-dim)}
+.nav__links a{text-decoration:none}
+.nav__links a:hover{color:var(--chartreuse)}
+@media(max-width:720px){.nav__links{display:none}}
+.wrap{width:min(1180px,92vw);margin-inline:auto}
+/* ── hero · the stage IS the viewport · the film holds its square in the middle, debris
+owns the width around it, and the type lives at the flanks over the page itself ───── */
+.hero{position:relative;height:100svh;min-height:560px;overflow:hidden}
+.stage{position:absolute;inset:0}
+/* the atmosphere the film used to carry, painted clean · no codec, no blocks. Sized to the
+film rect by the scene controller on every resize. */
+.stage__atmo{
+position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+background:radial-gradient(ellipse 50% 50% at center,
+rgba(30,32,33,.62) 0%, rgba(34,36,37,.42) 46%, rgba(40,42,43,.18) 72%, transparent 100%);
+pointer-events:none;
+}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%}
+.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;pointer-events:none}
+.gt-nogl video{opacity:1}                     /* no WebGL · show the film straight */
+/* left column · vertically centred in the band the film leaves free */
+.hero__type{
+position:absolute;left:clamp(18px,3vw,44px);top:50%;transform:translateY(-50%);
+width:min(300px,21vw);z-index:2;pointer-events:none;
+}
+.hero h1{
+margin:0 0 14px;font-weight:500;
+font-size:clamp(22px,1.9vw,32px);line-height:1.08;letter-spacing:-.02em;
+}
+.hero h1 em{font-style:normal;color:var(--ink-faint)}
+.hero__sub{margin:0;color:var(--ink-dim);font-size:13px;line-height:1.55}
+/* right column · the numbers, bottom-anchored like an instrument readout */
+.hero__meta{
+position:absolute;right:clamp(18px,3vw,44px);bottom:clamp(20px,4vh,44px);z-index:2;
+display:flex;flex-direction:column;align-items:flex-end;gap:12px;
+font:500 10px/1 var(--mono);letter-spacing:.13em;color:var(--ink-faint);
+text-align:right;pointer-events:none;
+}
+.hero__meta b{display:block;color:var(--chartreuse);font-weight:500;font-size:17px;margin-bottom:3px;letter-spacing:.02em}
+@media(max-width:940px){
+.hero__type{left:5vw;right:5vw;top:auto;bottom:clamp(16px,3vh,30px);transform:none;width:auto}
+.hero h1{font-size:clamp(20px,4.6vw,26px);margin-bottom:8px}
+.hero__sub{max-width:52ch;font-size:12px}
+.hero__meta{display:none}
+}
+/* ── the world layer · fixed, behind everything, owns the gaps between sections ── */
+#world{position:fixed;inset:0;z-index:0;pointer-events:none}
+.hero{z-index:1}
+main{position:relative;z-index:1;perspective:1500px;perspective-origin:50% 50%}
+main .sec, footer.foot{will-change:transform}
+/* ── generic section furniture ─────────────────────────────────────────────────── */
+/* Every section is a solid PANEL on its own colour, floating over the world layer.
+The gaps between panels are where the page's 3D lives, so they are generous. */
+.sec{
+position:relative;z-index:1;
+padding:clamp(64px,11vh,140px) 0;
+margin:clamp(120px,26vh,300px) 0;
+border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+scroll-margin-top:calc(var(--nav) + 12px);
+}
+.sec--capture{background:#3b3e3e}
+.sec--library{background:#464949}
+.sec--fragment{background:#26292b}
+.sec--commission{background:#2c3037}
+/* the torn seam · shards straddle the section's top edge, above the panel, below nothing */
+.tear{position:absolute;left:0;top:-72px;height:150px;width:100%;pointer-events:none;z-index:2}
+.foot{position:relative}
+/* reveals · furniture arrives as the section does */
+.rv{opacity:0;transform:translateY(14px);transition:opacity .6s ease,transform .6s ease}
+.rv.in{opacity:1;transform:none}
+.spec>div,.steps li,.lib__row{opacity:0;transform:translateY(12px);transition:opacity .5s ease,transform .5s ease}
+.spec>div.in,.steps li.in,.lib__row.in{opacity:1;transform:none}
+.spec>div:nth-child(2),.steps li:nth-child(2){transition-delay:.06s}
+.spec>div:nth-child(3),.steps li:nth-child(3){transition-delay:.12s}
+.spec>div:nth-child(4),.steps li:nth-child(4){transition-delay:.18s}
+.steps li:nth-child(5){transition-delay:.24s}
+.sec__no{font:500 10px/1 var(--mono);letter-spacing:.2em;color:var(--ink-faint);margin-bottom:18px}
+.sec h2{margin:0 0 12px;font-weight:500;font-size:clamp(22px,3.4vw,38px);letter-spacing:-.02em;line-height:1.05}
+.sec p.lead{margin:0;max-width:60ch;color:var(--ink-dim)}
+/* ── 02 · the registration cloud beside the document it delivers ───────────────── */
+.cap{display:grid;grid-template-columns:minmax(280px,0.9fr) 1.4fr;gap:clamp(28px,4vw,64px);align-items:start}
+.cap__stick{position:sticky;top:calc(var(--nav) + 24px)}
+#cloudcv{width:100%;aspect-ratio:1/1.08;display:block}
+.cap__stat{display:flex;justify-content:space-between;margin-top:10px;
+font:500 10px/1 var(--mono);letter-spacing:.14em;color:var(--ink-faint)}
+.cap__stat span:first-child{color:var(--chartreuse)}
+@media(max-width:900px){.cap{grid-template-columns:1fr}.cap__stick{position:static}
+#cloudcv{aspect-ratio:16/10}}
+/* ── 02 spec sheet · a real document: ruled rows, figures in a right column ────── */
+.spec{margin:clamp(28px,5vh,52px) 0 0;border-top:1px solid var(--line)}
+.spec>div{
+display:grid;grid-template-columns:minmax(160px,1.1fr) 2.4fr minmax(94px,auto);
+gap:clamp(10px,2vw,28px);align-items:baseline;
+padding:18px 0;border-bottom:1px solid var(--line);
+}
+.spec dt{font-weight:500;font-size:clamp(15px,1.7vw,19px);letter-spacing:-.01em}
+.spec dd{margin:0;color:var(--ink-dim);font-size:14px}
+.spec dd.n{font:500 12px/1.4 var(--mono);color:var(--chartreuse);letter-spacing:.04em;text-align:right;white-space:nowrap}
+@media(max-width:680px){
+.spec>div{grid-template-columns:1fr auto;row-gap:6px}
+.spec dd:not(.n){grid-column:1/-1}
+}
+.note{margin:26px 0 0;max-width:66ch;color:var(--ink-faint);font-size:13px;line-height:1.65;
+border-left:1px solid var(--line);padding-left:16px}
+/* ── 03 library · the ledger itself · pure typography, generous rule lines ─────── */
+.lib{margin-top:clamp(26px,5vh,48px);border-top:1px solid var(--line)}
+.lib__row{
+display:grid;cursor:pointer;
+grid-template-columns:44px minmax(150px,1.5fr) 1fr repeat(3,minmax(78px,auto));
+gap:clamp(10px,2vw,26px);align-items:baseline;
+padding:clamp(14px,2.2vh,22px) 4px;border-bottom:1px solid var(--line);
+}
+.lib__no{font:500 11px/1 var(--mono);color:var(--ink-faint);letter-spacing:.1em}
+.lib__name{font-weight:500;font-size:clamp(16px,1.9vw,22px);letter-spacing:-.01em;transition:color .2s}
+.lib__place{color:var(--ink-faint);font-size:13px}
+.lib__f{font:500 11px/1.3 var(--mono);color:var(--ink-dim);letter-spacing:.05em;text-align:right;white-space:nowrap}
+.lib__f i{font-style:normal;display:block;font-size:9px;color:var(--ink-faint);letter-spacing:.14em}
+.lib__row--on .lib__no{color:var(--chartreuse)}
+.lib__row--on .lib__name{color:var(--chartreuse)}
+@media(max-width:860px){
+.lib__row{grid-template-columns:34px 1fr auto}
+.lib__place, .lib__f:nth-of-type(n+5){display:none}
+}
+/* ── 03 · the REGISTER · a surveyor's ledger over the capture it names ─────────────
+No panel, no thumbnails, no pinned column: the section itself is the viewer. Resting on
+a line floods its capture full-bleed behind the ledger, with the hero's selection boxes
+working on it at full size. The type stays on the scrimmed left, the imagery owns the
+right · nothing is a card. */
+.sec--library{overflow:hidden}
+.sec--library .wrap{position:relative;z-index:2}
+.insp{position:absolute;inset:0;margin:0;z-index:0;pointer-events:none}
+.insp img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+opacity:0;transition:opacity .45s ease;filter:saturate(.88)}
+.insp.insp--on img{opacity:.34}
+.insp canvas{position:absolute;inset:0;width:100%;height:100%}
+.insp::after{content:"";position:absolute;inset:0;
+background:linear-gradient(100deg, rgba(64,66,66,.94) 0%, rgba(64,66,66,.66) 44%, rgba(64,66,66,.12) 100%)}
+.insp canvas{z-index:1}
+.insp__tag{position:absolute;right:0;bottom:0;padding:8px 12px;z-index:2;
+font:500 10px/1 var(--mono);letter-spacing:.16em;color:#12140c;background:var(--chartreuse)}
+/* ── 04 live fragment ─────────────────────────────────────────────────────────── */
+.frag{position:relative;margin-top:clamp(26px,5vh,48px);aspect-ratio:16/9;background:#222527;
+border:1px solid var(--line);overflow:hidden}
+.frag__tick{position:absolute;width:18px;height:18px;pointer-events:none;
+border:0 solid var(--chartreuse);opacity:.75}
+.frag__tick--tl{left:8px;top:8px;border-left-width:1px;border-top-width:1px}
+.frag__tick--tr{right:8px;top:8px;border-right-width:1px;border-top-width:1px}
+.frag__tick--bl{left:8px;bottom:8px;border-left-width:1px;border-bottom-width:1px}
+.frag__tick--br{right:8px;bottom:8px;border-right-width:1px;border-bottom-width:1px}
+.frag__hud{position:absolute;left:14px;top:12px;display:flex;gap:16px;
+font:500 10px/1 var(--mono);letter-spacing:.15em;color:var(--chartreuse);pointer-events:none}
+.frag canvas{width:100%;height:100%;display:block;cursor:grab}
+.frag canvas:active{cursor:grabbing}
+.frag__hint{position:absolute;left:14px;bottom:12px;right:14px;display:flex;justify-content:space-between;
+font:500 10px/1 var(--mono);letter-spacing:.15em;color:var(--ink-faint);pointer-events:none}
+/* ── 05 steps · a schedule whose rail FILLS as you move through it ─────────────── */
+.steps{list-style:none;margin:clamp(26px,5vh,48px) 0 0;padding:0 0 0 22px;position:relative;
+border-top:1px solid var(--line);--fill:0}
+.steps::before{content:"";position:absolute;left:0;top:0;bottom:0;width:1px;background:var(--line)}
+.steps::after{content:"";position:absolute;left:0;top:0;width:1px;
+height:calc(var(--fill) * 100%);background:var(--chartreuse);transition:height .15s linear}
+.steps li.lit i{color:#12140c;background:var(--chartreuse);padding:4px 7px}
+.steps li i{transition:background .3s ease,color .3s ease}
+.steps li{
+display:grid;grid-template-columns:minmax(140px,1fr) 2.6fr 60px;
+gap:clamp(12px,2.4vw,30px);align-items:baseline;
+padding:20px 0;border-bottom:1px solid var(--line);
+}
+.steps b{font-weight:500;font-size:clamp(15px,1.8vw,20px);letter-spacing:-.01em}
+.steps span{color:var(--ink-dim);font-size:14px}
+.steps i{font:500 11px/1 var(--mono);font-style:normal;color:var(--chartreuse);letter-spacing:.1em;text-align:right}
+@media(max-width:680px){
+.steps li{grid-template-columns:1fr auto;row-gap:6px}
+.steps span{grid-column:1/-1}
+}
+/* ── footer ───────────────────────────────────────────────────────────────────── */
+.foot{border-top:1px solid var(--line);padding:clamp(40px,7vh,80px) 0}
+.foot__in p{margin:10px 0 0;color:var(--ink-dim);font-size:14px}
+.foot__fine{color:var(--ink-faint)!important;font-size:12px!important;max-width:60ch}
+.gt-noscript{padding:80px 20px;text-align:center;color:var(--ink-dim)}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+/* 3D Transform utilities */
+</style>
+<script>
+// Configure Tailwind to include our custom 3D transform utilities
+tailwind.config = {
+theme: {
+extend: {
+// Add any custom theme extensions here if needed
+}
+},
+plugins: [
+function({ addUtilities }) {
+const rotateXUtilities = {};
+const rotateYUtilities = {};
+const rotateZUtilities = {};
+const rotateValues = [0, 5, 10, 15, 20, 30, 45, 75];
+// Generate rotate-x utilities
+rotateValues.forEach((value) => {
+rotateXUtilities[`.rotate-x-${value}`] = {
+'--tw-rotate-x': `${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+if (value !== 0) {
+rotateXUtilities[`.-rotate-x-${value}`] = {
+'--tw-rotate-x': `-${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+}
+});
+// Generate rotate-y utilities
+rotateValues.forEach((value) => {
+rotateYUtilities[`.rotate-y-${value}`] = {
+'--tw-rotate-y': `${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+if (value !== 0) {
+rotateYUtilities[`.-rotate-y-${value}`] = {
+'--tw-rotate-y': `-${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+}
+});
+// Generate rotate-z utilities
+rotateValues.forEach((value) => {
+rotateZUtilities[`.rotate-z-${value}`] = {
+'--tw-rotate-z': `${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+if (value !== 0) {
+rotateZUtilities[`.-rotate-z-${value}`] = {
+'--tw-rotate-z': `-${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+}
+});
+// Perspective utilities
+const perspectiveUtilities = {
+".perspective-none": { perspective: "none" },
+".perspective-dramatic": { perspective: "100px" },
+".perspective-near": { perspective: "300px" },
+".perspective-normal": { perspective: "500px" },
+".perspective-midrange": { perspective: "800px" },
+".perspective-distant": { perspective: "1200px" },
+};
+// Transform style utilities
+const transformStyleUtilities = {
+".transform-style-preserve-3d": { "transform-style": "preserve-3d" },
+".transform-style-flat": { "transform-style": "flat" },
+};
+addUtilities({
+...rotateXUtilities,
+...rotateYUtilities,
+...rotateZUtilities,
+...perspectiveUtilities,
+...transformStyleUtilities,
+});
+}
+]
+};
+</script></head><body><div id="gt-src" data-r="VanhDc/aura-assets" data-t="groundtruth-v1" data-p="groundtruth" hidden=""></div>
+<nav class="nav">
+  <div class="nav__mark">GROUNDTRUTH</div>
+  <div class="nav__links">
+    <a href="#capture">Capture</a>
+    <a href="#library">Library</a>
+    <a href="#fragment">Fragment</a>
+    <a href="#commission">Commission</a>
+  </div>
+</nav>
+
+<canvas id="world" aria-hidden="true"></canvas>
+
+<header class="hero">
+  <div class="stage" id="stage">
+    <div class="stage__atmo"></div>
+    <canvas class="gt-gl"></canvas>
+    <canvas class="gt-ui"></canvas>
+    <video muted="" loop="" playsinline="" preload="auto" crossorigin="anonymous"></video>
+  </div>
+  <div class="hero__type">
+    <h1>Every shop floor is<br>a measurable object. <em>Most are guesses.</em></h1>
+    <p class="hero__sub">We capture trading interiors at millimetre scale and hand back geometry you can query, not a folder of photographs.</p>
+  </div>
+  <aside class="hero__meta">
+    <span><b>0.8 mm</b> median residual</span>
+    <span><b>41 min</b> mean on-site</span>
+    <span><b>612</b> interiors captured</span>
+  </aside>
+</header>
+
+<main>
+  <!-- ── 02 · a SPEC SHEET, deliberately a document and not a card grid ─────────── -->
+  <section class="sec sec--capture" id="capture" data-bg="#3b3e3e">
+    <div class="wrap cap">
+      <div class="cap__cloud">
+        <div class="cap__stick">
+          <canvas id="cloudcv"></canvas>
+          <div class="cap__stat"><span id="cloudstat">0000 PTS</span><span>CLOUD-TO-CLOUD · LIVE</span></div>
+        </div>
+      </div>
+      <div class="cap__doc">
+      <div class="sec__no rv">WHAT A CAPTURE CONTAINS</div>
+      <h2 class="rv">A delivery is four files and a coordinate frame.</h2>
+      <p class="lead rv">Everything below ships for every capture. There is no premium tier that withholds the geometry, because the geometry is the product. Alongside: a registration in progress, cloud-to-cloud against the control frame.</p>
+      <dl class="spec">
+        <div><dt>Registered point cloud</dt><dd>E57 · 40–90 M points typical for a unit under 400 m²</dd><dd class="n">1.2–3.8 GB</dd></div>
+        <div><dt>Decimated mesh</dt><dd>GLB · watertight where the capture closed, honestly open where it did not</dd><dd class="n">40–180 MB</dd></div>
+        <div><dt>Fixture index</dt><dd>JSON · every gondola, chiller, till point and door, with its own transform</dd><dd class="n">80–400 KB</dd></div>
+        <div><dt>Survey control</dt><dd>Four permanent targets, positions held to the building grid</dd><dd class="n">2 KB</dd></div>
+      </dl>
+      <p class="note rv">The residual figure on this page is the median distance between a checked point and the registered cloud, across all 612 captures. We publish the median rather than the best because the best is not what you are buying.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 03 · an INDEX, closer to a contact sheet than a gallery ────────────────── -->
+  <section class="sec sec--library" id="library" data-bg="#464949">
+    <div class="wrap">
+      <div class="sec__no rv">THE LIBRARY</div>
+      <h2 class="rv">Seven of the six hundred.</h2>
+      <p class="lead rv">Independent units, captured on the same rig and the same control frame, which is why they can be compared to each other at all. Every line below is a delivered site, its acceptance figures on record.</p>
+      <div class="lib" id="lib"></div>
+    </div>
+    <figure class="insp" id="insp" aria-hidden="true">
+      <img alt="" decoding="async">
+      <canvas></canvas>
+      <figcaption class="insp__tag">·</figcaption>
+    </figure>
+  </section>
+
+  <!-- ── 04 · the live fragment · real geometry, not the film ───────────────────── -->
+  <section class="sec sec--fragment" id="fragment" data-bg="#26292b">
+    <div class="wrap">
+      <div class="sec__no rv">THE DELIVERABLE</div>
+      <h2 class="rv">Your capture, live in a browser tab.</h2>
+      <p class="lead rv">Every delivery includes the decimated mesh as a plain GLB, like this one. Open it in a tab, hand it to a fit-out contractor, load it into your own tools. No viewer install, no plugin, no per-seat licence. Drag it.</p>
+      <div class="frag" id="frag"><canvas id="fragcv"></canvas>
+        <i class="frag__tick frag__tick--tl"></i><i class="frag__tick frag__tick--tr"></i>
+        <i class="frag__tick frag__tick--bl"></i><i class="frag__tick frag__tick--br"></i>
+        <div class="frag__hud"><span id="fragaz">AZ 000°</span><span id="fragel">EL +00°</span></div>
+        <div class="frag__hint"><span>DRAG TO ORBIT</span><span id="fragstat">·</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 05 · a PROCESS, written as a schedule ──────────────────────────────────── -->
+  <section class="sec sec--commission" id="commission" data-bg="#2c3037">
+    <div class="wrap">
+      <div class="sec__no rv">COMMISSIONING</div>
+      <h2 class="rv">Out of trading hours, in one visit.</h2>
+      <ol class="steps">
+        <li><b>Survey control</b><span>Four targets fixed to structure, not to fixtures. Half a day, once per site, reused by every later capture.</span><i>D-7</i></li>
+        <li><b>Capture</b><span>Terrestrial scanner on a 6 m grid plus handheld fill for the tight runs. 41 minutes mean for a unit under 400 m².</span><i>D-0</i></li>
+        <li><b>Registration</b><span>Cloud-to-cloud against the control frame. Anything over 2 mm residual is re-shot, not smoothed.</span><i>D+1</i></li>
+        <li><b>Index</b><span>Fixtures identified and given transforms. This is the part that makes the capture queryable rather than merely viewable.</span><i>D+3</i></li>
+        <li><b>Delivery</b><span>Four files, your coordinate frame, no viewer lock-in and no per-seat licence.</span><i>D+4</i></li>
+      </ol>
+    </div>
+  </section>
+</main>
+
+<footer class="foot" data-bg="#232626">
+  <div class="wrap foot__in">
+    <div class="nav__mark">GROUNDTRUTH</div>
+    <p>Spatial capture for retail · Manchester and Rotterdam</p>
+    <p class="foot__fine">Residual and timing figures are medians across 612 delivered captures, recomputed quarterly.</p>
+  </div>
+</footer>
+<script>
+(function(){
+  var A = document.getElementById('gt-src');
+  var BASE = ['https:/', '/cdn.jsdelivr', '.net/gh/'].join('')
+           + A.dataset.r + '@' + A.dataset.t + '/' + A.dataset.p + '/';
+  function b64(buf){
+    var u8 = new Uint8Array(buf), s = '', CH = 0x8000;
+    for (var i = 0; i < u8.length; i += CH) s += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
+    return btoa(s);
+  }
+  Promise.all([
+    fetch(BASE + 'gt-data.json').then(function(r){ return r.json(); }),
+    fetch(BASE + 'chunk.glb').then(function(r){ return r.arrayBuffer(); })
+  ]).then(function(res){
+    var d = res[0];
+    d.lib.forEach(function(L){ L.img = BASE + L.file; delete L.file; });
+    window.GT = { hero: BASE + 'hero.mp4', lib: d.lib, drift: d.drift, tracks: d.tracks, glb: b64(res[1]) };
+    dispatchEvent(new Event('gt-ready'));
+  }).catch(function(e){ console.error('GT asset load failed', e); });
+})();
+</script><script>/* GROUNDTRUTH · the pass renderer.
+ *
+ * The reference does something more specific than "apply a filter": INSIDE a selection
+ * box the imagery switches to a data pass, OUTSIDE it stays photographic — and which
+ * side gets the pass INVERTS between beats. So this is not a full-screen effect with an
+ * opacity, it is a masked composite where the mask is the set of live selections.
+ *
+ * Every pass here is COMPUTED from the footage, never a colour grade:
+ *
+ *   NORMALS   Sobel the luminance for dx/dy, then normalize(vec3(-dx,-dy,k)).
+ *             That is the standard height-to-normal conversion, and it lands on exactly
+ *             the pastel violet/cyan/green of the reference because a mostly-flat image
+ *             has a mostly-+Z normal, which encodes to (0.5,0.5,1) — lilac.
+ *   EDGE      Sobel magnitude, quantised. The reference's blue/black/white/yellow beat.
+ *   UNTEX     luminance only, flattened toward the void grey. What the mesh looks like
+ *             mid-dissolve when it has lost its texture.
+ *   MOSH      horizontal row displacement driven by a hash of the row and time.
+ *
+ * Selections arrive as a uniform array rather than a mask texture: there are never more
+ * than 8 on screen and a texture upload per frame is more expensive than 8 rect tests.
+ */
+const MAX_SEL = 8;
+
+/* Is the GPU real? SwiftShader/llvmpipe rasterise on the CPU and pay full price for every
+ * tap of the pass shader · a page that is effortless on any real GPU crawls there. Probed
+ * ONCE on a throwaway context; everything that costs fill or draw calls keys off this. */
+function gtSoftGL(){
+  if (window.__GT_SOFT != null) return window.__GT_SOFT;
+  let soft = false;
+  try {
+    const c = document.createElement('canvas');
+    const g = c.getContext('webgl', { failIfMajorPerformanceCaveat:false });
+    const ext = g && g.getExtension('WEBGL_debug_renderer_info');
+    const r = ext ? String(g.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : '';
+    soft = /swiftshader|llvmpipe|software|mesa offscreen/i.test(r);
+    const lose = g && g.getExtension('WEBGL_lose_context'); if (lose) lose.loseContext();
+  } catch(e){}
+  return (window.__GT_SOFT = soft);
+}
+
+const VERT = `attribute vec2 p; varying vec2 uv;
+void main(){ uv = p*0.5+0.5; gl_Position = vec4(p,0.,1.); }`;
+
+const FRAG = `precision highp float;
+varying vec2 uv;
+uniform sampler2D uTex;
+uniform vec2  uTexel;      // 1/resolution, for the Sobel taps
+uniform float uTime;
+uniform int   uCount;                 // live selections
+uniform vec4  uSel[${MAX_SEL}];       // xy = min, zw = max, in uv space
+uniform float uSelPass[${MAX_SEL}];   // which pass each selection shows
+uniform float uGlobalPass;            // the pass applied OUTSIDE every selection
+uniform float uVoidMix;               // dissolve: pull the whole frame toward untextured
+uniform float uZoom;                  // push-in · 1.0 = as shot, >1 = closer
+uniform vec3  uVoid;
+
+float luma(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
+vec3 passNormals(vec2 t){
+  // Sobel on luminance. The 2.0 centre weight is what keeps the result from going
+  // noisy on video compression blocks.
+  float tl=luma(texture2D(uTex,t+uTexel*vec2(-1.,-1.)).rgb);
+  float  l=luma(texture2D(uTex,t+uTexel*vec2(-1., 0.)).rgb);
+  float bl=luma(texture2D(uTex,t+uTexel*vec2(-1., 1.)).rgb);
+  float tr=luma(texture2D(uTex,t+uTexel*vec2( 1.,-1.)).rgb);
+  float  r=luma(texture2D(uTex,t+uTexel*vec2( 1., 0.)).rgb);
+  float br=luma(texture2D(uTex,t+uTexel*vec2( 1., 1.)).rgb);
+  float  tp=luma(texture2D(uTex,t+uTexel*vec2( 0.,-1.)).rgb);
+  float  bt=luma(texture2D(uTex,t+uTexel*vec2( 0., 1.)).rgb);
+  float dx = (tr + 2.0*r + br) - (tl + 2.0*l + bl);
+  float dy = (bl + 2.0*bt + br) - (tl + 2.0*tp + tr);
+  // the 0.28 sets how domed the surface reads · lower = more colourful, more violent
+  vec3 n = normalize(vec3(-dx, -dy, 0.28));
+  return n * 0.5 + 0.5;
+}
+
+vec3 passEdge(vec2 t){
+  float c = luma(texture2D(uTex,t).rgb);
+  float x = luma(texture2D(uTex,t+vec2(uTexel.x,0.)).rgb) - c;
+  float y = luma(texture2D(uTex,t+vec2(0.,uTexel.y)).rgb) - c;
+  float e = clamp(length(vec2(x,y)) * 9.0, 0.0, 1.0);
+  float q = floor(c * 4.0) / 4.0;                 // posterise the base
+  vec3 base = mix(vec3(0.05,0.06,0.34), vec3(0.82,0.86,0.20), q);
+  return mix(base, vec3(1.0), step(0.55, e));     // edges blow to white
+}
+
+vec3 passUntex(vec2 t){
+  // Crush the SUBJECT to bare grey. Deliberately anchored so a void-coloured pixel maps to
+  // itself · an earlier version did c = 0.34 + c*0.42, which LIFTED the background and made
+  // the hero square read as a pale rectangle sitting on the page.
+  vec3 c = texture2D(uTex, t).rgb;
+  float l = luma(c);
+  float vl = luma(uVoid);
+  return vec3(vl + (l - vl) * 0.42) + (uVoid - vec3(vl)) * 0.7;
+}
+
+vec3 passMosh(vec2 t){
+  float row = floor(t.y * 84.0);
+  float h = fract(sin(row * 91.7 + floor(uTime * 11.0) * 3.3) * 43758.5453);
+  float amt = step(0.82, h) * (h - 0.82) * 0.9;   // only ~18% of rows tear
+  vec3 c = texture2D(uTex, vec2(fract(t.x + amt), t.y)).rgb;
+  if (h > 0.975) c = vec3(1.0) - c;               // a few rows invert
+  return c;
+}
+
+vec3 runPass(float id, vec2 t){
+  if (id < 0.5) return texture2D(uTex, t).rgb;    // 0 · beauty, untouched
+  if (id < 1.5) return passNormals(t);
+  if (id < 2.5) return passEdge(t);
+  if (id < 3.5) return passUntex(t);
+  return passMosh(t);
+}
+
+void main(){
+  // Push-in. The reference's silhouette area swings 19% to 98% of frame, i.e. the viewpoint
+  // moves in and back out · our legs hold constant framing, so it is added here. Only ever
+  // zooms IN: zooming past 1.0 would sample outside the frame and CLAMP_TO_EDGE would smear
+  // the border into streaks.
+  vec2 t = (uv - 0.5) / max(uZoom, 1.0) + 0.5;
+  vec3 orig = texture2D(uTex, t).rgb;
+
+  // THE VOID IS NEVER REPAINTED. Every pass would otherwise rewrite the background too · the
+  // normals pass turns a flat area lilac, because a flat image has a +Z normal and +Z encodes
+  // to (0.5,0.5,1). The reference keeps its grey void under every pass and only ever transforms
+  // the FRAGMENT, and the hero is a square on a page of the same grey, so a repainted
+  // background instantly reads as a rectangle pasted onto the page rather than a hole in it.
+  float subj = smoothstep(0.022, 0.085, distance(orig, uVoid));
+
+  vec3 col = runPass(uGlobalPass, t);
+
+  // a selection overrides the global pass inside its own rect
+  for (int i = 0; i < ${MAX_SEL}; i++){
+    if (i >= uCount) break;
+    vec4 s = uSel[i];
+    if (t.x > s.x && t.x < s.z && t.y > s.y && t.y < s.w){
+      col = runPass(uSelPass[i], t);
+    }
+  }
+
+  col = mix(col, passUntex(t), uVoidMix);         // the dissolve rides over everything
+  // Passes paint only STRONG subject. The old mask (subj, lower band 0.022) let the collapse
+  // peak's full-frame dust take the pass colour, and the EDGE pass's navy base then filled
+  // the whole film rectangle · a visible slab with the frame's shape. Faint dust now stays
+  // photographic and semi-transparent instead.
+  float paint = smoothstep(0.060, 0.160, distance(orig, uVoid));
+  col = mix(orig, col, paint);
+
+  // THE VOID BECOMES ALPHA. Matching the film's grey to the page's grey is fragile · it has to
+  // survive the encode, the browser's range expansion and the viewer's colour profile, and it
+  // breaks the moment the page colour changes. Keying it instead makes the fragment a CUT-OUT,
+  // so it sits on any background forever and the question stops existing. The void is already
+  // flat (normalised per frame to std 0.00), which is exactly what makes it key cleanly.
+  //
+  // A wider upper band than the subject mask: the generation bakes a darker ATMOSPHERE around
+  // the fragment, and a hard key leaves that atmosphere as an opaque slab with the frame's
+  // shape · the one thing a cut-out must never show. Half-keying it turns the slab into haze.
+  float d2 = distance(orig, uVoid);
+  // The lower band sits ABOVE the atmosphere's whole range now. The haze around the fragment
+  // is the codec's worst region (near-flat dark gradients macroblock at any sane bitrate),
+  // and any alpha it gets puts those blocks on the page · the owner saw them on a real
+  // display at crf 19. So the haze gets NONE, and the atmosphere the composition needs is
+  // painted procedurally behind the film instead, where no codec has ever touched it.
+  float edge = smoothstep(0.055, 0.185, d2);
+  // The outer edge fade applies to the HAZE ONLY. Fading everything would eat real content
+  // wherever the fragment approaches the frame edge, and the owner's rule is absolute: the
+  // film is always in full view, nothing cut or faded. Strong subject pixels pass untouched.
+  float win = smoothstep(0.0, 0.06, t.x) * smoothstep(1.0, 0.94, t.x)
+            * smoothstep(0.0, 0.06, t.y) * smoothstep(1.0, 0.94, t.y);
+  float hard = smoothstep(0.16, 0.30, d2);
+  edge *= mix(win, 1.0, hard);
+  // and a 2% soften on EVERYTHING · during the collapse peak a flying chunk can clip the
+  // source frame, and a hard-cut chunk edge draws the invisible rectangle for a frame or two
+  float rim = smoothstep(0.0, 0.02, t.x) * smoothstep(1.0, 0.98, t.x)
+            * smoothstep(0.0, 0.02, t.y) * smoothstep(1.0, 0.98, t.y);
+  edge *= rim;
+  if (t.x < 0.0 || t.x > 1.0 || t.y < 0.0 || t.y > 1.0) edge = 0.0;
+  gl_FragColor = vec4(col, edge);
+}`;
+
+const PASS_FRAG = FRAG;
+
+function createPassRenderer(canvas, video){
+  const gl = canvas.getContext('webgl', { antialias:false, alpha:false, powerPreference:'high-performance' });
+  if (!gl) return null;
+
+  const sh = (type, src) => {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); return null; }
+    return s;
+  };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FRAG));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(prog)); return null; }
+  gl.useProgram(prog);
+
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'p');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+  const U = n => gl.getUniformLocation(prog, n);
+  const u = { texel:U('uTexel'), time:U('uTime'), count:U('uCount'), sel:U('uSel'),
+              selPass:U('uSelPass'), global:U('uGlobalPass'), voidMix:U('uVoidMix'), zoom:U('uZoom'), vd:U('uVoid') };
+  gl.uniform1i(U('uTex'), 0);
+  gl.uniform3f(u.vd, 0x4e/255, 0x50/255, 0x50/255);
+
+  const selBuf  = new Float32Array(MAX_SEL * 4);
+  const passBuf = new Float32Array(MAX_SEL);
+  let uploaded = false;
+
+  return {
+    gl,
+    get ready(){ return uploaded; },
+    resize(w, h){ canvas.width = w; canvas.height = h; gl.viewport(0, 0, w, h); },
+    draw(state){
+      if (video.readyState < 2) return;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      // UNPACK_FLIP_Y so uv (0,0) is the top-left of the frame, matching the 2D overlay
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
+      uploaded = true;
+
+      const vw = video.videoWidth || 1280, vh = video.videoHeight || 1280;
+      gl.uniform2f(u.texel, 1 / vw, 1 / vh);
+      gl.uniform1f(u.time, state.time);
+      gl.uniform1f(u.global, state.globalPass);
+      gl.uniform1f(u.voidMix, state.voidMix);
+      gl.uniform1f(u.zoom, state.zoom || 1.0);
+
+      const n = Math.min(state.selections.length, MAX_SEL);
+      for (let i = 0; i < n; i++){
+        const s = state.selections[i];
+        selBuf[i*4]   = s.x;  selBuf[i*4+1] = s.y;
+        selBuf[i*4+2] = s.x + s.w;  selBuf[i*4+3] = s.y + s.h;
+        passBuf[i] = s.pass;
+      }
+      gl.uniform1i(u.count, n);
+      gl.uniform4fv(u.sel, selBuf);
+      gl.uniform1fv(u.selPass, passBuf);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+  };
+}
+
+/* GROUNDTRUTH · the hero as ONE 3D space containing the film.
+ *
+ * TWO PROBLEMS THIS SOLVES, and they turn out to be the same problem.
+ *
+ * 1. THE BACKGROUND. The film shipped as an opaque square whose void had to be graded to match
+ *    the page's grey exactly. That works until the page colour changes, or the film sits on a
+ *    section with a different background, and it is fragile even when it works · the match has
+ *    to survive encode, browser range expansion and the viewer's colour profile.
+ *
+ *    So the void is not matched, it is REMOVED. It is already flat (normalised to std 0.00 per
+ *    frame), which makes it key cleanly: alpha comes from each pixel's distance to the void
+ *    colour. The fragment becomes a cut-out, the page shows through, and the background can be
+ *    any colour forever.
+ *
+ * 2. "IT IS MORE VIDEO THAN 3D." True of the old build: the film was a flat quad and the mesh
+ *    lived in a separate section further down the page. Once the film is keyed, though, it stops
+ *    being a rectangle and becomes an OBJECT · and an object can share a 3D scene with real
+ *    geometry.
+ *
+ * THE STAGE IS THE WHOLE HERO, NOT A SQUARE. The first cut sized the canvas to the film and the
+ * debris kept sliding off its edges · a chunk cut by an invisible rectangle instantly reveals
+ * the rectangle, which is the one thing this composition must never do. The canvas now covers
+ * the full viewport; the film keeps its square on a plane at z=0; debris lives in the width the
+ * film does not use. Every chunk's placement bound is computed from ITS OWN depth (a near chunk
+ * projects larger, so its allowed x/y is smaller), which is what actually guarantees nothing
+ * clips at any edge, in any direction, at any aspect.
+ */
+const FOV = 0.86, DIST = 2.42;
+const TANH = Math.tan(FOV / 2);            // frustum half-height per unit distance
+const HALF0 = TANH * DIST;                 // half-height of the view at z=0 · 1.1099
+const PLANE = 0.95;                 // film's share of the view height, capped by width
+
+const RING_N = 26;                         // border satellites · orbit the film's EDGE
+const BACK_N = 16;                         // static field behind the film, full width
+const SIDE_N = 6;                          // small near accents in whatever margin exists
+
+const FILM_ASPECT = 16/9;                 // the film ships uncropped · the plane matches it
+const QUAD_VS = `attribute vec3 p; attribute vec2 a_uv; uniform mat4 uMVP; uniform vec2 uPlaneHalf;
+varying vec2 uv;
+void main(){ uv = a_uv; gl_Position = uMVP * vec4(p.x * uPlaneHalf.x, p.y * uPlaneHalf.y, 0.0, 1.0); }`;
+
+const DEBRIS_VS = `attribute vec3 p; attribute vec3 n; attribute vec3 off; attribute float seed;
+uniform mat4 uVP; uniform float uField; uniform float uTumble; uniform float uScale;
+varying vec3 vN; varying float vSeed;
+mat3 rotY(float a){ float c=cos(a), s=sin(a); return mat3(c,0.,-s, 0.,1.,0., s,0.,c); }
+mat3 rotX(float a){ float c=cos(a), s=sin(a); return mat3(1.,0.,0., 0.,c,s, 0.,-s,c); }
+void main(){
+  // each chunk tumbles on its own axis · the FIELD rotation is separate, so the ring can turn
+  // with the film while the outer chunks hold their station and only tumble
+  mat3 own = rotY(uTumble * (0.6 + seed) + seed * 6.2) * rotX(uTumble * 0.4 + seed * 3.1);
+  mat3 field = rotY(uField);
+  vec3 world = field * off + own * p * uScale;
+  vN = normalize(own * n);
+  vSeed = seed;
+  gl_Position = uVP * vec4(world, 1.0);
+}`;
+
+const DEBRIS_FS = `precision highp float;
+varying vec3 vN; varying float vSeed;
+uniform vec3 uTint;
+void main(){
+  vec3 n = normalize(vN);
+  // same key/fill as the live mesh viewer, so a shard and the scan read as one material
+  float key  = max(dot(n, normalize(vec3(0.5, 0.8, 0.35))), 0.0);
+  float fill = max(dot(n, normalize(vec3(-0.6, 0.25, -0.5))), 0.0) * 0.30;
+  vec3 base = uTint * (0.80 + 0.20 * fract(vSeed * 7.3));
+  vec3 lit = base * (0.22 + key * 0.55 + fill);
+  gl_FragColor = vec4(pow(lit, vec3(0.4545)), 1.0);
+}`;
+
+const LINE_VS = `attribute vec3 p; uniform mat4 uVP; uniform float uSpin; uniform vec2 uScale;
+void main(){ float c=cos(uSpin), s=sin(uSpin);
+  vec3 q = vec3(p.x * uScale.x, p.y * uScale.y, p.z * uScale.y);
+  vec3 w = vec3(c*q.x - s*q.z, q.y, s*q.x + c*q.z);
+  gl_Position = uVP * vec4(w,1.0); }`;
+const LINE_FS = `precision highp float; uniform vec4 uCol;
+void main(){ gl_FragColor = uCol; }`;
+
+/* ── tiny matrix helpers ─────────────────────────────────────────────────────── */
+function mul(a, b){
+  const o = new Float32Array(16);
+  for (let i=0;i<4;i++) for (let j=0;j<4;j++){ let s=0; for(let k=0;k<4;k++) s+=a[k*4+j]*b[i*4+k]; o[i*4+j]=s; }
+  return o;
+}
+function persp(fov, asp, n, f){
+  const t = 1/Math.tan(fov/2), o = new Float32Array(16);
+  o[0]=t/asp; o[5]=t; o[10]=(f+n)/(n-f); o[11]=-1; o[14]=2*f*n/(n-f); return o;
+}
+function lookZ(dist){
+  const o = new Float32Array(16); o[0]=1;o[5]=1;o[10]=1;o[15]=1; o[14]=-dist; return o;
+}
+
+/* an irregular chunk · a clean cube next to a torn scan reads as a prop, not as debris */
+function chunkGeo(seed){
+  const P=[], N=[];
+  const r = () => { seed = (seed*9301+49297)%233280; return seed/233280; };
+  const base = [[1,1,1],[-1,1,1],[-1,-1,1],[1,-1,1],[1,1,-1],[-1,1,-1],[-1,-1,-1],[1,-1,-1]];
+  // per-VERTEX displacement, not per-axis scale · scaling a cube gives a smaller cube, and the
+  // silhouette is what makes a chunk read as broken plaster rather than a prop
+  const v = base.map(b => b.map(c => c * (0.42 + r()*0.9) + (r()-0.5)*0.55));
+  const faces = [[0,1,2,3],[4,7,6,5],[0,3,7,4],[1,5,6,2],[0,4,5,1],[3,2,6,7]];
+  for (const f of faces){
+    const tri = [[f[0],f[1],f[2]],[f[0],f[2],f[3]]];
+    for (const t of tri){
+      const a=v[t[0]], b=v[t[1]], c=v[t[2]];
+      const u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], w=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+      const nx=u[1]*w[2]-u[2]*w[1], ny=u[2]*w[0]-u[0]*w[2], nz=u[0]*w[1]-u[1]*w[0];
+      const l=Math.hypot(nx,ny,nz)||1;
+      for (const q of [a,b,c]){ P.push(q[0],q[1],q[2]); N.push(nx/l,ny/l,nz/l); }
+    }
+  }
+  return { P:new Float32Array(P), N:new Float32Array(N) };
+}
+
+function createStage(canvas, video, passFragSrc){
+  // alpha:true and premultipliedAlpha:false · the page background must show through the keyed
+  // void, and premultiplied alpha darkens the fringe against a light page. On a software
+  // rasteriser the MSAA resolve alone is worth ~30% of the frame · drop it there.
+  const soft = gtSoftGL();
+  const gl = canvas.getContext('webgl', { antialias:!soft, alpha:true, premultipliedAlpha:false });
+  if (!gl) return null;
+
+  const sh = (t, src) => { const o = gl.createShader(t); gl.shaderSource(o, src); gl.compileShader(o);
+    if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(o), src.slice(0,120)); }
+    return o; };
+  const prog = (vs, fs) => { const p = gl.createProgram();
+    gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+    return p; };
+
+  const pQuad   = prog(QUAD_VS, passFragSrc);
+  const pDebris = prog(DEBRIS_VS, DEBRIS_FS);
+  const pLine   = prog(LINE_VS, LINE_FS);
+
+  const buf = (data, target) => { const b = gl.createBuffer();
+    gl.bindBuffer(target || gl.ARRAY_BUFFER, b);
+    gl.bufferData(target || gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); return b; };
+
+  // ── the film · a UNIT quad at z=0, scaled per frame by uPlaneHalf so the square can be
+  //    capped by the viewport's WIDTH on portrait screens without rebuilding geometry ────────
+  const quadP = buf(new Float32Array([-1,-1,0,  1,-1,0,  1,1,0,  -1,-1,0,  1,1,0,  -1,1,0]));
+  const quadUV = buf(new Float32Array([0,1, 1,1, 1,0, 0,1, 1,0, 0,0]));
+
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+  const geo = chunkGeo(1337);
+  const gP = buf(geo.P), gN = buf(geo.N);
+
+  /* ── placement · three populations for a WIDE film ─────────────────────────────
+   *   BORDER  small satellites orbiting the film's edge on an ellipse just outside it ·
+   *           the faux-real circulation, without ever crossing the film's face
+   *   BACK    a static full-width field behind the film · visible through the keyed void
+   *   NEAR    a few small accents in the margins the film leaves free
+   * A 16:9 film at ~86% width leaves no side flanks for big foreground chunks, and an
+   * orbit with a radius inside the film's own half-width sweeps chunks across the image
+   * constantly · both were tried, both looked wrong. Bounds re-derived on every resize.
+   */
+  let s = 20250830;
+  const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+  const borderRaw = [], backRaw = [], nearRaw = [];
+  for (let i = 0; i < RING_N; i++)
+    borderRaw.push({ th: rnd()*Math.PI*2, w: 0.7 + rnd()*0.6, z: (i%2 ? 1 : -1)*(0.08 + rnd()*0.20),
+                     seed: rnd(), us: rnd() });
+  for (let i = 0; i < BACK_N; i++)
+    backRaw.push({ ux: (rnd()-0.5)*2, uy: (rnd()-0.5)*2, z: -(0.55 + rnd()*0.85),
+                   seed: rnd(), us: rnd() });
+  for (let i = 0; i < SIDE_N; i++)
+    nearRaw.push({ ux: (rnd()-0.5)*2, uy: (i%2 ? 1 : -1)*(0.3 + rnd()*0.7), z: 0.35 + rnd()*0.4,
+                   seed: rnd(), us: rnd() });
+
+  const total = RING_N + BACK_N + SIDE_N;
+  const offs = new Float32Array(total*3), seeds = new Float32Array(total), scales = new Float32Array(total);
+  let ringLo = 0, backLo = RING_N, sideLo = RING_N + BACK_N;
+  let planeHalfY = HALF0 * PLANE, planeHalfX = planeHalfY * FILM_ASPECT, aspNow = 1;
+  let borderA = 1, borderB = 1;
+
+  function place(asp){
+    aspNow = asp;
+    // the film is 16:9 · PLANE of the height, but its WIDTH never exceeds 86% of the view,
+    // so the border orbit always has room outside it
+    const planeEff = Math.min(PLANE, 0.86 * asp / FILM_ASPECT);
+    planeHalfY = HALF0 * planeEff;
+    planeHalfX = planeHalfY * FILM_ASPECT;
+    const margin = 0.14;
+    // the border ellipse sits just outside the film edge, capped by the frustum at z≈0.3
+    borderA = Math.min(planeHalfX + 0.16, TANH*asp*(DIST-0.35) - margin);
+    borderB = Math.min(planeHalfY + 0.13, TANH*(DIST-0.35) - margin);
+    for (let i = 0; i < RING_N; i++){
+      const k = ringLo + i, c = borderRaw[i];
+      seeds[k] = c.seed;
+      scales[k] = 0.008 + c.us*c.us*0.022;   // satellites · small on purpose
+    }
+    for (let i = 0; i < BACK_N; i++){
+      const c = backRaw[i], k = backLo + i;
+      const ax = TANH*asp*(DIST - c.z) - margin - 0.1;
+      const ay = TANH*(DIST - c.z) - margin - 0.1;
+      offs[k*3]   = c.ux * ax;
+      offs[k*3+1] = c.uy * ay;
+      offs[k*3+2] = c.z;
+      seeds[k] = c.seed;
+      scales[k] = 0.018 + c.us*c.us*0.055;    // far, but the film's halo flattens depth · modest
+    }
+    // NEAR accents live in the horizontal bands the film leaves free (above and below);
+    // if the film eats the whole height they collapse toward the corners instead
+    for (let i = 0; i < SIDE_N; i++){
+      const c = nearRaw[i], k = sideLo + i;
+      const ax = TANH*asp*(DIST - c.z) - margin - 0.1;
+      const ay = TANH*(DIST - c.z) - margin - 0.1;
+      const band = Math.max(ay - planeHalfY, 0.06);
+      offs[k*3]   = c.ux * ax * 0.9;
+      offs[k*3+1] = Math.sign(c.uy) * Math.min(ay - 0.03, planeHalfY + 0.05 + Math.abs(c.uy) * band);
+      offs[k*3+2] = c.z;
+      seeds[k] = c.seed;
+      scales[k] = 0.012 + c.us*c.us*0.03;
+    }
+  }
+  place(1);
+
+  // the border satellites advance around the ellipse with the film's spin · positions are
+  // cheap to recompute per frame in JS, and doing it here keeps every bound in one place
+  function orbitBorder(spin){
+    for (let i = 0; i < RING_N; i++){
+      const k = ringLo + i, c = borderRaw[i];
+      const th = c.th + spin * 0.55 * c.w;
+      offs[k*3]   = Math.cos(th) * borderA;
+      offs[k*3+1] = Math.sin(th) * borderB;
+      offs[k*3+2] = c.z;
+    }
+  }
+
+  // ── scan volume · corner ticks around the film, scaled with it ─────────────
+  const V = 0.95, L = [];
+  const c = [[-V,-V,-V],[V,-V,-V],[V,V,-V],[-V,V,-V],[-V,-V,V],[V,-V,V],[V,V,V],[-V,V,V]];
+  const edges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+  for (const [a,b] of edges){
+    const A=c[a], B=c[b];
+    for (const t0 of [0, 0.82]){
+      const t1 = t0 + 0.18;
+      L.push(A[0]+(B[0]-A[0])*t0, A[1]+(B[1]-A[1])*t0, A[2]+(B[2]-A[2])*t0);
+      L.push(A[0]+(B[0]-A[0])*t1, A[1]+(B[1]-A[1])*t1, A[2]+(B[2]-A[2])*t1);
+    }
+  }
+  const lineP = buf(new Float32Array(L)), lineCount = L.length / 3;
+
+  const U = (p, n) => gl.getUniformLocation(p, n);
+  const uQ = { mvp:U(pQuad,'uMVP'), ph:U(pQuad,'uPlaneHalf'), tex:U(pQuad,'uTex'), texel:U(pQuad,'uTexel'),
+               time:U(pQuad,'uTime'), count:U(pQuad,'uCount'), sel:U(pQuad,'uSel'), selPass:U(pQuad,'uSelPass'),
+               global:U(pQuad,'uGlobalPass'), voidMix:U(pQuad,'uVoidMix'), zoom:U(pQuad,'uZoom'), vd:U(pQuad,'uVoid') };
+  const uD = { vp:U(pDebris,'uVP'), field:U(pDebris,'uField'), tumble:U(pDebris,'uTumble'),
+               tint:U(pDebris,'uTint'), scale:U(pDebris,'uScale') };
+  const uL = { vp:U(pLine,'uVP'), spin:U(pLine,'uSpin'), scale:U(pLine,'uScale'), col:U(pLine,'uCol') };
+
+  const selBuf = new Float32Array(8 * 4), passBuf = new Float32Array(8);
+
+  function drawDebris(vp, field, tumble, pick){
+    gl.useProgram(pDebris);
+    gl.uniformMatrix4fv(uD.vp, false, vp);
+    gl.uniform1f(uD.tumble, tumble);
+    gl.uniform3f(uD.tint, 0.40, 0.385, 0.355);   // plaster, matched to the film's own debris
+    const lp = gl.getAttribLocation(pDebris,'p'), ln = gl.getAttribLocation(pDebris,'n');
+    const lo = gl.getAttribLocation(pDebris,'off'), ls = gl.getAttribLocation(pDebris,'seed');
+    gl.bindBuffer(gl.ARRAY_BUFFER, gP); gl.enableVertexAttribArray(lp); gl.vertexAttribPointer(lp,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gN); gl.enableVertexAttribArray(ln); gl.vertexAttribPointer(ln,3,gl.FLOAT,false,0,0);
+    gl.disableVertexAttribArray(lo); gl.disableVertexAttribArray(ls);
+    for (const [i, f] of pick){
+      gl.uniform1f(uD.field, f * field);
+      gl.vertexAttrib3f(lo, offs[i*3], offs[i*3+1], offs[i*3+2]);
+      gl.vertexAttrib1f(ls, seeds[i]);
+      gl.uniform1f(uD.scale, scales[i]);
+      gl.drawArrays(gl.TRIANGLES, 0, geo.P.length/3);
+    }
+  }
+  // draw lists split by z sign for correct blending against the keyed film · a software GPU
+  // gets every OTHER border satellite, which halves the draw calls and reads the same
+  const backList = [], frontList = [];
+  function buildLists(){
+    backList.length = 0; frontList.length = 0;
+    for (let i = 0; i < RING_N; i++){
+      if (soft && (i & 1)) continue;
+      (borderRaw[i].z < 0 ? backList : frontList).push([i, 0]);
+    }
+    for (let i = backLo; i < backLo+BACK_N; i++) backList.push([i, 0]);
+    for (let i = sideLo; i < sideLo+SIDE_N; i++) frontList.push([i, 0]);
+  }
+  buildLists();
+
+  return {
+    gl,
+    get planeFracY(){ return planeHalfY / HALF0; },
+    get planeFracX(){ return planeHalfX / HALF0; },
+    resize(w, h){
+      canvas.width = w; canvas.height = h; gl.viewport(0,0,w,h);
+      place(w / Math.max(h, 1));
+      buildLists();
+    },
+    draw(state){
+      if (video.readyState < 2) return;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      // NO flip. The flat renderer needed FLIP_Y because its fullscreen triangle has uv.y=0 at
+      // the BOTTOM of the screen; this quad's uv already puts v=0 at the top-left vertex, so
+      // flipping here double-flips and the whole film renders upside down. With no flip,
+      // uv space == image space == track space (y down), one space for mask, boxes and film.
+      // And upload only when the film has a NEW frame · the film runs 24fps under a 60fps rAF,
+      // and re-uploading an unchanged frame was the single biggest cost on a software GPU.
+      if (video.currentTime !== this._lastT){
+        this._lastT = video.currentTime;
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
+      }
+
+      gl.clearColor(0,0,0,0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.enable(gl.DEPTH_TEST);
+      gl.enable(gl.BLEND);
+      gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+      const asp = canvas.width / Math.max(canvas.height, 1);
+      const vp = mul(persp(FOV, asp, 0.1, 24), lookZ(DIST));
+      const field = state.spin;
+      const tumble = state.tumble != null ? state.tumble : state.spin;
+      orbitBorder(field);
+
+      // 1 · everything BEHIND the film · occluded by it where it is opaque, visible
+      //     through the keyed void where it is not
+      drawDebris(vp, field, tumble, backList);
+
+      // 2 · the scan volume, hugging the film square
+      gl.useProgram(pLine);
+      gl.uniformMatrix4fv(uL.vp, false, vp);
+      gl.uniform1f(uL.spin, field);
+      gl.uniform2f(uL.scale, planeHalfX * 1.06, planeHalfY * 1.12);
+      gl.uniform4f(uL.col, 0.816, 1.0, 0.078, 0.5);        // chartreuse, measured off the reference
+      const lpp = gl.getAttribLocation(pLine,'p');
+      gl.bindBuffer(gl.ARRAY_BUFFER, lineP);
+      gl.enableVertexAttribArray(lpp); gl.vertexAttribPointer(lpp,3,gl.FLOAT,false,0,0);
+      gl.drawArrays(gl.LINES, 0, lineCount);
+
+      // 3 · the film itself, keyed
+      gl.useProgram(pQuad);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.uniform1i(uQ.tex, 0);
+      gl.uniform2f(uQ.ph, planeHalfX, planeHalfY);
+      const vw = video.videoWidth || 720, vh = video.videoHeight || 720;
+      gl.uniform2f(uQ.texel, 1/vw, 1/vh);
+      gl.uniform1f(uQ.time, state.time);
+      gl.uniform1f(uQ.global, state.globalPass);
+      gl.uniform1f(uQ.voidMix, state.voidMix);
+      gl.uniform1f(uQ.zoom, state.zoom || 1);
+      gl.uniform3f(uQ.vd, 74.4/255, 76.9/255, 76.9/255);
+      const n = Math.min(state.selections.length, 8);
+      for (let i = 0; i < n; i++){
+        const s2 = state.selections[i];
+        selBuf[i*4]=s2.x; selBuf[i*4+1]=s2.y; selBuf[i*4+2]=s2.x+s2.w; selBuf[i*4+3]=s2.y+s2.h;
+        passBuf[i]=s2.pass;
+      }
+      gl.uniform1i(uQ.count, n);
+      gl.uniform4fv(uQ.sel, selBuf);
+      gl.uniform1fv(uQ.selPass, passBuf);
+      gl.uniformMatrix4fv(uQ.mvp, false, vp);
+      const qp = gl.getAttribLocation(pQuad,'p'), qu = gl.getAttribLocation(pQuad,'a_uv');
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadP); gl.enableVertexAttribArray(qp); gl.vertexAttribPointer(qp,3,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadUV); gl.enableVertexAttribArray(qu); gl.vertexAttribPointer(qu,2,gl.FLOAT,false,0,0);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      // 4 · the near layer · ring-front plus the large flank chunks, occluding the film
+      drawDebris(vp, field, tumble, frontList);
+    }
+  };
+}
+
+/* GROUNDTRUTH · the interface layer.
+ *
+ * The single thing that most makes the reference read the way it does: the boxes are
+ * SELECTIONS in a tool, not annotations on an image. That means, specifically:
+ *
+ *   · eight transform handles · four corners AND four edge midpoints. Corner-only ticks
+ *     read as a camera reticle, which is a different genre entirely.
+ *   · a white arrow CURSOR sitting on the selection. Nothing else says "someone is
+ *     working on this" so cheaply, and the reference leans on it hard (~10 at once in
+ *     one frame).
+ *   · the label is a COORDINATE readout, X 0741 Y 0282, on a filled bar in the box's own
+ *     colour. Never a class name, never a confidence score · the reference has no
+ *     "person 0.94" vocabulary anywhere in it, and adding one would date the whole thing
+ *     to a 2018 object-detection demo.
+ *
+ * Measured off the reference: strokes are 1-2px (so they are drawn at device pixels and
+ * never scaled), and the palette below is sampled, not picked.
+ */
+const PALETTE = [
+  '#d0ff14',  // chartreuse · the dominant one, 517px of stroke
+  '#243ccf',  // blue · second at 384px
+  '#2e97b1',  // teal
+  '#e31e5c',  // crimson
+  '#49d7fb',  // cyan
+  '#a141bd',  // violet
+  '#ffffff'   // white · used for the "active" selection
+];
+
+const HANDLE = 4;          // px · measured against the reference, which is smaller than instinct
+const LABEL_H = 10;        // px · reference labels are ~8.6% of frame width, mine were ~17%
+const MONO = '7px ui-monospace, SFMono-Regular, Menlo, monospace';
+
+/* The arrow cursor. Drawn as a path rather than an emoji or an image so it stays crisp
+ * at any DPR and can be tinted. Proportions are the standard macOS/X11 pointer. */
+function cursor(ctx, x, y, scale){
+  const s = scale || 1;
+  ctx.save();
+  ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath();
+  ctx.moveTo(0,0); ctx.lineTo(0,17); ctx.lineTo(4.2,13.2); ctx.lineTo(7,19.4);
+  ctx.lineTo(9.7,18.2); ctx.lineTo(6.9,12.1); ctx.lineTo(12,11.6); ctx.closePath();
+  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1.2;
+  ctx.lineJoin = 'miter';
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+function handles(ctx, x, y, w, h, colour){
+  const pts = [
+    [x, y], [x + w/2, y], [x + w, y],
+    [x, y + h/2],         [x + w, y + h/2],
+    [x, y + h], [x + w/2, y + h], [x + w, y + h]
+  ];
+  ctx.fillStyle = colour;
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 0.75;
+  for (const [px, py] of pts){
+    const r = HANDLE / 2;
+    ctx.fillRect(px - r, py - r, HANDLE, HANDLE);
+    ctx.strokeRect(px - r + 0.5, py - r + 0.5, HANDLE - 1, HANDLE - 1);
+  }
+}
+
+function label(ctx, x, y, w, colour, text){
+  ctx.font = MONO;
+  const tw = ctx.measureText(text).width;
+  const bw = Math.max(tw + 7, 34);
+  // the bar sits ABOVE the box, left-aligned to it, and flips below when it would clip
+  const by = y - LABEL_H - 1 < 2 ? y + 1 : y - LABEL_H - 1;
+  ctx.fillStyle = colour;
+  ctx.fillRect(x, by, bw, LABEL_H);
+  // knocked-out text · white on the light colours reads badly, so pick by luminance
+  const c = colour.length === 7
+    ? [parseInt(colour.slice(1,3),16), parseInt(colour.slice(3,5),16), parseInt(colour.slice(5,7),16)]
+    : [255,255,255];
+  const lum = (0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2]) / 255;
+  ctx.fillStyle = lum > 0.6 ? '#12140c' : '#ffffff';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x + 3.5, by + LABEL_H/2 + 0.5);
+}
+
+function reticle(ctx, cx, cy, colour){
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx - 9, cy); ctx.lineTo(cx - 3, cy);
+  ctx.moveTo(cx + 3, cy); ctx.lineTo(cx + 9, cy);
+  ctx.moveTo(cx, cy - 9); ctx.lineTo(cx, cy - 3);
+  ctx.moveTo(cx, cy + 3); ctx.lineTo(cx, cy + 9);
+  ctx.stroke();
+  ctx.strokeRect(cx - 4.5, cy - 4.5, 9, 9);
+}
+
+/* pad(741) -> "0741" · the reference is consistently four digits, zero-padded */
+const pad4 = n => String(Math.max(0, Math.round(n))).padStart(4, '0');
+
+/* zoom must match the shader's push-in exactly. The shader tests each selection against the
+ * ZOOMED sample coordinate, so a selection lives in SOURCE image space and grows on screen as
+ * the view pushes in · which is correct tracking. The 2D layer therefore has to apply the same
+ * transform, or the drawn box drifts off the region it is actually masking.
+ *
+ * `film` is the film square's screen rect: {cx, cy, side} in CSS px. The canvas is the whole
+ * hero now, so uv 0..1 maps to that square, never to the canvas. */
+function drawOverlay(ctx, W, H, selections, cursors, dpr, zoom, film){
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.lineJoin = 'miter';
+  const F = film || { cx: W/2, cy: H/2, w: Math.min(W, H), h: Math.min(W, H) };
+  if (F.side){ F.w = F.side; F.h = F.side; }
+
+  for (const s of selections){
+    if (s.alpha <= 0.01) continue;
+    ctx.globalAlpha = s.alpha;
+    const z = zoom || 1;
+    const x = F.cx + (s.x - 0.5) * z * F.w, y = F.cy + (s.y - 0.5) * z * F.h;
+    const w = s.w * z * F.w, h = s.h * z * F.h;
+    if (x + w < -20 || x > W + 20 || y + h < -20 || y > H + 20) continue;  // pushed off frame
+
+    ctx.strokeStyle = s.colour;
+    ctx.lineWidth = s.heavy ? 2 : 1;
+    // half-pixel offset so a 1px stroke lands on ONE device pixel instead of straddling two
+    ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w), Math.round(h));
+
+    if (s.handles !== false) handles(ctx, Math.round(x), Math.round(y), Math.round(w), Math.round(h), s.colour);
+    if (s.label !== false)  label(ctx, Math.round(x), Math.round(y), w, s.colour,
+                                  'X ' + pad4(s.rx) + '  Y ' + pad4(s.ry));
+    if (s.reticle) reticle(ctx, x + w/2, y + h/2, s.colour);
+  }
+
+  ctx.globalAlpha = 1;
+  for (const c of cursors){
+    if (c.alpha <= 0.01) continue;
+    ctx.globalAlpha = c.alpha;
+    const z = zoom || 1;
+    cursor(ctx, F.cx + (c.x - 0.5) * z * F.w, F.cy + (c.y - 0.5) * z * F.h, c.scale || 1);
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* GROUNDTRUTH · section 04, the live fragment · raw WebGL, no library.
+ *
+ * This started on three.js from a CDN and that CANNOT work here: the page must open from
+ * file://, and a browser blocks a dynamic ES-module import from a file:// origin to https.
+ * The section reported "VIEWER OFFLINE" every time. Inlining three.js would cost ~600KB for
+ * one section, so the GLB is parsed directly instead · which also makes the page genuinely
+ * self-contained rather than self-contained-if-the-CDN-answers.
+ *
+ * The mesh keeps its COLOR_0 attribute, which carries the scan-confidence data baked at export
+ * (R = distance to the tear, G = curvature, B = up-facing). It is used to tint the surface, so
+ * the thing you orbit is showing real per-vertex data rather than a flat clay render.
+ */
+function parseGLB(buf){
+  const dv = new DataView(buf);
+  if (dv.getUint32(0, true) !== 0x46546C67) throw new Error('not a glb');
+  let off = 12, json = null, bin = null;
+  while (off < dv.byteLength){
+    const len = dv.getUint32(off, true), type = dv.getUint32(off + 4, true);
+    const body = buf.slice(off + 8, off + 8 + len);
+    if (type === 0x4E4F534A) json = JSON.parse(new TextDecoder().decode(body));
+    else if (type === 0x004E4942) bin = body;
+    off += 8 + len + ((-len) % 4 + 4) % 4;
+  }
+  return { json, bin };
+}
+
+const COMP = { 5120:Int8Array, 5121:Uint8Array, 5122:Int16Array, 5123:Uint16Array,
+               5125:Uint32Array, 5126:Float32Array };
+const NUM  = { SCALAR:1, VEC2:2, VEC3:3, VEC4:4 };
+
+function readAccessor(g, bin, idx){
+  const a = g.accessors[idx];
+  const v = g.bufferViews[a.bufferView];
+  const T = COMP[a.componentType], n = NUM[a.type];
+  const byteOff = (v.byteOffset || 0) + (a.byteOffset || 0);
+  // a byteStride means interleaved data · copy element by element rather than viewing straight
+  if (v.byteStride && v.byteStride !== n * T.BYTES_PER_ELEMENT){
+    const out = new T(a.count * n), src = new DataView(bin);
+    for (let i = 0; i < a.count; i++)
+      for (let c = 0; c < n; c++){
+        const o = byteOff + i * v.byteStride + c * T.BYTES_PER_ELEMENT;
+        out[i*n+c] = T === Float32Array ? src.getFloat32(o, true)
+                   : T === Uint16Array ? src.getUint16(o, true)
+                   : T === Uint32Array ? src.getUint32(o, true) : src.getUint8(o);
+      }
+    return out;
+  }
+  return new T(bin, byteOff, a.count * n);
+}
+
+const VS = `attribute vec3 p; attribute vec3 n; attribute vec2 uv; attribute vec4 col;
+uniform mat4 uMVP, uM; varying vec3 vN; varying vec2 vUv; varying vec4 vC;
+void main(){ vN = mat3(uM) * n; vUv = uv; vC = col; gl_Position = uMVP * vec4(p,1.0); }`;
+
+const FS = `precision highp float;
+varying vec3 vN; varying vec2 vUv; varying vec4 vC;
+uniform sampler2D uTex; uniform float uHasTex; uniform vec3 uBase;
+void main(){
+  vec3 n = normalize(vN);
+  // key + fill + ground bounce · one light makes a scan read as a flat cutout
+  float key  = max(dot(n, normalize(vec3(0.5, 0.8, 0.35))), 0.0);
+  float fill = max(dot(n, normalize(vec3(-0.6, 0.25, -0.5))), 0.0) * 0.32;
+  float bounce = max(-n.y, 0.0) * 0.14;
+  vec3 albedo = uHasTex > 0.5 ? texture2D(uTex, vUv).rgb : uBase;
+  // COLOR_0 carries scan confidence · let the torn edge read cooler and less certain
+  albedo = mix(albedo, albedo * vec3(0.72, 0.82, 1.0), (1.0 - vC.r) * 0.35);
+  vec3 lit = albedo * (0.30 + key * 0.85 + fill + bounce);
+  gl_FragColor = vec4(pow(lit, vec3(0.4545)), 1.0);
+}`;
+
+function initFragment(canvas, glbB64, statusEl){
+  if (!glbB64){ if (statusEl) statusEl.textContent = 'MESH UNAVAILABLE'; return; }
+  const gl = canvas.getContext('webgl', { antialias:true });
+  if (!gl){ if (statusEl) statusEl.textContent = 'WEBGL UNAVAILABLE'; return; }
+
+  let g, bin;
+  try {
+    const raw = atob(glbB64);
+    const buf = new ArrayBuffer(raw.length);
+    const u8 = new Uint8Array(buf);
+    for (let i = 0; i < raw.length; i++) u8[i] = raw.charCodeAt(i);
+    ({ json:g, bin } = parseGLB(buf));
+  } catch(e){ if (statusEl) statusEl.textContent = 'MESH PARSE FAILED'; return; }
+
+  const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o);
+    if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(o)); return o; };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog); gl.useProgram(prog);
+  const A = n => gl.getAttribLocation(prog, n), U = n => gl.getUniformLocation(prog, n);
+  const loc = { p:A('p'), n:A('n'), uv:A('uv'), col:A('col') };
+  const uni = { mvp:U('uMVP'), m:U('uM'), tex:U('uTex'), hasTex:U('uHasTex'), base:U('uBase') };
+  gl.uniform1i(uni.tex, 0);
+  gl.enable(gl.DEPTH_TEST);
+
+  const white = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, white);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255,255,255,255]));
+
+  // textures · EXT_texture_webp puts the image index under the extension, not texture.source
+  const texCache = {};
+  function texFor(ti){
+    if (ti == null) return null;
+    if (texCache[ti]) return texCache[ti];
+    const t = g.textures[ti];
+    const srcIdx = (t.extensions && t.extensions.EXT_texture_webp)
+                 ? t.extensions.EXT_texture_webp.source : t.source;
+    const img = g.images[srcIdx];
+    const v = g.bufferViews[img.bufferView];
+    const blob = new Blob([new Uint8Array(bin, v.byteOffset || 0, v.byteLength)],
+                          { type: img.mimeType || 'image/webp' });
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([180,180,180,255]));
+    const im = new Image();
+    im.onload = () => {
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      URL.revokeObjectURL(im.src);
+    };
+    im.src = URL.createObjectURL(blob);
+    texCache[ti] = tex; return tex;
+  }
+
+  // build one draw call per primitive
+  const prims = [];
+  let lo = [1e9,1e9,1e9], hi = [-1e9,-1e9,-1e9], tris = 0;
+  for (const mesh of g.meshes) for (const pr of mesh.primitives){
+    const pos = readAccessor(g, bin, pr.attributes.POSITION);
+    for (let i = 0; i < pos.length; i += 3)
+      for (let c = 0; c < 3; c++){ lo[c] = Math.min(lo[c], pos[i+c]); hi[c] = Math.max(hi[c], pos[i+c]); }
+    const mk = (data, size) => { const b = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      return { b, size }; };
+    const nrm = pr.attributes.NORMAL != null ? readAccessor(g, bin, pr.attributes.NORMAL) : new Float32Array(pos.length);
+    const uv  = pr.attributes.TEXCOORD_0 != null ? readAccessor(g, bin, pr.attributes.TEXCOORD_0) : new Float32Array(pos.length/3*2);
+    let colRaw = pr.attributes.COLOR_0 != null ? readAccessor(g, bin, pr.attributes.COLOR_0) : null;
+    let col;
+    if (colRaw){
+      const n4 = colRaw.length / (g.accessors[pr.attributes.COLOR_0].type === 'VEC3' ? 3 : 4);
+      col = new Float32Array(n4 * 4);
+      const stride = g.accessors[pr.attributes.COLOR_0].type === 'VEC3' ? 3 : 4;
+      const norm = colRaw instanceof Uint16Array ? 65535 : colRaw instanceof Uint8Array ? 255 : 1;
+      for (let i = 0; i < n4; i++){
+        for (let c = 0; c < 3; c++) col[i*4+c] = colRaw[i*stride+c] / norm;
+        col[i*4+3] = 1;
+      }
+    } else { col = new Float32Array(pos.length/3*4).fill(1); }
+    const idxA = pr.indices != null ? readAccessor(g, bin, pr.indices) : null;
+    const idx = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idx);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idxA, gl.STATIC_DRAW);
+    tris += idxA.length / 3;
+    const mat = g.materials[pr.material] || {};
+    const pbr = mat.pbrMetallicRoughness || {};
+    prims.push({ pos:mk(pos,3), nrm:mk(nrm,3), uv:mk(uv,2), col:mk(col,4),
+                 idx, count:idxA.length,
+                 type: idxA instanceof Uint32Array ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT,
+                 tex: texFor(pbr.baseColorTexture ? pbr.baseColorTexture.index : null),
+                 base: (pbr.baseColorFactor || [0.8,0.8,0.8,1]).slice(0,3) });
+  }
+  const u32 = gl.getExtension('OES_element_index_uint');
+  const centre = [(lo[0]+hi[0])/2, (lo[1]+hi[1])/2, (lo[2]+hi[2])/2];
+  const span = Math.hypot(hi[0]-lo[0], hi[1]-lo[1], hi[2]-lo[2]);
+  if (statusEl) statusEl.textContent = Math.round(tris/1000) + 'K TRIANGLES · ' + Math.round(span) + ' MM';
+
+  // ── maths, kept tiny · one perspective, one lookAt, one multiply ───────────────
+  const mul = (a,b) => { const o = new Float32Array(16);
+    for (let i=0;i<4;i++) for (let j=0;j<4;j++){ let s=0; for(let k=0;k<4;k++) s+=a[k*4+j]*b[i*4+k]; o[i*4+j]=s; }
+    return o; };
+  function persp(fov, asp, n, f){ const t = 1/Math.tan(fov/2), o = new Float32Array(16);
+    o[0]=t/asp; o[5]=t; o[10]=(f+n)/(n-f); o[11]=-1; o[14]=2*f*n/(n-f); return o; }
+  function lookAt(e, c){
+    const z=[e[0]-c[0],e[1]-c[1],e[2]-c[2]]; let l=Math.hypot(...z); z.forEach((v,i)=>z[i]=v/l);
+    const x=[ -z[2]*0+1*z[2], 0, 0 ];
+    const up=[0,1,0];
+    const xx=[up[1]*z[2]-up[2]*z[1], up[2]*z[0]-up[0]*z[2], up[0]*z[1]-up[1]*z[0]];
+    l=Math.hypot(...xx)||1; xx.forEach((v,i)=>xx[i]=v/l);
+    const yy=[z[1]*xx[2]-z[2]*xx[1], z[2]*xx[0]-z[0]*xx[2], z[0]*xx[1]-z[1]*xx[0]];
+    return new Float32Array([xx[0],yy[0],z[0],0, xx[1],yy[1],z[1],0, xx[2],yy[2],z[2],0,
+      -(xx[0]*e[0]+xx[1]*e[1]+xx[2]*e[2]), -(yy[0]*e[0]+yy[1]*e[1]+yy[2]*e[2]),
+      -(z[0]*e[0]+z[1]*e[1]+z[2]*e[2]), 1]);
+  }
+  const model = new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, -centre[0],-centre[1],-centre[2],1]);
+
+  let yaw = 0.7, pitch = 0.25, vy = 0.0035, drag = false, px = 0, py = 0;
+  // Until the visitor grabs it, SCROLL turns the mesh · the same spin the hero's film and
+  // the world debris answer scroll with, so the page reads as one system. First drag hands
+  // the orbit over to the visitor for good.
+  let touched = false, lastSy2 = scrollY;
+  addEventListener('scroll', () => {
+    const d = scrollY - lastSy2; lastSy2 = scrollY;
+    if (!touched && visible) yaw += d * 0.0028;
+  }, { passive:true });
+  const down = e => { drag = true; touched = true; const p = e.touches ? e.touches[0] : e; px = p.clientX; py = p.clientY; };
+  const move = e => { if (!drag) return; const p = e.touches ? e.touches[0] : e;
+    yaw += (p.clientX - px) * 0.008; vy = (p.clientX - px) * 0.0006;
+    pitch = Math.max(-0.85, Math.min(1.05, pitch + (p.clientY - py) * 0.006));
+    px = p.clientX; py = p.clientY; if (e.cancelable) e.preventDefault(); };
+  const up = () => { drag = false; };
+  canvas.addEventListener('pointerdown', down);
+  addEventListener('pointermove', move, { passive:false });
+  addEventListener('pointerup', up);
+  canvas.addEventListener('touchstart', down, { passive:true });
+  addEventListener('touchmove', move, { passive:false });
+  addEventListener('touchend', up);
+
+  function resize(){
+    const r = canvas.parentElement.getBoundingClientRect();
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    canvas.width = Math.max(2, Math.round(r.width * dpr));
+    canvas.height = Math.max(2, Math.round(r.height * dpr));
+    gl.viewport(0, 0, canvas.width, canvas.height);
+  }
+  addEventListener('resize', resize, { passive:true });
+  resize();
+
+  let visible = false;
+  new IntersectionObserver(es => { for (const e of es) visible = e.isIntersecting; },
+                           { threshold:0.05 }).observe(canvas.parentElement);
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // the HUD · a viewer with no readout is a toy, a viewer with azimuth and elevation is an
+  // instrument · same numbers a survey scope would show
+  const azEl = document.getElementById('fragaz'), elEl = document.getElementById('fragel');
+  const pad3 = v => String(Math.abs(Math.round(v)) % 360).padStart(3, '0');
+  (function loop(){
+    requestAnimationFrame(loop);
+    if (!visible || !canvas.width) return;      // never burn frames off-screen
+    if (!drag && !reduced){ vy += (0.0035 - vy) * 0.02; yaw += vy; }
+    if (azEl){
+      const azDeg = ((yaw * 180/Math.PI) % 360 + 360) % 360;
+      const elDeg = pitch * 180/Math.PI;
+      azEl.textContent = 'AZ ' + pad3(azDeg) + '\u00b0';
+      elEl.textContent = 'EL ' + (elDeg < 0 ? '\u2212' : '+') + String(Math.abs(Math.round(elDeg))).padStart(2,'0') + '\u00b0';
+    }
+    const R = span * 0.85;
+    const eye = [Math.sin(yaw)*Math.cos(pitch)*R, Math.sin(pitch)*R, Math.cos(yaw)*Math.cos(pitch)*R];
+    const vp = mul(persp(0.72, canvas.width/canvas.height, span*0.02, span*8), lookAt(eye, [0,0,0]));
+    gl.clearColor(0x22/255, 0x25/255, 0x27/255, 1);   // the panel's own dark, not the page grey
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.uniformMatrix4fv(uni.mvp, false, mul(vp, model));
+    gl.uniformMatrix4fv(uni.m, false, model);
+    for (const pm of prims){
+      for (const [l, a] of [[loc.p, pm.pos], [loc.n, pm.nrm], [loc.uv, pm.uv], [loc.col, pm.col]]){
+        if (l < 0) continue;
+        gl.bindBuffer(gl.ARRAY_BUFFER, a.b);
+        gl.enableVertexAttribArray(l);
+        gl.vertexAttribPointer(l, a.size, gl.FLOAT, false, 0, 0);
+      }
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, pm.tex || white);
+      gl.uniform1f(uni.hasTex, pm.tex ? 1 : 0);
+      gl.uniform3fv(uni.base, pm.base);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, pm.idx);
+      if (pm.type === gl.UNSIGNED_INT && !u32) continue;
+      gl.drawElements(gl.TRIANGLES, pm.count, pm.type, 0);
+    }
+  })();
+}
+
+/* GROUNDTRUTH · section 02, the registration cloud.
+ *
+ * The section describes what a delivery contains, so its left column SHOWS one being made:
+ * the real chunk mesh's vertices as a point cloud that registers as you scroll · scattered
+ * measurements at the top of the section, the resolved object by the bottom. Scroll position
+ * IS the registration progress, so scrubbing back un-registers it. No fake data: these are
+ * the GLB's own vertex positions, the same ones the section-04 viewer draws as a surface.
+ */
+const CLOUD_VS = `attribute vec3 a; attribute vec3 b; attribute float s;
+uniform mat4 uMVP; uniform float uMix; uniform float uT;
+varying float vS;
+void main(){
+  // each point departs its scatter on its own cue · a single global lerp reads as a morph,
+  // a staggered one reads as points LOCKING IN, which is what registration looks like
+  float u = clamp((uMix - s*0.55) / 0.45, 0.0, 1.0);
+  u = u*u*(3.0-2.0*u);
+  vec3 p = mix(a, b, u);
+  p.x += sin(uT*0.7 + s*40.0) * (1.0-u) * 0.02;
+  p.y += cos(uT*0.9 + s*29.0) * (1.0-u) * 0.02;
+  vS = u;
+  gl_Position = uMVP * vec4(p, 1.0);
+  gl_PointSize = 1.5 + u*1.3;
+}`;
+const CLOUD_FS = `precision highp float;
+varying float vS;
+uniform vec3 uCold, uHot;
+void main(){
+  vec2 d = gl_PointCoord - 0.5;
+  if (dot(d,d) > 0.25) discard;
+  gl_FragColor = vec4(mix(uCold, uHot, vS), 0.55 + vS*0.45);
+}`;
+
+function initCloud(canvas, glbB64, statEl){
+  if (!canvas || !glbB64) return;
+  const gl = canvas.getContext('webgl', { antialias:true, alpha:true, premultipliedAlpha:false });
+  if (!gl){ canvas.remove(); return; }
+
+  let g, bin;
+  try {
+    const raw = atob(glbB64);
+    const buf = new ArrayBuffer(raw.length);
+    const u8 = new Uint8Array(buf);
+    for (let i = 0; i < raw.length; i++) u8[i] = raw.charCodeAt(i);
+    ({ json:g, bin } = parseGLB(buf));
+  } catch(e){ canvas.remove(); return; }
+
+  // gather vertices across primitives, then decimate to a budget · a cloud reads at 9k
+  // points exactly as it does at 90k, and the page has three other GL contexts to feed
+  const all = [];
+  for (const mesh of g.meshes) for (const pr of mesh.primitives)
+    all.push(readAccessor(g, bin, pr.attributes.POSITION));
+  let total = 0; for (const a of all) total += a.length/3;
+  const BUDGET = 9000, stride = Math.max(1, Math.floor(total / BUDGET));
+  const pts = [];
+  let lo = [1e9,1e9,1e9], hi = [-1e9,-1e9,-1e9];
+  for (const a of all)
+    for (let i = 0; i < a.length; i += 3*stride){
+      pts.push(a[i], a[i+1], a[i+2]);
+      for (let c = 0; c < 3; c++){ lo[c] = Math.min(lo[c], a[i+c]); hi[c] = Math.max(hi[c], a[i+c]); }
+    }
+  const n = pts.length/3;
+  const ctr = [(lo[0]+hi[0])/2, (lo[1]+hi[1])/2, (lo[2]+hi[2])/2];
+  const span = Math.max(hi[0]-lo[0], hi[1]-lo[1], hi[2]-lo[2]) || 1;
+
+  // normalised target + seeded scatter start + per-point stagger
+  const B = new Float32Array(pts.length), A = new Float32Array(pts.length), S = new Float32Array(n);
+  let sd = 90210; const rnd = () => { sd = (sd*9301+49297)%233280; return sd/233280; };
+  for (let i = 0; i < n; i++){
+    for (let c = 0; c < 3; c++) B[i*3+c] = (pts[i*3+c] - ctr[c]) / span * 1.7;
+    const th = rnd()*6.283, ph = Math.acos(rnd()*2-1), r = 1.1 + rnd()*0.9;
+    A[i*3]   = Math.sin(ph)*Math.cos(th)*r;
+    A[i*3+1] = Math.cos(ph)*r;
+    A[i*3+2] = Math.sin(ph)*Math.sin(th)*r;
+    S[i] = rnd();
+  }
+
+  const sh = (t, src) => { const o = gl.createShader(t); gl.shaderSource(o, src); gl.compileShader(o);
+    if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(o)); return o; };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, CLOUD_VS));
+  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, CLOUD_FS));
+  gl.linkProgram(prog); gl.useProgram(prog);
+  const mk = d => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    gl.bufferData(gl.ARRAY_BUFFER, d, gl.STATIC_DRAW); return b; };
+  const bA = mk(A), bB = mk(B), bS = mk(S);
+  const lA = gl.getAttribLocation(prog,'a'), lB = gl.getAttribLocation(prog,'b'), lS = gl.getAttribLocation(prog,'s');
+  const uMVP = gl.getUniformLocation(prog,'uMVP'), uMix = gl.getUniformLocation(prog,'uMix'), uT = gl.getUniformLocation(prog,'uT');
+  gl.uniform3f(gl.getUniformLocation(prog,'uCold'), 0.55, 0.58, 0.60);
+  gl.uniform3f(gl.getUniformLocation(prog,'uHot'), 0.816, 1.0, 0.078);
+
+  const mul = (a,b) => { const o = new Float32Array(16);
+    for (let i=0;i<4;i++) for (let j=0;j<4;j++){ let t2=0; for(let k=0;k<4;k++) t2+=a[k*4+j]*b[i*4+k]; o[i*4+j]=t2; }
+    return o; };
+  const persp = (fov, asp, nn, ff) => { const t2 = 1/Math.tan(fov/2), o = new Float32Array(16);
+    o[0]=t2/asp; o[5]=t2; o[10]=(ff+nn)/(nn-ff); o[11]=-1; o[14]=2*ff*nn/(nn-ff); return o; };
+
+  const sec = canvas.closest('section') || canvas.parentElement;
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let live = false, mix = reduced ? 1 : 0;
+
+  function resize(){
+    const r = canvas.parentElement.getBoundingClientRect();
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    canvas.width = Math.round(r.width*dpr); canvas.height = Math.round(r.height*dpr);
+    gl.viewport(0,0,canvas.width,canvas.height);
+  }
+  resize(); addEventListener('resize', resize, { passive:true });
+
+  function frame(now){
+    if (!live) return;
+    const t = now/1000;
+    const r = sec.getBoundingClientRect();
+    // progress: 0 when the section enters, 1 when its middle passes centre-screen
+    const target = reduced ? 1 :
+      Math.min(1, Math.max(0, (innerHeight*0.86 - r.top) / (innerHeight*0.95)));
+    mix += (target - mix) * 0.07;
+
+    gl.clearColor(0,0,0,0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(prog);
+    const asp = canvas.width/Math.max(canvas.height,1);
+    const vp = persp(0.9, asp, 0.1, 30);
+    const a1 = t*0.22, c1 = Math.cos(a1), s1 = Math.sin(a1);
+    const look = new Float32Array([c1,0,s1,0, 0,1,0,0, -s1,0,c1,0, 0,-0.12,-3.1,1]);
+    gl.uniformMatrix4fv(uMVP, false, mul(vp, look));
+    gl.uniform1f(uMix, mix);
+    gl.uniform1f(uT, t);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bA); gl.enableVertexAttribArray(lA); gl.vertexAttribPointer(lA,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bB); gl.enableVertexAttribArray(lB); gl.vertexAttribPointer(lB,3,gl.FLOAT,false,0,0);
+    // size 1 · the seed is a lone float, and binding it as vec3 makes the draw read past the
+    // buffer, which WebGL rejects with INVALID_OPERATION · the whole cloud silently vanishes
+    gl.bindBuffer(gl.ARRAY_BUFFER, bS); gl.enableVertexAttribArray(lS); gl.vertexAttribPointer(lS,1,gl.FLOAT,false,0,0);
+    gl.drawArrays(gl.POINTS, 0, n);
+
+    if (statEl) statEl.textContent = String(Math.round(n * Math.min(mix,1))).padStart(4,'0') + ' / ' + n + ' PTS REGISTERED';
+    requestAnimationFrame(frame);
+  }
+  const io = new IntersectionObserver(es => {
+    for (const e of es){
+      if (e.isIntersecting && !live){ live = true; requestAnimationFrame(frame); }
+      else if (!e.isIntersecting) live = false;
+    }
+  }, { threshold: 0.02 });
+  io.observe(sec);
+}
+
+/* GROUNDTRUTH · section 03, the inspector.
+ *
+ * The library used to be rows of thumbnails · an index you read. Now it is an index you
+ * OPERATE: the still of whichever capture the cursor rests on fills the inspection panel,
+ * and the panel receives the hero's own interface treatment · live selection boxes with
+ * eight handles, coordinate readouts in the sampled palette, the working cursor. The same
+ * tool, pointed at a different capture. Anchors are seeded per capture, so hovering back
+ * and forth always shows each interior with ITS OWN selections, not a shuffled overlay.
+ */
+function initInspect(panel, rows){
+  if (!panel) return;
+  const img = panel.querySelector('img');
+  const cv  = panel.querySelector('canvas');
+  const tag = panel.querySelector('.insp__tag');
+  if (!img || !cv) return;
+  const ctx = cv.getContext('2d');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let cur = -1, sels = [], t0 = performance.now(), raf = 0, visible = false;
+
+  function seedSels(idx){
+    let s = 1013 + idx*7919;
+    const rnd = () => { s = (s*9301+49297)%233280; return s/233280; };
+    sels = [];
+    const nSel = 2 + (idx % 2);
+    for (let i = 0; i < nSel; i++){
+      const w = 0.12 + rnd()*0.16, h = w*(0.8 + rnd()*0.7);
+      sels.push({
+        // boxes live in the imagery zone · the ledger owns the left, and a selection line
+        // running under the type is clutter, not tooling
+        x: 0.44 + rnd()*(0.50 - w), y: 0.10 + rnd()*(0.80 - h), w, h,
+        colour: PALETTE[(idx + i*2) % (PALETTE.length-1)],
+        drift: 0.004 + rnd()*0.006, ph: rnd()*6.28,
+        reticle: i === 0, born: performance.now()
+      });
+    }
+  }
+
+  function draw(now){
+    if (!visible){ raf = 0; return; }
+    const W = cv.clientWidth, H = cv.clientHeight;
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    if (cv.width !== W*dpr){ cv.width = W*dpr; cv.height = H*dpr; }
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,W,H);
+    const t = (now - t0)/1000;
+    ctx.lineJoin = 'miter';
+    for (let i = 0; i < sels.length; i++){
+      const s = sels[i];
+      const a = Math.min(1, (now - s.born)/220);
+      ctx.globalAlpha = a;
+      // a live selection breathes by a couple of px · pinned-still boxes read as a JPEG
+      const dx = Math.sin(t*0.9 + s.ph)*s.drift, dy = Math.cos(t*0.7 + s.ph)*s.drift;
+      const x = (s.x+dx)*W, y = (s.y+dy)*H, w = s.w*W, h = s.h*H;
+      ctx.strokeStyle = s.colour; ctx.lineWidth = i === 0 ? 2 : 1;
+      ctx.strokeRect(Math.round(x)+0.5, Math.round(y)+0.5, Math.round(w), Math.round(h));
+      handles(ctx, Math.round(x), Math.round(y), Math.round(w), Math.round(h), s.colour);
+      label(ctx, Math.round(x), Math.round(y), w, s.colour,
+            'X ' + String(Math.round((s.x+dx)*1280)).padStart(4,'0') +
+            '  Y ' + String(Math.round((s.y+dy)*1280)).padStart(4,'0'));
+      if (s.reticle) reticle(ctx, x+w/2, y+h/2, s.colour);
+    }
+    ctx.globalAlpha = 1;
+    if (sels.length) cursor(ctx, (sels[0].x + sels[0].w*0.72)*W, (sels[0].y + sels[0].h*0.80)*H, 1);
+    raf = reduced ? 0 : requestAnimationFrame(draw);
+  }
+
+  function show(idx, data){
+    if (idx === cur) return;
+    cur = idx;
+    img.src = data.img; img.alt = '';
+    panel.classList.add('insp--on');
+    if (tag) tag.textContent = String(idx+1).padStart(2,'0') + ' · ' + data.name.toUpperCase()
+                             + ' · ' + data.residual + ' RESIDUAL';
+    seedSels(idx);
+    for (const r of rows.children) r.classList.toggle('lib__row--on', +r.dataset.idx === idx);
+    if (!raf && visible) raf = requestAnimationFrame(draw);
+  }
+
+  const io = new IntersectionObserver(es => {
+    for (const e of es){
+      visible = e.isIntersecting;
+      if (visible && !raf) raf = requestAnimationFrame(draw);
+    }
+  }, { threshold: 0.05 });
+  io.observe(panel);
+
+  return { show };
+}
+
+/* GROUNDTRUTH · the world layer.
+ *
+ * The hero establishes a language: plaster chunks tumbling in a measured volume. The rest of
+ * the page used to abandon it · flat sections on one flat grey. This layer carries the
+ * language DOWN the page: a fixed canvas behind everything, holding chunks that are anchored
+ * to PAGE positions, so they live in the gaps between sections and slide past with parallax
+ * as you scroll. Scroll velocity feeds their spin, so moving between sections whips the field
+ * · the section transition IS the 3D, not a fade.
+ *
+ * Sections sit above this layer on solid panels of their own colour; the body background
+ * lerps between neighbouring panel colours as you scroll, so the gaps read as one continuous
+ * atmosphere passing through different rooms rather than one grey sheet.
+ */
+
+const W_DEBRIS_VS = `attribute vec3 p; attribute vec3 n;
+uniform vec2 uRes; uniform vec3 uPos; uniform float uSize; uniform vec2 uRot; uniform float uSeed;
+varying vec3 vN; varying float vSeed;
+mat3 rotY(float a){ float c=cos(a), s=sin(a); return mat3(c,0.,-s, 0.,1.,0., s,0.,c); }
+mat3 rotX(float a){ float c=cos(a), s=sin(a); return mat3(1.,0.,0., 0.,c,s, 0.,-s,c); }
+void main(){
+  mat3 R = rotY(uRot.x) * rotX(uRot.y);
+  vec3 q = R * p;
+  vN = R * n; vSeed = uSeed;
+  // pixel-space layout, ndc output · orthographic on purpose: page-anchored props, not a scene
+  vec2 px = uPos.xy + q.xy * uSize;
+  gl_Position = vec4(px.x/uRes.x*2.0-1.0, 1.0-px.y/uRes.y*2.0, q.z*0.001, 1.0);
+}`;
+
+const W_DEBRIS_FS = `precision highp float;
+varying vec3 vN; varying float vSeed;
+uniform vec3 uTint; uniform float uAlpha;
+void main(){
+  vec3 n = normalize(vN);
+  float key  = max(dot(n, normalize(vec3(0.5, 0.8, 0.35))), 0.0);
+  float fill = max(dot(n, normalize(vec3(-0.6, 0.25, -0.5))), 0.0) * 0.30;
+  vec3 base = uTint * (0.80 + 0.20 * fract(vSeed * 7.3));
+  vec3 lit = base * (0.20 + key * 0.5 + fill);
+  gl_FragColor = vec4(pow(lit, vec3(0.4545)), uAlpha);
+}`;
+
+const W_LINE_VS = `attribute vec3 p;
+uniform vec2 uRes; uniform vec3 uPos; uniform float uSize; uniform vec2 uRot;
+mat3 rotY(float a){ float c=cos(a), s=sin(a); return mat3(c,0.,-s, 0.,1.,0., s,0.,c); }
+mat3 rotX(float a){ float c=cos(a), s=sin(a); return mat3(1.,0.,0., 0.,c,s, 0.,-s,c); }
+void main(){
+  vec3 q = rotY(uRot.x) * rotX(uRot.y) * p;
+  vec2 px = uPos.xy + q.xy * uSize;
+  gl_Position = vec4(px.x/uRes.x*2.0-1.0, 1.0-px.y/uRes.y*2.0, q.z*0.001, 1.0);
+}`;
+const W_LINE_FS = `precision highp float; uniform vec4 uCol;
+void main(){ gl_FragColor = uCol; }`;
+
+function hexRGB(h){ return [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]; }
+
+function initWorld(){
+  const cv = document.getElementById('world');
+  if (!cv) return;
+  const soft = gtSoftGL();
+  const gl = cv.getContext('webgl', { antialias:!soft, alpha:true, premultipliedAlpha:false });
+  if (!gl) { cv.remove(); return; }
+
+  const sh = (t, src) => { const o = gl.createShader(t); gl.shaderSource(o, src); gl.compileShader(o);
+    if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(o)); return o; };
+  const prog = (vs, fs) => { const p = gl.createProgram();
+    gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(p); return p; };
+  const pD = prog(W_DEBRIS_VS, W_DEBRIS_FS), pL = prog(W_LINE_VS, W_LINE_FS);
+
+  // one chunk geometry, shared · same generator as the hero so the material reads identical
+  const geo = chunkGeo(4021);
+  const mk = d => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    gl.bufferData(gl.ARRAY_BUFFER, d, gl.STATIC_DRAW); return b; };
+  const gP = mk(geo.P), gN = mk(geo.N);
+
+  // tick cube · the hero scan volume's corner ticks, reused as a page prop
+  const V = 1, L = [];
+  const cc = [[-V,-V,-V],[V,-V,-V],[V,V,-V],[-V,V,-V],[-V,-V,V],[V,-V,V],[V,V,V],[-V,V,V]];
+  const ee = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+  for (const [a,b] of ee){ const A=cc[a], B=cc[b];
+    for (const t0 of [0, 0.82]){ const t1 = t0+0.18;
+      L.push(A[0]+(B[0]-A[0])*t0, A[1]+(B[1]-A[1])*t0, A[2]+(B[2]-A[2])*t0);
+      L.push(A[0]+(B[0]-A[0])*t1, A[1]+(B[1]-A[1])*t1, A[2]+(B[2]-A[2])*t1); } }
+  const lineB = mk(new Float32Array(L)), lineN = L.length/3;
+
+  const uD = {}; for (const n of ['uRes','uPos','uSize','uRot','uSeed','uTint','uAlpha']) uD[n] = gl.getUniformLocation(pD, n);
+  const uL = {}; for (const n of ['uRes','uPos','uSize','uRot','uCol']) uL[n] = gl.getUniformLocation(pL, n);
+  // ── population · laid out against the DOCUMENT, not the viewport ───────────────
+  let props = [], ticks = [], W = 0, H = 0, dpr = 1, docH = 0, heroH = 0;
+  let s = 77031;
+  const rnd = () => { s = (s*9301+49297)%233280; return s/233280; };
+
+  function layout(){
+    W = innerWidth; H = innerHeight; dpr = Math.min(devicePixelRatio || 1, 2);
+    cv.width = W*dpr; cv.height = H*dpr;
+    cv.style.width = W+'px'; cv.style.height = H+'px';
+    gl.viewport(0,0,cv.width,cv.height);
+    docH = document.body.scrollHeight;
+    const hero = document.querySelector('.hero');
+    heroH = hero ? hero.offsetHeight : H;
+    s = 77031; props = []; ticks = [];
+    const span = docH - heroH - H*0.5;
+    const N = Math.round(Math.max(26, span/125) * (soft ? 0.5 : 1));
+    for (let i = 0; i < N; i++){
+      const near = rnd() > 0.6;
+      props.push({
+        pageY: heroH + (i + rnd()*0.8)/N * span,
+        x: (rnd() < 0.5 ? rnd()*0.30 : 0.70 + rnd()*0.30) * 1,   // flanks mostly
+        cx: rnd(),                                               // a few drift centre
+        centre: rnd() > 0.72,
+        depth: near ? 1.18 + rnd()*0.25 : 0.55 + rnd()*0.35,     // near = faster than page
+        size: near ? 46 + rnd()*84 : 18 + rnd()*34,
+        seed: rnd(), w1: (rnd()-0.5)*0.5, w2: (rnd()-0.5)*0.5,
+        a1: rnd()*6.28, a2: rnd()*6.28,
+        alpha: near ? 1 : 0.85
+      });
+    }
+    for (let i = 0; i < 6; i++)
+      ticks.push({ pageY: heroH + (i+0.5)/6 * span, x: 0.06 + rnd()*0.88,
+                   depth: 0.8 + rnd()*0.5, size: 44 + rnd()*56, a1: rnd()*6.28, a2: rnd()*6.28 });
+
+  }
+
+  // ── body background lerp · the gaps take the colour of the room they approach ─
+  const stops = [];
+  function collectStops(){
+    stops.length = 0;
+    stops.push({ y: 0, c: hexRGB('#4e5050') });
+    for (const el of document.querySelectorAll('[data-bg]'))
+      stops.push({ y: el.offsetTop, c: hexRGB(el.dataset.bg) });
+    stops.push({ y: docH, c: stops[stops.length-1].c });
+  }
+  function bodyBG(sy){
+    const probe = sy + H*0.6;
+    let a = stops[0], b = stops[stops.length-1];
+    for (let i = 0; i < stops.length-1; i++)
+      if (probe >= stops[i].y && probe < stops[i+1].y){ a = stops[i]; b = stops[i+1]; break; }
+    const t = Math.min(1, Math.max(0, (probe - a.y) / Math.max(b.y - a.y, 1)));
+    const e = t*t*(3-2*t);
+    const c = a.c.map((v,i) => Math.round(v + (b.c[i]-v)*e));
+    document.body.style.backgroundColor = 'rgb('+c.join(',')+')';
+  }
+
+  layout(); collectStops();
+  addEventListener('resize', () => { layout(); collectStops(); }, { passive:true });
+
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let lastSy = scrollY, vel = 0, impulse = 0, t0 = performance.now(), tick = 0;
+
+  function frame(now){
+    // idle economy · when nothing is scrolling the chunks only tumble, and a tumble at 30fps
+    // is indistinguishable from one at 60 · half the draw cost on quiet frames
+    tick++;
+    const idle = Math.abs(vel) < 0.35 && Math.abs(impulse) < 0.004;
+    if (idle && (tick & 1)){ if (!reduced) requestAnimationFrame(frame); return; }
+    const t = (now - t0)/1000;
+    const sy = scrollY;
+    vel = vel*0.86 + (sy - lastSy)*0.14; lastSy = sy;
+    impulse = impulse*0.93 + vel*0.0009;
+    bodyBG(sy);
+
+    gl.clearColor(0,0,0,0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+    gl.useProgram(pD);
+    gl.uniform2f(uD.uRes, W, H);
+    gl.uniform3f(uD.uTint, 0.40, 0.385, 0.355);
+    const lp = gl.getAttribLocation(pD,'p'), ln = gl.getAttribLocation(pD,'n');
+    gl.bindBuffer(gl.ARRAY_BUFFER, gP); gl.enableVertexAttribArray(lp); gl.vertexAttribPointer(lp,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gN); gl.enableVertexAttribArray(ln); gl.vertexAttribPointer(ln,3,gl.FLOAT,false,0,0);
+    let drawn = 0;
+    for (const c of props){
+      // parallax anchor · depth 1 rides the page, near chunks outrun it, far ones lag
+      const yy = (c.pageY - sy*c.depth) + (H*0.5)*(c.depth-1);
+      if (yy < -160 || yy > H+160) continue;
+      const xx = (c.centre ? c.cx : c.x) * W;
+      gl.uniform3f(uD.uPos, xx, yy, 0);
+      gl.uniform1f(uD.uSize, c.size);
+      gl.uniform2f(uD.uRot, c.a1 + t*c.w1 + impulse*9, c.a2 + t*c.w2 + impulse*6);
+      gl.uniform1f(uD.uSeed, c.seed);
+      gl.uniform1f(uD.uAlpha, c.alpha);
+      gl.drawArrays(gl.TRIANGLES, 0, geo.P.length/3);
+      drawn++;
+    }
+    gl.useProgram(pL);
+    gl.uniform2f(uL.uRes, W, H);
+    gl.uniform4f(uL.uCol, 0.816, 1.0, 0.078, 0.4);
+    const lpp = gl.getAttribLocation(pL,'p');
+    gl.bindBuffer(gl.ARRAY_BUFFER, lineB);
+    gl.enableVertexAttribArray(lpp); gl.vertexAttribPointer(lpp,3,gl.FLOAT,false,0,0);
+    for (const k of ticks){
+      const yy = (k.pageY - sy*k.depth) + (H*0.5)*(k.depth-1);
+      if (yy < -140 || yy > H+140) continue;
+      gl.uniform3f(uL.uPos, k.x*W, yy, 0);
+      gl.uniform1f(uL.uSize, k.size);
+      gl.uniform2f(uL.uRot, k.a1 + t*0.14 + impulse*7, k.a2 + t*0.09 + impulse*4);
+      gl.drawArrays(gl.LINES, 0, lineN);
+    }
+    if (!reduced) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ── reveals · rules draw in, rows arrive, the schedule rail fills ─────────────── */
+function initReveals(){
+  const io = new IntersectionObserver(es => {
+    for (const e of es) if (e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }
+  }, { threshold: 0.18, rootMargin: '0px 0px -6% 0px' });
+  for (const el of document.querySelectorAll('.rv, .spec>div, .steps li, .lib__row'))
+    io.observe(el);
+
+  // the schedule rail fills with progress through the section, and each step stamps as
+  // the fill reaches it
+  const steps = document.querySelector('.steps');
+  if (steps){
+    const items = [...steps.querySelectorAll('li')];
+    const onScroll = () => {
+      const r = steps.getBoundingClientRect();
+      const u = Math.min(1, Math.max(0, (innerHeight*0.78 - r.top) / Math.max(r.height, 1)));
+      steps.style.setProperty('--fill', u.toFixed(4));
+      items.forEach((li, i) => li.classList.toggle('lit', u > (i + 0.55)/items.length));
+    };
+    addEventListener('scroll', onScroll, { passive:true }); onScroll();
+  }
+
+  // mono figures scramble in · a readout settling, not a fade
+  const GLYPH = '0123456789ABCDEF·';
+  const io2 = new IntersectionObserver(es => {
+    for (const e of es){
+      if (!e.isIntersecting) continue;
+      io2.unobserve(e.target);
+      const el = e.target, txt = el.dataset.final || el.textContent;
+      el.dataset.final = txt;
+      const t0 = performance.now(), DUR = 620;
+      (function tick(){
+        const u = Math.min(1, (performance.now()-t0)/DUR);
+        let out = '';
+        for (let i = 0; i < txt.length; i++)
+          out += (i/txt.length < u || txt[i] === ' ' || txt[i] === '–')
+               ? txt[i] : GLYPH[(Math.random()*GLYPH.length)|0];
+        el.textContent = out;
+        if (u < 1) requestAnimationFrame(tick); else el.textContent = txt;
+      })();
+    }
+  }, { threshold: 0.6 });
+  for (const el of document.querySelectorAll('.spec dd.n, .lib__f b, #fragstat')) io2.observe(el);
+}
+
+/* GROUNDTRUTH · the torn seams.
+ *
+ * The hero's signature is the collapse: plaster shards fly, then lock into an object. The
+ * sections now enter the same way, ON SCROLL: each panel's top edge is a band of shards
+ * that converge out of the gap above and lock into a ragged plaster lip as the section
+ * scrolls in · scroll back and the seam disassembles again. It is the film's reform,
+ * scrubbed by the scroll bar instead of the clock.
+ *
+ * Deliberately 2D canvas, not WebGL: five bands of ~50 flat facet-shaded shards cost less
+ * than one more GL context, and flat polys in the debris palette read as the same material
+ * at this size. A band redraws only when its progress actually moved.
+ */
+function initTears(){
+  const secs = [...document.querySelectorAll('main .sec, footer.foot')];
+  if (!secs.length) return;
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // the film rubble's own palette · light plaster tops, grey flanks, the odd warm cardboard
+  const FILLS = ['#cfccc4','#c2beb5','#b3afa6','#a19d94','#8f8b83','#bdb1a0'];
+  const bands = [];
+  let seed = 61217;
+  const rnd = () => { seed = (seed*9301+49297)%233280; return seed/233280; };
+
+  for (const sec of secs){
+    const cv = document.createElement('canvas');
+    cv.className = 'tear';
+    cv.setAttribute('aria-hidden', 'true');
+    sec.appendChild(cv);
+    const ctx = cv.getContext('2d');
+    bands.push({ sec, cv, ctx, shards: [], lastP: -1, W: 0, H: 150 });
+  }
+
+  function buildShards(b){
+    b.shards.length = 0;
+    const n = Math.max(30, Math.round(b.W / 26));
+    for (let i = 0; i < n; i++){
+      const u = (i + rnd()*0.7) / n;
+      const w = 16 + rnd()*44, h = 10 + rnd()*26;
+      const pts = [];
+      const k = 4 + (rnd()*3|0);
+      for (let j = 0; j < k; j++){
+        const a = j/k * Math.PI*2 + rnd()*0.5;
+        pts.push([Math.cos(a) * w * (0.4 + rnd()*0.6) * 0.5,
+                  Math.sin(a) * h * (0.4 + rnd()*0.6) * 0.5]);
+      }
+      b.shards.push({
+        hx: 0.01*b.W + u*b.W*0.98,
+        hy: 78 + (rnd()-0.5)*26,             // the lip sits on the seam line
+        sx: (rnd()-0.5)*260,                 // scatter start · flung wide
+        sy: -(70 + rnd()*190),               //   and up into the gap above
+        r0: (rnd()-0.5)*2.4,
+        st: rnd()*0.55,                      // stagger cue · shards lock one after another
+        fill: FILLS[(rnd()*FILLS.length)|0],
+        pts, crumb: rnd() > 0.8
+      });
+    }
+  }
+
+  function resize(){
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    for (const b of bands){
+      b.W = b.sec.clientWidth;
+      b.cv.width = Math.round(b.W * dpr); b.cv.height = Math.round(b.H * dpr);
+      b.cv.style.width = b.W + 'px'; b.cv.style.height = b.H + 'px';
+      b.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      seed = 61217 + b.W;                    // deterministic per width
+      buildShards(b);
+      b.lastP = -1;
+    }
+  }
+  resize(); addEventListener('resize', resize, { passive:true });
+
+  const ease = t => t*t*(3-2*t);
+
+  function draw(b, p){
+    const ctx = b.ctx;
+    ctx.clearRect(0, 0, b.W, b.H);
+    if (p <= 0.001) return;
+    ctx.lineJoin = 'round';
+    for (const s of b.shards){
+      // each shard has its own cue · the seam knits itself left to right-ish, not all at once
+      const q = ease(Math.min(1, Math.max(0, (p - s.st*0.55) / 0.45)));
+      if (q <= 0.001) continue;
+      const x = s.hx + s.sx*(1-q), y = s.hy + s.sy*(1-q), r = s.r0*(1-q);
+      ctx.save();
+      ctx.translate(x, y); ctx.rotate(r);
+      ctx.globalAlpha = Math.min(1, q*1.7);
+      ctx.beginPath();
+      ctx.moveTo(s.pts[0][0], s.pts[0][1]);
+      for (let j = 1; j < s.pts.length; j++) ctx.lineTo(s.pts[j][0], s.pts[j][1]);
+      ctx.closePath();
+      ctx.fillStyle = s.fill; ctx.fill();
+      // one darker edge · flat fills read as confetti, a facet reads as plaster
+      ctx.strokeStyle = 'rgba(38,38,36,0.5)'; ctx.lineWidth = 1;
+      ctx.stroke();
+      if (s.crumb){
+        ctx.fillStyle = 'rgba(210,206,198,0.8)';
+        ctx.fillRect(18 + s.pts[0][0], 6, 2.5, 2.5);
+      }
+      ctx.restore();
+    }
+  }
+
+  /* ── the SPIN transition · the hero's turn, performed by the panels themselves ──────
+   * Entering from below, a section is rotated about its vertical axis and pushed back in
+   * depth; scroll scrubs it upright into place. Leaving above, it spins away the OPPOSITE
+   * way while the next one turns in · the gap between two sections is a hinge, and the
+   * spin is the transition. Progress comes from the section's entry and exit EDGES, never
+   * its centre, so a tall section reads perfectly upright the whole time its content is
+   * on screen. Footer included; hero excluded (it has its own field).
+   */
+  const SPIN_DEG = 16, SPIN_Z = 150, SPIN_X = 3.5;
+  function spinFor(r, vh){
+    const pin  = Math.min(1, Math.max(0, (vh - r.top) / (vh*0.62)));      // 0 entering, 1 seated
+    const pout = Math.min(1, Math.max(0, r.bottom / (vh*0.62)));          // 1 seated, 0 gone
+    const a = -(1-pin)*SPIN_DEG + (1-pout)*SPIN_DEG;
+    const z = -((1-pin) + (1-pout)) * SPIN_Z;
+    if (Math.abs(a) < 0.02 && z > -0.5) return '';
+    return 'translateZ(' + z.toFixed(1) + 'px) rotateY(' + a.toFixed(2) + 'deg) rotateX(' + (a*SPIN_X/SPIN_DEG).toFixed(2) + 'deg)';
+  }
+
+  let ticking = false;
+  function frame(){
+    ticking = false;
+    const vh = innerHeight;
+    for (const b of bands){
+      const r = b.sec.getBoundingClientRect();
+      // the spin runs whenever any part of the panel is near the viewport
+      if (!reduced && r.bottom > -80 && r.top < vh + 80){
+        const t = spinFor(r, vh);
+        if (t !== b.lastT){ b.lastT = t; b.sec.style.transform = t; }
+      }
+      if (r.top > vh + 260 || r.top < -b.H - 260) continue;
+      // scrubbed by the seam's own position · locks just before the heading reads
+      const p = reduced ? 1 : Math.min(1, Math.max(0, (vh*0.92 - r.top) / (vh*0.5)));
+      if (Math.abs(p - b.lastP) < 0.002) continue;
+      b.lastP = p;
+      draw(b, p);
+    }
+  }
+  const onScroll = () => { if (!ticking){ ticking = true; requestAnimationFrame(frame); } };
+  addEventListener('scroll', onScroll, { passive:true });
+  frame();
+}
+
+/* GROUNDTRUTH · the hero controller.
+ *
+ * Ties three things together: the morph film (a <video>), the masked pass shader that
+ * re-renders it, and the interface layer drawn over the top.
+ *
+ * THE THING THAT IS EASY TO GET WRONG: boxes that sit still on a moving image read as
+ * stickers. In the reference they track. We have no 3D anchors here because the hero is
+ * footage, so instead the build step MEASURES the film's own horizontal motion frame by
+ * frame (the same cross-correlation used to analyse the reference) and bakes it into
+ * DRIFT below. A live selection then moves by the film's actual measured motion, which is
+ * cheap and is genuinely correct rather than an approximation of correct.
+ */
+
+
+
+const PASS = { BEAUTY:0, NORMALS:1, EDGE:2, UNTEX:3, MOSH:4 };
+
+/* The beat timeline. Uneven ON PURPOSE · an even cycle reads as a slideshow, and the
+ * reference holds a scene, flicks a pass, holds again. `hold` is seconds.
+ * `invert:true` is the reference's signature move: the pass runs GLOBALLY and the
+ * selections punch BEAUTY back through it, so the subject is held out photographic. */
+const BEATS = [
+  { hold:2.1, global:PASS.BEAUTY,  sel:5, selPass:PASS.NORMALS },
+  { hold:0.7, global:PASS.NORMALS, sel:1, selPass:PASS.BEAUTY, invert:true },
+  { hold:1.8, global:PASS.BEAUTY,  sel:6, selPass:PASS.EDGE    },
+  { hold:0.5, global:PASS.MOSH,    sel:2, selPass:PASS.BEAUTY },
+  { hold:2.4, global:PASS.BEAUTY,  sel:7, selPass:PASS.NORMALS },
+  { hold:0.6, global:PASS.EDGE,    sel:1, selPass:PASS.BEAUTY, invert:true },
+  { hold:1.9, global:PASS.BEAUTY,  sel:4, selPass:PASS.UNTEX   },
+  { hold:0.4, global:PASS.MOSH,    sel:0 }
+];
+
+/* Selections bind to TRACKED FEATURE POINTS, not to fixed positions.
+ *
+ * media/tracks.json is produced at build time by tools/track_points.py: real corners followed
+ * frame to frame through the film, each carrying a parallax DEPTH derived from how fast it
+ * sweeps (near points move faster under rotation than far ones).
+ *
+ * That gives the three things a fixed overlay cannot have:
+ *   · a box sits on the thing it is measuring and moves WITH it
+ *   · near boxes are larger and draw in front, far boxes smaller and behind
+ *   · a box dies when its anchor leaves frame or its scene dissolves, instead of hanging on
+ */
+function liveTracks(tracks, frame, minRemaining){
+  const out = [];
+  for (let t = 0; t < tracks.length; t++){
+    const pts = tracks[t].p;
+    const p = pts[frame];
+    if (!p) continue;
+    // Anchors near the frame edge get pushed OUT by the push-in (a point at 0.90 lands at 0.99
+    // under a 1.22x zoom), so a selection bound to one spends the beat half off screen. Keep to
+    // the middle band, where a box survives the whole zoom cycle.
+    if (p[0] < 0.16 || p[0] > 0.84 || p[1] < 0.16 || p[1] > 0.84) continue;
+    let rem = 0;
+    for (let k = frame; k < pts.length && pts[k]; k++) rem++;
+    if (rem >= minRemaining) out.push({ i:t, rem, depth: tracks[t].depth, x:p[0], y:p[1] });
+  }
+  out.sort((a, b) => b.rem - a.rem);
+  return out;
+}
+
+/* Pick anchors that are SPREAD OUT. Tracked corners cluster on whatever edge has the strongest
+ * gradient, so taking the longest-lived N puts every box in one corner · which is exactly what
+ * it looked like. Greedy farthest-point selection instead. */
+function spread(cands, n, minDist){
+  const picked = [];
+  for (const c of cands){
+    if (picked.length >= n) break;
+    if (picked.every(p => Math.hypot(p.x - c.x, p.y - c.y) >= minDist)) picked.push(c);
+  }
+  // if the film is mid-dissolve there may not be n well-spread anchors · relax rather than fail
+  if (picked.length < n){
+    for (const c of cands){
+      if (picked.length >= n) break;
+      if (!picked.includes(c)) picked.push(c);
+    }
+  }
+  return picked;
+}
+
+function initHero(root, opts){
+  const video   = root.querySelector('video');
+  const glCanvas= root.querySelector('canvas.gt-gl');
+  const uiCanvas= root.querySelector('canvas.gt-ui');
+  const ui      = uiCanvas.getContext('2d');
+  const TRACKS  = opts.tracks || [];         // per-frame anchors + parallax depth
+
+  // The hero is a 3D scene that CONTAINS the film, not a video with things drawn on it: real
+  // debris behind and in front, a wireframe scan volume, and the keyed film on a plane between
+  // them. Falls back to the flat renderer if the stage cannot be built.
+  const renderer = createStage(glCanvas, video, PASS_FRAG) || createPassRenderer(glCanvas, video);
+  if (!renderer){ root.classList.add('gt-nogl'); return null; }
+
+  let beatIdx = 0, beatT = 0, live = [], cursors = [];
+  let lastScrollY = scrollY, scrollVel = 0, spinImpulse = 0;
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function frameIndex(){
+    if (!TRACKS.length || !video.duration) return 0;
+    const n = TRACKS[0].p.length;
+    return Math.min(n - 1, Math.max(0, Math.floor(video.currentTime / video.duration * n)));
+  }
+
+  function buildBeat(){
+    const b = BEATS[beatIdx];
+    live = []; cursors = [];
+    const fi = frameIndex();
+    // ask for anchors that will outlast this beat, then relax if the film is mid-dissolve
+    let cands = liveTracks(TRACKS, fi, Math.round(b.hold * 30));
+    if (cands.length < b.sel) cands = liveTracks(TRACKS, fi, 10);
+    if (cands.length < b.sel) cands = liveTracks(TRACKS, fi, 4);
+    const chosen = spread(cands, b.sel, 0.13);
+    const n = chosen.length;
+    for (let i = 0; i < n; i++){
+      const c = chosen[i];
+      const depth = c.depth;
+      // near anchors get larger boxes · this is the parallax, not decoration
+      const w = 0.055 + depth * 0.085, h = w * (1.05 + (i % 3) * 0.22);
+      live.push({
+        track: c.i, depth,
+        x:0, y:0, w, h, colour: PALETTE[(beatIdx + i) % (PALETTE.length - 1)],
+        alpha:0, pass: b.invert ? PASS.BEAUTY : b.selPass,
+        rx:0, ry:0,
+        reticle: i === 0 && n > 2,
+        heavy: depth > 0.62,
+        label: (i % 4) !== 3
+      });
+      if (i < 4) cursors.push({ track: c.i, x:0, y:0, alpha:0, scale: 0.85 + depth * 0.4 });
+    }
+    // near draws last, so it sits in front of far
+    live.sort((p, q) => p.depth - q.depth);
+  }
+  buildBeat();
+
+  // Adaptive quality · the pass shader is ~17 taps per film pixel, which a real GPU laughs at
+  // and a software rasterizer does not. The GL buffer drops resolution only when measured
+  // frame time says it must; the 2D overlay always stays at full resolution, so the boxes and
+  // labels are crisp even when the film beneath them is carrying a weak GPU.
+  let qual = gtSoftGL() ? 0.45 : 1, ema = 1/60, sinceCheck = 0;
+  function resize(){
+    const r = root.getBoundingClientRect();
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    renderer.resize(Math.round(r.width * dpr * qual), Math.round(r.height * dpr * qual));
+    glCanvas.style.width = r.width + 'px';  glCanvas.style.height = r.height + 'px';
+    uiCanvas.width  = Math.round(r.width * dpr);
+    uiCanvas.height = Math.round(r.height * dpr);
+    uiCanvas.style.width = r.width + 'px';  uiCanvas.style.height = r.height + 'px';
+    return { w:r.width, h:r.height, dpr };
+  }
+  let dim = resize();
+  const atmo = root.querySelector('.stage__atmo');
+  function sizeAtmo(){
+    if (!atmo) return;
+    const fy = renderer.planeFracY || PLANE, fx = renderer.planeFracX || fy;
+    // a third wider than the film · the gradient must die out before any edge it could reveal
+    atmo.style.width  = Math.round(fx * dim.h * 1.5) + 'px';
+    atmo.style.height = Math.round(fy * dim.h * 1.6) + 'px';
+  }
+  sizeAtmo();
+  addEventListener('resize', () => { dim = resize(); sizeAtmo(); }, { passive:true });
+
+  let last = performance.now();
+  function frame(now){
+    const dt = Math.min((now - last) / 1000, 0.05); last = now;
+    ema = ema * 0.92 + dt * 0.08;
+    if (++sinceCheck > 40){
+      sinceCheck = 0;
+      if (ema > 0.034 && qual > 0.35){ qual *= 0.7; dim = resize(); }
+    }
+
+    // advance the beat clock
+    beatT += dt;
+    const b = BEATS[beatIdx];
+    if (beatT >= b.hold){ beatT = 0; beatIdx = (beatIdx + 1) % BEATS.length; buildBeat(); }
+
+    // selections fade in fast and out fast · a slow fade reads as a dissolve, which the
+    // reference never does
+    const fadeIn = Math.min(beatT / 0.16, 1);
+    const fadeOut = Math.min((b.hold - beatT) / 0.16, 1);
+    const a = Math.max(0, Math.min(fadeIn, fadeOut));
+
+    // read each selection's anchor for THIS frame · the box follows the content
+    const fi = frameIndex();
+    for (const s of live){
+      const pt = TRACKS[s.track] && TRACKS[s.track].p[fi];
+      if (!pt){ s.alpha = 0; continue; }          // anchor gone: the selection goes with it
+      s.alpha = a;
+      s.x = pt[0] - s.w / 2;
+      s.y = pt[1] - s.h / 2;
+      s.rx = Math.round(pt[0] * 1280);
+      s.ry = Math.round(pt[1] * 1280);
+    }
+    for (const c of cursors){
+      const pt = TRACKS[c.track] && TRACKS[c.track].p[fi];
+      if (!pt){ c.alpha = 0; continue; }
+      c.alpha = a;
+      c.x = pt[0] + 0.018;
+      c.y = pt[1] + 0.012;
+    }
+
+    // the untextured dissolve rides in during the last third of a MOSH beat
+    const voidMix = b.global === PASS.MOSH ? Math.max(0, (beatT / b.hold - 0.6)) * 0.9 : 0;
+
+    // NO push-in. Any zoom above 1.0 crops the film, and the owner's rule is absolute: the
+    // film is always in FULL view, nothing cut off. The framing energy comes from the film's
+    // own rotation and the debris parallax instead.
+    const zt = video.duration ? video.currentTime / video.duration : 0;
+    const zoom = 1.0;
+
+    // The debris field turns with the film's own rotation, so they read as one object rather
+    // than a video with decoration orbiting it · and SCROLLING adds an impulse on top, so
+    // leaving the hero spins the whole field through the transition (the faux-real move).
+    const sy = scrollY;
+    scrollVel = scrollVel * 0.88 + (sy - lastScrollY) * 0.12;
+    lastScrollY = sy;
+    spinImpulse = spinImpulse * 0.94 + scrollVel * 0.00045;
+    const spin = zt * Math.PI * 2 * 1.75 + spinImpulse * 30;
+    const tumble = spin + spinImpulse * 55;
+
+    renderer.draw({
+      time: now / 1000,
+      globalPass: b.global,
+      voidMix,
+      zoom,
+      spin,
+      tumble,
+      selections: live
+    });
+    // the film is a square of planeFrac·height, centred · the overlay must use the same rect
+    // or every box lands outside the region it is masking
+    const fy = renderer.planeFracY || PLANE, fx = renderer.planeFracX || fy;
+    drawOverlay(ui, dim.w, dim.h, live, cursors, dim.dpr, zoom,
+                { cx: dim.w/2, cy: dim.h/2, w: fx * dim.h, h: fy * dim.h });
+
+    if (!reduced && heroLive) requestAnimationFrame(frame);
+  }
+
+  let heroLive = false, loaded = false;
+  video.addEventListener('loadeddata', () => {
+    loaded = true;
+    if (heroLive){ video.play().catch(() => {}); last = performance.now(); requestAnimationFrame(frame); }
+  }, { once:true });
+
+  // re-entering must replay · and the WHOLE render loop stops off-screen, not just the video,
+  // because drawing a paused hero still costs a full pipeline pass every frame
+  const io = new IntersectionObserver(es => {
+    for (const e of es){
+      const was = heroLive;
+      heroLive = e.isIntersecting;
+      if (heroLive && !was && loaded){
+        video.play().catch(()=>{});
+        last = performance.now();
+        requestAnimationFrame(frame);
+      }
+      if (!heroLive) video.pause();
+    }
+  }, { threshold:0.01 });
+  io.observe(root);
+
+  return { renderer };
+}
+
+/* GROUNDTRUTH · page bootstrap. Runs immediately when window.GT is inlined (the local
+ * build) and waits for the 'gt-ready' event when a loader fetches the assets from a CDN
+ * (the aura build) · one boot, two data sources. */
+function __gtBoot(){
+  const GT = window.GT || {};
+
+  // ── hero ────────────────────────────────────────────────────────────────────────
+  const stage = document.getElementById('stage');
+  if (stage && GT.hero){
+    stage.querySelector('video').src = GT.hero;
+    try { initHero(stage, { tracks: GT.tracks || [] }); }
+    catch(e){ stage.classList.add('gt-nogl'); console.error(e); }
+  }
+
+  // ── library rows · built from data so the markup stays one row, not seven ───────
+  const lib = document.getElementById('lib');
+  if (lib && GT.lib && GT.lib.length){
+    lib.innerHTML = GT.lib.map(function(L, i){
+      return '<div class="lib__row" data-idx="' + i + '">'
+        + '<span class="lib__no">' + String(i+1).padStart(2,'0') + '</span>'
+        + '<span class="lib__name">' + L.name + '</span>'
+        + '<span class="lib__place">' + L.place + '</span>'
+        + '<span class="lib__f"><i>AREA</i>' + L.area + '</span>'
+        + '<span class="lib__f"><i>POINTS</i>' + L.points + '</span>'
+        + '<span class="lib__f"><i>RESIDUAL</i>' + L.residual + '</span>'
+        + '</div>';
+    }).join('');
+    // the inspector · the hero's selection treatment pointed at whichever row the cursor rests on
+    const insp = initInspect(document.getElementById('insp'), lib);
+    if (insp){
+      insp.show(0, GT.lib[0]);
+      lib.addEventListener('pointerover', function(e){
+        const row = e.target.closest('.lib__row');
+        if (row) insp.show(+row.dataset.idx, GT.lib[+row.dataset.idx]);
+      });
+      lib.addEventListener('click', function(e){
+        const row = e.target.closest('.lib__row');
+        if (row) insp.show(+row.dataset.idx, GT.lib[+row.dataset.idx]);
+      });
+    }
+  }
+
+  // ── the world layer, the reveals, and the registration cloud ────────────────────
+  try { initWorld(); } catch(e){ console.error(e); }
+  try { initTears(); } catch(e){ console.error(e); }
+  try { initReveals(); } catch(e){ console.error(e); }
+  try { initCloud(document.getElementById('cloudcv'), GT.glb, document.getElementById('cloudstat')); }
+  catch(e){ console.error(e); }
+
+  // ── live fragment ───────────────────────────────────────────────────────────────
+  const fc = document.getElementById('fragcv');
+  if (fc) initFragment(fc, GT.glb, document.getElementById('fragstat'));
+
+  // ── placeholder anchors must never jump to the top of the page ──────────────────
+  document.addEventListener('click', function(e){
+    const a = e.target.closest && e.target.closest('a[href="#"]');
+    if (a) e.preventDefault();
+  });
+}
+if (window.GT) __gtBoot();
+else addEventListener('gt-ready', __gtBoot, { once:true });
+</script></body></html>

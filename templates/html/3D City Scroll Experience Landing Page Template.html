@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DRE City</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<style>
+body {
+font-family: 'Inter', sans-serif;
+background-color: #000000;
+overflow-x: hidden;
+}
+/* Custom scrollbar hiding */
+::-webkit-scrollbar {
+width: 0px;
+background: transparent;
+}
+canvas {
+display: block;
+outline: none;
+}
+</style></head>
+<body class="text-white antialiased selection:bg-white selection:text-black">
+
+    <!-- Fixed Header -->
+    <header class="fixed top-0 left-0 w-full z-50 px-6 py-6 flex justify-between items-center mix-blend-difference">
+        <div class="flex items-center gap-2">
+            <h1 class="text-lg font-medium tracking-tighter uppercase text-white">DRE city</h1>
+        </div>
+        <div class="hidden md:flex items-center gap-6 text-sm font-light tracking-tight text-gray-300">
+            <span>Coordinates: <span id="coords" class="font-mono">00.00, 00.00</span></span>
+            <iconify-icon icon="solar:hamburger-menu-linear" width="24" height="24"></iconify-icon>
+        </div>
+    </header>
+
+    <!-- 3D Canvas Container -->
+    <div id="scene-container" class="fixed inset-0 z-0 bg-black"></div>
+
+    <!-- Scroll Spacer (Height determines scroll length) -->
+    <div class="relative z-10 w-full h-[600vh] pointer-events-none">
+        
+        <!-- Optional Overlay Text hints at specific scroll points -->
+        <div class="absolute top-[20vh] w-full text-center opacity-50">
+            <p class="text-xs font-light tracking-widest uppercase mb-2">System Initializing</p>
+            <iconify-icon icon="solar:mouse-minimalistic-linear" width="24" class="animate-bounce"></iconify-icon>
+        </div>
+
+        <div class="absolute top-[150vh] w-full text-center mix-blend-overlay opacity-0 transition-opacity duration-700 fade-in-trigger">
+            <h2 class="text-4xl font-light tracking-tighter">Architectural Geometry</h2>
+        </div>
+
+        <div class="absolute top-[300vh] w-full text-center mix-blend-overlay opacity-0 transition-opacity duration-700 fade-in-trigger">
+            <h2 class="text-4xl font-light tracking-tighter">Material Rendering</h2>
+        </div>
+
+        <div class="absolute top-[450vh] w-full text-center mix-blend-overlay opacity-0 transition-opacity duration-700 fade-in-trigger">
+            <h2 class="text-4xl font-light tracking-tighter">Simulation Active</h2>
+        </div>
+
+    </div>
+
+    <!-- UI Overlay for 'Interactive' feel (Sliders/Toggles) -->
+    <div class="fixed bottom-8 right-8 z-40 hidden md:flex flex-col gap-4 p-4 rounded-xl border border-white/10 bg-black/40 backdrop-blur-md w-64">
+        <div class="flex justify-between items-center pb-2 border-b border-white/5">
+            <span class="text-xs font-medium tracking-wide text-gray-400">RENDER SETTINGS</span>
+            <iconify-icon icon="solar:settings-linear" class="text-gray-400"></iconify-icon>
+        </div>
+        
+        <div class="space-y-3">
+            <div class="flex items-center justify-between">
+                <span class="text-xs text-gray-500">Wireframe</span>
+                <div class="h-1 w-20 bg-white/10 rounded-full overflow-hidden">
+                    <div id="wire-bar" class="h-full bg-white w-full transition-all duration-75"></div>
+                </div>
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="text-xs text-gray-500">Solid Mesh</span>
+                <div class="h-1 w-20 bg-white/10 rounded-full overflow-hidden">
+                    <div id="solid-bar" class="h-full bg-white w-0 transition-all duration-75"></div>
+                </div>
+            </div>
+             <div class="flex items-center justify-between pt-2">
+                <span class="text-xs text-gray-500">Processing</span>
+                <iconify-icon icon="solar:cpu-bolt-linear" class="text-white animate-pulse"></iconify-icon>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const config = {
+            buildingCount: 300,
+            gridSize: 1200,
+            fogNearColor: 0x000000,
+            fogFarColor: 0x000000,
+            wireframeColor: 0x444444,
+            buildingColor: 0x111111, // Dark building color
+            lightColor: 0xffffff,
+            skyColor: 0x050505
+        };
+
+        // --- Setup Three.js ---
+        const container = document.getElementById('scene-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(config.skyColor);
+        scene.fog = new THREE.Fog(config.fogFarColor, 10, 900);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 2000);
+        camera.position.set(0, 150, 400);
+        camera.lookAt(0, 0, -200);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        // --- Lighting ---
+        // Ambient light for base visibility
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); 
+        scene.add(ambientLight);
+
+        // Directional light to create shadows and depth in "Real 3D" mode
+        const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+        dirLight.position.set(100, 200, 100);
+        scene.add(dirLight);
+        
+        // Point lights for city vibe
+        const pointLight = new THREE.PointLight(0x3b82f6, 1, 600);
+        pointLight.position.set(0, 100, -200);
+        scene.add(pointLight);
+
+        // --- City Generation ---
+        const cityGroup = new THREE.Group();
+        scene.add(cityGroup);
+
+        const buildings = [];
+
+        // Helper to create random range
+        const random = (min, max) => Math.random() * (max - min) + min;
+
+        const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+        // We move the pivot to the bottom
+        boxGeo.translate(0, 0.5, 0);
+
+        // Materials
+        // 1. Wireframe Material (Starts visible)
+        const wireMaterial = new THREE.LineBasicMaterial({ 
+            color: config.wireframeColor,
+            transparent: true, 
+            opacity: 0.8,
+            linewidth: 1 
+        });
+
+        // 2. Solid Material (Starts invisible) - Using Physical for realism
+        const solidMaterial = new THREE.MeshPhysicalMaterial({
+            color: config.buildingColor,
+            metalness: 0.6,
+            roughness: 0.2,
+            transmission: 0, // glass-like if 1
+            transparent: true,
+            opacity: 0
+        });
+
+        // Grid Generation Logic
+        let gridSizeInt = Math.sqrt(config.buildingCount);
+        let spacing = 35;
+        let offset = (gridSizeInt * spacing) / 2;
+
+        for(let i = 0; i < config.buildingCount; i++) {
+            // Random dimensions
+            let h = random(20, 150);
+            let w = random(10, 25);
+            let d = random(10, 25);
+
+            // Position
+            let x = (i % gridSizeInt) * spacing - offset + random(-5, 5);
+            let z = -Math.floor(i / gridSizeInt) * spacing + 100 + random(-5, 5); // Start slightly in front
+            
+            // Create Solid Mesh
+            const mesh = new THREE.Mesh(boxGeo, solidMaterial.clone());
+            mesh.position.set(x, 0, z);
+            mesh.scale.set(w, h, d);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+
+            // Create Wireframe (Edges)
+            const edgesGeo = new THREE.EdgesGeometry(mesh.geometry);
+            const line = new THREE.LineSegments(edgesGeo, wireMaterial.clone());
+            
+            // Scale and position lines to match mesh
+            // Since we scaled the mesh, we need to apply scale to the line or child it
+            // Easiest is to add line as child of mesh, but scaling lines can cause artifacts.
+            // Better: Create line at same pos with same scale manually.
+            line.position.copy(mesh.position);
+            line.scale.copy(mesh.scale);
+            
+            // Optimization: Store references to update later
+            const buildingObj = {
+                mesh: mesh,
+                line: line,
+                initialLineOpacity: random(0.3, 0.8), // Randomize for texture
+                height: h
+            };
+
+            cityGroup.add(mesh);
+            cityGroup.add(line);
+            buildings.push(buildingObj);
+        }
+
+        // --- Ground Plane (Reflective) ---
+        const planeGeo = new THREE.PlaneGeometry(2000, 2000);
+        const planeMat = new THREE.MeshStandardMaterial({ 
+            color: 0x050505, 
+            roughness: 0.1, 
+            metalness: 0.8 
+        });
+        const plane = new THREE.Mesh(planeGeo, planeMat);
+        plane.rotation.x = -Math.PI / 2;
+        plane.position.y = -0.1;
+        scene.add(plane);
+
+        // --- Animation & Scroll Logic ---
+        
+        let scrollY = 0;
+        let maxScroll = 0;
+        let targetCamZ = 400;
+        let targetCamY = 150;
+        
+        // Linear interpolation helper
+        const lerp = (start, end, t) => start * (1 - t) + end * t;
+
+        function updateOnScroll() {
+            maxScroll = document.body.scrollHeight - window.innerHeight;
+            const scrollPercent = Math.max(0, Math.min(1, window.scrollY / maxScroll));
+
+            // Camera movement: Fly into the city
+            // Start Z: 400, End Z: -400
+            // Start Y: 150, End Y: 40
+            const zStart = 400;
+            const zEnd = -300;
+            const yStart = 150;
+            const yEnd = 20;
+
+            const targetZ = lerp(zStart, zEnd, scrollPercent);
+            const targetY = lerp(yStart, yEnd, scrollPercent);
+
+            // Update Camera Smoothly in loop, just set targets here
+            targetCamZ = targetZ;
+            targetCamY = targetY;
+
+            // Update Materials based on scroll
+            // 0% -> 100% : Wireframe Opacity 1 -> 0
+            // 0% -> 100% : Solid Opacity 0 -> 1
+            
+            const wireOpacity = Math.max(0, 1 - scrollPercent * 1.5); // Fades out faster
+            const solidOpacity = Math.min(1, scrollPercent * 1.5); // Fades in
+
+            buildings.forEach(b => {
+                // Wireframe fades out
+                b.line.material.opacity = wireOpacity * b.initialLineOpacity;
+                
+                // Solid fades in
+                b.mesh.material.opacity = solidOpacity;
+                
+                // Optional: Make solid brighter as we go deeper
+                if (solidOpacity > 0.1) {
+                    b.mesh.material.emissiveIntensity = scrollPercent * 0.2;
+                    b.mesh.material.emissive = new THREE.Color(0x222222);
+                }
+            });
+            
+            // Fog density adjustment
+            scene.fog.density = lerp(0.001, 0.005, scrollPercent);
+
+            // UI Updates
+            const coordSpan = document.getElementById('coords');
+            coordSpan.innerText = `${(targetCamZ/10).toFixed(2)}, ${(targetCamY/10).toFixed(2)}`;
+
+            const wireBar = document.getElementById('wire-bar');
+            const solidBar = document.getElementById('solid-bar');
+            wireBar.style.width = `${wireOpacity * 100}%`;
+            solidBar.style.width = `${solidOpacity * 100}%`;
+
+            // Fade in triggers
+            const triggers = document.querySelectorAll('.fade-in-trigger');
+            triggers.forEach(el => {
+                const rect = el.getBoundingClientRect();
+                if(rect.top < window.innerHeight / 1.5) {
+                    el.style.opacity = '1';
+                } else {
+                    el.style.opacity = '0';
+                }
+            });
+        }
+
+        window.addEventListener('scroll', updateOnScroll);
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            updateOnScroll();
+        });
+
+        // Animation Loop
+        const clock = new THREE.Clock();
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            // Smooth Camera dampening
+            camera.position.z = lerp(camera.position.z, targetCamZ, 0.05);
+            camera.position.y = lerp(camera.position.y, targetCamY, 0.05);
+            
+            // Subtle rotation for cinematic feel
+            camera.rotation.z = Math.sin(time * 0.2) * 0.02;
+
+            // Moving light for dynamic shadows
+            dirLight.position.x = Math.sin(time * 0.5) * 300;
+            dirLight.position.z = Math.cos(time * 0.5) * 300 + camera.position.z;
+
+            renderer.render(scene, camera);
+        }
+
+        // Init
+        updateOnScroll();
+        animate();
+
+    </script>
+</body>
+</html>

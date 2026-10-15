@@ -1,0 +1,660 @@
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VRAX | VR Game Agency</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&amp;family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&amp;family=DM+Serif+Display:ital@0;1&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+/* 3D Transform utilities */
+</style>
+<script>
+// Configure Tailwind to include our custom 3D transform utilities
+tailwind.config = {
+theme: {
+extend: {
+// Add any custom theme extensions here if needed
+}
+},
+plugins: [
+function({ addUtilities }) {
+const rotateXUtilities = {};
+const rotateYUtilities = {};
+const rotateZUtilities = {};
+const rotateValues = [0, 5, 10, 15, 20, 30, 45, 75];
+// Generate rotate-x utilities
+rotateValues.forEach((value) => {
+rotateXUtilities[`.rotate-x-${value}`] = {
+'--tw-rotate-x': `${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+if (value !== 0) {
+rotateXUtilities[`.-rotate-x-${value}`] = {
+'--tw-rotate-x': `-${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+}
+});
+// Generate rotate-y utilities
+rotateValues.forEach((value) => {
+rotateYUtilities[`.rotate-y-${value}`] = {
+'--tw-rotate-y': `${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+if (value !== 0) {
+rotateYUtilities[`.-rotate-y-${value}`] = {
+'--tw-rotate-y': `-${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+}
+});
+// Generate rotate-z utilities
+rotateValues.forEach((value) => {
+rotateZUtilities[`.rotate-z-${value}`] = {
+'--tw-rotate-z': `${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+if (value !== 0) {
+rotateZUtilities[`.-rotate-z-${value}`] = {
+'--tw-rotate-z': `-${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+}
+});
+// Perspective utilities
+const perspectiveUtilities = {
+".perspective-none": { perspective: "none" },
+".perspective-dramatic": { perspective: "100px" },
+".perspective-near": { perspective: "300px" },
+".perspective-normal": { perspective: "500px" },
+".perspective-midrange": { perspective: "800px" },
+".perspective-distant": { perspective: "1200px" },
+};
+// Transform style utilities
+const transformStyleUtilities = {
+".transform-style-preserve-3d": { "transform-style": "preserve-3d" },
+".transform-style-flat": { "transform-style": "flat" },
+};
+addUtilities({
+...rotateXUtilities,
+...rotateYUtilities,
+...rotateZUtilities,
+...perspectiveUtilities,
+...transformStyleUtilities,
+});
+}
+]
+};
+</script></head>
+  <body class="antialiased selection:bg-[#ff5a00] selection:text-white bg-[#f0eee9] text-[#111] overflow-x-hidden" style="font-family:'DM Sans',sans-serif;font-weight:300;">
+    <!-- ============ LAYER 0 : WEBGL GRAIN ============ -->
+    <canvas id="webgl-canvas" class="fixed inset-0 w-full h-full z-0 pointer-events-none" width="2352" height="1528" style="width: 1568px; height: 1019px;"></canvas>
+
+    <!-- ============ LAYER 3 : NAV ============ -->
+    <nav class="fixed top-0 left-0 w-full z-50 mix-blend-difference text-white">
+      <div class="px-5 md:px-10 py-5 flex items-center justify-between">
+        <a href="#" class="text-xl md:text-2xl tracking-tighter" style="font-family:'Archivo Black',sans-serif">Susan TOol</a>
+        <div class="hidden md:flex items-center gap-9 text-xs uppercase tracking-[0.2em]" style="font-weight:400;">
+          <a href="#protocol" class="hover:opacity-60 transition-opacity">
+            Protocol
+          </a>
+          <a href="#realities" class="hover:opacity-60 transition-opacity">
+            Realities
+          </a>
+          <a href="#releases" class="hover:opacity-60 transition-opacity">
+            Releases
+          </a>
+          <a href="#system" class="hover:opacity-60 transition-opacity">
+            System
+          </a>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="w-12 h-12 rounded-full border border-white/40 flex items-center justify-center hover:bg-white hover:text-black transition-colors">
+            <iconify-icon icon="solar:magnifer-linear" width="18" style="--iconify-stroke-width:1.5" class=""></iconify-icon>
+          </button>
+          <button class="w-12 h-12 rounded-full border border-white/40 flex items-center justify-center hover:bg-white hover:text-black transition-colors">
+            <iconify-icon icon="solar:cart-large-minimalistic-linear" width="18"></iconify-icon>
+          </button>
+          <button class="w-12 h-12 rounded-full border border-white/40 flex items-center justify-center hover:bg-white hover:text-black transition-colors">
+            <iconify-icon icon="solar:hamburger-menu-linear" width="20"></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- ============ SECTION 1 : STICKY HERO (480vh) ============ -->
+    <section id="sticky-scene-container" class="relative z-10 h-[360vh] md:h-[420vh] lg:h-[480vh]">
+      <div class="sticky top-0 h-screen w-full overflow-hidden bg-[#050505]">
+        <!-- video bg -->
+        <video id="hero-video" class="absolute inset-0 w-full h-full object-cover opacity-70" autoplay="" muted="" loop="" playsinline="" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/generated-videos/2e815afb-cac1-4c01-90e1-cf3810246e35/1780784779900-a666c03e-afbd-428c-bd3a-327e0fd182dd.mp4" style=" transform-origin: 50% 50%;"></video>
+        <div class="absolute inset-0 bg-gradient-to-b from-[#050505]/70 via-transparent to-[#050505]"></div>
+
+        <!-- noise -->
+        <div class="absolute inset-0 opacity-[0.22] mix-blend-overlay pointer-events-none"></div>
+
+        <!-- portal -->
+
+        <!-- curtains -->
+        <img id="curtain-left" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/e50de7d6-9edb-44b7-97b8-c16b51eac922_3840w.png" class="z-20 pointer-events-none w-1/2 h-full object-cover absolute top-0 left-0 blur-sm" alt="curtain left">
+        <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b39f632f-53b4-4507-8dee-c411a6d98d4f_3840w.png" class="z-20 pointer-events-none w-1/2 h-full object-cover absolute top-0 right-0 blur-sm" alt="curtain right" id="curtain-right">
+
+        <!-- hero content -->
+        <div class="relative z-30 h-full w-full flex flex-col justify-center px-5 md:px-10">
+          <div id="hero-content" class="max-w-6xl" style=" filter: blur(24px);">
+            <div class="flex items-center gap-3 mb-6 text-white/70 text-xs uppercase tracking-[0.35em]" style="font-weight:400;">
+              <span class="w-2 h-2 rounded-full bg-[#ff5a00] inline-block"></span>
+              Spatial Computing Studio · Est. 2019
+            </div>
+            <h1 class="text-white tracking-tight leading-[0.85] text-[15vw] md:text-[11vw]" style="font-family:'DM Serif Display',serif;font-weight:300;">
+              <span class="block overflow-hidden pb-8 pt-4 -mb-8 -mt-4">
+                <span class="anim-title-inner block will-change-[transform,filter]" style=" filter: blur(12px)">
+                  Virtual
+                  <span class="italic text-[#ff5a00]">Worlds</span>
+                </span>
+              </span>
+            </h1>
+            <p class="mt-8 max-w-md text-sm md:text-base text-white/60 leading-relaxed">
+              We architect immersive realities — game systems, haptic language
+              and spatial audio for headsets that blur the line between rendered
+              and real.
+            </p>
+          </div>
+
+          <div class="flex flex-col md:flex-row md:items-end gap-8 md:gap-16 mt-12 gap-x-8 gap-y-8" id="hero-cta">
+            <a href="#protocol" class="group inline-flex items-center gap-4">
+              
+              
+            </a>
+            <div class="flex gap-10 text-white/50 text-xs uppercase tracking-[0.2em]" style="font-weight:400;">
+              
+              
+            </div>
+          </div>
+        </div>
+
+        <div class="absolute bottom-6 left-0 w-full z-30 px-5 md:px-10 flex justify-between text-white/40 text-xs uppercase tracking-[0.3em]" style="font-weight: 400;">
+          <span class="">Scroll to enter</span>
+          <span>[ 01 / 06 ]</span>
+        </div>
+        <div class="absolute bottom-0 left-1/2 -translate-x-1/2 z-40 pointer-events-none w-[200%] sm:w-[190%] md:w-[210%] lg:w-[240%] max-w-[1680px] flex justify-center items-end overflow-visible" style="transform-style: preserve-3d; perspective-origin: 50% 100%; perspective: 1200px;">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/78c7d2f0-4b09-4de7-a582-d9cae7d80f58_1600w.png" alt="Futuristic woman in VR headset" class="w-full object-contain pointer-events-none select-none" style="opacity:1;filter:blur(0px);transform:scale(0.58);transform-origin:center bottom;will-change:transform;backface-visibility:hidden;" id="hero-reveal-img">
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 2 : MARQUEE ============ -->
+    <section class="relative z-10 bg-[#111] border-y border-[#333] overflow-hidden py-6">
+      <div id="marquee" class="flex whitespace-nowrap will-change-transform">
+        <div class="marquee-part flex items-center gap-10 pr-10 text-white text-sm uppercase tracking-widest" style="font-weight:400;">
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Immersion</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:headphones-round-sound-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Spatial Audio</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:hand-shake-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Haptics</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:planet-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Presence</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Realtime</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:eye-scan-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Foveation</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Immersion</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:headphones-round-sound-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Spatial Audio</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:hand-shake-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Haptics</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:planet-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Presence</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Realtime</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:eye-scan-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Foveation</span>
+            <span class="text-white/25 px-4">/</span>
+          </span></div>
+        <div class="marquee-part flex items-center gap-10 pr-10 text-white text-sm uppercase tracking-widest" style="font-weight:400;">
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Immersion</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:headphones-round-sound-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Spatial Audio</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:hand-shake-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Haptics</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:planet-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Presence</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Realtime</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:eye-scan-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Foveation</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Immersion</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:headphones-round-sound-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Spatial Audio</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:hand-shake-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Haptics</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:planet-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Presence</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Realtime</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:eye-scan-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Foveation</span>
+            <span class="text-white/25 px-4">/</span>
+          </span></div>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 3 : AURA VR PROTOCOL ============ -->
+    <section id="protocol" class="relative z-10 bg-[#0a0a0c] py-20 md:py-28 px-4 md:px-10">
+      <div class="absolute inset-0 opacity-[0.16] mix-blend-overlay pointer-events-none"></div>
+
+      <div class="relative max-w-[1500px] mx-auto">
+        <div class="gs-reveal flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+          <div class="">
+            <p class="text-[#22d3ee] text-xs uppercase tracking-[0.35em] mb-4" style="font-weight:400;">
+              [ 02 ] Engine
+            </p>
+            <h2 class="text-white text-4xl md:text-6xl tracking-tight leading-none" style="font-family:'DM Serif Display',serif;font-weight:300;">
+              <span class="block overflow-hidden pb-6 pt-4 -mb-6 -mt-4">
+                <span class="anim-title-inner block will-change-[transform,filter]" style="filter: blur(12px);">
+                  VRAX VR Protocol
+                </span>
+              </span>
+            </h2>
+          </div>
+          <p class="text-white/45 text-sm max-w-sm leading-relaxed">
+            Real-time cloth, topology and material authoring — running natively
+            inside the headset runtime.
+          </p>
+        </div>
+
+        <!-- editor shell -->
+        <div class="gs-reveal rounded-sm border border-white/10 bg-[#0d0d10] overflow-hidden">
+          <!-- top bar -->
+          <div class="flex items-center justify-between px-4 py-3 border-b border-white/10">
+            <div class="flex items-center gap-3">
+              <span class="w-2.5 h-2.5 rounded-full bg-[#ff5a00]"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-white/20"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-white/20"></span>
+              <span class="ml-3 text-white/50 text-xs uppercase tracking-[0.2em]" style="font-weight:400;">
+                vrax_runtime / scene_04.vrx
+              </span>
+            </div>
+            <div class="hidden md:flex items-center gap-4 text-white/35 text-xs" style="font-weight:400;">
+              <span>fps 90.0</span>
+              <span class="text-[#22d3ee]">● live</span>
+            </div>
+          </div>
+
+          <div class="flex flex-col lg:flex-row">
+            <!-- sidebar -->
+            <aside class="w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-white/10 p-4 space-y-4">
+              <div class="ed-item aspect-[4/3] border border-dashed border-white/25 flex flex-col items-center justify-center gap-2 text-white/50 hover:border-[#ff5a00] hover:text-[#ff5a00] transition-colors cursor-pointer">
+                <iconify-icon icon="solar:cloud-upload-linear" width="28"></iconify-icon>
+                <span class="text-xs uppercase tracking-[0.2em]" style="font-weight:400;">
+                  Drop mesh
+                </span>
+                <span class="text-xs text-white/25">.fbx · .glb · .usdz</span>
+              </div>
+
+              <div class="ed-item">
+                <p class="text-white/35 text-xs uppercase tracking-[0.25em] mb-3" style="font-weight:400;">
+                  Material library
+                </p>
+                <div class="space-y-1 max-h-64 overflow-y-auto pr-1">
+                  <div class="ed-item group flex items-center gap-3 px-2 py-2 border border-white/10 bg-white/[0.02] hover:border-[#22d3ee]/50 cursor-pointer transition-colors">
+                    <span class="w-7 h-7 shrink-0" style="background:linear-gradient(135deg,#22d3ee,#0b3b45);"></span>
+                    <span class="text-white/70 text-xs flex-1" style="font-weight:400;">
+                      Iridescent Silk
+                    </span>
+                    <span class="text-white/25 text-xs">04</span>
+                  </div>
+                  <div class="ed-item group flex items-center gap-3 px-2 py-2 border border-white/10 bg-white/[0.02] hover:border-[#22d3ee]/50 cursor-pointer transition-colors">
+                    <span class="w-7 h-7 shrink-0" style="background:linear-gradient(135deg,#ff5a00,#3b1400);"></span>
+                    <span class="text-white/70 text-xs flex-1" style="font-weight:400;">
+                      Molten Alloy
+                    </span>
+                    <span class="text-white/25 text-xs">11</span>
+                  </div>
+                  <div class="ed-item group flex items-center gap-3 px-2 py-2 border border-white/10 bg-white/[0.02] hover:border-[#22d3ee]/50 cursor-pointer transition-colors">
+                    <span class="w-7 h-7 shrink-0" style="background:linear-gradient(135deg,#e7e3da,#6d6a63);"></span>
+                    <span class="text-white/70 text-xs flex-1" style="font-weight:400;">
+                      Bio Ceramic
+                    </span>
+                    <span class="text-white/25 text-xs">02</span>
+                  </div>
+                  <div class="ed-item group flex items-center gap-3 px-2 py-2 border border-white/10 bg-white/[0.02] hover:border-[#22d3ee]/50 cursor-pointer transition-colors">
+                    <span class="w-7 h-7 shrink-0" style="background:linear-gradient(135deg,#7c3aed,#140a2b);"></span>
+                    <span class="text-white/70 text-xs flex-1" style="font-weight:400;">
+                      Void Weave
+                    </span>
+                    <span class="text-white/25 text-xs">08</span>
+                  </div>
+                  <div class="ed-item group flex items-center gap-3 px-2 py-2 border border-white/10 bg-white/[0.02] hover:border-[#22d3ee]/50 cursor-pointer transition-colors">
+                    <span class="w-7 h-7 shrink-0" style="background:linear-gradient(135deg,#1f2937,#0a0a0c);"></span>
+                    <span class="text-white/70 text-xs flex-1" style="font-weight:400;">
+                      Carbon Mesh
+                    </span>
+                    <span class="text-white/25 text-xs">17</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="ed-item pt-3 border-t border-white/10 space-y-3">
+                <div class="flex items-center justify-between text-xs text-white/45" style="font-weight:400;">
+                  <span>Simulation</span>
+                  <span class="text-[#22d3ee]">running</span>
+                </div>
+                <div class="h-[3px] w-full bg-white/10">
+                  <div class="h-full bg-[#22d3ee]" style="width:62%"></div>
+                </div>
+              </div>
+            </aside>
+
+            <!-- viewport -->
+            <div class="relative flex-1 min-h-[440px] md:min-h-[560px] bg-[#08080a] overflow-hidden">
+              <canvas id="fabric-canvas" class="absolute inset-0 w-full h-full" width="1884" height="1146"></canvas>
+
+              <!-- grid overlay -->
+              <div class="absolute inset-0 pointer-events-none opacity-[0.18]" style="background-image:linear-gradient(to right,#ffffff14 1px,transparent 1px),linear-gradient(to bottom,#ffffff14 1px,transparent 1px);background-size:44px 44px;"></div>
+
+              <!-- tooltips -->
+              <div class="ed-item absolute top-6 left-6 px-3 py-2 border border-[#22d3ee]/40 bg-black/50 backdrop-blur-sm text-[#22d3ee] text-xs uppercase tracking-[0.2em]" style="font-weight:400;">
+                Topology · Quads
+              </div>
+              <div class="ed-item absolute top-6 right-6 px-3 py-2 border border-white/15 bg-black/50 backdrop-blur-sm text-white/60 text-xs" style="font-weight:400;">
+                Verts 24,576
+              </div>
+              <div class="ed-item absolute bottom-24 right-6 px-3 py-2 border border-white/15 bg-black/50 backdrop-blur-sm text-white/60 text-xs" style="font-weight:400;">
+                Solver · XPBD
+              </div>
+              <div class="ed-item absolute top-1/2 left-8 -translate-y-1/2 flex items-center gap-2 text-white/40 text-xs" style="font-weight:400;">
+                <span class="w-6 h-px bg-[#ff5a00]"></span>
+                anchor_01
+              </div>
+
+              <!-- floating action bar -->
+              <div id="action-bar" class="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-2 border border-white/12 bg-black/60 backdrop-blur-md">
+                <button class="ed-item w-10 h-10 flex items-center justify-center text-[#ff5a00] bg-white/5 hover:bg-white/10 transition-colors">
+                  <iconify-icon icon="solar:cursor-linear" width="18"></iconify-icon>
+                </button>
+                <button class="ed-item w-10 h-10 flex items-center justify-center text-white/55 hover:text-white hover:bg-white/10 transition-colors">
+                  <iconify-icon icon="solar:hand-stars-linear" width="18"></iconify-icon>
+                </button>
+                <button class="ed-item w-10 h-10 flex items-center justify-center text-white/55 hover:text-white hover:bg-white/10 transition-colors">
+                  <iconify-icon icon="solar:layers-minimalistic-linear" width="18"></iconify-icon>
+                </button>
+                <button class="ed-item w-10 h-10 flex items-center justify-center text-white/55 hover:text-white hover:bg-white/10 transition-colors">
+                  <iconify-icon icon="solar:magic-stick-3-linear" width="18"></iconify-icon>
+                </button>
+                <span class="w-px h-6 bg-white/15 mx-1"></span>
+                <button class="ed-item w-10 h-10 flex items-center justify-center text-white/55 hover:text-white hover:bg-white/10 transition-colors">
+                  <iconify-icon icon="solar:settings-linear" width="18"></iconify-icon>
+                </button>
+              </div>
+            </div>
+
+            <!-- right rail -->
+            <div class="hidden xl:block w-64 shrink-0 border-l border-white/10 p-4 space-y-5">
+              <p class="text-white/35 text-xs uppercase tracking-[0.25em]" style="font-weight:400;">
+                Inspector
+              </p>
+              <video class="w-full aspect-video object-cover border border-white/10" data-aura-video-preset="hover" muted="" loop="" playsinline="" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/generated-videos/2e815afb-cac1-4c01-90e1-cf3810246e35/1781947152338-fc31a6ab-23b1-4817-a166-332c89b30f46.mp4"></video>
+              <div class="space-y-3 text-xs text-white/55" style="font-weight:400;">
+                <div class="flex justify-between border-b border-white/8 pb-2">
+                  <span>Stiffness</span>
+                  <span class="text-white">0.84</span>
+                </div>
+                <div class="flex justify-between border-b border-white/8 pb-2">
+                  <span>Damping</span>
+                  <span class="text-white">0.12</span>
+                </div>
+                <div class="flex justify-between border-b border-white/8 pb-2">
+                  <span>Wind</span>
+                  <span class="text-[#22d3ee]">2.40 m/s</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>Substeps</span>
+                  <span class="text-white">8</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 4 : IMMERSIVE REALITIES ============ -->
+    
+
+    <!-- ============ SECTION 5 : HORIZONTAL GALLERY (400vh) ============ -->
+    
+
+    <!-- ============ SECTION 6 : SYSTEM ARCHITECTURE / FOOTER ============ -->
+    
+    
+    
+    <footer class="relative z-10 bg-[#050505] pt-24 pb-10 px-5 md:px-10 border-t border-white/10">
+      <div class="max-w-[1500px] mx-auto gs-reveal">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-20">
+          <div class="md:col-span-2">
+            
+            
+            <div class="flex gap-4">
+              <a href="#" class="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center text-white/70 hover:bg-white hover:text-black transition-colors">
+                <iconify-icon icon="ri:twitter-x-line" width="18" class="" height="18" style="color: rgb(0, 0, 0);"></iconify-icon></a></div></div></div></div></footer></body></html>

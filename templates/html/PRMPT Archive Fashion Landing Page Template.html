@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PRMPT Archive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+<style>
+.bp-card {
+will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+.bp-card {
+will-change: auto;
+}
+}
+::-webkit-scrollbar {
+display: none;
+}
+body {
+-ms-overflow-style: none;
+scrollbar-width: none;
+cursor: default;
+}
+@media (min-width: 1024px) {
+body {
+cursor: none;
+}
+}
+</style>
+<script src="https://cdn.tailwindcss.com"></script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="bg-black text-white font-normal select-none overflow-x-hidden antialiased" style="font-family: 'Inter Tight', sans-serif;">
+
+    <!-- Dynamic Scroll Spacer -->
+    <div id="scroll-spacer" class="relative w-full" style="height: 500vh;"></div>
+
+    <!-- Custom Cursor -->
+    <div id="custom-cursor" class="fixed pointer-events-none z-50 hidden lg:block mix-blend-exclusion" style="transform: translate(-50%, -50%);">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="24" r="22.75" stroke="white" stroke-width="2.5"/>
+            <path d="M16 24L32 24M24 16L24 32M20 20L28 28" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+    </div>
+
+    <!-- Video Background Container -->
+    <div id="main-canvas" class="pointer-events-none fixed left-0 top-[220px] w-full h-[calc(100vh-220px)] lg:inset-0 lg:h-full z-0 overflow-hidden opacity-0 transition-opacity duration-300 ease-in-out">
+        <video id="vid-left" class="absolute inset-0 w-full h-full object-cover hidden" muted playsinline preload="auto" src="https://d8j0ntlcm91z4.cloudfront.net/user_39ca84eAE1ODL9hbR5VhoEj8tBf/hf_20260625_154433_532a85d3-dabf-4265-b8bd-19ac6af31842.mp4"></video>
+        <video id="vid-right" class="absolute inset-0 w-full h-full object-cover block" muted playsinline preload="auto" src="https://d8j0ntlcm91z4.cloudfront.net/user_39ca84eAE1ODL9hbR5VhoEj8tBf/hf_20260625_154401_a664f076-b971-4557-8728-40ef9ea4c49b.mp4"></video>
+    </div>
+
+    <!-- UI Overlay -->
+    <div id="logo" class="fixed pointer-events-none z-20 mix-blend-exclusion w-[124px] md:w-[266px] lg:w-[355px] top-[16px] left-[16px] lg:top-[32px] lg:left-[32px]">
+        <svg viewBox="0 0 355 110" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-full h-auto">
+            <text x="0" y="85" fill="white" font-size="100" font-family="Inter Tight" font-weight="400" letter-spacing="-0.08em">prmpt</text>
+            <circle cx="285" cy="30" r="15" stroke="white" stroke-width="3"/>
+            <text x="279" y="36" fill="white" font-size="18" font-family="Inter Tight">R</text>
+        </svg>
+    </div>
+
+    <div id="caption" class="fixed pointer-events-none z-20 mix-blend-exclusion left-[16px] lg:left-[32px] top-[118px] md:top-[180px] lg:top-[244px] w-[calc(100vw-32px)] md:w-[calc(50vw-48px)] lg:w-[692px] text-xs leading-[1.4] tracking-tight">
+        When switching between videos near the center, do not reset currentTime to 0 abruptly. Add a small dead zone: if cursor is within +/-50px of center, keep both videos at currentTime = 0 and show whichever was last active.
+    </div>
+
+    <div id="header-nav" class="fixed pointer-events-none z-20 mix-blend-exclusion top-[16px] right-[16px] lg:top-[32px] lg:right-[32px] w-auto lg:w-[330px] h-[30px] flex justify-between items-center">
+        <span class="hidden lg:block text-sm uppercase tracking-tight">ABOUT</span>
+        <div class="flex items-center gap-[20px] lg:gap-[50px]">
+            <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-[24px] h-[24px] lg:w-[30px] lg:h-[30px]">
+                <path d="M0 14H40M0 26H40" stroke="white" stroke-width="2.5"/>
+            </svg>
+            <span class="text-sm uppercase tracking-tight">[ CART ]</span>
+        </div>
+    </div>
+
+    <div id="outro-info" class="fixed pointer-events-none z-20 mix-blend-exclusion bottom-[48px] left-0 right-0 lg:bottom-[80px] lg:right-[32px] lg:left-auto w-full lg:w-[330px] flex flex-col items-center" data-outro-offset-desktop="166" data-outro-offset-mobile="132">
+        <div class="flex flex-col items-start w-[252px] lg:w-full mb-[12px] lg:mb-[32px]">
+            <div class="relative w-[20px] h-[20px] lg:w-[30px] lg:h-[30px] flex items-center justify-center mb-2">
+                <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="absolute inset-0 w-full h-full">
+                    <circle cx="20" cy="20" r="18.75" stroke="white" stroke-width="2.5" class="lg:stroke-[2.5] stroke-2"/>
+                </svg>
+                <span id="circle-symbol" class="text-xs lg:text-sm uppercase tracking-tight relative z-10">8</span>
+            </div>
+            <h2 class="text-xl lg:text-3xl leading-none text-center tracking-tight uppercase w-full">
+                ARCHIVE COLLECTION<br>"PROMPT"
+            </h2>
+        </div>
+        <div class="text-6xl lg:text-7xl leading-none text-center tracking-tight">
+            $97,33
+        </div>
+    </div>
+
+    <div id="outro-buy" class="fixed pointer-events-none z-20 mix-blend-exclusion bg-white rounded-full flex items-center justify-center bottom-[60px] left-[16px] right-[16px] h-[100px] lg:bottom-[32px] lg:right-[32px] lg:left-auto lg:w-[330px] lg:h-[174px]" style="transform-origin: right bottom; transform: scale(0);">
+        <span class="text-6xl lg:text-8xl tracking-tight text-white mix-blend-exclusion uppercase">view</span>
+    </div>
+
+    <!-- Black Panel Gallery Phase -->
+    <div id="black-panel" class="fixed inset-0 bg-black z-10 w-full h-full" style="transform: translateY(100vh);">
+        <div id="inner-wrapper" class="w-full pt-[min(400px,40vh)] pb-[40vh] will-change-transform">
+            <div id="gallery-grid" class="w-full px-4 lg:px-8 mx-auto max-w-[2000px]">
+                <!-- Grid items generated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- White Overlay Outro Phase -->
+    <div id="outro-overlay" class="fixed inset-0 bg-white pointer-events-none z-12" style="opacity: 0;"></div>
+
+    <!-- Footer -->
+    <div id="outro-footer" class="fixed pointer-events-none z-30 mix-blend-exclusion bottom-[24px] left-[16px] right-[16px] lg:bottom-[32px] lg:right-auto flex justify-between lg:justify-start lg:gap-[80px]" style="opacity: 0;">
+        <span class="text-xs tracking-tight uppercase">PRMPT (R) 2026</span>
+        <span class="text-xs tracking-tight uppercase">PRIVACY POLICY</span>
+    </div>
+
+    <script>
+        gsap.registerPlugin(ScrollTrigger);
+
+        const images = [
+            "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_104530_521b2f85-c0f3-4d0e-9704-b578315b4cb9.png&w=1920&q=85",
+            "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103711_76ccdb8b-5043-4f47-9c54-4379713393ea.png&w=1920&q=85",
+            "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103728_394f6a1b-85e2-4386-a4f6-408472a0a5b7.png&w=1920&q=85",
+            "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103739_86743e0e-16a7-4bee-bf38-dd67985344dc.png&w=1920&q=85",
+            "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103748_b2215dc8-a3a7-470d-b19a-5b87fa7d0c37.png&w=1920&q=85",
+            "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103758_e919ce72-5c9d-4b87-9be6-d7647b34825c.png&w=1920&q=85",
+            "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103808_013583d0-3386-4547-9832-37c7d8edb3ac.png&w=1920&q=85",
+            "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103937_a0c49d0a-33eb-4ead-aea6-c1baf241acbc.png&w=1920&q=85",
+            "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103956_d18ed8fd-7b6f-4b86-91f9-20010fe38670.png&w=1920&q=85",
+            "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_104034_ba5a9963-87ff-4008-a545-6bd686c088b5.png&w=1920&q=85"
+        ];
+
+        document.addEventListener("DOMContentLoaded", () => {
+            // Initial Entry Animations
+            gsap.fromTo("#logo", {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.6, ease: "power2.out", delay: 0});
+            gsap.fromTo("#header-nav", {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.6, ease: "power2.out", delay: 0.15});
+            gsap.fromTo("#caption", {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.6, ease: "power2.out", delay: 0.3});
+            gsap.fromTo("#outro-info", {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.6, ease: "power2.out", delay: 0.45});
+
+            // Grid Generation Algorithm
+            const grid = document.getElementById('gallery-grid');
+            const cols = window.innerWidth < 640 ? 2 : window.innerWidth < 1024 ? 3 : 4;
+            grid.style.display = 'grid';
+            grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+            grid.style.gap = '16px';
+
+            let placed = 0;
+            let r = 0;
+
+            function createCard(url, origin) {
+                const div = document.createElement('div');
+                div.className = 'bp-card w-full aspect-[2/3] relative overflow-hidden bg-zinc-900';
+                div.style.transformOrigin = origin;
+                div.style.transform = 'scale(0)';
+                const img = document.createElement('img');
+                img.src = url;
+                img.className = 'absolute inset-0 w-full h-full object-cover';
+                div.appendChild(img);
+                return div;
+            }
+
+            while(placed < images.length) {
+                let a = (r * 2 + (r % 2)) % cols;
+                let b = -1;
+                if (r % 3 === 0 && placed + 1 < images.length) {
+                    b = (a + 2) % cols;
+                    if (b === a) b = (a + 1) % cols;
+                }
+                
+                for(let c = 0; c < cols; c++) {
+                    if (c === a && placed < images.length) {
+                        grid.appendChild(createCard(images[placed], c < cols/2 ? 'right bottom' : 'left bottom'));
+                        placed++;
+                    } else if (c === b && placed < images.length) {
+                        grid.appendChild(createCard(images[placed], c < cols/2 ? 'right bottom' : 'left bottom'));
+                        placed++;
+                    } else {
+                        const spacer = document.createElement('div');
+                        spacer.className = 'w-full aspect-[2/3]';
+                        grid.appendChild(spacer);
+                    }
+                }
+                r++;
+            }
+
+            // Scroll Calculation setup
+            const innerWrapper = document.getElementById('inner-wrapper');
+            const scrollSpacer = document.getElementById('scroll-spacer');
+            const vh = window.innerHeight;
+            
+            // Allow DOM to paint before calculating height
+            setTimeout(() => {
+                const maxScroll = innerWrapper.scrollHeight - vh;
+                scrollSpacer.style.height = `${vh + maxScroll + 2 * vh}px`;
+
+                // GSAP Panel Slide Up
+                gsap.to("#black-panel", {
+                    y: 0,
+                    ease: "none",
+                    scrollTrigger: {
+                        trigger: "#scroll-spacer",
+                        start: "top top",
+                        end: `+=${vh}`,
+                        scrub: true
+                    }
+                });
+
+                // RAF Render Loop
+                const cards = document.querySelectorAll('.bp-card');
+                const overlay = document.getElementById('outro-overlay');
+                const outroInfo = document.getElementById('outro-info');
+                const outroBuy = document.getElementById('outro-buy');
+                const outroFooter = document.getElementById('outro-footer');
+                const circleSymbol = document.getElementById('circle-symbol');
+                const symbols = ['8', '$', '^^', '%', '/'];
+                let lastSymbolTime = 0;
+                
+                const isMobile = window.innerWidth < 1024;
+                const outroOffset = isMobile ? 132 : 166;
+
+                function render(time) {
+                    const scrollY = window.scrollY;
+                    
+                    // Inner wrapper translation (Phase 2)
+                    if (scrollY > vh) {
+                        innerWrapper.style.transform = `translateY(${-(scrollY - vh)}px)`;
+                    } else {
+                        innerWrapper.style.transform = `translateY(0px)`;
+                    }
+
+                    // Cards scaling
+                    cards.forEach(card => {
+                        const rect = card.getBoundingClientRect();
+                        const top = rect.top;
+                        const bottom = rect.bottom;
+                        
+                        const enter = Math.min(1, (vh - top) / (vh * 0.6));
+                        const exit = Math.min(1, bottom / (vh * 0.4));
+                        let scale = Math.max(0, Math.min(enter, exit));
+                        
+                        if (bottom <= 0 || top >= vh) scale = 0;
+                        card.style.transform = `scale(${scale})`;
+                    });
+
+                    // Outro Phase
+                    if (scrollY > vh + maxScroll) {
+                        const p = Math.max(0, Math.min(1, (scrollY - vh - maxScroll) / (vh - 100)));
+                        overlay.style.opacity = p;
+                        outroBuy.style.transform = `scale(${p})`;
+                        outroFooter.style.opacity = p;
+                        outroInfo.style.transform = `translateY(${-outroOffset * p}px)`;
+                    } else {
+                        overlay.style.opacity = 0;
+                        outroBuy.style.transform = `scale(0)`;
+                        outroFooter.style.opacity = 0;
+                        outroInfo.style.transform = `translateY(0px)`;
+                    }
+
+                    // Symbol Randomizer
+                    if (scrollY > 0 && time - lastSymbolTime > 80) {
+                        circleSymbol.innerText = symbols[Math.floor(Math.random() * symbols.length)];
+                        lastSymbolTime = time;
+                    } else if (scrollY === 0) {
+                        circleSymbol.innerText = '8';
+                    }
+
+                    requestAnimationFrame(render);
+                }
+                requestAnimationFrame(render);
+            }, 100);
+
+            // Video & Cursor Logic
+            const vidLeft = document.getElementById('vid-left');
+            const vidRight = document.getElementById('vid-right');
+            const canvas = document.getElementById('main-canvas');
+            const cursor = document.getElementById('custom-cursor');
+            
+            let loaded = 0;
+            const checkLoad = () => {
+                loaded++;
+                if (loaded >= 2) canvas.style.opacity = 1;
+            };
+            
+            if (vidLeft.readyState >= 3) checkLoad(); else vidLeft.addEventListener('canplay', checkLoad);
+            if (vidRight.readyState >= 3) checkLoad(); else vidRight.addEventListener('canplay', checkLoad);
+
+            const isTouch = window.matchMedia("(hover: none), (pointer: coarse)").matches;
+            
+            if (!isTouch && window.innerWidth >= 1024) {
+                let mouseX = window.innerWidth / 2;
+                let activeSide = 'right';
+
+                window.addEventListener('mousemove', e => {
+                    mouseX = e.clientX;
+                    cursor.style.left = mouseX + 'px';
+                    cursor.style.top = e.clientY + 'px';
+                });
+
+                function scrubVideos() {
+                    const w = window.innerWidth;
+                    const center = w / 2;
+                    const deadZone = Math.max(30, w * 0.05);
+
+                    if (Math.abs(mouseX - center) <= deadZone) {
+                        if (!vidLeft.seeking) vidLeft.currentTime = 0;
+                        if (!vidRight.seeking) vidRight.currentTime = 0;
+                    } else if (mouseX < center - deadZone) {
+                        if (activeSide !== 'right') {
+                            vidLeft.style.display = 'none';
+                            vidRight.style.display = 'block';
+                            activeSide = 'right';
+                        }
+                        const dist = (center - deadZone) - mouseX;
+                        const maxDist = center - deadZone;
+                        const p = Math.min(1, Math.max(0, dist / maxDist));
+                        if (!vidRight.seeking && vidRight.duration) {
+                            vidRight.currentTime = p * vidRight.duration;
+                        }
+                    } else if (mouseX > center + deadZone) {
+                        if (activeSide !== 'left') {
+                            vidRight.style.display = 'none';
+                            vidLeft.style.display = 'block';
+                            activeSide = 'left';
+                        }
+                        const dist = mouseX - (center + deadZone);
+                        const maxDist = w - (center + deadZone);
+                        const p = Math.min(1, Math.max(0, dist / maxDist));
+                        if (!vidLeft.seeking && vidLeft.duration) {
+                            vidLeft.currentTime = p * vidLeft.duration;
+                        }
+                    }
+                    requestAnimationFrame(scrubVideos);
+                }
+                requestAnimationFrame(scrubVideos);
+            } else {
+                // Mobile Auto-play Alternate
+                vidLeft.style.display = 'block';
+                vidRight.style.display = 'none';
+                
+                // Interaction required for audio/video play policies on some mobile browsers
+                // Assuming muted autoplay is allowed
+                vidLeft.play().catch(e => console.log("Autoplay prevented"));
+                
+                vidLeft.onended = () => {
+                    vidLeft.style.display = 'none';
+                    vidRight.style.display = 'block';
+                    vidRight.play();
+                };
+                vidRight.onended = () => {
+                    vidRight.style.display = 'none';
+                    vidLeft.style.display = 'block';
+                    vidLeft.play();
+                };
+            }
+        });
+    </script>
+</body>
+</html>

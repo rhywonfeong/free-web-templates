@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>LIVEDESKLAUNCHER</title>
+<!-- PWA Settings -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="data:application/json;base64,eyJ7Im5hbWUiOiJMSVZFREVTS0xBVU5DSEVSIiwic2hvcnRfbmFtZSI6IkxETCIsImRpc3BsYXkiOiJmdWxsc2NyZWVuIiwiYmFja2dyb3VuZF9jb2xvciI6IiMwMDAwMDAiLCJ0aGVtZV9jb2xvciI6IiMwMDAwMDAiLCJpY29ucyI6W3sic3JjIjoiaHR0cHM6Ly9hcGkuaWNvbmlmeS5kZXNpZ24vc29sYXI6Ym94LWJvbGQtZHVvdG9uZS5zdmc/Y29sb3I9JTIzZmZmZmZmIiwiY290aXBlIjoiaW1hZ2Uvc3ZnK3htbCIsInNpemVzIjoiMTkyeDE5MiJ9XX0=">
+<!-- Tailwind -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+darkMode: 'class',
+theme: {
+extend: {
+fontFamily: { sans: ['Inter', 'sans-serif'] },
+colors: {
+gray: { 850: '#1f1f1f', 900: '#111111', 950: '#050505' },
+zinc: { 850: '#202022', 950: '#09090b' }
+},
+boxShadow: {
+'iso': '10px 10px 20px rgba(0,0,0,0.5)',
+'glow': '0 0 20px rgba(99, 102, 241, 0.3)'
+}
+}
+}
+}
+</script>
+<!-- Fonts & Icons -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://code.iconify.design/2/2.2.1/iconify.min.js"></script>
+<!-- Logic -->
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<style>
+body {
+background-color: #050505;
+overflow: hidden;
+touch-action: pan-x pan-y;
+}
+/* 3D Scene Setup */
+.scene {
+perspective: 1200px;
+height: 100vh;
+width: 100vw;
+overflow: hidden;
+display: flex;
+justify-content: center;
+align-items: center; /* Center the grid initially */
+}
+/* The Rotated Plane */
+.iso-plane {
+transform: rotateX(52deg) rotateZ(-45deg) scale(0.9);
+transform-style: preserve-3d;
+padding: 100px;
+transition: transform 0.5s ease-out;
+/* Allow scrolling within this transformed plane? No, we scroll the container */
+}
+/* Scrollable Wrapper for the Plane */
+.iso-scroll-wrapper {
+width: 100%;
+height: 100%;
+overflow-y: auto;
+overflow-x: hidden;
+/* Hide scrollbar */
+scrollbar-width: none;
+-ms-overflow-style: none;
+perspective: 1200px; /* Perspective on the scroll wrapper */
+}
+.iso-scroll-wrapper::-webkit-scrollbar { display: none; }
+/* The Isometric Cube/Block */
+.iso-block {
+position: relative;
+width: 64px;
+height: 64px;
+transform-style: preserve-3d;
+transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+cursor: pointer;
+z-index: 10;
+}
+/* Hover Effect: Lift */
+.iso-block:hover {
+transform: translateZ(20px);
+z-index: 20;
+}
+/* Dragging State */
+.iso-block.sortable-ghost { opacity: 0.3; }
+.iso-block.sortable-drag { cursor: grabbing; transform: translateZ(40px) scale(1.1); z-index: 50; }
+/* The Cube Faces */
+.cube-face {
+position: absolute;
+top: 0; left: 0;
+backface-visibility: hidden; /* Optimization */
+}
+/* TOP FACE (Main Icon) */
+.face-top {
+width: 64px; height: 64px;
+background: linear-gradient(135deg, #27272a, #18181b); /* Zinc 800-900 */
+border: 1px solid rgba(255,255,255,0.08);
+border-radius: 12px;
+transform: translateZ(12px); /* Extrusion height */
+display: flex;
+align-items: center;
+justify-content: center;
+box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+transition: background 0.2s;
+}
+.iso-block:hover .face-top {
+background: linear-gradient(135deg, #3f3f46, #27272a);
+border-color: rgba(255,255,255,0.2);
+}
+/* RIGHT FACE (Extrusion) */
+.face-right {
+width: 12px; height: 64px; /* Thickness is width here */
+background: #0a0a0a; /* Darkest side */
+transform: rotateY(90deg) translateZ(58px); /* 64 - (12/2) approx */
+/* Exact positioning math: translateZ = Width - (Thickness/2) is wrong.
+We want it at the right edge.
+Right edge is at X=64.
+RotateY(90) puts it on Z plane.
+Let's use pseudo ::after/before for cleaner CSS 3D structure on the block directly
+*/
+}
+/* Refined Cube Construction using Pseudo Elements to reduce DOM */
+.cube {
+width: 100%; height: 100%;
+position: relative;
+transform-style: preserve-3d;
+}
+/* Top Face */
+.cube-top {
+position: absolute; inset: 0;
+background: linear-gradient(to bottom right, #202022, #101012);
+border: 1px solid rgba(255,255,255,0.05);
+border-radius: 12px;
+transform: translateZ(12px);
+box-shadow: inset 1px 1px 0 rgba(255,255,255,0.05);
+}
+/* Side 1 (Right) */
+.cube-top::after {
+content: ''; position: absolute;
+top: 0; right: 0;
+width: 12px; height: 100%;
+background: #050505;
+transform-origin: right;
+transform: rotateY(90deg);
+border-radius: 0 4px 4px 0; /* Smooth edge */
+filter: brightness(0.6);
+}
+/* Side 2 (Bottom) */
+.cube-top::before {
+content: ''; position: absolute;
+bottom: 0; left: 0;
+width: 100%; height: 12px;
+background: #000000;
+transform-origin: bottom;
+transform: rotateX(-90deg);
+border-radius: 0 0 4px 4px;
+filter: brightness(0.4);
+}
+/* Shadow (On the floor Z=0) */
+.cube-shadow {
+position: absolute; inset: 0;
+background: rgba(0,0,0,0.6);
+transform: translateZ(0);
+filter: blur(8px);
+border-radius: 12px;
+transition: all 0.3s;
+}
+.iso-block:hover .cube-shadow {
+background: rgba(0,0,0,0.4);
+transform: translateZ(0) scale(1.1); /* Shadow spreads as object lifts */
+filter: blur(12px);
+}
+/* Text Label (Below and Behind) */
+/* Counter-rotated to face camera or lie flat?
+Prompt: "Hover text slightly below and behind... Strong text-shadow"
+Let's make it float "above" the grid but physically behind the block in Y.
+*/
+.iso-label {
+position: absolute;
+top: 110%; left: -20%; right: -20%;
+text-align: center;
+transform: translateZ(10px) rotateZ(45deg) rotateX(-52deg); /* Billboarding attempt? */
+/* Actually, simple standard isometric text is usually just flat.
+Let's try pure flat text first, readability is better.
+If I remove rotation, it lies on the plane.
+To billboard: rotateZ(45deg) cancel grid rot, rotateX(-52deg) cancel grid tilt.
+*/
+transform: translateZ(20px) rotateZ(45deg) rotateX(-52deg) translateY(10px);
+pointer-events: none;
+opacity: 0;
+transition: opacity 0.2s, transform 0.2s;
+text-shadow: 0 2px 4px rgba(0,0,0,0.9);
+white-space: nowrap;
+}
+.iso-block:hover .iso-label {
+opacity: 1;
+transform: translateZ(30px) rotateZ(45deg) rotateX(-52deg) translateY(0px);
+}
+/* Ghost Slot */
+.ghost-slot {
+border: 2px dashed rgba(255,255,255,0.05);
+border-radius: 12px;
+background: rgba(255,255,255,0.01);
+transform: translateZ(0);
+}
+/* 2D UI Overlay (Header/Footer) */
+.ui-layer {
+position: fixed;
+z-index: 100;
+width: 100%;
+pointer-events: none;
+}
+.ui-interactive { pointer-events: auto; }
+/* Icon styling */
+.app-icon {
+filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+/* Counter-rotate icon to face camera? No, standard iso icons lie flat on the block surface. */
+transform: rotateZ(-45deg); /* Actually, normally we want the icon UP.
+Grid is rotated Z -45. Block is inside.
+If we want icon to look "straight" relative to the block edges, no rotation needed relative to block.
+But relative to screen?
+Let's keep icon aligned with block edges.
+Wait, prompt says "rotateZ(-45deg)" for container.
+If I put an icon in, it will be tilted.
+Let's counter-rotate the ICON inside the block so it stands "upright" relative to the viewer?
+Or just leave it "painted on the box".
+Painted on box is more cohesive for "Isometric Block".
+However, usually we want the icon content to be upright.
+Let's rotate icon: transform: rotateZ(45deg) ?
+*/
+transform: rotateZ(45deg); /* Counter the container's -45deg rotation so top-left is up */
+}
+[x-cloak] { display: none !important; }
+.backdrop-blur-md { backdrop-filter: blur(12px); }
+</style></head>
+<body class="text-zinc-300 font-sans antialiased selection:bg-indigo-500/30 selection:text-white" x-data="launcher()">
+
+    <!-- AUTH OVERLAY -->
+    <div x-show="!user && !loading" x-transition.opacity.duration.500ms class="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-xl">
+        <div class="w-full max-w-xs p-8 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl text-center relative overflow-hidden group">
+            <div class="absolute inset-0 bg-gradient-to-tr from-indigo-500/5 to-purple-500/5"></div>
+            <h1 class="text-xl font-semibold text-white tracking-tight mb-2 relative z-10">LIVEDESK</h1>
+            <p class="text-zinc-500 mb-6 text-xs relative z-10">Isometric Workspace v1</p>
+            
+            <button @click="loginGoogle" class="w-full bg-white text-black font-medium py-2 rounded-md mb-3 flex items-center justify-center gap-2 hover:bg-zinc-200 transition-all relative z-10 text-xs shadow-lg">
+                <span class="iconify text-lg" data-icon="flat-color-icons:google"></span> Google
+            </button>
+            
+            <form @submit.prevent="loginEmail" class="space-y-3 relative z-10">
+                <input type="email" x-model="email" placeholder="Email" class="w-full bg-black/40 border border-zinc-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-colors">
+                <input type="password" x-model="password" placeholder="Password" class="w-full bg-black/40 border border-zinc-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-colors">
+                <button type="submit" class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium py-2 rounded-md text-xs transition-all border border-zinc-700/50">
+                    Enter
+                </button>
+            </form>
+            <button @click="guestMode" class="mt-4 text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors relative z-10 uppercase tracking-wider">Guest Mode</button>
+        </div>
+    </div>
+
+    <!-- HEADER (Fixed 2D) -->
+    <div class="ui-layer top-0 left-0 right-0 px-6 py-5 flex justify-between items-start mix-blend-difference">
+        <div class="ui-interactive">
+            <h1 class="text-lg font-semibold tracking-tight text-white drop-shadow-md opacity-90">LDL<span class="text-indigo-500 text-xs align-top ml-1 opacity-80">v1</span></h1>
+        </div>
+        <div class="flex items-start gap-8 ui-interactive">
+            <div class="text-right hidden sm:block">
+                <div class="text-xl font-light text-white tracking-tighter leading-none" x-text="time"></div>
+                <div class="text-[10px] text-zinc-500 font-medium uppercase tracking-widest mt-0.5" x-text="date"></div>
+            </div>
+            
+            <div class="flex items-center gap-3">
+                <button @click="toggleView" class="p-2 text-zinc-500 hover:text-white transition-colors">
+                    <i data-lucide="layout-grid" class="w-4 h-4" x-show="viewMode === 'grid'"></i>
+                    <i data-lucide="list" class="w-4 h-4" x-show="viewMode === 'list'"></i>
+                </button>
+                <button @click="openNewWindow" class="bg-zinc-900/80 hover:bg-zinc-800 text-zinc-300 px-3 py-1.5 rounded-md text-[10px] font-medium border border-zinc-800 transition-all backdrop-blur-sm">
+                    New Window
+                </button>
+                <template x-if="user">
+                    <div class="relative group">
+                        <div class="w-7 h-7 rounded-full bg-gradient-to-br from-zinc-700 to-zinc-900 border border-zinc-700/50 cursor-pointer overflow-hidden">
+                             <img :src="user.photoURL || `https://api.iconify.design/solar:user-circle-bold-duotone.svg?color=%23555`" class="w-full h-full object-cover opacity-80">
+                        </div>
+                        <button @click="logout" class="absolute top-8 right-0 bg-red-950/90 text-red-200 text-[10px] px-3 py-1 rounded border border-red-900/50 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Logout</button>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN SCENE -->
+    <div class="iso-scroll-wrapper" id="scrollContainer">
+        
+        <!-- PAGE NAV ZONES (Invisible) -->
+        <div class="fixed inset-y-0 left-0 w-20 z-40 flex items-center justify-start pl-4 cursor-pointer group pointer-events-auto" @click="prevPage" x-show="currentPage > 0">
+            <div class="w-12 h-12 rounded-full bg-black/20 backdrop-blur-sm border border-white/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all transform -translate-x-4 group-hover:translate-x-0">
+                <i data-lucide="chevron-left" class="text-white w-5 h-5"></i>
+            </div>
+        </div>
+        <div class="fixed inset-y-0 right-0 w-20 z-40 flex items-center justify-end pr-4 cursor-pointer group pointer-events-auto" @click="nextPage" x-show="currentPage < 4">
+             <div class="w-12 h-12 rounded-full bg-black/20 backdrop-blur-sm border border-white/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all transform translate-x-4 group-hover:translate-x-0">
+                <i data-lucide="chevron-right" class="text-white w-5 h-5"></i>
+            </div>
+        </div>
+
+        <!-- ISOMETRIC PLANE -->
+        <div class="scene">
+            <div class="iso-plane" :style="viewMode === 'list' ? 'transform: none; padding: 100px 20px;' : ''">
+                
+                <!-- GRID CONTAINER -->
+                <div id="app-grid" class="transition-all duration-500"
+                     :class="viewMode === 'list' ? 'flex flex-col gap-2 w-full max-w-2xl mx-auto' : 'grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-12'">
+                    
+                    <!-- App Item -->
+                    <template x-for="app in filteredApps" :key="app.id">
+                        <div :data-id="app.id" 
+                             @click="launchApp(app)" 
+                             @contextmenu.prevent="showContext($event, app)"
+                             class="group relative"
+                             :class="viewMode === 'list' ? 'w-full bg-zinc-900/50 border border-zinc-800/50 hover:bg-zinc-800 p-3 rounded-lg flex items-center gap-4 cursor-pointer transition-colors' : 'iso-block'">
+                             
+                            <!-- GRID VIEW: 3D CUBE -->
+                            <template x-if="viewMode === 'grid'">
+                                <div class="cube">
+                                    <div class="cube-shadow"></div>
+                                    <div class="cube-top flex items-center justify-center overflow-hidden">
+                                        <!-- Icon -->
+                                        <div class="w-8 h-8 text-white app-icon transition-transform duration-300 group-hover:scale-110 opacity-90">
+                                            <template x-if="app.icon.startsWith('http') || app.icon.startsWith('data:')">
+                                                <img :src="app.icon" class="w-full h-full object-contain drop-shadow-sm">
+                                            </template>
+                                            <template x-if="!app.icon.startsWith('http') && !app.icon.startsWith('data:')">
+                                                <span class="iconify w-full h-full" :data-icon="app.icon"></span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Label (Billboarded) -->
+                                    <div class="iso-label">
+                                        <div class="text-xs font-semibold text-white tracking-wide" x-text="app.name"></div>
+                                        <div class="text-[9px] font-medium tracking-wider uppercase opacity-80" :class="getCategoryColor(app.category)" x-text="app.category"></div>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- LIST VIEW: FLAT ROW -->
+                            <template x-if="viewMode === 'list'">
+                                <div class="flex items-center w-full gap-4">
+                                    <div class="w-8 h-8 rounded bg-zinc-800 flex items-center justify-center text-zinc-400 border border-zinc-700/50">
+                                        <span class="iconify text-lg" :data-icon="app.icon.includes(':') ? app.icon : 'solar:box-bold-duotone'"></span>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <h3 class="text-xs font-medium text-zinc-200 truncate" x-text="app.name"></h3>
+                                        <p class="text-[10px] truncate text-zinc-600" x-text="app.url"></p>
+                                    </div>
+                                    <span class="text-[9px] font-medium px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-800" :class="getCategoryColor(app.category)" x-text="app.category"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- Ghost Slots (Visual filler in Grid Mode) -->
+                    <template x-for="i in (viewMode === 'grid' ? 8 : 0)">
+                        <div class="iso-block ghost-slot opacity-20 pointer-events-none" style="border-style: dashed;"></div>
+                    </template>
+
+                    <!-- Add Button -->
+                    <div @click="openModal()" 
+                         class="cursor-pointer flex items-center justify-center text-zinc-600 hover:text-white transition-colors"
+                         :class="viewMode === 'list' ? 'py-4 border-2 border-dashed border-zinc-800 rounded-lg hover:border-zinc-700' : 'iso-block ghost-slot hover:border-white/20 hover:bg-white/5'">
+                        <i data-lucide="plus" class="w-6 h-6 app-icon"></i>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FOOTER (Fixed 2D) -->
+    <div class="ui-layer bottom-0 left-0 right-0 p-8 flex justify-between items-end bg-gradient-to-t from-black via-black/80 to-transparent pointer-events-none">
+        
+        <!-- Editable Page Name -->
+        <div class="ui-interactive group">
+             <div class="text-[9px] text-zinc-600 font-mono mb-1 uppercase tracking-widest">WORKSPACE</div>
+             <input type="text" x-model="pageNames[currentPage]" @change="savePageName" 
+                    class="bg-transparent text-2xl font-semibold text-zinc-200 focus:outline-none border-b border-transparent focus:border-indigo-500/50 transition-all w-48 tracking-tight placeholder-zinc-800 font-sans" 
+                    placeholder="Untitled">
+        </div>
+
+        <!-- Pagination Dots -->
+        <div class="flex gap-2 pb-2 ui-interactive">
+            <template x-for="i in 5">
+                <button @click="setPage(i-1)" 
+                    class="w-1.5 h-1.5 rounded-full transition-all duration-300"
+                    :class="currentPage === i-1 ? 'bg-indigo-500 w-4' : 'bg-zinc-800 hover:bg-zinc-600'">
+                </button>
+            </template>
+        </div>
+    </div>
+
+    <!-- MODAL (2D Overlay) -->
+    <div x-show="showModal" x-cloak class="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm" x-transition.opacity>
+        <div class="w-full max-w-sm p-6 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl relative" @click.away="closeModal()">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-sm font-semibold text-white tracking-tight" x-text="editMode ? 'Edit Object' : 'New Object'"></h2>
+                <button @click="closeModal()" class="text-zinc-500 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-[10px] font-medium text-zinc-500 mb-1 uppercase tracking-wider">Name</label>
+                    <input x-model="form.name" type="text" class="w-full bg-black/20 border border-zinc-800 rounded-md px-3 py-2 text-xs text-white focus:border-indigo-500/50 focus:outline-none transition-all placeholder-zinc-700">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-medium text-zinc-500 mb-1 uppercase tracking-wider">Category</label>
+                        <input x-model="form.category" list="categories" type="text" class="w-full bg-black/20 border border-zinc-800 rounded-md px-3 py-2 text-xs text-white focus:border-indigo-500/50 focus:outline-none transition-all">
+                        <datalist id="categories">
+                            <option value="Google"></option>
+                            <option value="Aura"></option>
+                            <option value="Work"></option>
+                            <option value="Social"></option>
+                            <option value="Dev"></option>
+                        </datalist>
+                    </div>
+                    <div>
+                         <label class="block text-[10px] font-medium text-zinc-500 mb-1 uppercase tracking-wider">Page</label>
+                         <select x-model="form.page" class="w-full bg-black/20 border border-zinc-800 rounded-md px-3 py-2 text-xs text-white focus:border-indigo-500/50 focus:outline-none transition-all appearance-none">
+                             <template x-for="(name, idx) in pageNames">
+                                 <option :value="idx" x-text="name || 'Page ' + (idx+1)"></option>
+                             </template>
+                         </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-medium text-zinc-500 mb-1 uppercase tracking-wider">URL</label>
+                    <div class="flex gap-2">
+                        <input x-model="form.url" type="url" class="w-full bg-black/20 border border-zinc-800 rounded-md px-3 py-2 text-xs text-white focus:border-indigo-500/50 focus:outline-none transition-all placeholder-zinc-700">
+                        <button class="bg-zinc-800 px-2.5 rounded-md border border-zinc-700/50 hover:bg-zinc-700" @click="fetchMeta"><i data-lucide="wand-2" class="w-3.5 h-3.5 text-indigo-400"></i></button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-medium text-zinc-500 mb-1 uppercase tracking-wider">Icon</label>
+                    <div class="flex gap-3 items-center">
+                        <div class="w-10 h-10 bg-zinc-800 rounded-md flex items-center justify-center border border-zinc-700/50 overflow-hidden shrink-0">
+                            <template x-if="form.icon.startsWith('http') || form.icon.startsWith('data:')">
+                                <img :src="form.icon" class="w-full h-full object-cover">
+                            </template>
+                            <template x-if="!form.icon.startsWith('http') && !form.icon.startsWith('data:')">
+                                <span class="iconify text-xl text-zinc-400" :data-icon="form.icon || 'solar:link-circle-bold-duotone'"></span>
+                            </template>
+                        </div>
+                        <div class="flex-1 space-y-1.5">
+                            <input x-model="form.icon" type="text" placeholder="iconify:name" class="w-full bg-black/20 border border-zinc-800 rounded-md px-3 py-2 text-xs text-white focus:border-indigo-500/50 focus:outline-none">
+                            <label class="inline-flex items-center gap-1.5 cursor-pointer text-[10px] text-zinc-500 hover:text-white transition-colors">
+                                <i data-lucide="upload" class="w-3 h-3"></i> <span>Upload Local Image</span>
+                                <input type="file" @change="handleFileUpload" class="hidden" accept="image/*">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-4 flex justify-end gap-3 border-t border-zinc-800/50 mt-2">
+                    <button @click="deleteAppWrapper" x-show="editMode" class="text-red-500 text-[10px] hover:text-red-400 mr-auto px-1">DELETE</button>
+                    <button @click="closeModal()" class="px-3 py-1.5 text-xs font-medium text-zinc-500 hover:text-white transition-colors">Cancel</button>
+                    <button @click="saveApp()" class="px-4 py-1.5 bg-zinc-100 hover:bg-white text-black text-xs font-semibold rounded-md shadow-lg transition-transform transform active:scale-95">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTEXT MENU -->
+    <div x-show="contextMenu.show" 
+         x-cloak
+         @click.away="contextMenu.show = false"
+         class="fixed z-[160] w-40 bg-zinc-900/95 border border-zinc-800 rounded-lg shadow-xl py-1 backdrop-blur-md"
+         :style="`top: ${contextMenu.y}px; left: ${contextMenu.x}px`">
+        <div class="px-3 py-1.5 border-b border-zinc-800 mb-1">
+            <p class="text-[10px] font-semibold text-zinc-400 truncate uppercase tracking-wider" x-text="contextMenu.app?.name"></p>
+        </div>
+        <button @click="launchApp(contextMenu.app)" class="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-indigo-500/10 hover:text-indigo-400 flex items-center gap-2"><i data-lucide="external-link" class="w-3 h-3"></i> Open</button>
+        <button @click="editApp(contextMenu.app)" class="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/5 hover:text-white flex items-center gap-2"><i data-lucide="edit-2" class="w-3 h-3"></i> Edit</button>
+        
+        <div class="relative group">
+            <button class="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/5 hover:text-white flex items-center justify-between">
+                <div class="flex items-center gap-2"><i data-lucide="arrow-right-circle" class="w-3 h-3"></i> Move</div>
+                <i data-lucide="chevron-right" class="w-3 h-3 opacity-50"></i>
+            </button>
+            <div class="absolute left-full top-0 ml-1 w-24 bg-zinc-900 border border-zinc-800 rounded shadow-xl hidden group-hover:block">
+                <template x-for="(name, idx) in pageNames">
+                    <button @click="moveAppToPage(contextMenu.app, idx)" class="w-full text-left px-3 py-1.5 text-[10px] text-zinc-400 hover:bg-white/5 hover:text-white truncate" x-text="name || 'Page '+(idx+1)"></button>
+                </template>
+            </div>
+        </div>
+
+        <div class="h-px bg-zinc-800 my-1"></div>
+        <button @click="deleteApp(contextMenu.app.id)" class="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-900/10 flex items-center gap-2"><i data-lucide="trash" class="w-3 h-3"></i> Delete</button>
+    </div>
+
+    <script>
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyD-PLACEHOLDER-KEY",
+            authDomain: "livedesklauncher.firebaseapp.com",
+            databaseURL: "https://livedesklauncher-default-rtdb.firebaseio.com",
+            projectId: "livedesklauncher",
+            storageBucket: "livedesklauncher.appspot.com",
+            messagingSenderId: "00000000000",
+            appId: "1:00000000000:web:00000000000000"
+        };
+
+        // Initialize Firebase safely
+        let appInstance, auth, db;
+        try {
+            appInstance = firebase.initializeApp(firebaseConfig);
+            auth = firebase.auth();
+            db = firebase.database();
+        } catch (e) { console.warn("Firebase Init Error (Using Local Mode):", e); }
+
+        function launcher() {
+            return {
+                user: null,
+                apps: [],
+                pageNames: ['Home', 'Work', 'Social', 'Dev', 'Media'],
+                currentPage: 0,
+                viewMode: 'grid',
+                showModal: false,
+                editMode: false,
+                loading: true,
+                email: '',
+                password: '',
+                time: '',
+                date: '',
+                contextMenu: { show: false, x: 0, y: 0, app: null },
+                form: { id: null, name: '', url: '', icon: '', category: 'Google', page: 0 },
+                
+                // Default Data
+                defaultApps: [
+                    { id: '1', name: 'Keep', category: 'Google', url: 'https://keep.google.com', icon: 'solar:notes-bold-duotone', page: 0 },
+                    { id: '2', name: 'Drive', category: 'Google', url: 'https://drive.google.com', icon: 'solar:cloud-bold-duotone', page: 0 },
+                    { id: '3', name: 'NotebookLM', category: 'Google', url: 'https://notebooklm.google.com', icon: 'solar:book-bookmark-bold-duotone', page: 0 },
+                    { id: '4', name: 'Aura', category: 'Aura', url: '#', icon: 'solar:atom-bold-duotone', page: 0 },
+                    { id: '5', name: 'Livedesk', category: 'Aura', url: '#', icon: 'solar:monitor-bold-duotone', page: 0 },
+                    { id: '6', name: 'Shop', category: 'Work', url: '#', icon: 'solar:shop-bold-duotone', page: 0 },
+                    { id: '7', name: 'WhatsApp', category: 'Social', url: 'https://web.whatsapp.com', icon: 'solar:chat-round-bold-duotone', page: 0 },
+                    { id: '8', name: 'Analytics', category: 'Work', url: '#', icon: 'solar:graph-bold-duotone', page: 0 },
+                ],
+
+                init() {
+                    // Clock
+                    setInterval(() => {
+                        const now = new Date();
+                        this.time = now.toLocaleTimeString('en-US', { hour12: false, hour:'2-digit', minute:'2-digit' });
+                        this.date = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                    }, 1000);
+
+                    // Auth State
+                    if(auth) {
+                        auth.onAuthStateChanged(u => {
+                            this.user = u;
+                            this.loading = false;
+                            if(u) this.loadData();
+                        });
+                    } else {
+                        this.loading = false;
+                        const savedUser = localStorage.getItem('ldl_user');
+                        if(savedUser) { 
+                            this.user = JSON.parse(savedUser);
+                            this.loadData();
+                        }
+                    }
+
+                    // Sortable Setup
+                    this.$nextTick(() => {
+                        this.initSortable();
+                        lucide.createIcons();
+                    });
+                },
+
+                get filteredApps() {
+                    return this.apps.filter(a => (a.page || 0) == this.currentPage);
+                },
+
+                initSortable() {
+                    const el = document.getElementById('app-grid');
+                    if(!el) return;
+                    Sortable.create(el, {
+                        animation: 200,
+                        delay: 150,
+                        delayOnTouchOnly: true,
+                        ghostClass: 'sortable-ghost',
+                        dragClass: 'sortable-drag',
+                        draggable: '.group',
+                        onEnd: (evt) => {
+                            // Logic for reordering arrays would go here
+                            // For V1 visual prototype, we let Sortable handle DOM reorder
+                        }
+                    });
+                },
+
+                // Authentication
+                loginGoogle() {
+                    const provider = new firebase.auth.GoogleAuthProvider();
+                    auth.signInWithPopup(provider).catch(e => alert(e.message));
+                },
+                loginEmail() {
+                    auth.signInWithEmailAndPassword(this.email, this.password).catch(e => {
+                        if(e.code === 'auth/user-not-found') {
+                            auth.createUserWithEmailAndPassword(this.email, this.password);
+                        } else alert(e.message);
+                    });
+                },
+                guestMode() {
+                    this.user = { uid: 'guest', email: 'guest@local', photoURL: '' };
+                    localStorage.setItem('ldl_user', JSON.stringify(this.user));
+                    this.loadData();
+                },
+                logout() {
+                    if(auth) auth.signOut();
+                    this.user = null;
+                    localStorage.removeItem('ldl_user');
+                    this.apps = [];
+                },
+
+                // Data Persistence
+                loadData() {
+                    if(this.user.uid === 'guest') {
+                        const localApps = localStorage.getItem('ldl_apps');
+                        this.apps = localApps ? JSON.parse(localApps) : this.defaultApps;
+                        const localPages = localStorage.getItem('ldl_pages');
+                        if(localPages) this.pageNames = JSON.parse(localPages);
+                        return;
+                    }
+                    db.ref(`users/${this.user.uid}/apps`).on('value', s => {
+                        const val = s.val();
+                        this.apps = val ? Object.values(val) : this.defaultApps;
+                    });
+                    db.ref(`users/${this.user.uid}/pageNames`).on('value', s => {
+                        if(s.exists()) this.pageNames = s.val();
+                    });
+                },
+                saveData() {
+                    if(this.user.uid === 'guest') {
+                        localStorage.setItem('ldl_apps', JSON.stringify(this.apps));
+                        localStorage.setItem('ldl_pages', JSON.stringify(this.pageNames));
+                        return;
+                    }
+                    const appObj = {};
+                    this.apps.forEach(a => appObj[a.id] = a);
+                    db.ref(`users/${this.user.uid}/apps`).set(appObj);
+                    db.ref(`users/${this.user.uid}/pageNames`).set(this.pageNames);
+                },
+
+                // CRUD Operations
+                openModal() {
+                    this.editMode = false;
+                    this.form = { id: Date.now().toString(), name: '', url: 'https://', icon: 'solar:box-bold-duotone', category: 'Google', page: this.currentPage };
+                    this.showModal = true;
+                },
+                editApp(app) {
+                    this.editMode = true;
+                    this.form = { ...app };
+                    this.showModal = true;
+                    this.contextMenu.show = false;
+                },
+                saveApp() {
+                    if(!this.form.name) return;
+                    if(this.editMode) {
+                        const idx = this.apps.findIndex(a => a.id === this.form.id);
+                        if(idx > -1) this.apps[idx] = { ...this.form };
+                    } else {
+                        this.apps.push({ ...this.form });
+                    }
+                    this.saveData();
+                    this.closeModal();
+                },
+                deleteApp(id) {
+                    this.apps = this.apps.filter(a => a.id !== id);
+                    this.saveData();
+                    this.contextMenu.show = false;
+                },
+                deleteAppWrapper() {
+                    if(confirm('Delete this block?')) this.deleteApp(this.form.id);
+                    this.closeModal();
+                },
+                moveAppToPage(app, pageIdx) {
+                    const idx = this.apps.findIndex(a => a.id === app.id);
+                    if(idx > -1) {
+                        this.apps[idx].page = pageIdx;
+                        this.saveData();
+                    }
+                    this.contextMenu.show = false;
+                },
+                savePageName() {
+                    this.saveData();
+                },
+
+                // UI Utils
+                launchApp(app) {
+                    window.open(app.url, '_blank');
+                },
+                openNewWindow() {
+                    window.open(window.location.href, '_blank', 'width=500,height=600');
+                },
+                closeModal() {
+                    this.showModal = false;
+                },
+                toggleView() {
+                    this.viewMode = this.viewMode === 'grid' ? 'list' : 'grid';
+                },
+                nextPage() {
+                    if(this.currentPage < 4) { this.currentPage++; }
+                },
+                prevPage() {
+                    if(this.currentPage > 0) { this.currentPage--; }
+                },
+                setPage(n) {
+                    this.currentPage = n;
+                },
+                showContext(e, app) {
+                    // Adjust coordinates to prevent overflow
+                    let x = e.clientX;
+                    let y = e.clientY;
+                    if (x > window.innerWidth - 180) x -= 160;
+                    if (y > window.innerHeight - 200) y -= 150;
+                    
+                    this.contextMenu = { show: true, x, y, app };
+                },
+                getCategoryColor(cat) {
+                    const map = {
+                        'Google': 'text-sky-400 border-sky-400/20 bg-sky-400/10',
+                        'Aura': 'text-purple-400 border-purple-400/20 bg-purple-400/10',
+                        'Work': 'text-emerald-400 border-emerald-400/20 bg-emerald-400/10',
+                        'Social': 'text-pink-400 border-pink-400/20 bg-pink-400/10',
+                        'Dev': 'text-orange-400 border-orange-400/20 bg-orange-400/10'
+                    };
+                    // Simplified for list/grid nuance
+                    if (this.viewMode === 'list') return map[cat] || 'text-zinc-500 bg-zinc-800';
+                    // Just text color for billboard
+                    return map[cat] ? map[cat].split(' ')[0] : 'text-zinc-500';
+                },
+                handleFileUpload(e) {
+                    const file = e.target.files[0];
+                    if(!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        this.form.icon = ev.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                },
+                fetchMeta() {
+                    if(!this.form.name && this.form.url) {
+                        try {
+                            const url = new URL(this.form.url);
+                            this.form.name = url.hostname.replace('www.','').split('.')[0];
+                            this.form.icon = `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=128`;
+                        } catch(e){}
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>

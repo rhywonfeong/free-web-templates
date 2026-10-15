@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SortBot Visualization</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+theme: {
+extend: {
+fontFamily: {
+sans: ['Inter', 'sans-serif'],
+mono: ['JetBrains Mono', 'monospace'],
+},
+}
+}
+}
+</script>
+<style>
+@keyframes progressFlow {
+0% { background-position: 0% 50%; }
+50% { background-position: 100% 50%; }
+100% { background-position: 0% 50%; }
+}
+.animate-flow {
+background-size: 200% 200%;
+animation: progressFlow 3s ease infinite;
+}
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body class="bg-[#0a0a0a] text-zinc-300 font-sans min-h-screen flex flex-col items-center justify-center p-6 antialiased selection:bg-indigo-500/30">
+    <div class="max-w-5xl w-full flex flex-col gap-8">
+      <!-- Header -->
+      <header class="flex flex-col sm:flex-row gap-6 justify-between items-start sm:items-center pb-6 border-b border-white/5">
+        <div class="flex flex-col gap-1">
+          <div class="text-2xl font-medium tracking-tighter text-zinc-100 flex items-center gap-2">
+            <iconify-icon icon="solar:cpu-linear" stroke-width="1.5" class="text-indigo-500"></iconify-icon>
+            SORTBOT
+          </div>
+          <div class="text-sm text-zinc-500 font-light">
+            Algorithmic sequencing visualizer
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+          <select id="algo-select" class="bg-white/5 hover:bg-white/10 text-zinc-300 border border-white/10 p-2 sm:px-3 sm:py-2 rounded-lg text-sm transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 cursor-pointer">
+            <option value="selection" class="bg-zinc-900">
+              Selection Sort
+            </option>
+            <option value="bubble" class="bg-zinc-900">Bubble Sort</option>
+            <option value="insertion" class="bg-zinc-900">
+              Insertion Sort
+            </option>
+            <option value="quick" class="bg-zinc-900">Quick Sort</option>
+            <option value="bogo" class="bg-zinc-900">Bogo Sort (Fun)</option>
+            <option value="stalin" class="bg-zinc-900">
+              Stalin Sort (Fun)
+            </option>
+          </select>
+          <button id="btn-sound" class="flex-none flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-zinc-300 border border-white/10 p-2 sm:px-4 sm:py-2 rounded-lg text-sm transition-all duration-200" title="Toggle Sound">
+            <iconify-icon id="icon-sound" icon="solar:volume-cross-linear" stroke-width="1.5"></iconify-icon>
+            <span id="text-sound" class="hidden sm:inline">Sound Off</span>
+          </button>
+          <button id="btn-random" class="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-zinc-300 border border-white/10 px-4 py-2 rounded-lg text-sm transition-all duration-200">
+            <iconify-icon icon="solar:shuffle-linear" stroke-width="1.5"></iconify-icon>
+            Randomize
+          </button>
+          <button id="btn-sort" class="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-zinc-100 hover:bg-white text-zinc-950 px-6 py-2 rounded-lg text-sm font-medium transition-all duration-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]">
+            <iconify-icon icon="solar:play-linear" stroke-width="1.5"></iconify-icon>
+            Arrange
+          </button>
+        </div>
+      </header>
+
+      <!-- Visualization Panel -->
+      <main class="flex flex-col gap-4">
+        <!-- Status Bar -->
+        <div class="flex flex-col gap-4 bg-white/[0.02] border border-white/5 rounded-lg p-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div id="robot-indicator" class="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center border border-white/10 transition-colors duration-300">
+                <iconify-icon id="robot-icon" icon="solar:sleep-linear" stroke-width="1.5" class="text-zinc-500 text-lg"></iconify-icon>
+              </div>
+              <div class="flex flex-col">
+                <span class="text-xs text-zinc-500 uppercase tracking-widest font-mono">
+                  System Status
+                </span>
+                <span id="status-text" class="text-sm text-zinc-200">
+                  Awaiting instructions.
+                </span>
+              </div>
+            </div>
+
+            <div class="hidden sm:flex items-center gap-4 text-xs font-mono text-zinc-500">
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-zinc-700"></div>
+                Pending
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]"></div>
+                Scanning
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-emerald-500/50 border border-emerald-500"></div>
+                Sorted
+              </div>
+            </div>
+          </div>
+
+          <div class="w-full flex flex-col gap-1.5 mt-1 border-t border-white/5 pt-4">
+            <div class="flex justify-between items-center text-[10px] text-zinc-500 font-mono uppercase tracking-wider">
+              <span>Completion Phase</span>
+              <span id="progress-text" class="text-emerald-400">0%</span>
+            </div>
+            <div class="w-full bg-black/40 rounded-full h-1.5 relative overflow-hidden border border-white/5">
+              <div id="progress-bar" class="absolute top-0 left-0 h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-500 w-[0%] animate-flow transition-all duration-300 ease-out shadow-[0_0_10px_rgba(99,102,241,0.5)]"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Graph Area -->
+        <div class="relative w-full h-[60vh] min-h-[400px] bg-black/40 border border-white/5 rounded-xl p-6 flex flex-col justify-end overflow-hidden">
+          <!-- Grid Lines (Decorative) -->
+          <div class="absolute inset-0 pointer-events-none flex flex-col justify-between p-6 opacity-20">
+            <div class="w-full border-t border-white/10"></div>
+            <div class="w-full border-t border-white/10"></div>
+            <div class="w-full border-t border-white/10"></div>
+            <div class="w-full border-t border-white/10"></div>
+            <div class="w-full border-t border-white/10"></div>
+          </div>
+
+          <!-- Bars Container -->
+          <div id="bars-container" class="relative z-10 w-full h-full flex items-end justify-between gap-1 sm:gap-2">
+            <!-- Bars will be injected here via JS -->
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+          const container = document.getElementById('bars-container');
+          const btnRandom = document.getElementById('btn-random');
+          const btnSort = document.getElementById('btn-sort');
+          const btnSound = document.getElementById('btn-sound');
+          const iconSound = document.getElementById('icon-sound');
+          const textSound = document.getElementById('text-sound');
+          const statusText = document.getElementById('status-text');
+          const robotIndicator = document.getElementById('robot-indicator');
+          const robotIcon = document.getElementById('robot-icon');
+          const algoSelect = document.getElementById('algo-select');
+          const progressBar = document.getElementById('progress-bar');
+          const progressText = document.getElementById('progress-text');
+
+          const NUM_BARS = window.innerWidth < 640 ? 15 : 25;
+          const DELAY_MS = 60;
+          let array = [];
+          let isSorting = false;
+          let soundEnabled = false;
+
+          let audioCtx = null;
+          function playNote(val, type = 'sine') {
+              if (!soundEnabled) return;
+              if (!audioCtx) {
+                  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+              }
+              if (audioCtx.state === 'suspended') {
+                  audioCtx.resume();
+              }
+              const osc = audioCtx.createOscillator();
+              const gainNode = audioCtx.createGain();
+              osc.type = type;
+              const freq = 200 + (val / NUM_BARS) * 600;
+              osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+              gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+              gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+
+              osc.connect(gainNode);
+              gainNode.connect(audioCtx.destination);
+              osc.start();
+              osc.stop(audioCtx.currentTime + 0.1);
+          }
+
+          if (btnSound) {
+              btnSound.addEventListener('click', () => {
+                  soundEnabled = !soundEnabled;
+                  if (soundEnabled && !audioCtx) {
+                      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                  }
+                  iconSound.setAttribute('icon', soundEnabled ? 'solar:volume-loud-linear' : 'solar:volume-cross-linear');
+                  if (textSound) textSound.textContent = soundEnabled ? 'Sound On' : 'Sound Off';
+              });
+          }
+
+          function init() {
+              array = Array.from({ length: NUM_BARS }, (_, i) => i + 1);
+              shuffleArray(false);
+          }
+
+          function updateProgress(sortedCount, total) {
+              if (!progressBar || !progressText) return;
+              const p = Math.min(100, Math.round((sortedCount / total) * 100));
+              progressBar.style.width = p + '%';
+              progressText.textContent = p + '%';
+          }
+
+          function shuffleArray(updateStatus = true) {
+              if (isSorting) return;
+              if (array.length !== NUM_BARS) {
+                  array = Array.from({ length: NUM_BARS }, (_, i) => i + 1);
+              }
+              for (let i = array.length - 1; i > 0; i--) {
+                  const j = Math.floor(Math.random() * (i + 1));
+                  [array[i], array[j]] = [array[j], array[i]];
+              }
+              updateProgress(0, NUM_BARS);
+              renderBars();
+              if (updateStatus) {
+                  setRobotState('idle', 'Positions randomized. Ready to arrange.');
+                  playNote(NUM_BARS / 2, 'square');
+              }
+          }
+
+          function setRobotState(state, text) {
+              statusText.textContent = text;
+              robotIndicator.className = 'w-8 h-8 rounded-full flex items-center justify-center border transition-all duration-300';
+              robotIcon.className = 'text-lg transition-colors duration-300';
+
+              switch(state) {
+                  case 'idle':
+                      robotIndicator.classList.add('bg-white/5', 'border-white/10');
+                      robotIcon.setAttribute('icon', 'solar:sleep-linear');
+                      robotIcon.classList.add('text-zinc-500');
+                      break;
+                  case 'scanning':
+                      robotIndicator.classList.add('bg-indigo-500/10', 'border-indigo-500/30', 'shadow-[0_0_15px_rgba(99,102,241,0.2)]');
+                      robotIcon.setAttribute('icon', 'solar:scanner-linear');
+                      robotIcon.classList.add('text-indigo-400');
+                      break;
+                  case 'moving':
+                      robotIndicator.classList.add('bg-amber-500/10', 'border-amber-500/30');
+                      robotIcon.setAttribute('icon', 'solar:hand-stars-linear');
+                      robotIcon.classList.add('text-amber-400');
+                      break;
+                  case 'complete':
+                      robotIndicator.classList.add('bg-emerald-500/10', 'border-emerald-500/30', 'shadow-[0_0_15px_rgba(16,185,129,0.2)]');
+                      robotIcon.setAttribute('icon', 'solar:check-circle-linear');
+                      robotIcon.classList.add('text-emerald-400');
+                      break;
+              }
+          }
+
+          function renderBars(currentIndex = -1, scanIndex = -1, sortedIndices = []) {
+              const maxVal = Math.max(...array, 1);
+
+              if (sortedIndices && array.length > 0) {
+                 updateProgress(sortedIndices.length, array.length);
+              }
+
+              if (container.children.length !== array.length) {
+                  container.innerHTML = '';
+                  array.forEach(() => {
+                      const wrapper = document.createElement('div');
+                      wrapper.className = 'flex flex-col items-center justify-end h-full w-full group';
+
+                      const iconWrap = document.createElement('div');
+                      iconWrap.className = 'h-6 flex items-end justify-center mb-2 transition-all duration-200 opacity-0';
+
+                      const bar = document.createElement('div');
+                      bar.className = 'w-full rounded-t-sm transition-all duration-200 ease-in-out border-t border-l border-r border-white/5';
+
+                      wrapper.appendChild(iconWrap);
+                      wrapper.appendChild(bar);
+                      container.appendChild(wrapper);
+                  });
+              }
+
+              array.forEach((val, index) => {
+                  const wrapper = container.children[index];
+                  const iconWrap = wrapper.children[0];
+                  const bar = wrapper.children[1];
+
+                  if (index === scanIndex) {
+                      iconWrap.innerHTML = '<iconify-icon icon="solar:map-arrow-down-linear" stroke-width="1.5" class="text-indigo-400 text-lg translate-y-1 animate-bounce"></iconify-icon>';
+                      iconWrap.style.opacity = '1';
+                  } else if (index === currentIndex) {
+                       iconWrap.innerHTML = '<iconify-icon icon="solar:target-linear" stroke-width="1.5" class="text-amber-400 text-lg"></iconify-icon>';
+                       iconWrap.style.opacity = '1';
+                  } else {
+                      iconWrap.style.opacity = '0';
+                  }
+
+                  let baseClasses = 'w-full rounded-t-sm transition-all duration-200 ease-in-out border-t border-l border-r border-white/5 ';
+                  let colorClass = 'bg-zinc-800/80 hover:bg-zinc-700';
+
+                  if (sortedIndices.includes(index)) {
+                      colorClass = 'bg-emerald-500/20 border-emerald-500/30 hover:bg-emerald-500/30';
+                  }
+                  if (index === currentIndex) {
+                      colorClass = 'bg-amber-500/80 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.4)] z-10 relative';
+                  }
+                  if (index === scanIndex) {
+                      colorClass = 'bg-indigo-500 border-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.5)] z-10 relative';
+                  }
+
+                  bar.className = baseClasses + colorClass;
+                  bar.style.height = `${(val / maxVal) * 100}%`;
+              });
+          }
+
+          const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+          async function arrangeBars() {
+              if (isSorting) return;
+              isSorting = true;
+
+              btnRandom.classList.add('opacity-50', 'cursor-not-allowed');
+              btnSort.classList.add('opacity-50', 'cursor-not-allowed');
+              if(algoSelect) {
+                  algoSelect.classList.add('opacity-50', 'cursor-not-allowed');
+                  algoSelect.disabled = true;
+              }
+
+              let sorted = [];
+              const algo = algoSelect ? algoSelect.value : 'selection';
+
+              if (algo === 'selection') {
+                  for (let i = 0; i < array.length; i++) {
+                      let minIdx = i;
+                      setRobotState('scanning', `Target spot: ${i + 1}. Scanning for shortest...`);
+
+                      for (let j = i + 1; j < array.length; j++) {
+                          playNote(array[j], 'sine');
+                          renderBars(minIdx, j, sorted);
+                          await sleep(DELAY_MS);
+
+                          if (array[j] < array[minIdx]) {
+                              minIdx = j;
+                              renderBars(minIdx, j, sorted);
+                          }
+                      }
+
+                      if (minIdx !== i) {
+                          setRobotState('moving', `Shortest found. Moving bar.`);
+                          playNote(array[minIdx], 'square');
+                          renderBars(i, minIdx, sorted);
+                          await sleep(DELAY_MS * 2);
+
+                          [array[i], array[minIdx]] = [array[minIdx], array[i]];
+                          renderBars(minIdx, i, sorted);
+                          playNote(array[i], 'triangle');
+                          await sleep(DELAY_MS * 2);
+                      } else {
+                          playNote(array[i], 'triangle');
+                      }
+
+                      sorted.push(i);
+                      renderBars(-1, -1, sorted);
+                  }
+              } else if (algo === 'bubble') {
+                  for (let i = 0; i < array.length; i++) {
+                      for (let j = 0; j < array.length - i - 1; j++) {
+                          setRobotState('scanning', `Comparing adjacent bars...`);
+                          playNote(array[j], 'sine');
+                          renderBars(j, j + 1, sorted);
+                          await sleep(DELAY_MS);
+
+                          if (array[j] > array[j + 1]) {
+                              setRobotState('moving', `Swapping bars...`);
+                              [array[j], array[j + 1]] = [array[j + 1], array[j]];
+                              playNote(array[j+1], 'square');
+                              renderBars(j + 1, j, sorted);
+                              await sleep(DELAY_MS);
+                          }
+                      }
+                      sorted.push(array.length - 1 - i);
+                      renderBars(-1, -1, sorted);
+                  }
+              } else if (algo === 'insertion') {
+                  sorted.push(0);
+                  for (let i = 1; i < array.length; i++) {
+                      let j = i;
+                      setRobotState('scanning', `Sorting element ${i + 1}`);
+
+                      while (j > 0 && array[j - 1] > array[j]) {
+                          playNote(array[j], 'sine');
+                          renderBars(j, j - 1, sorted);
+                          await sleep(DELAY_MS);
+
+                          setRobotState('moving', `Swapping to correct position...`);
+                          [array[j], array[j - 1]] = [array[j - 1], array[j]];
+                          playNote(array[j - 1], 'square');
+                          renderBars(j - 1, j, sorted);
+                          await sleep(DELAY_MS);
+                          j--;
+                      }
+                      sorted.push(i);
+                      renderBars(-1, -1, sorted);
+                  }
+              } else if (algo === 'quick') {
+                  async function partition(low, high) {
+                      let pivot = array[high];
+                      let i = low - 1;
+                      for (let j = low; j < high; j++) {
+                          setRobotState('scanning', `Comparing with pivot...`);
+                          playNote(array[j], 'sine');
+                          renderBars(j, high, sorted);
+                          await sleep(DELAY_MS);
+                          if (array[j] < pivot) {
+                              i++;
+                              [array[i], array[j]] = [array[j], array[i]];
+                              playNote(array[i], 'square');
+                              renderBars(i, j, sorted);
+                              await sleep(DELAY_MS);
+                          }
+                      }
+                      [array[i + 1], array[high]] = [array[high], array[i + 1]];
+                      playNote(array[i + 1], 'triangle');
+                      renderBars(i + 1, high, sorted);
+                      await sleep(DELAY_MS);
+                      return i + 1;
+                  }
+
+                  async function quickSort(low, high) {
+                      if (!isSorting) return;
+                      if (low < high) {
+                          let pi = await partition(low, high);
+                          sorted.push(pi);
+                          await quickSort(low, pi - 1);
+                          await quickSort(pi + 1, high);
+                      } else if (low === high) {
+                          sorted.push(low);
+                      }
+                  }
+
+                  await quickSort(0, array.length - 1);
+                  if (isSorting) {
+                      for(let i=0; i<array.length; i++) if(!sorted.includes(i)) sorted.push(i);
+                      renderBars(-1, -1, sorted);
+                  }
+              } else if (algo === 'bogo') {
+                  let isSorted = false;
+                  let attempts = 0;
+                  while (!isSorted && isSorting) {
+                      setRobotState('scanning', `Attempt ${attempts + 1}: Randomizing...`);
+                      for (let i = array.length - 1; i > 0; i--) {
+                          const j = Math.floor(Math.random() * (i + 1));
+                          [array[i], array[j]] = [array[j], array[i]];
+                      }
+                      playNote(array[0], 'sine');
+                      renderBars(-1, -1, sorted);
+                      await sleep(DELAY_MS * 2);
+
+                      isSorted = true;
+                      for (let i = 0; i < array.length - 1; i++) {
+                          if (array[i] > array[i+1]) {
+                              isSorted = false;
+                              break;
+                          }
+                      }
+                      attempts++;
+                      if (attempts >= 15) {
+                          setRobotState('idle', `Bogo sort gave up after 15 attempts.`);
+                          break;
+                      }
+                  }
+                  if (isSorted) {
+                      sorted = array.map((_, i) => i);
+                  }
+                  renderBars(-1, -1, sorted);
+              } else if (algo === 'stalin') {
+                  setRobotState('scanning', 'Eliminating out-of-order elements...');
+                  sorted.push(0);
+                  let maxVal = array[0];
+                  let i = 1;
+                  while (i < array.length && isSorting) {
+                      renderBars(i, i - 1, sorted);
+                      await sleep(DELAY_MS * 2);
+                      if (array[i] < maxVal) {
+                          setRobotState('moving', 'Element out of order. Eliminating.');
+                          playNote(array[i], 'square');
+                          array.splice(i, 1);
+                          renderBars(-1, i, sorted);
+                          await sleep(DELAY_MS * 2);
+                      } else {
+                          maxVal = array[i];
+                          sorted.push(i);
+                          playNote(array[i], 'sine');
+                          i++;
+                      }
+                  }
+                  renderBars(-1, -1, sorted);
+              }
+
+              if (isSorting) {
+                  setRobotState('complete', 'Arrangement sequence complete.');
+                  playNote(NUM_BARS, 'sine');
+                  setTimeout(() => playNote(NUM_BARS, 'sine'), 150);
+                  setTimeout(() => playNote(NUM_BARS, 'sine'), 300);
+                  updateProgress(array.length, array.length);
+              }
+              isSorting = false;
+
+              btnRandom.classList.remove('opacity-50', 'cursor-not-allowed');
+              btnSort.classList.remove('opacity-50', 'cursor-not-allowed');
+              if(algoSelect) {
+                  algoSelect.classList.remove('opacity-50', 'cursor-not-allowed');
+                  algoSelect.disabled = false;
+              }
+          }
+
+          btnRandom.addEventListener('click', () => shuffleArray(true));
+          btnSort.addEventListener('click', arrangeBars);
+
+          if(algoSelect) {
+              algoSelect.addEventListener('change', () => {
+                  if(!isSorting) {
+                      shuffleArray(true);
+                  }
+              });
+          }
+
+          init();
+      });
+    </script>
+  
+</body></html>

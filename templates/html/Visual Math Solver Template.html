@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Math Solver</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link
+href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap"
+rel="stylesheet"
+/><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body
+    class="bg-[#F7F7F8] min-h-screen flex items-center justify-center p-4 sm:p-8 text-gray-800 antialiased selection:bg-blue-100 selection:text-blue-900"
+    style="font-family: 'Inter', sans-serif;"
+  >
+    <div class="w-full max-w-2xl flex flex-col gap-8">
+      <!-- Header -->
+      <header class="flex justify-between items-center px-1">
+        <div
+          class="text-xl font-semibold tracking-tighter text-gray-900 flex items-center gap-2"
+        >
+          <div
+            class="w-6 h-6 bg-gray-900 rounded flex items-center justify-center"
+          >
+            <span class="text-white text-xs font-mono">÷</span>
+          </div>
+          MATH
+        </div>
+        <div class="flex gap-4 text-gray-400">
+          <button
+            class="hover:text-gray-900 transition-colors"
+            style="outline: none;"
+          >
+            <iconify-icon
+              icon="solar:history-linear"
+              width="22"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </button>
+          <button
+            class="hover:text-gray-900 transition-colors"
+            style="outline: none;"
+          >
+            <iconify-icon
+              icon="solar:settings-linear"
+              width="22"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </button>
+        </div>
+      </header>
+
+      <!-- Paper Canvas -->
+      <main
+        class="relative bg-white rounded-2xl shadow-[0_4px_24px_-8px_rgba(0,0,0,0.05)] border border-gray-200/60 overflow-hidden min-h-[520px]"
+        style="background-image: repeating-linear-gradient(transparent, transparent 39px, #F3F4F6 39px, #F3F4F6 40px); background-attachment: local;"
+      >
+        <!-- Red Margin Line -->
+        <div
+          class="absolute left-12 sm:left-16 top-0 bottom-0 w-px bg-red-100/70 z-0"
+        ></div>
+
+        <!-- Content Container aligned to grid -->
+        <div
+          class="relative z-10 pt-10 pb-20 pl-16 sm:pl-24 pr-8 flex flex-col gap-10"
+        >
+          <!-- History Item (Static) -->
+          <div
+            class="flex flex-col opacity-40 hover:opacity-70 transition-opacity duration-300 group cursor-default"
+          >
+            <div class="font-mono text-base text-gray-800 leading-[40px]">
+              12 ÷ 3 + 4 × 2
+            </div>
+            <div
+              class="font-mono text-sm text-gray-500 pl-2 sm:pl-4 flex items-center gap-3 leading-[40px]"
+            >
+              <iconify-icon
+                icon="solar:arrow-right-linear"
+                width="16"
+                class="text-gray-400"
+              ></iconify-icon>
+              4 + 8
+            </div>
+            <div
+              class="font-mono text-sm text-gray-900 pl-2 sm:pl-4 flex items-center gap-3 leading-[40px]"
+            >
+              <iconify-icon
+                icon="solar:check-circle-linear"
+                width="16"
+                class="text-gray-400"
+              ></iconify-icon>
+              12
+            </div>
+          </div>
+
+          <!-- Active Equation (Animated) -->
+          <div class="flex flex-col relative" id="active-equation">
+            <!-- Input Area -->
+            <div class="relative flex items-center leading-[40px]">
+              <input
+                type="text"
+                value="(15 + 5) × 4 - 20 ÷ 2"
+                class="w-full bg-transparent border-none outline-none font-mono text-lg text-gray-900 placeholder-gray-300"
+                spellcheck="false"
+                readonly=""
+                style="font-family: 'JetBrains Mono', monospace;"
+                id="active-calc-input"
+              />
+
+              <!-- Status indicator fading in -->
+              <div
+                class="absolute right-0 text-xs font-medium text-indigo-500 bg-indigo-50/80 backdrop-blur-sm px-2.5 py-1 rounded-md flex items-center gap-1.5 opacity-0"
+                style="animation: fadeOut 0.5s ease-out 1.5s forwards, fadeIn 0.5s ease-out 0.2s forwards;"
+              >
+                <iconify-icon
+                  icon="solar:magic-stick-3-linear"
+                  width="14"
+                ></iconify-icon>
+                Computing
+              </div>
+            </div>
+
+            <!-- Animation Logic (Scoped CSS for keyframes) -->
+            <style>
+              @keyframes fadeIn { to { opacity: 1; } }
+              @keyframes fadeOut { to { opacity: 0; visibility: hidden; } }
+              @keyframes writeStep {
+                  0% { opacity: 0; transform: translateX(-5px) translateY(2px) scale(0.98); }
+                  100% { opacity: 1; transform: translateX(0) translateY(0) scale(1); }
+              }
+              @keyframes penMove {
+                  0% { opacity: 1; transform: translate(0, 0); }
+                  25% { transform: translate(40px, -5px); }
+                  50% { transform: translate(120px, 2px); }
+                  75% { transform: translate(200px, -2px); }
+                  100% { opacity: 0; transform: translate(250px, 0); }
+              }
+              @keyframes boxDraw {
+                  0% { stroke-dasharray: 0 1000; }
+                  100% { stroke-dasharray: 1000 1000; }
+              }
+            </style>
+
+            <!-- Solving Steps -->
+            <div
+              class="flex flex-col relative font-mono text-sm"
+              style="font-family: 'JetBrains Mono', monospace;"
+            >
+              <!-- Step 1 -->
+              <div
+                class="text-gray-600 pl-2 sm:pl-4 flex items-center gap-3 leading-[40px] opacity-0"
+                style="animation: writeStep 0.5s cubic-bezier(0.1, 0.9, 0.2, 1) 1s forwards;"
+              >
+                <span class="text-gray-300/80 font-sans">=</span>
+                <span id="step-1-text">20 × 4 - 20 ÷ 2</span>
+              </div>
+
+              <!-- Step 2 -->
+              <div
+                class="text-gray-600 pl-2 sm:pl-4 flex items-center gap-3 leading-[40px] opacity-0"
+                style="animation: writeStep 0.5s cubic-bezier(0.1, 0.9, 0.2, 1) 2.2s forwards;"
+              >
+                <span class="text-gray-300/80 font-sans">=</span>
+                <span id="step-2-text">80 - 10</span>
+              </div>
+
+              <!-- Final Result -->
+              <div
+                class="text-base text-gray-900 pl-2 sm:pl-4 mt-2 flex items-center gap-3 leading-[40px] opacity-0 relative"
+                style="animation: writeStep 0.6s cubic-bezier(0.1, 0.9, 0.2, 1) 3.5s forwards;"
+              >
+                <div
+                  class="text-emerald-500 bg-white shadow-sm border border-emerald-100 h-6 w-6 rounded-full flex items-center justify-center z-10 absolute -left-8 sm:-left-6 opacity-0"
+                  style="animation: fadeIn 0.3s ease-out 4.2s forwards;"
+                >
+                  <iconify-icon
+                    icon="solar:check-read-linear"
+                    width="14"
+                  ></iconify-icon>
+                </div>
+
+                <span class="text-emerald-500/50 font-sans font-medium">=</span>
+                <div class="relative inline-block">
+                  <span
+                    class="relative z-10 font-medium"
+                    id="final-result-text"
+                  >
+                    70
+                  </span>
+
+                  <!-- Hand-drawn box SVG animation -->
+                  <svg
+                    class="absolute -inset-y-1.5 -inset-x-3 w-[calc(100%+24px)] h-[calc(100%+12px)] z-0 pointer-events-none"
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                  >
+                    <path
+                      d="M2,10 C20,5 80,5 98,10 C99,50 99,50 98,90 C80,95 20,95 2,90 C1,50 1,50 2,10 Z"
+                      fill="none"
+                      stroke="currentColor"
+                      class="text-emerald-400/30"
+                      stroke-width="2"
+                      vector-effect="non-scaling-stroke"
+                      style="stroke-dasharray: 0 1000; animation: boxDraw 0.8s cubic-bezier(0.4, 0, 0.2, 1) 4s forwards;"
+                    ></path>
+                  </svg>
+                </div>
+              </div>
+
+              <!-- Simulated Pen element that moves across while writing -->
+              <div
+                class="absolute left-10 top-2 opacity-0 pointer-events-none text-gray-400"
+                style="animation: penMove 1.2s ease-in-out 1s, penMove 1.2s ease-in-out 2.2s;"
+              >
+                <iconify-icon
+                  icon="solar:pen-new-square-linear"
+                  width="20"
+                ></iconify-icon>
+              </div>
+            </div>
+          </div>
+
+          <!-- Next Input Prompt -->
+          <div
+            class="flex items-center gap-3 mt-4 opacity-50 focus-within:opacity-100 transition-opacity leading-[40px] relative"
+          >
+            <div class="absolute -left-8 sm:-left-6 text-gray-300">
+              <iconify-icon icon="solar:pen-linear" width="18"></iconify-icon>
+            </div>
+            <input
+              type="text"
+              placeholder="Write a new equation..."
+              class="w-full bg-transparent border-none outline-none font-mono text-base text-gray-900 placeholder-gray-400"
+              spellcheck="false"
+              style="font-family: 'JetBrains Mono', monospace;"
+              id="calc-input"
+            />
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button
+                class="w-8 h-8 rounded-md bg-white border border-gray-200/80 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all font-mono text-lg flex items-center justify-center shadow-sm"
+                type="button"
+                aria-label="Add"
+                style="outline: none;"
+              >
+                +
+              </button>
+              <button
+                class="w-8 h-8 rounded-md bg-white border border-gray-200/80 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all font-mono text-lg flex items-center justify-center shadow-sm"
+                type="button"
+                aria-label="Subtract"
+                style="outline: none;"
+              >
+                -
+              </button>
+              <button
+                class="w-8 h-8 rounded-md bg-white border border-gray-200/80 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all font-mono text-lg flex items-center justify-center shadow-sm"
+                type="button"
+                aria-label="Multiply"
+                style="outline: none;"
+              >
+                ×
+              </button>
+              <button
+                class="w-8 h-8 rounded-md bg-white border border-gray-200/80 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all font-mono text-lg flex items-center justify-center shadow-sm"
+                type="button"
+                aria-label="Divide"
+                style="outline: none;"
+              >
+                ÷
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <footer
+        class="text-center text-xs text-gray-400 font-medium tracking-wide flex items-center justify-center gap-1.5"
+      >
+        <iconify-icon icon="solar:cpu-linear" width="14"></iconify-icon>
+        Processing visually
+      </footer>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const input = document.getElementById('calc-input');
+        const buttons = input.parentElement.querySelectorAll('button');
+
+        buttons.forEach(btn => {
+          btn.addEventListener('click', () => {
+            const val = btn.innerText.trim();
+            input.value += (input.value && !input.value.endsWith(' ') ? ' ' : '') + val + ' ';
+            input.focus();
+          });
+        });
+
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && input.value.trim() !== '') {
+            solveEquation(input.value);
+          }
+        });
+
+        function solveEquation(expr) {
+          try {
+            let safeExpr = expr.replace(/×/g, '*').replace(/÷/g, '/');
+            if (!/^[\d\s\+\-\*\/\(\)\.]+$/.test(safeExpr)) throw new Error('Invalid');
+            let result = Function('return ' + safeExpr)();
+
+            document.getElementById('active-calc-input').value = expr;
+            document.getElementById('step-1-text').innerText = 'Simplifying expression...';
+            document.getElementById('step-2-text').innerText = 'Calculating result...';
+            document.getElementById('final-result-text').innerText = Math.round(result * 10000) / 10000;
+
+            const activeEq = document.getElementById('active-equation');
+            const newActiveEq = activeEq.cloneNode(true);
+            activeEq.parentNode.replaceChild(newActiveEq, activeEq);
+
+            input.value = '';
+          } catch(err) {
+            input.style.color = 'red';
+            setTimeout(() => input.style.color = '', 1000);
+          }
+        }
+      });
+    </script>
+  </body>
+</html>

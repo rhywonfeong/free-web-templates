@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toranaco — Page Template</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* =============================================================
+TORANACO — GENERAL-PURPOSE PAGE TEMPLATE  ·  A4 (single page)
+Reusable branded page. Swap the placeholder content; the chrome,
+type scale, and components stay fixed to the locked deck system.
+Display: Geist Pixel Square (system) · Body: Geist Mono (Google)
+============================================================= */
+:root {
+--c-bg: #050507;
+--c-bg-card: #0A0A0C;
+--c-border: #646465;
+--c-text: #F0F0F0;
+--c-text-dim: rgba(255, 255, 255, .64);
+--c-text-mute: rgba(255, 255, 255, .45);
+--c-text-faint: rgba(255, 255, 255, .35);
+--c-label: rgba(255, 255, 255, .60);
+--c-divider: rgba(255, 255, 255, .38);
+--c-ghost: rgba(255, 255, 255, .17);
+--c-violet: #6633FF;
+--c-lilac: #AA44FF;
+--c-cyan: #00CCFF;
+--c-green: #00FF88;
+--c-gold: #FFAA00;
+--c-pink: #FF3366;
+--c-hero: #24FAFA;
+--g-spectrum: linear-gradient(90deg, #6633FF 0%, #AA44FF 20%, #00CCFF 40%, #00FF88 60%, #FFAA00 80%, #FF3366 100%);
+--shadow-glitch-sm: 1px 0 1px var(--c-pink), -1px 0 1px var(--c-green);
+--shadow-glitch-lg: 2px 0 1px var(--c-pink), -2px 0 1px var(--c-green);
+--f-display: 'Geist Pixel Square', 'Geist Mono', ui-monospace, monospace;
+--f-mono: 'Geist Mono', ui-monospace, 'Cascadia Mono', monospace;
+--m-edge: 14mm;
+--m-band: 13mm;
+--m-pad-x: 12mm;
+--m-pad-y: 9mm;
+}
+*,
+*::before,
+*::after {
+margin: 0;
+padding: 0;
+box-sizing: border-box
+}
+html,
+body {
+-webkit-print-color-adjust: exact;
+print-color-adjust: exact
+}
+body {
+background: #16161a;
+font-family: var(--f-mono);
+display: flex;
+flex-direction: column;
+align-items: center;
+padding: 26px 16px
+}
+.title,
+.standfirst,
+.body-text,
+.sec__h,
+.callout__text,
+.flow__chip,
+.siglist li {
+text-wrap: pretty
+}
+.page {
+position: relative;
+width: 210mm;
+height: 297mm;
+background: var(--c-bg);
+overflow: hidden;
+box-shadow: 0 12px 48px rgba(0, 0, 0, .55)
+}
+.divider {
+position: absolute;
+left: 0;
+right: 0;
+top: 0;
+height: 2px;
+background: var(--g-spectrum);
+opacity: .55;
+z-index: 10
+}
+.rails {
+position: absolute;
+top: var(--m-band);
+bottom: var(--m-band);
+left: var(--m-edge);
+right: var(--m-edge);
+border-left: 1px solid var(--c-border);
+border-right: 1px solid var(--c-border);
+pointer-events: none;
+z-index: 2
+}
+.band {
+position: absolute;
+left: 0;
+right: 0;
+height: var(--m-band);
+display: flex;
+align-items: center;
+justify-content: space-between;
+padding: 0 var(--m-edge);
+z-index: 5
+}
+.band--head {
+top: 0;
+border-bottom: 1px solid var(--c-border)
+}
+.band--foot {
+bottom: 0;
+background: var(--c-bg-card);
+border-top: 1px solid var(--c-border)
+}
+.grp {
+display: flex;
+align-items: center;
+gap: 11px
+}
+.vdiv {
+width: 1px;
+height: 9px;
+background: var(--c-divider);
+flex-shrink: 0
+}
+.lbl {
+font-family: var(--f-mono);
+font-weight: 300;
+font-size: 6.6px;
+line-height: 1.5;
+letter-spacing: 2.6px;
+text-transform: uppercase;
+color: var(--c-label);
+white-space: nowrap
+}
+.lbl.dim {
+color: var(--c-text-mute)
+}
+.lbl.tag {
+font-family: var(--f-display);
+letter-spacing: 1.5px;
+color: var(--c-hero);
+font-size: 7px
+}
+.pagenum {
+font-family: var(--f-mono);
+font-weight: 400;
+font-size: 6.6px;
+letter-spacing: 2.6px;
+color: var(--c-text-mute)
+}
+.pagenum b {
+color: var(--c-text);
+font-weight: 500
+}
+.grain {
+position: absolute;
+inset: 0;
+mix-blend-mode: overlay;
+opacity: .30;
+pointer-events: none;
+z-index: 8;
+background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+background-size: 200px 200px
+}
+.content {
+position: absolute;
+top: var(--m-band);
+bottom: var(--m-band);
+left: var(--m-edge);
+right: var(--m-edge);
+padding: var(--m-pad-y) var(--m-pad-x);
+z-index: 4;
+display: flex;
+flex-direction: column
+}
+/* ── PAGE HEAD ──────────────────────────────────── */
+.head-row {
+display: flex;
+justify-content: space-between;
+align-items: flex-start
+}
+.overline {
+font-family: var(--f-mono);
+font-weight: 400;
+font-size: 7px;
+line-height: 1.5;
+letter-spacing: .34em;
+text-transform: uppercase;
+color: var(--c-text-mute);
+font-feature-settings: 'zero' on
+}
+.connector {
+width: 140px;
+height: 30px;
+overflow: visible;
+flex-shrink: 0;
+margin-top: 1px
+}
+.title {
+font-family: var(--f-display);
+font-weight: 400;
+font-size: 46px;
+line-height: .94;
+letter-spacing: .02em;
+text-transform: uppercase;
+color: var(--c-text);
+text-shadow: var(--shadow-glitch-lg);
+margin-top: 9mm
+}
+.standfirst {
+font-family: var(--f-mono);
+font-weight: 300;
+font-size: 11px;
+line-height: 1.6;
+letter-spacing: .03em;
+color: var(--c-hero);
+max-width: 120mm;
+margin-top: 6mm
+}
+.rule {
+height: 2px;
+width: 46mm;
+background: var(--g-spectrum);
+opacity: .6;
+margin: 7mm 0
+}
+/* ── BODY ───────────────────────────────────────── */
+.body-text {
+font-family: var(--f-mono);
+font-weight: 300;
+font-size: 10px;
+line-height: 1.7;
+letter-spacing: .03em;
+color: var(--c-text-dim);
+max-width: 172mm
+}
+.body-text+.body-text {
+margin-top: 6px
+}
+/* section heading */
+.sec {
+margin-top: 8mm
+}
+.sec__over {
+display: flex;
+align-items: center;
+gap: 8px;
+margin-bottom: 6px
+}
+.sec__bar {
+width: 14px;
+height: 2px;
+background: var(--c-cyan);
+box-shadow: 0 0 6px rgba(0, 204, 255, .5)
+}
+.sec__over-lbl {
+font-family: var(--f-mono);
+font-weight: 400;
+font-size: 6.8px;
+letter-spacing: .34em;
+text-transform: uppercase;
+color: var(--c-text-mute)
+}
+.sec__h {
+font-family: var(--f-display);
+font-weight: 400;
+font-size: 15px;
+line-height: 1.1;
+letter-spacing: .03em;
+text-transform: uppercase;
+color: var(--c-text);
+text-shadow: var(--shadow-glitch-sm);
+margin-bottom: 7px
+}
+/* signal list */
+.siglist {
+list-style: none;
+display: flex;
+flex-direction: column;
+gap: 6px;
+margin-top: 7px;
+padding-left: 1px
+}
+.siglist li {
+display: flex;
+align-items: center;
+gap: 10px;
+font-family: var(--f-mono);
+font-weight: 300;
+font-size: 9.8px;
+letter-spacing: .03em;
+color: var(--c-text-dim)
+}
+.dot {
+width: 4px;
+height: 4px;
+border-radius: 2px;
+flex-shrink: 0
+}
+.dot--cyan {
+background: var(--c-cyan);
+box-shadow: 0 0 6px rgba(0, 204, 255, .4)
+}
+.dot--green {
+background: var(--c-green);
+box-shadow: 0 0 6px rgba(0, 255, 136, .4)
+}
+.dot--gold {
+background: var(--c-gold);
+box-shadow: 0 0 6px rgba(255, 170, 0, .4)
+}
+.dot--pink {
+background: var(--c-pink);
+box-shadow: 0 0 6px rgba(255, 51, 102, .4)
+}
+.dot--violet {
+background: var(--c-violet);
+box-shadow: 0 0 6px rgba(102, 51, 255, .4)
+}
+/* flow chain */
+.flow {
+display: flex;
+flex-wrap: wrap;
+align-items: center;
+gap: 6px 7px;
+margin-top: 9px
+}
+.flow__chip {
+font-family: var(--f-mono);
+font-weight: 400;
+font-size: 8.4px;
+letter-spacing: .04em;
+color: var(--c-text);
+background: var(--c-bg-card);
+border: 1px solid var(--c-border);
+padding: 5px 9px;
+white-space: nowrap
+}
+.flow__chip.--in {
+border-left: 2px solid var(--c-cyan)
+}
+.flow__chip.--out {
+border-left: 2px solid var(--c-pink)
+}
+.flow__arrow {
+color: var(--c-cyan);
+font-size: 11px;
+line-height: 1;
+opacity: .85
+}
+/* callout / key statement */
+.callout {
+margin-top: auto;
+display: flex;
+gap: 12px;
+align-items: flex-start;
+border-top: 1px solid var(--c-border);
+padding-top: 7mm
+}
+.callout__bar {
+width: 2px;
+align-self: stretch;
+background: var(--g-spectrum);
+opacity: .7;
+flex-shrink: 0
+}
+.callout__text {
+font-family: var(--f-mono);
+font-weight: 300;
+font-size: 11px;
+line-height: 1.55;
+letter-spacing: .02em;
+color: var(--c-text)
+}
+.accent {
+color: var(--c-hero);
+font-weight: 500
+}
+/* ── PRINT ──────────────────────────────────────── */
+@page {
+size: A4;
+margin: 0
+}
+@media print {
+body {
+background: #000;
+padding: 0;
+gap: 0
+}
+.page {
+box-shadow: none;
+page-break-after: avoid;
+break-after: avoid
+}
+}
+</style>
+<script src="https://cdn.tailwindcss.com"></script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+
+<body>
+
+  <div class="page">
+    <div class="divider"></div>
+    <div class="rails"></div>
+
+    <!-- HEADER CHROME -->
+    <div class="band band--head">
+      <div class="grp">
+        <span class="lbl tag">TORANACO</span>
+        <span class="vdiv"></span>
+        <span class="lbl">Measurement Layer for Collective Coherence</span>
+      </div>
+      <span class="lbl dim">Document Template · v1.0</span>
+    </div>
+
+    <div class="content">
+      <!-- PAGE HEAD: overline + connector + title + standfirst + spectrum rule -->
+      <div class="head-row">
+        <span class="overline">Document Type — Category</span>
+        <svg class="connector" viewBox="0 0 140 30">
+          <polyline points="0,9 88,9 104,1 140,1" fill="none" stroke="#24FAFA" stroke-width="1.4"
+            style="filter:drop-shadow(0 0 4px rgba(36,250,250,.7))" />
+        </svg>
+      </div>
+
+      <!-- SWAP: page title -->
+      <h1 class="title">Document<br>Title</h1>
+      <!-- SWAP: one-line standfirst / summary -->
+      <p class="standfirst">A single-line standfirst that frames the page. Replace with your own summary sentence.</p>
+      <div class="rule"></div>
+
+      <!-- BODY COPY -->
+      <p class="body-text">Body copy goes here. Use this region for general-purpose content — paragraphs, explanations,
+        descriptions, or supporting detail. The measure is set for comfortable reading at A4, and the type scale matches
+        the Toranaco deck so every document feels like one system.</p>
+      <p class="body-text">A second paragraph continues the thought. Keep sentences plain and physics-grade; let the
+        spectrum accents and structural rhythm carry the brand rather than decoration.</p>
+
+      <!-- SECTION BLOCK: heading + body + signal list -->
+      <div class="sec">
+        <div class="sec__over"><span class="sec__bar"></span><span class="sec__over-lbl">Section</span></div>
+        <h2 class="sec__h">Section Heading</h2>
+        <p class="body-text">Introduce the section in one or two lines, then use the signal list below for discrete
+          points. Each dot can carry its own spectrum colour so colour stays meaningful, never decorative.</p>
+        <ul class="siglist">
+          <li><span class="dot dot--cyan"></span>First point — replace with your own item</li>
+          <li><span class="dot dot--green"></span>Second point — keep items short and parallel</li>
+          <li><span class="dot dot--gold"></span>Third point — colour cycles through the spectrum</li>
+          <li><span class="dot dot--pink"></span>Fourth point — add or remove rows as needed</li>
+        </ul>
+      </div>
+
+      <!-- FLOW BLOCK: process / sequence chain -->
+      <div class="sec">
+        <div class="sec__over">
+          <span class="sec__bar" style="background:var(--c-green);box-shadow:0 0 6px rgba(0,255,136,.5)"></span><span class="sec__over-lbl">Process</span>
+        </div>
+        <h2 class="sec__h">Sequence or Flow</h2>
+        <div class="flow">
+          <span class="flow__chip --in">Input</span><span class="flow__arrow">→</span>
+          <span class="flow__chip">Step two</span><span class="flow__arrow">→</span>
+          <span class="flow__chip">Step three</span><span class="flow__arrow">→</span>
+          <span class="flow__chip">Step four</span><span class="flow__arrow">→</span>
+          <span class="flow__chip --out">Output</span>
+        </div>
+      </div>
+
+      <!-- CALLOUT: key statement with accent -->
+      <div class="callout">
+        <span class="callout__bar"></span>
+        <p class="callout__text">A key statement or pull-quote sits here to close the page. Emphasise the one idea that
+          matters — <span class="accent">the line readers should remember.</span></p>
+      </div>
+    </div>
+
+    <!-- FOOTER CHROME -->
+    <div class="band band--foot">
+      <span class="lbl dim">Toranaco · Document Template</span>
+      <span class="pagenum"><b>01</b> / 01</span>
+    </div>
+    <div class="grain"></div>
+  </div>
+
+</body>
+
+</html>

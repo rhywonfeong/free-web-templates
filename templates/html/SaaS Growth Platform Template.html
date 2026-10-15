@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="fr"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UPSTAR — Authentification</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+<style>
+*{font-family:'Plus Jakarta Sans',sans-serif;}
+.heading{font-weight:800;letter-spacing:-0.04em;line-height:1.1;}
+.cta-glossy{
+background:linear-gradient(180deg,#FFAE56 0%,#F2436D 55%,#CC3BC9 100%);
+box-shadow:inset 0 1px 0 rgba(255,255,255,0.55),inset 0 -2px 8px rgba(150,20,80,0.22),0 12px 30px rgba(240,66,107,0.38),0 6px 16px rgba(204,59,201,0.22);
+position:relative;overflow:hidden;transition:transform .15s ease,box-shadow .15s ease;
+}
+.cta-glossy:hover{transform:translateY(-2px);box-shadow:inset 0 1px 0 rgba(255,255,255,0.55),inset 0 -2px 8px rgba(150,20,80,0.22),0 16px 38px rgba(240,66,107,0.48),0 8px 20px rgba(204,59,201,0.3);}
+.cta-glossy:active{transform:translateY(0) scale(0.98);}
+.cta-glossy::after{
+content:'';position:absolute;top:0;left:-60%;width:40%;height:100%;
+background:linear-gradient(120deg,transparent,rgba(255,255,255,.45),transparent);
+animation:shine 3.6s infinite;
+}
+@keyframes shine{0%{left:-60%;}55%,100%{left:140%;}}
+.brand-gradient{background:linear-gradient(135deg,#FF9A3D 0%,#FF2E5F 50%,#A62AFF 100%);}
+.highlight-mark{background:linear-gradient(180deg,transparent 58%,#FDE047 58%);padding:0 .1em;transform:rotate(-1deg);display:inline-block;}
+.input-field:focus{border-color:#FF2E5F;box-shadow:0 0 0 3px rgba(255,46,95,0.12);}
+.seg-cursor{transition:transform .3s cubic-bezier(0.4,0,0.2,1);}
+.fade-state{transition:opacity .25s ease,transform .25s ease;}
+.hidden-state{opacity:0;transform:translateY(8px);pointer-events:none;position:absolute;width:100%;}
+.google-btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(15,23,42,0.08);}
+.google-btn{transition:transform .15s ease,box-shadow .15s ease;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.spinner{animation:spin .7s linear infinite;}
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body class="bg-white text-slate-900 antialiased">
+    <div class="flex flex-col lg:flex-row lg:min-h-screen">
+      <!-- LEFT PANEL -->
+      <div class="brand-gradient overflow-hidden sm:px-10 sm:py-10 lg:w-1/2 lg:px-14 lg:py-14 flex-col hidden lg:flex text-white pt-14 pr-14 pb-0 pl-14 relative">
+        <div class="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-white/10 blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 -left-20 w-80 h-80 rounded-full bg-white/10 blur-3xl pointer-events-none"></div>
+
+        <!-- logo -->
+        <div class="flex gap-2 z-10 relative gap-x-2 gap-y-2 items-center">
+          <span class="relative inline-flex items-center justify-center w-9 h-9 rounded-xl overflow-hidden shadow-lg bg-white/10">
+            <label for="aura-logo-upload" class="absolute inset-0 flex items-center justify-center cursor-pointer">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/5666e0d9-b721-43a7-b242-ee4e12681ac7_1600w.png" alt="Logo" class="absolute inset-0 w-full h-full object-cover">
+            </label>
+            <input type="file" accept="image/*" class="hidden" onchange="(function(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(ev){var img=document.getElementById('aura-logo-preview');img.src=ev.target.result;img.classList.remove('hidden');};r.readAsDataURL(f);})(event)">
+          </span>
+          <span class="text-xl font-extrabold tracking-tight">UPSTAR</span>
+        </div>
+
+        <!-- mobile compact / desktop full -->
+        <div class="relative z-10 mt-6 lg:mt-auto lg:mb-0 flex-1 flex flex-col justify-center">
+          <h1 class="heading sm:text-4xl lg:text-4xl text-3xl max-w-md">
+            Tu peux dormir tranquille, tes stats décollent. 🚀
+          </h1>
+          <p class="mt-4 text-sm sm:text-base text-white/90 max-w-md leading-relaxed">Des milliers de créateurs gagnent des abonnés réels chaque jour avec UPSTAR.</p>
+
+          <div class="mt-6 sm:mt-8 grid grid-cols-3 gap-3 max-w-md">
+            <div class="bg-white/15 backdrop-blur rounded-2xl p-3 sm:p-4 flex flex-col items-center text-center">
+              <iconify-icon icon="solar:users-group-rounded-bold" width="28" class="text-white"></iconify-icon>
+              <span class="mt-1.5 text-base sm:text-lg font-extrabold leading-none">
+                +20 000
+              </span>
+              <span class="text-[10px] sm:text-xs text-white/80 leading-tight mt-0.5">
+                actions / mois
+              </span>
+            </div>
+            <div class="bg-white/15 backdrop-blur rounded-2xl p-3 sm:p-4 flex flex-col items-center text-center">
+              <iconify-icon icon="solar:shield-check-bold" width="28" class="text-white"></iconify-icon>
+              <span class="mt-1.5 text-base sm:text-lg font-extrabold leading-none">
+                100%
+              </span>
+              <span class="text-[10px] sm:text-xs text-white/80 leading-tight mt-0.5">
+                indétectable
+              </span>
+            </div>
+            <div class="bg-white/15 backdrop-blur rounded-2xl p-3 sm:p-4 flex flex-col items-center text-center">
+              <iconify-icon icon="solar:heart-bold" width="28" class="text-white"></iconify-icon>
+              <span class="mt-1.5 text-base sm:text-lg font-extrabold leading-none">
+                Safe
+              </span>
+              <span class="text-[10px] sm:text-xs text-white/80 leading-tight mt-0.5">
+                sécurité avant tout.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- social proof -->
+        <div class="relative z-10 mt-6 sm:mt-8 lg:mt-10 flex items-center gap-4">
+          <div class="flex -space-x-3">
+            <img class="w-9 h-9 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/80?img=5" alt="">
+            <img class="w-9 h-9 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/80?img=12" alt="">
+            <img class="w-9 h-9 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/80?img=32" alt="">
+            <img class="w-9 h-9 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/80?img=45" alt="">
+            <img class="w-9 h-9 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/80?img=8" alt="">
+          </div>
+          <div class="text-xs sm:text-sm">
+            <div class="flex items-center gap-1 font-semibold">
+              <iconify-icon icon="solar:star-bold" class="text-yellow-300" width="16"></iconify-icon>
+              4,9/5
+            </div>
+            <div class="text-white/85">
+              12 000+ créateurs font déjà confiance à UPSTAR
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT PANEL -->
+      <div class="lg:w-1/2 flex items-start lg:items-center justify-center px-5 sm:px-8 lg:px-12 py-8 sm:py-10 lg:py-12 min-h-screen">
+        <div class="w-full max-w-md">
+          <!-- segmented selector -->
+          <div class="relative bg-slate-100 rounded-full p-1.5 flex mb-6 sm:mb-7" role="tablist">
+            <div id="segCursor" class="seg-cursor absolute top-1.5 left-1.5 h-[calc(100%-12px)] w-[calc(50%-6px)] bg-white rounded-full shadow-sm"></div>
+            <button id="tabSignup" role="tab" class="relative z-10 flex-1 text-center py-2.5 text-sm font-bold text-[#FF2E5F] rounded-full transition-colors">
+              Inscription
+            </button>
+            <button id="tabLogin" role="tab" class="relative z-10 flex-1 text-center py-2.5 text-sm font-medium text-slate-500 rounded-full transition-colors">
+              Connexion
+            </button>
+          </div>
+
+          <div class="relative">
+            <!-- SIGNUP STATE -->
+            <div id="signupState" class="fade-state">
+              <h2 class="heading sm:text-2xl lg:text-2xl text-xl tracking-tight">
+                Crée ton compte et
+                <span class="highlight-mark">deviens viral.</span>
+              </h2>
+              <p class="mt-2 text-sm text-slate-500">Annule quand tu veux.</p>
+
+              <button class="google-btn mt-6 w-full flex items-center justify-center gap-3 bg-white border border-slate-200 rounded-2xl py-3.5 font-semibold text-slate-900 text-sm">
+                <iconify-icon icon="logos:google-icon" width="18" aria-label="Google" class=""></iconify-icon>
+                Continuer avec Google
+              </button>
+
+              <div class="flex items-center gap-3 my-6">
+                <div class="h-px bg-slate-200 flex-1"></div>
+                <span class="text-xs text-slate-400">ou avec ton email</span>
+                <div class="h-px bg-slate-200 flex-1"></div>
+              </div>
+
+              <form class="space-y-4" onsubmit="return false;">
+                <div class="">
+                  <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Ton compte Instagram
+                  </label>
+                  <div class="flex items-center border border-slate-200 rounded-2xl px-3.5 focus-within:border-[#FF2E5F]" style="transition:border-color .2s;">
+                    <iconify-icon icon="solar:hashtag-square-linear" class="text-slate-400" width="20"></iconify-icon>
+                    <span class="text-slate-400 ml-2 select-none">@</span>
+                    <input id="igInput" type="text" placeholder="ton_compte" autofocus="" class="input-field flex-1 py-3 px-1 text-sm outline-none bg-transparent" style="border:none;box-shadow:none;">
+                  </div>
+                  <p class="mt-1.5 text-xs text-slate-400">
+                    C'est le compte qu'on va faire décoller 🚀
+                  </p>
+                </div>
+
+                <div class="">
+                  <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Email
+                  </label>
+                  <div class="flex items-center border border-slate-200 rounded-2xl px-3.5" style="transition:border-color .2s;">
+                    <iconify-icon icon="solar:letter-linear" class="text-slate-400" width="20"></iconify-icon>
+                    <input id="suEmail" type="email" placeholder="lea@email.com" class="input-field flex-1 py-3 px-2 text-sm outline-none bg-transparent" style="border:none;box-shadow:none;">
+                    <iconify-icon id="suEmailCheck" icon="solar:check-circle-bold" class="text-[#00B67A] hidden" width="20"></iconify-icon>
+                  </div>
+                </div>
+
+                <div class="">
+                  <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Mot de passe
+                  </label>
+                  <div class="flex items-center border border-slate-200 rounded-2xl px-3.5" style="transition:border-color .2s;">
+                    <iconify-icon icon="solar:lock-password-linear" class="text-slate-400" width="20"></iconify-icon>
+                    <input id="suPass" type="password" placeholder="••••••••" class="input-field flex-1 py-3 px-2 text-sm outline-none bg-transparent" style="border:none;box-shadow:none;">
+                    <button type="button" onclick="togglePass('suPass',this)" aria-label="Afficher le mot de passe" class="">
+                      <iconify-icon icon="solar:eye-linear" class="text-slate-400" width="20"></iconify-icon>
+                    </button>
+                  </div>
+                </div>
+
+                <label class="flex items-start gap-2.5 cursor-pointer pt-1">
+                  <span class="cb relative flex items-center justify-center w-5 h-5 mt-0.5 rounded-md border border-slate-300 shrink-0" data-checked="false"></span>
+                  <span class="text-xs text-slate-500 leading-relaxed">
+                    J'accepte les
+                    <a href="#" class="underline">conditions d'utilisation</a>
+                    et la
+                    <a href="#" class="underline">
+                      politique de confidentialité
+                    </a>
+                    .
+                  </span>
+                </label>
+
+                
+
+                <button type="submit" onclick="loadBtn(this,'Création…')" class="cta-glossy w-full rounded-[17px] text-white font-extrabold text-base flex items-center justify-center gap-2" style="height:60px;">
+                  <span class="btn-label flex items-center gap-2">
+                    Lancer ma croissance
+                    <span class="">→</span>
+                  </span>
+                </button><div class="flex gap-2 text-xs text-slate-500 pt-0 gap-x-2 gap-y-2 items-center justify-center">
+  <iconify-icon icon="solar:lock-keyhole-minimalistic-linear" class="text-[#00B67A]" width="16"></iconify-icon>
+  Connexion sécurisée et chiffrée.
+</div>
+
+                
+
+              </form>
+
+              <p class="text-sm text-slate-500 text-center mt-6">
+                Déjà membre ?
+                <button onclick="setMode('login')" class="text-[#FF2E5F] font-semibold">
+                  Se connecter
+                </button>
+              </p>
+            </div>
+
+            <!-- LOGIN STATE -->
+            <div id="loginState" class="fade-state hidden-state">
+              <h2 class="heading text-xl sm:text-2xl lg:text-3xl tracking-tight">
+                Content de te revoir 👋
+              </h2>
+              <p class="mt-2 text-sm text-slate-500">
+                Connecte-toi pour retrouver ta croissance.
+              </p>
+
+              <button class="google-btn mt-6 w-full flex items-center justify-center gap-3 bg-white border border-slate-200 rounded-2xl py-3.5 font-semibold text-slate-900 text-sm">
+                <iconify-icon icon="logos:google-icon" width="18" aria-label="Google"></iconify-icon>
+                Continuer avec Google
+              </button>
+
+              <div class="flex items-center gap-3 my-6">
+                <div class="h-px bg-slate-200 flex-1"></div>
+                <span class="text-xs text-slate-400">ou avec ton email</span>
+                <div class="h-px bg-slate-200 flex-1"></div>
+              </div>
+
+              <form class="space-y-4" onsubmit="return false;">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Email
+                  </label>
+                  <div class="flex items-center border border-slate-200 rounded-2xl px-3.5" style="transition:border-color .2s;">
+                    <iconify-icon icon="solar:letter-linear" class="text-slate-400" width="20"></iconify-icon>
+                    <input id="liEmail" type="email" placeholder="lea@email.com" class="input-field flex-1 py-3 px-2 text-sm outline-none bg-transparent" style="border:none;box-shadow:none;">
+                    <iconify-icon id="liEmailCheck" icon="solar:check-circle-bold" class="text-[#00B67A] hidden" width="20"></iconify-icon>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Mot de passe
+                  </label>
+                  <div class="flex items-center border border-slate-200 rounded-2xl px-3.5" style="transition:border-color .2s;">
+                    <iconify-icon icon="solar:lock-password-linear" class="text-slate-400" width="20"></iconify-icon>
+                    <input id="liPass" type="password" placeholder="••••••••" class="input-field flex-1 py-3 px-2 text-sm outline-none bg-transparent" style="border:none;box-shadow:none;">
+                    <button type="button" onclick="togglePass('liPass',this)" aria-label="Afficher le mot de passe">
+                      <iconify-icon icon="solar:eye-linear" class="text-slate-400" width="20"></iconify-icon>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between pt-1">
+                  <label class="flex items-center gap-2.5 cursor-pointer">
+                    <span class="cb relative flex items-center justify-center w-5 h-5 rounded-md border border-slate-300 shrink-0" data-checked="false"></span>
+                    <span class="text-xs text-slate-500">
+                      Se souvenir de moi
+                    </span>
+                  </label>
+                  <a href="#" class="text-xs text-[#FF2E5F] font-semibold">
+                    Mot de passe oublié ?
+                  </a>
+                </div>
+
+                <div class="flex items-center gap-2 text-xs text-slate-500 pt-1">
+                  <iconify-icon icon="solar:lock-keyhole-minimalistic-linear" class="text-[#00B67A]" width="16"></iconify-icon>
+                  Connexion chiffrée — on ne stockera jamais ton mot de passe
+                  Instagram.
+                </div>
+
+                <button type="submit" onclick="loadBtn(this,'Connexion…')" class="cta-glossy w-full rounded-[17px] text-white font-extrabold text-base flex items-center justify-center gap-2" style="height:60px;">
+                  <span class="btn-label flex items-center gap-2">
+                    Me connecter
+                    <span>→</span>
+                  </span>
+                </button>
+              </form>
+
+              <p class="text-center text-sm text-slate-500 mt-5">
+                Pas encore de compte ?
+                <button onclick="setMode('signup')" class="text-[#FF2E5F] font-semibold">
+                  Crée-le gratuitement
+                </button>
+              </p>
+            </div>
+          </div>
+          <div class="lg:hidden mt-7 flex items-center gap-4">
+            <div class="flex -space-x-3">
+              <img class="w-9 h-9 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/80?img=5" alt="">
+              <img class="w-9 h-9 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/80?img=12" alt="">
+              <img class="w-9 h-9 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/80?img=32" alt="">
+              <img class="w-9 h-9 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/80?img=45" alt="">
+              <img class="w-9 h-9 rounded-full border-2 border-white object-cover" src="https://i.pravatar.cc/80?img=8" alt="">
+            </div>
+            <div class="text-xs sm:text-sm">
+              <div class="flex items-center gap-1 font-semibold text-slate-900">
+                <iconify-icon icon="solar:star-bold" class="text-yellow-400" width="16"></iconify-icon>
+                4,9/5
+              </div>
+              <div class="text-slate-500">
+                12 000+ créateurs font déjà confiance à UPSTAR
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const signup = document.getElementById('signupState');
+      const login = document.getElementById('loginState');
+      const cursor = document.getElementById('segCursor');
+      const tabSignup = document.getElementById('tabSignup');
+      const tabLogin = document.getElementById('tabLogin');
+
+      function setMode(mode){
+        if(mode==='signup'){
+          cursor.style.transform='translateX(0)';
+          tabSignup.className='relative z-10 flex-1 text-center py-2.5 text-sm font-bold text-[#FF2E5F] rounded-full transition-colors';
+          tabLogin.className='relative z-10 flex-1 text-center py-2.5 text-sm font-medium text-slate-500 rounded-full transition-colors';
+          login.classList.add('hidden-state'); signup.classList.remove('hidden-state');
+        } else {
+          cursor.style.transform='translateX(100%)';
+          tabLogin.className='relative z-10 flex-1 text-center py-2.5 text-sm font-bold text-[#FF2E5F] rounded-full transition-colors';
+          tabSignup.className='relative z-10 flex-1 text-center py-2.5 text-sm font-medium text-slate-500 rounded-full transition-colors';
+          signup.classList.add('hidden-state'); login.classList.remove('hidden-state');
+        }
+      }
+      tabSignup.onclick=()=>setMode('signup');
+      tabLogin.onclick=()=>setMode('login');
+
+      function togglePass(id,btn){
+        const inp=document.getElementById(id);
+        const ic=btn.querySelector('iconify-icon');
+        if(inp.type==='password'){inp.type='text';ic.setAttribute('icon','solar:eye-closed-linear');}
+        else{inp.type='password';ic.setAttribute('icon','solar:eye-linear');}
+      }
+
+      // IG input sanitization
+      const ig=document.getElementById('igInput');
+      ig.addEventListener('input',()=>{
+        ig.value=ig.value.toLowerCase().replace(/@/g,'').replace(/\s/g,'');
+      });
+
+      // email validation
+      function bindEmail(inputId,checkId){
+        const inp=document.getElementById(inputId);
+        const chk=document.getElementById(checkId);
+        inp.addEventListener('input',()=>{
+          const ok=/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inp.value);
+          chk.classList.toggle('hidden',!ok);
+        });
+      }
+      bindEmail('suEmail','suEmailCheck');
+      bindEmail('liEmail','liEmailCheck');
+
+      // checkboxes
+      document.querySelectorAll('.cb').forEach(cb=>{
+        cb.parentElement.addEventListener('click',e=>{
+          e.preventDefault();
+          const on=cb.dataset.checked==='true';
+          cb.dataset.checked=(!on).toString();
+          if(!on){
+            cb.style.background='#FF2E5F';cb.style.borderColor='#FF2E5F';
+            cb.innerHTML='<iconify-icon icon="solar:check-read-linear" class="text-white" width="14"></iconify-icon>';
+          } else {
+            cb.style.background='';cb.style.borderColor='';cb.innerHTML='';
+          }
+        });
+      });
+
+      // loading button
+      function loadBtn(btn,txt){
+        const label=btn.querySelector('.btn-label');
+        const orig=label.innerHTML;
+        label.innerHTML='<span class="spinner inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full"></span> '+txt;
+        setTimeout(()=>{
+          label.innerHTML='<iconify-icon icon="solar:check-circle-bold" width="20"></iconify-icon> C\'est parti !';
+          setTimeout(()=>{label.innerHTML=orig;},1500);
+        },1600);
+      }
+    </script>
+  
+</body></html>

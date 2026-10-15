@@ -1,0 +1,251 @@
+<html lang="en"><head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+
+  <meta charset="UTF-8">
+  <title>Iridescent Hero - Interactive Light</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@700;800&amp;display=swap" rel="stylesheet">
+  <style>
+    body, html {
+      height: 100%;
+      margin: 0;
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #000;
+    }
+    .shader-bg {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .shader-bg canvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+    }
+    .iridescent-glow {
+      pointer-events: none;
+      filter: blur(48px) saturate(1.4) brightness(1.1);
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 900px;
+      height: 400px;
+      transform: translate(-50%, -52%);
+      opacity: 0.55;
+      background: conic-gradient(from 160deg, #a5eafc, #f1a1e8, #e0ffb1, #a5eafc 100%);
+      z-index: 1;
+      border-radius: 60% 40% 70% 30% / 40% 60% 30% 70%;
+      animation: iridescentMove 12s linear infinite alternate;
+    }
+    @keyframes iridescentMove {
+      0% { filter: blur(48px) saturate(1.2); opacity: 0.5; transform: translate(-50%,-52%) scale(1);}
+      100% { filter: blur(60px) saturate(1.7); opacity: 0.65; transform: translate(-50%,-53%) scale(1.08);}
+    }
+  </style>
+  <script type="module">
+    import { Renderer, Program, Mesh, Color, Triangle } from 'https://cdn.skypack.dev/ogl';
+    const vertexShader = `
+      attribute vec2 uv;
+      attribute vec2 position;
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = vec4(position, 0, 1);
+      }`;
+    const fragmentShader = `
+      precision highp float;
+      uniform float uTime;
+      uniform vec3 uColor;
+      uniform vec3 uResolution;
+      uniform vec2 uMouse;
+      uniform float uAmplitude;
+      uniform float uSpeed;
+      varying vec2 vUv;
+      void main() {
+        float mr = min(uResolution.x, uResolution.y);
+        vec2 uv = (vUv.xy * 2.0 - 1.0) * uResolution.xy / mr;
+        uv += (uMouse - vec2(0.5)) * uAmplitude;
+        float d = -uTime * 0.5 * uSpeed;
+        float a = 0.0;
+        for (float i = 0.0; i < 8.0; ++i) {
+          a += cos(i - d - a * uv.x);
+          d += sin(uv.y * i + a);
+        }
+        d += uTime * 0.5 * uSpeed;
+        vec3 col = vec3(cos(uv * vec2(d, a)) * 0.6 + 0.4, cos(a + d) * 0.5 + 0.5);
+        col = cos(col * cos(vec3(d, a, 2.5)) * 0.5 + 0.5) * uColor;
+        gl_FragColor = vec4(col, 1.0);
+      }`;
+    class IridescenceShader {
+      constructor(container, options = {}) {
+        this.container = container;
+        this.color = options.color || [1, 0.8, 0.9];
+        this.speed = options.speed || 1.0;
+        this.amplitude = options.amplitude || 0.15;
+        this.mouseReact = options.mouseReact !== false;
+        this.mousePos = { x: 0.5, y: 0.5 };
+        this.init();
+      }
+      init() {
+        this.renderer = new Renderer();
+        this.gl = this.renderer.gl;
+        this.gl.clearColor(0, 0, 0, 1);
+        this.setupGeometry();
+        this.setupEventListeners();
+        this.resize();
+        this.animate();
+        this.container.appendChild(this.gl.canvas);
+      }
+      setupGeometry() {
+        const geometry = new Triangle(this.gl);
+        this.program = new Program(this.gl, {
+          vertex: vertexShader,
+          fragment: fragmentShader,
+          uniforms: {
+            uTime: { value: 0 },
+            uColor: { value: new Color(...this.color) },
+            uResolution: { value: new Color(1, 1, 1) },
+            uMouse: { value: new Float32Array([0.5, 0.5]) },
+            uAmplitude: { value: this.amplitude },
+            uSpeed: { value: this.speed },
+          },
+        });
+        this.mesh = new Mesh(this.gl, { geometry, program: this.program });
+      }
+      setupEventListeners() {
+        this.handleResize = this.resize.bind(this);
+        this.handleMouseMove = this.onMouseMove.bind(this);
+        window.addEventListener('resize', this.handleResize);
+        if (this.mouseReact) {
+          this.container.addEventListener('mousemove', this.handleMouseMove);
+        }
+      }
+      resize() {
+        const rect = this.container.getBoundingClientRect();
+        this.renderer.setSize(rect.width, rect.height);
+        if (this.program) {
+          this.program.uniforms.uResolution.value = new Color(
+            this.gl.canvas.width,
+            this.gl.canvas.height,
+            this.gl.canvas.width / this.gl.canvas.height
+          );
+        }
+      }
+      onMouseMove(e) {
+        const rect = this.container.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width;
+        const y = 1.0 - (e.clientY - rect.top) / rect.height;
+        this.mousePos = { x, y };
+        this.program.uniforms.uMouse.value[0] = x;
+        this.program.uniforms.uMouse.value[1] = y;
+      }
+      animate(t = 0) {
+        this.animationId = requestAnimationFrame(this.animate.bind(this));
+        this.program.uniforms.uTime.value = t * 0.001;
+        this.renderer.render({ scene: this.mesh });
+      }
+      destroy() {
+        if (this.animationId) cancelAnimationFrame(this.animationId);
+        window.removeEventListener('resize', this.handleResize);
+        if (this.mouseReact) {
+          this.container.removeEventListener('mousemove', this.handleMouseMove);
+        }
+        if (this.gl.canvas.parentNode) {
+          this.gl.canvas.parentNode.removeChild(this.gl.canvas);
+        }
+        this.gl.getExtension('WEBGL_lose_context')?.loseContext();
+      }
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      const container = document.querySelector('.shader-bg');
+      new IridescenceShader(container, {
+        color: [0.95, 0.65, 1.0],
+        speed: 0.82,
+        amplitude: 0.15,
+        mouseReact: true
+      });
+    });
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=IBM+Plex+Serif:wght@300;400;500;600;700&amp;family=IBM+Plex+Mono:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=IBM+Plex+Serif:wght@300;400;500;600;700&amp;family=IBM+Plex+Mono:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+</head>
+<body class="relative min-h-screen bg-black overflow-x-hidden">
+  <!-- Iridescent Shader Canvas -->
+  <div class="shader-bg absolute inset-0"></div>
+  <!-- Soft iridescent light overlay -->
+  <div class="iridescent-glow"></div>
+  <!-- Navigation Bar -->
+  <nav class="relative z-30 w-full px-6 py-4 flex items-center justify-between max-w-7xl mx-auto">
+    <div class="flex items-center gap-2">
+      <span class="inline-block h-8 w-8 rounded-full bg-gradient-to-br from-fuchsia-400 via-cyan-300 to-lime-200 shadow-lg"></span>
+      <span class="text-2xl font-extrabold text-white tracking-tight">Aura</span>
+    </div>
+    <div class="hidden md:flex gap-8">
+      <a href="#" class="text-white/80 hover:text-white font-medium transition">Home</a>
+      <a href="#features" class="text-white/80 hover:text-white font-medium transition">Features</a>
+      <a href="#docs" class="text-white/80 hover:text-white font-medium transition">Docs</a>
+      <a href="#contact" class="text-white/80 hover:text-white font-medium transition">Contact</a>
+    </div>
+    <div class="md:hidden">
+      <button class="text-white/80 hover:text-white focus:outline-none" aria-label="Open menu">
+        <svg width="28" height="28" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+      </button>
+    </div>
+  </nav>
+  <!-- Hero Content -->
+  <main class="relative z-10 flex flex-col items-center justify-center min-h-screen">
+    <div class="text-center px-4 mt-8">
+      <h1 class="sm:text-7xl md:text-8xl bg-clip-text transition-all duration-300 text-5xl font-extrabold text-transparent tracking-tight bg-gradient-to-r from-white via-fuchsia-200 to-sky-200 py-4 drop-shadow-2xl">
+        Iridescent Light
+      </h1>
+      <p class="mt-6 max-w-xl mx-auto text-lg sm:text-2xl text-gray-200/90 font-medium drop-shadow-lg">
+        An interactive hero background that shimmers with color and responds to your touch.<br class="hidden sm:block">
+        Move your mouse and explore the glowing beauty of iridescent light.
+      </p>
+      <div class="mt-10 flex justify-center">
+        <div class="backdrop-blur-md bg-white/10 border border-white/15 shadow-2xl rounded-2xl px-8 py-8 flex flex-col gap-5 items-center w-full max-w-sm transition-all duration-300 hover:bg-white/20 hover:shadow-3xl">
+          <div class="">
+            <h2 class="text-2xl font-semibold text-white mb-1 pb-2">Get Started Instantly</h2>
+            <p class="text-base text-white/70 mb-2 py-2">Enjoy these features right out of the box:</p>
+            <ul class="text-left text-white/80 space-y-2 mb-3">
+              <li class="flex items-center gap-2 text-sm">
+                <span class="text-lime-300">
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                </span>
+                Interactive iridescent background
+              </li>
+              <li class="flex items-center gap-2 text-sm">
+                <span class="text-cyan-300">
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                </span>
+                Responsive hero section
+              </li>
+              <li class="flex items-center gap-2 text-sm">
+                <span class="text-fuchsia-300">
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                </span>
+                Modern, accessible design
+              </li>
+            </ul>
+          </div>
+          <a href="#get-started" class="w-full inline-block bg-gradient-to-tr from-fuchsia-400 via-cyan-300 to-lime-200 text-black font-bold text-lg px-7 py-3 rounded-xl shadow-lg hover:from-fuchsia-300 hover:to-lime-100 hover:scale-105 transition-all duration-200 ring-2 ring-white/30 ring-inset text-center">
+            Get Started
+          </a>
+          <a href="#learn-more" class="w-full inline-block text-white/90 font-semibold px-6 py-2 rounded-xl border border-white/20 mt-1 hover:bg-white/20 transition-all duration-150 text-center">
+            Learn More
+          </a>
+          <span class="text-xs text-white/70 tracking-wide">
+            No install needed • Just move your mouse ✦
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="absolute bottom-6 left-1/2 -translate-x-1/2 z-20">
+    </div>
+  </main>
+
+</body></html>

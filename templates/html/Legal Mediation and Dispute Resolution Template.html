@@ -1,0 +1,1736 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Christopher T. Whitten | Mediator</title>
+<meta
+name="description"
+content="Christopher T. Whitten provides thoughtful, well-prepared mediation for complex disputes in Phoenix and throughout Arizona."
+/>
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link
+href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&amp;family=Playfair+Display:wght@400;500&amp;display=swap"
+rel="stylesheet"
+/>
+<!-- Tailwind & Iconify -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<style>
+:root{
+--bg:#fcfbf9;
+--surface:#ffffff;
+--text:#2d2a26;
+--heading:#1c1a18;
+--muted:#5a5753;
+--muted-2:#78746e;
+--accent:#9d6b53;
+--brand:#1e293b;
+--brand-strong:#0f172a;
+--border:rgba(45,42,38,.08);
+--border-soft:rgba(0,0,0,.05);
+--selection:#e6e4df;
+--placeholder-1:#f0eee9;
+--placeholder-2:#e6e4df;
+}
+/* Theme: Editorial (paper + ink + subtle texture) */
+[data-theme="editorial"]{
+--bg:#fbf7f1;
+--surface:#fffdfa;
+--text:#1f1d1a;
+--heading:#141312;
+--muted:#4a4742;
+--muted-2:#6a665f;
+--accent:#8b5a3c;
+--brand:#2f3a4a;
+--brand-strong:#1f2836;
+--border:rgba(31,29,26,.10);
+--border-soft:rgba(31,29,26,.06);
+--selection:rgba(139,90,60,.18);
+--placeholder-1:#efe6d8;
+--placeholder-2:#e8ddcd;
+}
+/* Theme: Modern Night (deep, luminous, glass + motion) */
+[data-theme="night"]{
+--bg:#0b1020;
+--surface:rgba(255,255,255,.06);
+--text:#e9eef7;
+--heading:#f5f7ff;
+--muted:rgba(233,238,247,.75);
+--muted-2:rgba(233,238,247,.60);
+--accent:#66d9c7;
+--brand:#8ab4ff;
+--brand-strong:#3b82f6;
+--border:rgba(138,180,255,.22);
+--border-soft:rgba(255,255,255,.10);
+--selection:rgba(102,217,199,.22);
+--placeholder-1:rgba(138,180,255,.12);
+--placeholder-2:rgba(102,217,199,.10);
+}
+/* Apply tokens without restructuring existing markup */
+body{
+background-color:var(--bg) !important;
+color:var(--text) !important;
+}
+body::before{
+content:"";
+position:fixed;
+inset:0;
+pointer-events:none;
+z-index:-1;
+background:
+radial-gradient(1200px 800px at 12% 10%, rgba(157,107,83,.08), transparent 60%),
+radial-gradient(900px 600px at 88% 22%, rgba(30,41,59,.06), transparent 55%);
+opacity:.9;
+}
+[data-theme="editorial"] body::before{
+background:
+radial-gradient(1200px 800px at 12% 10%, rgba(139,90,60,.10), transparent 60%),
+radial-gradient(900px 600px at 88% 22%, rgba(47,58,74,.06), transparent 55%),
+linear-gradient(0deg, rgba(20,19,18,.035), rgba(20,19,18,.035));
+opacity:1;
+mix-blend-mode:multiply;
+}
+[data-theme="night"] body::before{
+background:
+radial-gradient(900px 700px at 10% 15%, rgba(138,180,255,.18), transparent 60%),
+radial-gradient(700px 600px at 85% 20%, rgba(102,217,199,.14), transparent 55%),
+radial-gradient(900px 700px at 50% 95%, rgba(59,130,246,.10), transparent 60%);
+opacity:1;
+mix-blend-mode:screen;
+}
+header#main-nav{
+background-color:color-mix(in srgb, var(--bg) 88%, transparent) !important;
+border-bottom:1px solid var(--border) !important;
+backdrop-filter: blur(10px);
+}
+/* Typography colors */
+h1,h2,h3{
+color:var(--heading) !important;
+}
+/* Common text colors mapped from existing inline hex usage */
+.text-\[\#5a5753\], .prose.prose-stone{
+color:var(--muted) !important;
+}
+.text-\[\#78746e\], .text-black\/40{
+color:var(--muted-2) !important;
+}
+.text-\[\#9d6b53\]{
+color:var(--accent) !important;
+}
+/* Surfaces and borders */
+.bg-white{
+background-color:var(--surface) !important;
+}
+.border-black\/5{
+border-color:var(--border-soft) !important;
+}
+.border-black\/10{
+border-color:color-mix(in srgb, var(--border) 65%, transparent) !important;
+}
+/* Brand buttons */
+.bg-\[\#1e293b\]{
+background-color:var(--brand) !important;
+}
+.hover\:bg-\[\#0f172a\]:hover{
+background-color:var(--brand-strong) !important;
+}
+.text-\[\#1e293b\]{
+color:var(--brand) !important;
+}
+/* Placeholder panels */
+.bg-\[\#e6e4df\]{
+background-color:var(--placeholder-2) !important;
+}
+/* Selection */
+body{
+-webkit-tap-highlight-color: transparent;
+}
+::selection{
+background:var(--selection);
+color:var(--text);
+}
+/* Theme-specific meaningful layout/feel changes without DOM changes */
+[data-theme="editorial"] header#main-nav{
+backdrop-filter:none;
+box-shadow:0 1px 0 var(--border);
+}
+[data-theme="editorial"] .rounded-sm{
+border-radius:6px;
+}
+[data-theme="editorial"] .shadow-sm{
+box-shadow:0 6px 18px rgba(31,29,26,.08);
+}
+[data-theme="editorial"] .tracking-tighter{
+letter-spacing:-0.02em;
+}
+[data-theme="night"] header#main-nav{
+background-color:rgba(11,16,32,.72) !important;
+border-bottom:1px solid rgba(138,180,255,.22) !important;
+}
+[data-theme="night"] .bg-white{
+background-color:rgba(255,255,255,.06) !important;
+}
+[data-theme="night"] .shadow-sm{
+box-shadow:0 10px 30px rgba(0,0,0,.35);
+}
+[data-theme="night"] .rounded-sm{
+border-radius:10px;
+}
+[data-theme="night"] a, [data-theme="night"] button{
+text-shadow:0 0 0 rgba(0,0,0,0);
+}
+/* Theme switcher UI */
+.theme-switcher{
+display:flex;
+align-items:center;
+gap:.5rem;
+padding:.375rem;
+border:1px solid var(--border);
+border-radius:999px;
+background:color-mix(in srgb, var(--surface) 80%, transparent);
+box-shadow:0 6px 18px rgba(0,0,0,.06);
+}
+[data-theme="night"] .theme-switcher{
+background:rgba(255,255,255,.06);
+box-shadow:0 10px 30px rgba(0,0,0,.35);
+}
+.theme-switcher button{
+border-radius:999px;
+padding:.45rem .65rem;
+font-size:11px;
+letter-spacing:.12em;
+text-transform:uppercase;
+border:1px solid transparent;
+color:var(--muted);
+transition:transform .18s ease, background-color .18s ease, color .18s ease, border-color .18s ease;
+line-height:1;
+}
+.theme-switcher button:hover{ transform:translateY(-1px); }
+.theme-switcher button[aria-pressed="true"]{
+background:var(--brand);
+color:var(--bg);
+border-color:color-mix(in srgb, var(--brand) 60%, transparent);
+}
+/* Motion graphics: gentle floating accents for hero placeholders */
+.aura-motion-orb{
+position:absolute;
+inset:auto;
+width:220px;
+height:220px;
+border-radius:9999px;
+filter:blur(22px);
+opacity:.55;
+transform:translate3d(0,0,0);
+animation:orbFloat 10s ease-in-out infinite;
+pointer-events:none;
+}
+.aura-motion-orb.orb-1{ left:-60px; top:-40px; background:radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--accent) 70%, transparent), transparent 60%); }
+.aura-motion-orb.orb-2{ right:-70px; bottom:-60px; background:radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--brand) 65%, transparent), transparent 60%); animation-duration:12s; }
+[data-theme="night"] .aura-motion-orb{ opacity:.8; filter:blur(26px); }
+[data-theme="editorial"] .aura-motion-orb{ opacity:.45; }
+@keyframes orbFloat{
+0%{ transform:translate3d(0,0,0) scale(1); }
+50%{ transform:translate3d(10px,-12px,0) scale(1.06); }
+100%{ transform:translate3d(0,0,0) scale(1); }
+}
+/* Subtle reveal animation for section switches */
+.page-section{
+transform-origin:top center;
+}
+.page-section.opacity-100{
+animation:sectionIn .38s ease-out both;
+}
+@keyframes sectionIn{
+from{ transform:translateY(6px); filter:blur(2px); }
+to{ transform:translateY(0); filter:blur(0); }
+}
+@media (prefers-reduced-motion: reduce){
+.aura-motion-orb, .page-section.opacity-100{ animation:none !important; }
+.theme-switcher button{ transition:none !important; }
+}
+</style>
+<style>
+[data-theme="classic"] .theme-editorial-only,
+[data-theme="classic"] .theme-night-only { display: none !important; }
+[data-theme="editorial"] .theme-classic-only,
+[data-theme="editorial"] .theme-night-only { display: none !important; }
+[data-theme="night"] .theme-classic-only,
+[data-theme="night"] .theme-editorial-only { display: none !important; }
+/* Editorial Theme Layout Overrides */
+[data-theme="editorial"] .hero-layout {
+display: flex !important;
+flex-direction: column;
+text-align: center;
+align-items: center;
+}
+[data-theme="editorial"] .hero-layout > div {
+width: 100%;
+padding-right: 0 !important;
+}
+[data-theme="editorial"] .hero-layout p {
+margin-left: auto;
+margin-right: auto;
+}
+[data-theme="editorial"] .hero-actions {
+justify-content: center;
+}
+[data-theme="editorial"] .process-section {
+background-color: transparent !important;
+border: none !important;
+}
+[data-theme="editorial"] .process-section > div {
+background-color: var(--surface);
+border-radius: 12px;
+box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+padding: 3rem 2rem;
+}
+/* Night Theme Layout Overrides */
+[data-theme="night"] .hero-layout {
+display: flex !important;
+flex-direction: row-reverse;
+align-items: center;
+}
+@media (min-width: 1024px) {
+[data-theme="night"] .hero-layout > div:first-child {
+width: 58.333333%;
+padding-right: 0 !important;
+padding-left: 4rem !important;
+}
+[data-theme="night"] .hero-layout > div:last-child {
+width: 41.666667%;
+}
+}
+@media (max-width: 1023px) {
+[data-theme="night"] .hero-layout {
+flex-direction: column-reverse;
+}
+}
+[data-theme="night"] .process-section {
+background: transparent !important;
+border-top: 1px solid var(--border) !important;
+border-bottom: 1px solid var(--border) !important;
+}
+[data-theme="night"] .process-grid {
+display: flex;
+flex-direction: column;
+gap: 2.5rem;
+}
+</style></head>
+  <body
+    style="font-family: 'Inter', sans-serif; background-color: #fcfbf9; color: #2d2a26;"
+    class="antialiased selection:bg-[#e6e4df] selection:text-[#2d2a26] flex flex-col min-h-screen"
+    data-theme="classic"
+  >
+    <!-- Navigation -->
+    <header
+      class="fixed w-full top-0 z-50 transition-all duration-300"
+      id="main-nav"
+      style="background-color: rgba(252, 251, 249, 0.9); backdrop-filter: blur(8px); border-bottom: 1px solid rgba(45, 42, 38, 0.08);"
+    >
+      <div
+        class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between"
+      >
+        <a
+          href="#"
+          class="nav-link flex items-center gap-2 group"
+          data-target="home"
+        >
+          <span
+            class="tracking-tighter text-lg font-medium"
+            style="font-family: 'Playfair Display', serif;"
+          >
+            WHITTEN ADR
+          </span>
+        </a>
+
+        <!-- Desktop Nav -->
+        <div class="hidden md:flex items-center">
+          <div class="theme-switcher" role="group" aria-label="Theme switcher">
+            <button type="button" data-theme-btn="classic" aria-pressed="true">
+              Classic
+            </button>
+            <button
+              type="button"
+              data-theme-btn="editorial"
+              aria-pressed="false"
+            >
+              Editorial
+            </button>
+            <button type="button" data-theme-btn="night" aria-pressed="false">
+              Night
+            </button>
+          </div>
+        </div>
+        <nav class="hidden md:flex items-center gap-8">
+          <a
+            href="#"
+            class="nav-link text-sm font-medium text-[#5a5753] hover:text-[#2d2a26] transition-colors"
+            data-target="home"
+          >
+            Home
+          </a>
+          <a
+            href="#"
+            class="nav-link text-sm font-medium text-[#5a5753] hover:text-[#2d2a26] transition-colors"
+            data-target="services"
+          >
+            Mediation Services
+          </a>
+          <a
+            href="#"
+            class="nav-link text-sm font-medium text-[#5a5753] hover:text-[#2d2a26] transition-colors"
+            data-target="about"
+          >
+            About
+          </a>
+          <a
+            href="#"
+            class="nav-link text-sm font-medium text-[#5a5753] hover:text-[#2d2a26] transition-colors"
+            data-target="resources"
+          >
+            Resources
+          </a>
+          <a
+            href="#"
+            class="nav-link text-sm font-medium text-[#5a5753] hover:text-[#2d2a26] transition-colors mr-2"
+            data-target="contact"
+          >
+            Contact
+          </a>
+          <button
+            class="nav-link bg-[#1e293b] text-[#fcfbf9] px-5 py-2.5 rounded-sm text-sm font-medium hover:bg-[#0f172a] transition-all duration-200 shadow-sm"
+            data-target="contact"
+          >
+            Request a Mediation
+          </button>
+        </nav>
+
+        <!-- Mobile Menu Toggle -->
+        <button id="mobile-menu-btn" class="md:hidden text-[#2d2a26] p-2">
+          <iconify-icon
+            icon="solar:hamburger-menu-linear"
+            class="text-2xl"
+            stroke-width="1.5"
+          ></iconify-icon>
+        </button>
+      </div>
+
+      <!-- Mobile Nav Dropdown -->
+      <div
+        id="mobile-menu"
+        class="hidden md:hidden absolute w-full bg-[#fcfbf9] border-b border-black/5 p-6 flex flex-col gap-4 shadow-lg"
+      >
+        <div
+          class="theme-switcher w-full"
+          role="group"
+          aria-label="Theme switcher"
+        >
+          <button
+            type="button"
+            class="flex-1"
+            data-theme-btn="classic"
+            aria-pressed="true"
+          >
+            Classic
+          </button>
+          <button
+            type="button"
+            class="flex-1"
+            data-theme-btn="editorial"
+            aria-pressed="false"
+          >
+            Editorial
+          </button>
+          <button
+            type="button"
+            class="flex-1"
+            data-theme-btn="night"
+            aria-pressed="false"
+          >
+            Night
+          </button>
+        </div>
+        <a
+          href="#"
+          class="nav-link text-base font-medium text-[#5a5753] py-2"
+          data-target="home"
+        >
+          Home
+        </a>
+        <a
+          href="#"
+          class="nav-link text-base font-medium text-[#5a5753] py-2"
+          data-target="services"
+        >
+          Mediation Services
+        </a>
+        <a
+          href="#"
+          class="nav-link text-base font-medium text-[#5a5753] py-2"
+          data-target="about"
+        >
+          About
+        </a>
+        <a
+          href="#"
+          class="nav-link text-base font-medium text-[#5a5753] py-2"
+          data-target="resources"
+        >
+          Resources
+        </a>
+        <a
+          href="#"
+          class="nav-link text-base font-medium text-[#5a5753] py-2"
+          data-target="contact"
+        >
+          Contact
+        </a>
+        <button
+          class="nav-link w-full bg-[#1e293b] text-[#fcfbf9] px-5 py-3 rounded-sm text-sm font-medium mt-2"
+          data-target="contact"
+        >
+          Request a Mediation
+        </button>
+      </div>
+    </header>
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="flex-grow pt-20">
+      <!-- ==================== HOME PAGE ==================== -->
+      <section
+        id="page-home"
+        class="page-section opacity-100 transition-opacity duration-500 block"
+      >
+        <!-- Hero -->
+        <div
+          class="max-w-7xl mx-auto px-6 pt-24 pb-20 md:pt-36 md:pb-32 grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center hero-layout"
+        >
+          <div class="lg:col-span-7 pr-0 lg:pr-12">
+            <span
+              class="text-xs font-medium uppercase tracking-widest text-[#9d6b53] mb-6 block"
+              style="letter-spacing: 0.1em;"
+            >
+              Dispute Resolution
+            </span>
+            <h1
+              class="text-4xl md:text-5xl lg:text-6xl tracking-tight font-medium leading-[1.1] mb-6 text-[#1c1a18]"
+              style="font-family: 'Playfair Display', serif;"
+            >
+              Resolution begins with a better conversation.
+            </h1>
+            <p
+              class="text-lg text-[#5a5753] leading-relaxed max-w-2xl font-light mb-10"
+            >
+              Christopher T. Whitten provides thoughtful, well-prepared
+              mediation for complex disputes in Phoenix and throughout Arizona.
+            </p>
+            <div class="flex flex-wrap gap-4 items-center hero-actions">
+              <button
+                class="nav-link bg-[#1e293b] text-[#fcfbf9] px-6 py-3 rounded-sm text-sm font-medium hover:bg-[#0f172a] transition-all duration-200 shadow-sm"
+                data-target="contact"
+              >
+                Request a Mediation
+              </button>
+              <button
+                class="nav-link text-[#2d2a26] flex items-center gap-2 text-sm font-medium hover:text-[#5a5753] transition-colors group px-4 py-3"
+                data-target="services"
+              >
+                Explore Mediation Services
+                <iconify-icon
+                  icon="solar:arrow-right-linear"
+                  class="group-hover:translate-x-1 transition-transform"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </button>
+            </div>
+
+            <div class="mt-16 pt-6 border-t border-black/5">
+              <p class="text-xs text-[#78746e] font-medium tracking-wide">
+                [Approved professional credentials to be inserted here, e.g.,
+                Former Superior Court Judge]
+              </p>
+            </div>
+            <div
+              class="theme-classic-only mt-10 pt-6 border-t border-black/5 flex items-center gap-4"
+            >
+              <iconify-icon
+                icon="solar:scale-linear"
+                class="text-3xl text-[#9d6b53]"
+              ></iconify-icon>
+              <p class="text-sm text-[#5a5753] font-medium">
+                Traditional approach, proven results.
+              </p>
+            </div>
+            <div
+              class="theme-editorial-only mt-10 p-8 border border-[#8b5a3c]/20 bg-[#8b5a3c]/5 rounded-md"
+            >
+              <h4
+                class="text-[#8b5a3c] font-medium mb-2"
+                style="font-family: 'Playfair Display', serif; font-size: 1.25rem;"
+              >
+                The Editorial Perspective
+              </h4>
+              <p class="text-sm text-muted">
+                In-depth analysis and carefully structured mediation sessions
+                tailored for high-stakes intellectual and corporate disputes.
+              </p>
+            </div>
+            <div
+              class="theme-night-only mt-10 grid grid-cols-2 gap-4 text-left"
+            >
+              <div
+                class="p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-md"
+              >
+                <div class="text-3xl font-light text-[#f5f7ff] mb-1">25+</div>
+                <div class="text-xs text-[#8ab4ff] uppercase tracking-wider">
+                  Years Experience
+                </div>
+              </div>
+              <div
+                class="p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-md"
+              >
+                <div class="text-3xl font-light text-[#f5f7ff] mb-1">10k</div>
+                <div class="text-xs text-[#8ab4ff] uppercase tracking-wider">
+                  Cases Resolved
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="lg:col-span-5 relative">
+            <div class="aura-motion-orb orb-1"></div>
+            <div class="aura-motion-orb orb-2"></div>
+            <!-- Abstract Hero Image / Portrait Placeholder -->
+            <div
+              class="aspect-[4/5] md:aspect-square lg:aspect-[3/4] bg-[#e6e4df] rounded-sm relative overflow-hidden flex items-center justify-center group z-10"
+              style="background: linear-gradient(145deg, #f0eee9, #e6e4df);"
+            >
+              <div class="aura-motion-orb orb-2"></div>
+
+              <div class="text-center p-8 relative z-10">
+                <iconify-icon
+                  icon="solar:camera-minimalistic-linear"
+                  class="text-3xl text-[#8b8782] mb-3 mx-auto block"
+                  stroke-width="1.5"
+                ></iconify-icon>
+                <p
+                  class="text-xs text-[#8b8782] uppercase tracking-widest font-medium"
+                >
+                  Portrait Placeholder
+                </p>
+              </div>
+              <div
+                class="absolute inset-0 border border-black/5 rounded-sm"
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Process Section -->
+        <div class="bg-white border-y border-black/5 py-24 process-section">
+          <div class="max-w-7xl mx-auto px-6">
+            <div class="max-w-3xl mb-16">
+              <h2
+                class="text-3xl md:text-4xl tracking-tight font-medium text-[#1c1a18] mb-6"
+                style="font-family: 'Playfair Display', serif;"
+              >
+                A deliberate path toward resolution.
+              </h2>
+              <p class="text-base text-[#5a5753] leading-relaxed font-light">
+                Successful mediation rarely happens by accident. It requires a
+                neutral environment, rigorous preparation, and a practical
+                approach to navigating impasse. Our process is designed to bring
+                clarity to complex matters.
+              </p>
+            </div>
+
+            <div
+              class="grid grid-cols-1 md:grid-cols-3 gap-12 md:gap-8 process-grid"
+            >
+              <div class="group">
+                <div
+                  class="text-[#9d6b53] text-sm font-medium mb-4 flex items-center gap-2"
+                >
+                  <span class="w-6 h-[1px] bg-[#9d6b53]/40 inline-block"></span>
+                  01
+                </div>
+                <h3
+                  class="text-xl tracking-tight font-medium text-[#1c1a18] mb-3"
+                  style="font-family: 'Playfair Display', serif;"
+                >
+                  Prepare
+                </h3>
+                <p class="text-sm text-[#5a5753] leading-relaxed font-light">
+                  Thorough review of briefs and pre-mediation conferences ensure
+                  all parties arrive ready for meaningful dialogue, minimizing
+                  surprises on the day of mediation.
+                </p>
+              </div>
+              <div class="group">
+                <div
+                  class="text-[#9d6b53] text-sm font-medium mb-4 flex items-center gap-2"
+                >
+                  <span class="w-6 h-[1px] bg-[#9d6b53]/40 inline-block"></span>
+                  02
+                </div>
+                <h3
+                  class="text-xl tracking-tight font-medium text-[#1c1a18] mb-3"
+                  style="font-family: 'Playfair Display', serif;"
+                >
+                  Convene
+                </h3>
+                <p class="text-sm text-[#5a5753] leading-relaxed font-light">
+                  A structured, impartial environment where core issues are
+                  addressed candidly. We prioritize pragmatic risk assessment
+                  over posturing.
+                </p>
+              </div>
+              <div class="group">
+                <div
+                  class="text-[#9d6b53] text-sm font-medium mb-4 flex items-center gap-2"
+                >
+                  <span class="w-6 h-[1px] bg-[#9d6b53]/40 inline-block"></span>
+                  03
+                </div>
+                <h3
+                  class="text-xl tracking-tight font-medium text-[#1c1a18] mb-3"
+                  style="font-family: 'Playfair Display', serif;"
+                >
+                  Resolve
+                </h3>
+                <p class="text-sm text-[#5a5753] leading-relaxed font-light">
+                  Guiding parties through impasse toward actionable settlement
+                  terms. If complete resolution isn't reached, we establish
+                  clear next steps.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pre-Footer CTA -->
+        <div class="py-24 max-w-4xl mx-auto px-6 text-center">
+          <h2
+            class="text-2xl md:text-3xl tracking-tight font-medium text-[#1c1a18] mb-6"
+            style="font-family: 'Playfair Display', serif;"
+          >
+            Ready to schedule a mediation?
+          </h2>
+          <p class="text-base text-[#5a5753] mb-8 font-light max-w-xl mx-auto">
+            Review availability or initiate the intake process by providing
+            preliminary information about your matter.
+          </p>
+          <button
+            class="nav-link bg-[#1e293b] text-[#fcfbf9] px-8 py-3.5 rounded-sm text-sm font-medium hover:bg-[#0f172a] transition-all duration-200 shadow-sm"
+            data-target="contact"
+          >
+            Start the Conversation
+          </button>
+        </div>
+      </section>
+
+      <!-- ==================== MEDIATION SERVICES ==================== -->
+      <section
+        id="page-services"
+        class="page-section hidden opacity-0 transition-opacity duration-500"
+      >
+        <div class="max-w-7xl mx-auto px-6 pt-16 pb-24">
+          <header class="max-w-3xl mb-16">
+            <span
+              class="text-xs font-medium uppercase tracking-widest text-[#9d6b53] mb-4 block"
+            >
+              Practice Areas
+            </span>
+            <h1
+              class="text-4xl md:text-5xl tracking-tight font-medium leading-[1.1] text-[#1c1a18] mb-6"
+              style="font-family: 'Playfair Display', serif;"
+            >
+              Mediation designed for serious disputes.
+            </h1>
+            <p class="text-base text-[#5a5753] leading-relaxed font-light">
+              Leveraging extensive judicial and trial experience, Whitten ADR
+              handles complex civil and commercial matters, tailoring the
+              approach to the unique dynamics of each case.
+            </p>
+          </header>
+
+          <!-- Editable Practice Area Cards -->
+          <div
+            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-24"
+          >
+            <div
+              class="p-8 border border-black/5 bg-white rounded-sm hover:border-black/10 hover:shadow-sm transition-all duration-300"
+            >
+              <div
+                class="w-10 h-10 rounded-sm bg-[#fcfbf9] border border-black/5 flex items-center justify-center mb-6"
+              >
+                <iconify-icon
+                  icon="solar:buildings-linear"
+                  class="text-lg text-[#1e293b]"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </div>
+              <h3
+                class="text-xl tracking-tight font-medium text-[#1c1a18] mb-3"
+                style="font-family: 'Playfair Display', serif;"
+              >
+                Commercial &amp; Business
+              </h3>
+              <p class="text-sm text-[#5a5753] leading-relaxed font-light">
+                Breach of contract, partnership dissolutions, corporate
+                governance disputes, and real estate litigation.
+              </p>
+            </div>
+
+            <div
+              class="p-8 border border-black/5 bg-white rounded-sm hover:border-black/10 hover:shadow-sm transition-all duration-300"
+            >
+              <div
+                class="w-10 h-10 rounded-sm bg-[#fcfbf9] border border-black/5 flex items-center justify-center mb-6"
+              >
+                <iconify-icon
+                  icon="solar:document-text-linear"
+                  class="text-lg text-[#1e293b]"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </div>
+              <h3
+                class="text-xl tracking-tight font-medium text-[#1c1a18] mb-3"
+                style="font-family: 'Playfair Display', serif;"
+              >
+                Civil Litigation
+              </h3>
+              <p class="text-sm text-[#5a5753] leading-relaxed font-light">
+                Complex multi-party litigation, employment disputes,
+                professional liability, and construction defect claims.
+              </p>
+            </div>
+
+            <div
+              class="p-8 border border-black/5 bg-white rounded-sm hover:border-black/10 hover:shadow-sm transition-all duration-300"
+            >
+              <div
+                class="w-10 h-10 rounded-sm bg-[#fcfbf9] border border-black/5 flex items-center justify-center mb-6"
+              >
+                <iconify-icon
+                  icon="solar:shield-warning-linear"
+                  class="text-lg text-[#1e293b]"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </div>
+              <h3
+                class="text-xl tracking-tight font-medium text-[#1c1a18] mb-3"
+                style="font-family: 'Playfair Display', serif;"
+              >
+                Personal Injury
+              </h3>
+              <p class="text-sm text-[#5a5753] leading-relaxed font-light">
+                Significant tort claims, catastrophic injury, wrongful death,
+                and insurance coverage disputes.
+              </p>
+            </div>
+
+            <div
+              class="p-8 border border-black/5 bg-white rounded-sm hover:border-black/10 hover:shadow-sm transition-all duration-300"
+            >
+              <div
+                class="w-10 h-10 rounded-sm bg-[#fcfbf9] border border-black/5 flex items-center justify-center mb-6"
+              >
+                <iconify-icon
+                  icon="solar:users-group-two-rounded-linear"
+                  class="text-lg text-[#1e293b]"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </div>
+              <h3
+                class="text-xl tracking-tight font-medium text-[#1c1a18] mb-3"
+                style="font-family: 'Playfair Display', serif;"
+              >
+                Family Matters
+              </h3>
+              <p class="text-sm text-[#5a5753] leading-relaxed font-light">
+                High-net-worth dissolution, complex asset division, and
+                contentious appellate family matters.
+              </p>
+            </div>
+
+            <div
+              class="p-8 border border-black/5 bg-white rounded-sm hover:border-black/10 hover:shadow-sm transition-all duration-300 md:col-span-2 lg:col-span-1"
+            >
+              <div
+                class="w-10 h-10 rounded-sm bg-[#fcfbf9] border border-black/5 flex items-center justify-center mb-6"
+              >
+                <iconify-icon
+                  icon="solar:widget-add-linear"
+                  class="text-lg text-[#1e293b]"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </div>
+              <h3
+                class="text-xl tracking-tight font-medium text-[#1c1a18] mb-3"
+                style="font-family: 'Playfair Display', serif;"
+              >
+                Other Complex Matters
+              </h3>
+              <p class="text-sm text-[#5a5753] leading-relaxed font-light">
+                Tax disputes, probate and trust litigation, and specialized
+                regulatory matters.
+              </p>
+            </div>
+          </div>
+
+          <!-- FAQ -->
+          <div class="max-w-4xl border-t border-black/5 pt-16">
+            <h2
+              class="text-2xl tracking-tight font-medium text-[#1c1a18] mb-10"
+              style="font-family: 'Playfair Display', serif;"
+            >
+              Frequently Asked Questions
+            </h2>
+
+            <div class="space-y-6 divide-y divide-black/5">
+              <div class="pt-6 first:pt-0">
+                <h4 class="text-base font-medium text-[#2d2a26] mb-2">
+                  Who may request mediation?
+                </h4>
+                <p class="text-sm text-[#5a5753] font-light leading-relaxed">
+                  Counsel for any party, or unrepresented parties directly, may
+                  initiate a mediation request. All participating parties must
+                  agree to the mediation and the selection of the mediator
+                  before scheduling is finalized.
+                </p>
+              </div>
+              <div class="pt-6">
+                <h4 class="text-base font-medium text-[#2d2a26] mb-2">
+                  What information is needed to schedule?
+                </h4>
+                <p class="text-sm text-[#5a5753] font-light leading-relaxed">
+                  Basic case information, names of all parties and counsel (for
+                  conflict checks), venue, and preferred dates. Confidential
+                  briefs are submitted closer to the mediation date.
+                </p>
+              </div>
+              <div class="pt-6">
+                <h4 class="text-base font-medium text-[#2d2a26] mb-2">
+                  Can mediation be held virtually?
+                </h4>
+                <p class="text-sm text-[#5a5753] font-light leading-relaxed">
+                  Yes. We offer fully remote, hybrid, and in-person mediation
+                  options depending on the preferences and logistical needs of
+                  the parties.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== ABOUT ==================== -->
+      <section
+        id="page-about"
+        class="page-section hidden opacity-0 transition-opacity duration-500"
+      >
+        <div class="max-w-7xl mx-auto px-6 pt-16 pb-24">
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16">
+            <!-- Portrait Column -->
+            <div class="lg:col-span-5 lg:order-2">
+              <div class="sticky top-32">
+                <div class="aura-motion-orb orb-1"></div>
+                <div class="aura-motion-orb orb-2"></div>
+                <div
+                  class="aspect-[3/4] bg-[#e6e4df] rounded-sm relative overflow-hidden flex items-center justify-center border border-black/5 z-10"
+                  style="background: linear-gradient(145deg, #f0eee9, #e6e4df);"
+                >
+                  <div class="aura-motion-orb orb-2"></div>
+                </div>
+                <div class="mt-6 p-6 bg-white border border-black/5 rounded-sm">
+                  <h4
+                    class="text-xs uppercase tracking-widest font-medium text-[#9d6b53] mb-4"
+                  >
+                    Contact Directly
+                  </h4>
+                  <p class="text-sm text-[#2d2a26] mb-2 font-medium">
+                    [Email Address Placeholder]
+                  </p>
+                  <p class="text-sm text-[#5a5753] font-light">
+                    [Phone Number Placeholder]
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Bio Column -->
+            <div class="lg:col-span-7 lg:order-1">
+              <h1
+                class="text-4xl md:text-5xl tracking-tight font-medium leading-[1.1] text-[#1c1a18] mb-8"
+                style="font-family: 'Playfair Display', serif;"
+              >
+                Experience that brings perspective.
+              </h1>
+
+              <div
+                class="prose prose-stone max-w-none text-[#5a5753] font-light text-base leading-relaxed space-y-6"
+              >
+                <p>
+                  Christopher T. Whitten approaches dispute resolution with the
+                  pragmatic, analytical perspective gained from years of
+                  presiding over complex trials and a prior career in active
+                  civil litigation.
+                </p>
+                <p>
+                  [Editable biography paragraph 1: Detail regarding tenure as a
+                  Maricopa County Superior Court judge. Mention reputation for
+                  preparedness and clear rulings.]
+                </p>
+                <p>
+                  [Editable biography paragraph 2: Detail regarding prior
+                  trial-law practice. Mention focus areas and understanding of
+                  the pressures faced by trial counsel and their clients.]
+                </p>
+                <p>
+                  Recognizing that mediation is often the most critical day in
+                  the life of a case, he prepares exhaustively, ensuring that
+                  time spent together is focused on evaluating risk and
+                  exploring viable paths to resolution rather than educating the
+                  mediator.
+                </p>
+              </div>
+
+              <div class="mt-16">
+                <h3
+                  class="text-xl tracking-tight font-medium text-[#1c1a18] mb-8 border-b border-black/5 pb-4"
+                  style="font-family: 'Playfair Display', serif;"
+                >
+                  Professional Background
+                </h3>
+
+                <!-- Timeline/Credentials -->
+                <div class="space-y-8">
+                  <div class="relative pl-6 border-l border-black/10">
+                    <div
+                      class="absolute w-2 h-2 bg-[#1e293b] rounded-full -left-[4.5px] top-1.5"
+                    ></div>
+                    <h4 class="text-sm font-medium text-[#2d2a26] mb-1">
+                      Former Judge, Maricopa County Superior Court
+                    </h4>
+                    <p
+                      class="text-xs text-[#78746e] uppercase tracking-wider mb-2"
+                    >
+                      [Years of Service]
+                    </p>
+                    <p class="text-sm text-[#5a5753] font-light">
+                      Presided over civil, commercial, criminal, family, tax,
+                      and juvenile-dependency matters.
+                    </p>
+                  </div>
+                  <div class="relative pl-6 border-l border-black/10">
+                    <div
+                      class="absolute w-2 h-2 bg-[#e6e4df] border border-[#a8a5a1] rounded-full -left-[4.5px] top-1.5"
+                    ></div>
+                    <h4 class="text-sm font-medium text-[#2d2a26] mb-1">
+                      Private Practice / Trial Counsel
+                    </h4>
+                    <p
+                      class="text-xs text-[#78746e] uppercase tracking-wider mb-2"
+                    >
+                      [Years of Practice]
+                    </p>
+                    <p class="text-sm text-[#5a5753] font-light">
+                      [Brief description of practice areas and firm affiliations
+                      prior to the bench].
+                    </p>
+                  </div>
+                  <div class="relative pl-6 border-l border-black/10">
+                    <div
+                      class="absolute w-2 h-2 bg-[#e6e4df] border border-[#a8a5a1] rounded-full -left-[4.5px] top-1.5"
+                    ></div>
+                    <h4 class="text-sm font-medium text-[#2d2a26] mb-1">
+                      Legal Education &amp; Teaching
+                    </h4>
+                    <p
+                      class="text-xs text-[#78746e] uppercase tracking-wider mb-2"
+                    >
+                      [Ongoing/Years]
+                    </p>
+                    <p class="text-sm text-[#5a5753] font-light">
+                      Recognized for trial-advocacy teaching and contributions
+                      to continuing legal education.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== RESOURCES ==================== -->
+      <section
+        id="page-resources"
+        class="page-section hidden opacity-0 transition-opacity duration-500"
+      >
+        <div class="max-w-7xl mx-auto px-6 pt-16 pb-24">
+          <header class="max-w-3xl mb-16">
+            <h1
+              class="text-4xl md:text-5xl tracking-tight font-medium leading-[1.1] text-[#1c1a18] mb-6"
+              style="font-family: 'Playfair Display', serif;"
+            >
+              Resources &amp; Information
+            </h1>
+            <p class="text-base text-[#5a5753] leading-relaxed font-light">
+              Practical guides and necessary documentation to ensure a smooth,
+              productive mediation process for counsel and clients.
+            </p>
+          </header>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Article Card -->
+            <div
+              class="group bg-white border border-black/5 rounded-sm overflow-hidden hover:border-black/10 hover:shadow-sm transition-all duration-300 flex flex-col h-full"
+            >
+              <div class="p-8 flex-grow">
+                <div class="text-[#9d6b53] mb-4">
+                  <iconify-icon
+                    icon="solar:book-linear"
+                    class="text-2xl"
+                    stroke-width="1.5"
+                  ></iconify-icon>
+                </div>
+                <h3
+                  class="text-lg tracking-tight font-medium text-[#1c1a18] mb-3"
+                  style="font-family: 'Playfair Display', serif;"
+                >
+                  Preparing for Mediation
+                </h3>
+                <p
+                  class="text-sm text-[#5a5753] leading-relaxed font-light mb-6"
+                >
+                  Guidelines for drafting effective mediation briefs,
+                  identifying key decision-makers, and setting realistic
+                  expectations with clients prior to convening.
+                </p>
+              </div>
+              <div class="px-8 pb-8 mt-auto">
+                <a
+                  href="#"
+                  class="inline-flex items-center gap-2 text-xs font-medium text-[#1e293b] hover:text-[#5a5753] transition-colors uppercase tracking-widest"
+                >
+                  Read Guide
+                  <iconify-icon icon="solar:arrow-right-linear"></iconify-icon>
+                </a>
+              </div>
+            </div>
+
+            <!-- Article Card -->
+            <div
+              class="group bg-white border border-black/5 rounded-sm overflow-hidden hover:border-black/10 hover:shadow-sm transition-all duration-300 flex flex-col h-full"
+            >
+              <div class="p-8 flex-grow">
+                <div class="text-[#9d6b53] mb-4">
+                  <iconify-icon
+                    icon="solar:info-circle-linear"
+                    class="text-2xl"
+                    stroke-width="1.5"
+                  ></iconify-icon>
+                </div>
+                <h3
+                  class="text-lg tracking-tight font-medium text-[#1c1a18] mb-3"
+                  style="font-family: 'Playfair Display', serif;"
+                >
+                  What to Expect
+                </h3>
+                <p
+                  class="text-sm text-[#5a5753] leading-relaxed font-light mb-6"
+                >
+                  A plain-English overview of the mediation day structure
+                  designed for distribution to clients, detailing joint
+                  sessions, caucuses, and confidentiality.
+                </p>
+              </div>
+              <div class="px-8 pb-8 mt-auto">
+                <a
+                  href="#"
+                  class="inline-flex items-center gap-2 text-xs font-medium text-[#1e293b] hover:text-[#5a5753] transition-colors uppercase tracking-widest"
+                >
+                  View Document
+                  <iconify-icon icon="solar:arrow-right-linear"></iconify-icon>
+                </a>
+              </div>
+            </div>
+
+            <!-- Article Card -->
+            <div
+              class="group bg-white border border-black/5 rounded-sm overflow-hidden hover:border-black/10 hover:shadow-sm transition-all duration-300 flex flex-col h-full"
+            >
+              <div class="p-8 flex-grow">
+                <div class="text-[#9d6b53] mb-4">
+                  <iconify-icon
+                    icon="solar:calendar-linear"
+                    class="text-2xl"
+                    stroke-width="1.5"
+                  ></iconify-icon>
+                </div>
+                <h3
+                  class="text-lg tracking-tight font-medium text-[#1c1a18] mb-3"
+                  style="font-family: 'Playfair Display', serif;"
+                >
+                  Scheduling Information
+                </h3>
+                <p
+                  class="text-sm text-[#5a5753] leading-relaxed font-light mb-6"
+                >
+                  Details regarding fee structures, cancellation policies, and
+                  logistical requirements for both virtual and in-person
+                  mediation sessions.
+                </p>
+              </div>
+              <div class="px-8 pb-8 mt-auto">
+                <a
+                  href="#"
+                  class="inline-flex items-center gap-2 text-xs font-medium text-[#1e293b] hover:text-[#5a5753] transition-colors uppercase tracking-widest"
+                >
+                  Download PDF
+                  <iconify-icon icon="solar:download-linear"></iconify-icon>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== CONTACT ==================== -->
+      <section
+        id="page-contact"
+        class="page-section hidden opacity-0 transition-opacity duration-500"
+      >
+        <div class="max-w-7xl mx-auto px-6 pt-16 pb-24">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-16">
+            <!-- Form Side -->
+            <div>
+              <h1
+                class="text-4xl md:text-5xl tracking-tight font-medium leading-[1.1] text-[#1c1a18] mb-4"
+                style="font-family: 'Playfair Display', serif;"
+              >
+                Start the scheduling conversation.
+              </h1>
+              <p
+                class="text-base text-[#5a5753] leading-relaxed font-light mb-8"
+              >
+                Submit preliminary details below to inquire about availability.
+                We aim to respond within one business day.
+              </p>
+
+              <!-- Success State Placeholder (Hidden by default) -->
+              <div
+                id="form-success"
+                class="hidden bg-[#f0eee9] border border-[#d6d3cc] p-6 rounded-sm mb-8"
+              >
+                <h3
+                  class="text-sm font-medium text-[#1e293b] mb-1 flex items-center gap-2"
+                >
+                  <iconify-icon
+                    icon="solar:check-circle-linear"
+                    class="text-lg text-emerald-700"
+                  ></iconify-icon>
+                  Request Received
+                </h3>
+                <p class="text-sm text-[#5a5753] font-light">
+                  Thank you. Our office will contact you shortly to confirm
+                  details and availability.
+                </p>
+              </div>
+
+              <form
+                id="contact-form"
+                class="space-y-5"
+                onsubmit="event.preventDefault(); document.getElementById('contact-form').style.display='none'; document.getElementById('form-success').style.display='block';"
+              >
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div class="space-y-1.5">
+                    <label
+                      class="block text-xs font-medium text-[#2d2a26] uppercase tracking-wider"
+                    >
+                      Name
+                    </label>
+                    <input
+                      type="text"
+                      required=""
+                      class="w-full bg-white border border-black/10 rounded-sm px-3 py-2.5 text-sm focus:outline-none focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] transition-shadow placeholder:text-black/30"
+                      placeholder="Jane Doe"
+                    />
+                  </div>
+                  <div class="space-y-1.5">
+                    <label
+                      class="block text-xs font-medium text-[#2d2a26] uppercase tracking-wider"
+                    >
+                      Firm / Organization
+                    </label>
+                    <input
+                      type="text"
+                      class="w-full bg-white border border-black/10 rounded-sm px-3 py-2.5 text-sm focus:outline-none focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] transition-shadow placeholder:text-black/30"
+                      placeholder="Law Firm LLC"
+                    />
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div class="space-y-1.5">
+                    <label
+                      class="block text-xs font-medium text-[#2d2a26] uppercase tracking-wider"
+                    >
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      required=""
+                      class="w-full bg-white border border-black/10 rounded-sm px-3 py-2.5 text-sm focus:outline-none focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] transition-shadow placeholder:text-black/30"
+                      placeholder="jane@example.com"
+                    />
+                  </div>
+                  <div class="space-y-1.5">
+                    <label
+                      class="block text-xs font-medium text-[#2d2a26] uppercase tracking-wider"
+                    >
+                      Phone
+                    </label>
+                    <input
+                      type="tel"
+                      class="w-full bg-white border border-black/10 rounded-sm px-3 py-2.5 text-sm focus:outline-none focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] transition-shadow placeholder:text-black/30"
+                      placeholder="(555) 000-0000"
+                    />
+                  </div>
+                </div>
+
+                <div class="space-y-1.5 border-t border-black/5 pt-5 mt-5">
+                  <label
+                    class="block text-xs font-medium text-[#2d2a26] uppercase tracking-wider"
+                  >
+                    Matter Type / Brief Description
+                  </label>
+                  <input
+                    type="text"
+                    class="w-full bg-white border border-black/10 rounded-sm px-3 py-2.5 text-sm focus:outline-none focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] transition-shadow placeholder:text-black/30"
+                    placeholder="e.g., Commercial Contract Dispute"
+                  />
+                </div>
+
+                <div class="space-y-1.5">
+                  <label
+                    class="block text-xs font-medium text-[#2d2a26] uppercase tracking-wider"
+                  >
+                    Opposing Counsel / Party Contact
+                  </label>
+                  <input
+                    type="text"
+                    class="w-full bg-white border border-black/10 rounded-sm px-3 py-2.5 text-sm focus:outline-none focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] transition-shadow placeholder:text-black/30"
+                    placeholder="Name and firm (for conflict check)"
+                  />
+                </div>
+
+                <div class="space-y-1.5">
+                  <label
+                    class="block text-xs font-medium text-[#2d2a26] uppercase tracking-wider"
+                  >
+                    Message / Preferred Dates
+                  </label>
+                  <textarea
+                    rows="4"
+                    class="w-full bg-white border border-black/10 rounded-sm px-3 py-2.5 text-sm focus:outline-none focus:border-[#1e293b] focus:ring-1 focus:ring-[#1e293b] transition-shadow resize-y placeholder:text-black/30"
+                  ></textarea>
+                </div>
+
+                <!-- Custom Checkbox -->
+                <div class="flex items-start gap-3 pt-2">
+                  <div class="relative flex items-center justify-center mt-0.5">
+                    <input
+                      type="checkbox"
+                      required=""
+                      class="peer appearance-none w-4 h-4 border border-black/20 rounded-sm bg-white checked:bg-[#1e293b] checked:border-[#1e293b] focus:outline-none focus:ring-2 focus:ring-[#1e293b]/20 transition-colors cursor-pointer"
+                      id="privacy-check"
+                    />
+                    <iconify-icon
+                      icon="solar:check-read-linear"
+                      class="absolute text-white text-xs opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity"
+                    ></iconify-icon>
+                  </div>
+                  <label
+                    for="privacy-check"
+                    class="text-xs text-[#5a5753] font-light leading-relaxed cursor-pointer select-none"
+                  >
+                    <strong class="font-medium text-[#2d2a26]">
+                      Important:
+                    </strong>
+                    Please do not submit confidential case materials,
+                    substantive legal arguments, or sensitive documentation
+                    through this preliminary intake form.
+                  </label>
+                </div>
+
+                <div class="pt-4">
+                  <button
+                    type="submit"
+                    class="w-full md:w-auto bg-[#1e293b] text-[#fcfbf9] px-8 py-3 rounded-sm text-sm font-medium hover:bg-[#0f172a] transition-all duration-200 shadow-sm"
+                  >
+                    Submit Request
+                  </button>
+                  <p
+                    class="text-[10px] text-black/40 mt-3 text-center md:text-left"
+                  >
+                    Integration wiring placeholder
+                  </p>
+                </div>
+              </form>
+            </div>
+
+            <!-- Contact Info Side -->
+            <div
+              class="lg:pl-12 lg:border-l lg:border-black/5 flex flex-col justify-between"
+            >
+              <div>
+                <h3
+                  class="text-xl tracking-tight font-medium text-[#1c1a18] mb-6"
+                  style="font-family: 'Playfair Display', serif;"
+                >
+                  Office Details
+                </h3>
+
+                <div class="space-y-8">
+                  <div>
+                    <h4
+                      class="text-xs uppercase tracking-widest font-medium text-[#78746e] mb-2"
+                    >
+                      Mailing Address
+                    </h4>
+                    <p class="text-sm text-[#2d2a26] font-medium">
+                      [Address Line 1 Placeholder]
+                    </p>
+                    <p class="text-sm text-[#5a5753] font-light">
+                      [City, State, ZIP Placeholder]
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4
+                      class="text-xs uppercase tracking-widest font-medium text-[#78746e] mb-2"
+                    >
+                      Direct Contact
+                    </h4>
+                    <p class="text-sm text-[#2d2a26] font-medium">
+                      [Email Address Placeholder]
+                    </p>
+                    <p class="text-sm text-[#5a5753] font-light">
+                      [Phone Number Placeholder]
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                class="mt-12 lg:mt-0 p-6 bg-[#e6e4df]/30 border border-black/5 rounded-sm"
+              >
+                <iconify-icon
+                  icon="solar:shield-warning-linear"
+                  class="text-xl text-[#9d6b53] mb-3 block"
+                  stroke-width="1.5"
+                ></iconify-icon>
+                <h4 class="text-sm font-medium text-[#2d2a26] mb-2">
+                  Disclaimer regarding representation
+                </h4>
+                <p class="text-xs text-[#5a5753] font-light leading-relaxed">
+                  Submission of this form does not establish an agreement to
+                  mediate, nor does it constitute legal advice or imply legal
+                  representation. Christopher T. Whitten acts solely as a
+                  neutral mediator and does not represent any party.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-black/5 bg-white mt-auto">
+      <div class="max-w-7xl mx-auto px-6 py-12 md:py-16">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-12 mb-12">
+          <div class="md:col-span-2">
+            <span
+              class="tracking-tighter text-lg font-medium text-[#1c1a18] block mb-4"
+              style="font-family: 'Playfair Display', serif;"
+            >
+              WHITTEN ADR
+            </span>
+            <p
+              class="text-xs text-[#5a5753] font-light leading-relaxed max-w-sm"
+            >
+              Thoughtful, well-prepared mediation for complex civil, commercial,
+              and family disputes in Phoenix, Arizona.
+            </p>
+          </div>
+          <div>
+            <h4
+              class="text-xs uppercase tracking-widest font-medium text-[#2d2a26] mb-4"
+            >
+              Navigation
+            </h4>
+            <ul class="space-y-3">
+              <li>
+                <a
+                  href="#"
+                  class="nav-link text-xs text-[#5a5753] hover:text-[#1e293b] transition-colors"
+                  data-target="home"
+                >
+                  Home
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#"
+                  class="nav-link text-xs text-[#5a5753] hover:text-[#1e293b] transition-colors"
+                  data-target="services"
+                >
+                  Mediation Services
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#"
+                  class="nav-link text-xs text-[#5a5753] hover:text-[#1e293b] transition-colors"
+                  data-target="about"
+                >
+                  About
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#"
+                  class="nav-link text-xs text-[#5a5753] hover:text-[#1e293b] transition-colors"
+                  data-target="contact"
+                >
+                  Contact
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h4
+              class="text-xs uppercase tracking-widest font-medium text-[#2d2a26] mb-4"
+            >
+              Legal
+            </h4>
+            <ul class="space-y-3">
+              <li>
+                <a
+                  href="#"
+                  class="text-xs text-[#5a5753] hover:text-[#1e293b] transition-colors"
+                >
+                  Privacy Policy
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#"
+                  class="text-xs text-[#5a5753] hover:text-[#1e293b] transition-colors"
+                >
+                  Disclaimer
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#"
+                  class="text-xs text-[#5a5753] hover:text-[#1e293b] transition-colors"
+                >
+                  Accessibility
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div
+          class="pt-8 border-t border-black/5 flex flex-col md:flex-row justify-between items-center gap-4"
+        >
+          <p
+            class="text-[11px] text-[#78746e] uppercase tracking-wider font-medium"
+          >
+            ©
+            <span id="year"></span>
+            Whitten ADR. All rights reserved.
+          </p>
+          <p
+            class="text-[10px] text-[#78746e] font-light max-w-lg text-center md:text-right"
+          >
+            [Professional legal notice placeholder. Website content is for
+            informational purposes only regarding alternative dispute resolution
+            services.]
+          </p>
+        </div>
+      </div>
+    </footer>
+
+    <!-- Interaction Script -->
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+          // Set current year
+          document.getElementById('year').textContent = new Date().getFullYear();
+
+          const links = document.querySelectorAll('.nav-link');
+          const sections = document.querySelectorAll('.page-section');
+          const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+          const mobileMenu = document.getElementById('mobile-menu');
+
+          // Theme logic
+          const root = document.body;
+          const THEME_KEY = 'whitten-theme';
+          const themeButtons = document.querySelectorAll('[data-theme-btn]');
+
+          const applyTheme = (theme) => {
+              root.setAttribute('data-theme', theme);
+              themeButtons.forEach(btn => {
+                  const isActive = btn.getAttribute('data-theme-btn') === theme;
+                  btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+              });
+          };
+
+          const storedTheme = localStorage.getItem(THEME_KEY);
+          applyTheme(storedTheme || root.getAttribute('data-theme') || 'classic');
+
+          themeButtons.forEach(btn => {
+              btn.addEventListener('click', () => {
+                  const theme = btn.getAttribute('data-theme-btn');
+                  applyTheme(theme);
+                  localStorage.setItem(THEME_KEY, theme);
+              });
+          });
+
+          // Navigation Logic
+          links.forEach(link => {
+              link.addEventListener('click', (e) => {
+                  const targetId = link.getAttribute('data-target');
+                  if(!targetId) return;
+                  e.preventDefault();
+
+                  // Hide mobile menu if open
+                  mobileMenu.classList.add('hidden');
+
+                  // Reset all sections
+                  sections.forEach(section => {
+                      section.classList.remove('opacity-100', 'block');
+                      section.classList.add('opacity-0', 'hidden');
+                  });
+
+                  // Show target section with a slight delay for fade effect
+                  const targetSection = document.getElementById(`page-${targetId}`);
+                  if (targetSection) {
+                      targetSection.classList.remove('hidden');
+                      // Small timeout to allow display:block to apply before changing opacity
+                      setTimeout(() => {
+                          targetSection.classList.remove('opacity-0');
+                          targetSection.classList.add('opacity-100');
+                      }, 50);
+                  }
+
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+              });
+          });
+
+          // Mobile Menu Toggle
+          mobileMenuBtn.addEventListener('click', () => {
+              mobileMenu.classList.toggle('hidden');
+          });
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,1 @@
+<div class="spline-container absolute top-0 left-0 w-full h-full -z-10"><iframe src="https://my.spline.design/glowingplanetparticles-nhVHji30IRoa5HBGe8yeDiTs" frameborder="0" width="100%" height="100%" id="aura-spline"></iframe></div>

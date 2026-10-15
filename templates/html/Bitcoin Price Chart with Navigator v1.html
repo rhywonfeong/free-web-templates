@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bitcoin 分时图 - 固定3个月窗口可拖拽</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.js"></script></head>
+  <body class="antialiased bg-neutral-950 text-neutral-200 font-sans" style="font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji;">
+    <div class="min-h-screen">
+      <!-- App Shell -->
+      <header class="sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-neutral-950/60 bg-neutral-950/70 border-b border-neutral-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="h-8 w-8 rounded-md bg-neutral-900 ring-1 ring-neutral-800 flex items-center justify-center text-neutral-200 tracking-tight font-semibold">
+              BTC
+            </div>
+            <div>
+              <h1 class="text-xl sm:text-2xl font-semibold tracking-tight text-white">比特币价格分时图</h1>
+              <p class="text-xs sm:text-sm text-neutral-400">窗口固定为3个月，可左右拖拽调整范围</p>
+            </div>
+          </div>
+          <div class="hidden sm:flex items-center gap-3">
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-md bg-neutral-900/70 ring-1 ring-neutral-800">
+              <i data-lucide="coins" class="w-4 h-4 text-amber-400"></i>
+              <span id="stat-price" class="text-sm font-medium text-white">--</span>
+            </div>
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-md bg-neutral-900/70 ring-1 ring-neutral-800">
+              <i data-lucide="trending-up" class="w-4 h-4"></i>
+              <span id="stat-change" class="text-sm font-medium">--</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Range Summary -->
+        <section class="mb-6">
+          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <div class="flex items-center gap-2 px-3 py-1.5 rounded-md bg-neutral-900 ring-1 ring-neutral-800">
+                <i data-lucide="calendar" class="w-4 h-4"></i>
+                <span id="range-label" class="text-sm font-medium text-neutral-300">--</span>
+              </div>
+              <div class="flex items-center gap-2 px-3 py-1.5 rounded-md bg-neutral-900 ring-1 ring-neutral-800">
+                <i data-lucide="clock" class="w-4 h-4"></i>
+                <span class="text-sm text-neutral-400">窗口长度：3个月</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="snap-latest" class="group inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-md bg-neutral-900 hover:bg-neutral-800 ring-1 ring-neutral-800 hover:ring-neutral-700 transition-colors">
+                <i data-lucide="chevrons-right" class="w-4 h-4"></i>
+                <span class="text-neutral-200">对齐至最新</span>
+              </button>
+              <button id="reset-data" class="group inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-md bg-neutral-900 hover:bg-neutral-800 ring-1 ring-neutral-800 hover:ring-neutral-700 transition-colors">
+                <i data-lucide="refresh-ccw" class="w-4 h-4"></i>
+                <span class="text-neutral-200">重置模拟数据</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Main Chart Card -->
+        <section class="rounded-xl border border-neutral-800 bg-neutral-900/50 overflow-hidden">
+          <div class="px-4 sm:px-6 pt-4 sm:pt-6">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-lg sm:text-xl font-semibold tracking-tight text-white">价格（USD）</h2>
+              <div class="flex items-center gap-2 text-xs text-neutral-400">
+                <span class="inline-flex items-center gap-1 px-2 py-1 rounded bg-neutral-800/80 ring-1 ring-neutral-800">
+                  <span class="h-2 w-2 rounded-full bg-emerald-400"></span> 窗口数据
+                </span>
+                <span class="hidden sm:inline text-neutral-500">·</span>
+                <span class="hidden sm:inline">悬停查看具体数值</span>
+              </div>
+            </div>
+          </div>
+          <div class="px-2 sm:px-4">
+            <!-- Wrap canvas inside a div to avoid layout issues -->
+            <div class="relative">
+              <div class="h-[320px] sm:h-[420px]">
+                <div class="w-full h-full">
+                  <canvas id="mainChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="px-4 sm:px-6 pb-4 sm:pb-6">
+            <div class="mt-4 border-t border-neutral-800 pt-4">
+              <p class="text-xs text-neutral-400">
+                提示：下方导航中浅色选框为固定3个月窗口，可按住选框或两侧把手水平拖拽移动。
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Navigator with draggable fixed window -->
+        <section class="mt-6 rounded-xl border border-neutral-800 bg-neutral-900/40 overflow-hidden">
+          <div class="px-4 sm:px-6 pt-4 sm:pt-5">
+            <div class="flex items-center justify-between">
+              <h3 class="text-base sm:text-lg font-semibold tracking-tight text-white">全年范围导航</h3>
+              <div class="text-xs text-neutral-400 flex items-center gap-2">
+                <i data-lucide="move-horizontal" class="w-4 h-4"></i>
+                <span>拖动选框以移动窗口</span>
+              </div>
+            </div>
+          </div>
+          <div class="px-2 sm:px-4 pb-4 sm:pb-6">
+            <div id="navigatorContainer" class="relative mt-3 select-none rounded-lg bg-neutral-950/60 ring-1 ring-neutral-800 hover:ring-neutral-700 transition-colors">
+              <!-- Ensure canvas is wrapped properly -->
+              <div class="w-full h-[120px] sm:h-[140px]">
+                <div class="w-full h-full">
+                  <canvas id="navChart"></canvas>
+                </div>
+              </div>
+
+              <!-- Fixed-size selection overlay -->
+              <div id="selectionOverlay" class="absolute top-2 bottom-2 sm:top-3 sm:bottom-3 rounded-md bg-neutral-200/10 ring-1 ring-neutral-500/40 backdrop-blur-sm cursor-grab active:cursor-grabbing transition-all"
+                   style="left: 0px; width: 200px;">
+                <!-- Handles -->
+                <div class="absolute inset-y-0 left-0 w-4 sm:w-5 flex items-center justify-center group">
+                  <div class="h-10 sm:h-12 w-px bg-neutral-500/60 group-hover:bg-neutral-300/70 transition-colors"></div>
+                  <div class="absolute -left-2 sm:-left-2.5 top-1/2 -translate-y-1/2 h-6 w-6 rounded-md bg-neutral-900/90 ring-1 ring-neutral-700 hover:ring-neutral-500 flex items-center justify-center">
+                    <i data-lucide="chevrons-left-right" class="w-3.5 h-3.5 text-neutral-300"></i>
+                  </div>
+                </div>
+                <div class="absolute inset-y-0 right-0 w-4 sm:w-5 flex items-center justify-center group">
+                  <div class="h-10 sm:h-12 w-px bg-neutral-500/60 group-hover:bg-neutral-300/70 transition-colors"></div>
+                  <div class="absolute -right-2 sm:-right-2.5 top-1/2 -translate-y-1/2 h-6 w-6 rounded-md bg-neutral-900/90 ring-1 ring-neutral-700 hover:ring-neutral-500 flex items-center justify-center">
+                    <i data-lucide="chevrons-left-right" class="w-3.5 h-3.5 text-neutral-300"></i>
+                  </div>
+                </div>
+                <!-- Range label floating -->
+                <div class="absolute left-1/2 -translate-x-1/2 -top-3 sm:-top-3.5 px-2 py-0.5 rounded bg-neutral-900/90 ring-1 ring-neutral-700 text-[10px] sm:text-xs text-neutral-300">
+                  固定3个月
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-xs text-neutral-500">
+        <div class="flex items-center justify-between border-t border-neutral-900 pt-6">
+          <span>示例数据为随机模拟，仅用于演示交互</span>
+          <span class="hidden sm:inline">© 2025</span>
+        </div>
+      </footer>
+    </div>
+
+    <script>
+      // Init icons
+      document.addEventListener('DOMContentLoaded', () => {
+        if (window.lucide) {
+          lucide.createIcons({ attrs: { 'stroke-width': 1.5 } });
+        }
+      });
+
+      // Utility: formatters
+      const fmtUSD = (v) => {
+        try {
+          return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(v);
+        } catch {
+          return '$' + Math.round(v).toLocaleString();
+        }
+      };
+      const fmtDate = (d) => {
+        const dd = new Date(d);
+        const y = dd.getFullYear();
+        const m = String(dd.getMonth() + 1).padStart(2, '0');
+        const day = String(dd.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      };
+
+      // Generate mock BTC daily data (365 days)
+      function generateMockData(days = 365) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const start = new Date(today);
+        start.setDate(start.getDate() - (days - 1));
+
+        const labels = [];
+        const prices = [];
+        let price = 42000 + Math.random() * 8000;
+
+        for (let i = 0; i < days; i++) {
+          const d = new Date(start);
+          d.setDate(d.getDate() + i);
+          labels.push(d);
+          // Random walk with some volatility
+          const drift = 0.04; // daily drift factor
+          const vol = 0.035;  // daily volatility
+          const shock = (Math.random() - 0.5) * 2 * vol * price;
+          price = Math.max(12000, price * (1 + (Math.random() - 0.5) * drift) + shock);
+          prices.push(price);
+        }
+        return { labels, prices };
+      }
+
+      // Global State
+      const state = {
+        data: generateMockData(365),
+        windowDays: 90, // fixed 3 months
+        startIndex: null, // computed later (default to latest window)
+        charts: {
+          main: null,
+          nav: null
+        }
+      };
+      state.startIndex = state.data.labels.length - state.windowDays; // align to latest initially
+
+      // Elements
+      const mainCanvas = document.getElementById('mainChart');
+      const navCanvas = document.getElementById('navChart');
+      const navContainer = document.getElementById('navigatorContainer');
+      const overlay = document.getElementById('selectionOverlay');
+      const rangeLabel = document.getElementById('range-label');
+      const statPrice = document.getElementById('stat-price');
+      const statChange = document.getElementById('stat-change');
+      const btnSnapLatest = document.getElementById('snap-latest');
+      const btnResetData = document.getElementById('reset-data');
+
+      // Compute selected slice
+      function getSelectedSlice() {
+        const start = state.startIndex;
+        const end = start + state.windowDays;
+        const labels = state.data.labels.slice(start, end);
+        const prices = state.data.prices.slice(start, end);
+        return { labels, prices };
+      }
+
+      // Update range label and stats
+      function updateLabelsAndStats() {
+        const { labels, prices } = getSelectedSlice();
+        const startDate = fmtDate(labels[0]);
+        const endDate = fmtDate(labels[labels.length - 1]);
+        rangeLabel.textContent = `${startDate} ~ ${endDate}`;
+
+        const latest = prices[prices.length - 1];
+        const first = prices[0];
+        statPrice.textContent = fmtUSD(latest);
+        const chg = latest - first;
+        const pct = (chg / first) * 100;
+        const isUp = chg >= 0;
+        statChange.textContent = `${isUp ? '+' : ''}${chg.toFixed(0)} (${isUp ? '+' : ''}${pct.toFixed(2)}%)`;
+        statChange.className = 'text-sm font-medium ' + (isUp ? 'text-emerald-400' : 'text-rose-400');
+      }
+
+      // Create gradient
+      function createGradient(ctx, area) {
+        const gradient = ctx.createLinearGradient(0, area.bottom, 0, area.top);
+        gradient.addColorStop(0, 'rgba(16,185,129,0.0)');  // emerald-500 @ 0
+        gradient.addColorStop(0.6, 'rgba(16,185,129,0.10)');
+        gradient.addColorStop(1, 'rgba(16,185,129,0.25)');
+        return gradient;
+      }
+
+      // Init Main Chart
+      function initMainChart() {
+        const { labels, prices } = getSelectedSlice();
+        const ctx = mainCanvas.getContext('2d');
+        const mainChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels.map(fmtDate),
+            datasets: [{
+              label: 'BTC/USD',
+              data: prices,
+              borderColor: '#34d399', // emerald-400
+              borderWidth: 2,
+              pointRadius: 0,
+              tension: 0.25,
+              fill: true,
+              backgroundColor: (context) => {
+                const { chart } = context;
+                const { ctx, chartArea } = chart;
+                if (!chartArea) return null;
+                return createGradient(ctx, chartArea);
+              }
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: 'rgba(23,23,23,0.9)',
+                borderColor: 'rgba(64,64,64,0.9)',
+                borderWidth: 1,
+                titleColor: '#e5e7eb',
+                bodyColor: '#d1d5db',
+                padding: 10,
+                displayColors: false,
+                callbacks: {
+                  label: (ctx) => ` ${fmtUSD(ctx.parsed.y)}`
+                }
+              }
+            },
+            scales: {
+              x: {
+                ticks: { color: '#9ca3af', maxRotation: 0, autoSkip: true },
+                grid: { color: 'rgba(75,85,99,0.2)', drawBorder: false }
+              },
+              y: {
+                ticks: {
+                  color: '#9ca3af',
+                  callback: (v) => '$' + (v >= 1000 ? Math.round(v).toLocaleString() : v)
+                },
+                grid: { color: 'rgba(75,85,99,0.25)', drawBorder: false }
+              }
+            }
+          }
+        });
+        state.charts.main = mainChart;
+      }
+
+      // Init Navigator Chart
+      function initNavChart() {
+        const ctx = navCanvas.getContext('2d');
+        const navChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: state.data.labels.map(fmtDate),
+            datasets: [{
+              label: '全年',
+              data: state.data.prices,
+              borderColor: 'rgba(148,163,184,0.6)', // slate-400
+              borderWidth: 1.5,
+              pointRadius: 0,
+              tension: 0.2
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+            scales: {
+              x: {
+                ticks: { display: false },
+                grid: { display: false, drawBorder: false }
+              },
+              y: {
+                ticks: { display: false },
+                grid: { display: false, drawBorder: false }
+              }
+            }
+          }
+        });
+        state.charts.nav = navChart;
+      }
+
+      // Update Main Chart with new window
+      function updateMainChart() {
+        const { labels, prices } = getSelectedSlice();
+        const chart = state.charts.main;
+        if (!chart) return;
+        chart.data.labels = labels.map(fmtDate);
+        chart.data.datasets[0].data = prices;
+        chart.update('none');
+        updateLabelsAndStats();
+      }
+
+      // Overlay positioning helpers
+      function setOverlayPositionFromIndex() {
+        const total = state.data.labels.length;
+        const wDays = state.windowDays;
+        const containerRect = navContainer.getBoundingClientRect();
+        const innerLeft = 0;
+        const innerWidth = containerRect.width;
+
+        const widthPx = innerWidth * (wDays / total);
+        overlay.style.width = widthPx + 'px';
+
+        const maxLeft = Math.max(0, innerWidth - widthPx);
+        const ratio = state.startIndex / (total - wDays);
+        const leftPx = maxLeft * ratio;
+        overlay.style.left = leftPx + 'px';
+      }
+
+      function setIndexFromOverlayPosition() {
+        const total = state.data.labels.length;
+        const wDays = state.windowDays;
+
+        const containerRect = navContainer.getBoundingClientRect();
+        const innerWidth = containerRect.width;
+        const widthPx = parseFloat(overlay.style.width || '0');
+        const maxLeft = Math.max(0, innerWidth - widthPx);
+        const leftPx = parseFloat(overlay.style.left || '0');
+
+        const ratio = maxLeft > 0 ? (leftPx / maxLeft) : 0;
+        const idx = Math.round(ratio * (total - wDays));
+        state.startIndex = Math.max(0, Math.min(idx, total - wDays));
+      }
+
+      // Drag logic (fixed-size window: drag anywhere moves the window)
+      let isDragging = false;
+      let dragStartX = 0;
+      let overlayStartLeft = 0;
+
+      function beginDrag(clientX) {
+        isDragging = true;
+        dragStartX = clientX;
+        overlayStartLeft = parseFloat(overlay.style.left || '0');
+        overlay.classList.add('ring-neutral-400');
+      }
+
+      function onDrag(clientX) {
+        if (!isDragging) return;
+        const dx = clientX - dragStartX;
+
+        const containerRect = navContainer.getBoundingClientRect();
+        const innerWidth = containerRect.width;
+        const widthPx = parseFloat(overlay.style.width || '0');
+        const maxLeft = Math.max(0, innerWidth - widthPx);
+
+        let nextLeft = overlayStartLeft + dx;
+        nextLeft = Math.max(0, Math.min(nextLeft, maxLeft));
+        overlay.style.left = nextLeft + 'px';
+
+        setIndexFromOverlayPosition();
+        updateMainChart();
+      }
+
+      function endDrag() {
+        if (!isDragging) return;
+        isDragging = false;
+        overlay.classList.remove('ring-neutral-400');
+      }
+
+      // Pointer events
+      function attachDragHandlers() {
+        const startDrag = (e) => {
+          e.preventDefault();
+          const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+          beginDrag(clientX);
+        };
+        const moveDrag = (e) => {
+          if (!isDragging) return;
+          const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+          onDrag(clientX);
+        };
+        const stopDrag = () => endDrag();
+
+        // Start dragging on overlay + handles
+        overlay.addEventListener('mousedown', startDrag);
+        overlay.addEventListener('touchstart', startDrag, { passive: false });
+
+        window.addEventListener('mousemove', moveDrag, { passive: true });
+        window.addEventListener('touchmove', moveDrag, { passive: false });
+
+        window.addEventListener('mouseup', stopDrag);
+        window.addEventListener('touchend', stopDrag);
+        window.addEventListener('touchcancel', stopDrag);
+      }
+
+      // Resize handling to keep overlay proportion
+      const ro = new ResizeObserver(() => {
+        setOverlayPositionFromIndex();
+      });
+
+      // Buttons
+      btnSnapLatest.addEventListener('click', () => {
+        state.startIndex = state.data.labels.length - state.windowDays;
+        setOverlayPositionFromIndex();
+        updateMainChart();
+      });
+
+      btnResetData.addEventListener('click', () => {
+        state.data = generateMockData(365);
+        // Update navigator data
+        const nav = state.charts.nav;
+        nav.data.labels = state.data.labels.map(fmtDate);
+        nav.data.datasets[0].data = state.data.prices;
+        nav.update('none');
+
+        // Snap to latest window
+        state.startIndex = state.data.labels.length - state.windowDays;
+        setOverlayPositionFromIndex();
+        updateMainChart();
+      });
+
+      // Init flow
+      function init() {
+        initMainChart();
+        initNavChart();
+        setOverlayPositionFromIndex();
+        updateMainChart();
+        attachDragHandlers();
+        ro.observe(navContainer);
+      }
+
+      // Kickoff when ready
+      window.addEventListener('load', init);
+    </script>
+  </body>
+</html>

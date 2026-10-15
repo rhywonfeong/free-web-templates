@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth antialiased">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MDMS - Moonquake Detection Mapping System</title>
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+theme: {
+extend: {
+fontFamily: {
+sans: ['Inter', 'sans-serif'],
+mono: ['JetBrains Mono', 'monospace'],
+},
+colors: {
+space: {
+900: '#030712',
+800: '#0B1325',
+700: '#14213D',
+},
+accent: {
+cyan: '#22d3ee',
+blue: '#3b82f6',
+hazard: '#fb923c',
+}
+},
+fontSize: {
+'2xs': '0.65rem',
+}
+}
+}
+}
+</script>
+<!-- Iconify -->
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<style>
+/* Custom Animations & Utilites */
+body {
+background-color: #030712;
+color: #f8fafc;
+background-image:
+radial-gradient(circle at 15% 50%, rgba(34, 211, 238, 0.03) 0%, transparent 50%),
+radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.04) 0%, transparent 50%);
+background-attachment: fixed;
+}
+/* Scrollbar */
+::-webkit-scrollbar { width: 0.25rem; }
+::-webkit-scrollbar-track { background: #030712; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(34,211,238,0.3); }
+.glass-panel {
+background: rgba(255, 255, 255, 0.02);
+backdrop-filter: blur(12px);
+-webkit-backdrop-filter: blur(12px);
+border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.hud-border {
+position: relative;
+}
+.hud-border::before, .hud-border::after {
+content: ''; position: absolute; width: 0.5rem; height: 0.5rem; border: 1px solid rgba(34,211,238,0.5);
+}
+.hud-border::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+.hud-border::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+@keyframes pulse-ring {
+0% { transform: scale(0.8); opacity: 0.8; }
+100% { transform: scale(2.5); opacity: 0; }
+}
+.animate-seismic {
+animation: pulse-ring 3s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+.animate-seismic-delay {
+animation: pulse-ring 3s cubic-bezier(0.215, 0.61, 0.355, 1) infinite 1.5s;
+}
+@keyframes slow-spin {
+from { transform: rotate(0deg); }
+to { transform: rotate(360deg); }
+}
+.spin-slow { animation: slow-spin 120s linear infinite; }
+@keyframes scanline {
+0% { transform: translateY(-100%); }
+100% { transform: translateY(100%); }
+}
+.scan-effect::after {
+content: ''; position: absolute; inset: 0;
+background: linear-gradient(to bottom, transparent, rgba(34,211,238,0.1), transparent);
+animation: scanline 8s linear infinite;
+pointer-events: none;
+}
+.grid-bg {
+background-image:
+linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+background-size: 2rem 2rem;
+}
+/* Radial Menu positioning */
+.radial-item {
+position: absolute;
+top: 50%; left: 50%;
+transform-origin: 0 0;
+transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.reveal-up {
+opacity: 0;
+transform: translateY(2rem);
+transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal-up.active {
+opacity: 1;
+transform: translateY(0);
+}
+</style></head>
+<body class="font-sans font-light text-slate-300 selection:bg-accent-cyan/30 selection:text-white overflow-x-hidden">
+
+    <!-- Global Grid Overlay -->
+    <div class="fixed inset-0 grid-bg pointer-events-none z-[-1] opacity-50 mask-image:linear-gradient(to_bottom,white,transparent)"></div>
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 w-full z-50 transition-all duration-300" id="main-nav">
+        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between border-b border-white/5 bg-space-900/40 backdrop-blur-md">
+            <div class="flex items-center gap-3">
+                <div class="w-2 h-2 rounded-full bg-accent-cyan animate-pulse"></div>
+                <span class="font-mono font-medium text-sm tracking-widest text-white">MDMS</span>
+            </div>
+            
+            <!-- Desktop Nav -->
+            <div class="hidden lg:flex items-center gap-8 text-xs font-mono tracking-widest uppercase text-slate-400">
+                <a href="#hero" class="hover:text-white transition-colors nav-link">Overview</a>
+                <a href="#challenge" class="hover:text-white transition-colors nav-link">Challenge</a>
+                <a href="#solution" class="hover:text-white transition-colors nav-link">Solution</a>
+                <a href="#system" class="hover:text-white transition-colors nav-link">System</a>
+                <a href="#instrument" class="hover:text-white transition-colors nav-link">Instrument</a>
+                <a href="#deployment" class="hover:text-white transition-colors nav-link">Deployment</a>
+                <a href="#science" class="hover:text-white transition-colors nav-link">Science</a>
+            </div>
+
+            <button class="lg:hidden text-white">
+                <iconify-icon icon="solar:hamburger-menu-linear" width="1.5rem"></iconify-icon>
+            </button>
+        </div>
+    </nav>
+
+    <!-- SECTION 1: HERO -->
+    <section id="hero" class="relative min-h-screen flex items-center pt-20 overflow-hidden">
+        <div class="max-w-7xl mx-auto px-6 w-full grid lg:grid-cols-2 gap-16 items-center relative z-10">
+            
+            <!-- Left: Content -->
+            <div class="flex flex-col items-start reveal-up">
+                <div class="glass-panel px-3 py-1 rounded-full flex items-center gap-2 mb-8 border-accent-cyan/30">
+                    <span class="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-pulse"></span>
+                    <span class="text-xs font-mono text-accent-cyan uppercase tracking-widest">Active Proposal</span>
+                </div>
+                
+                <h1 class="text-5xl md:text-7xl font-semibold text-white tracking-tight leading-tight mb-4">
+                    MDMS
+                </h1>
+                <p class="text-lg md:text-xl font-medium text-slate-200 tracking-tight mb-6">
+                    Moonquake Detection Mapping System
+                </p>
+                
+                <p class="text-base text-slate-400 leading-relaxed max-w-lg mb-10">
+                    Deploying an advanced network of seismic sensors across the lunar South Pole to detect moonquakes, map the lunar subsurface structure, and establish a foundation for safer future exploration missions.
+                </p>
+                
+                <div class="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+                    <a href="#challenge" class="glass-panel hover:bg-white/10 text-white px-6 py-3 rounded-lg font-medium text-sm transition-all text-center flex items-center justify-center gap-2 group">
+                        Explore the Mission
+                        <iconify-icon icon="solar:arrow-right-linear" class="group-hover:translate-x-1 transition-transform"></iconify-icon>
+                    </a>
+                    <a href="#system" class="px-6 py-3 rounded-lg font-medium text-sm text-slate-400 hover:text-white transition-all text-center flex items-center justify-center gap-2 border border-transparent hover:border-white/10">
+                        View System Architecture
+                    </a>
+                </div>
+            </div>
+
+            <!-- Right: Moon Visualization -->
+            <div class="relative w-full aspect-square max-w-[600px] mx-auto reveal-up" style="transition-delay: 200ms;">
+                <div class="absolute inset-0 rounded-full bg-space-800 border border-white/5 shadow-[0_0_80px_rgba(34,211,238,0.05)] overflow-hidden scan-effect spin-slow">
+                    <!-- Crater textures (CSS gradients) -->
+                    <div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(circle at 30% 30%, transparent 60%, rgba(0,0,0,0.8) 100%), radial-gradient(circle at 70% 60%, rgba(255,255,255,0.1) 0%, transparent 20%); filter: contrast(150%) brightness(80%);"></div>
+                    
+                    <!-- Grid/LatLon -->
+                    <div class="absolute inset-0 rounded-full border border-white/10 scale-90 border-dashed opacity-30"></div>
+                    <div class="absolute inset-0 rounded-full border border-white/10 scale-[0.6] border-dashed opacity-20"></div>
+                    
+                    <!-- South pole region highlight -->
+                    <div class="absolute bottom-[10%] left-[50%] -translate-x-1/2 w-3/4 aspect-[2/1] rounded-[100%] bg-accent-cyan/10 blur-xl"></div>
+                </div>
+
+                <!-- Telemetry HUD Overlay -->
+                <div class="absolute inset-0 z-10 pointer-events-none">
+                    <!-- Nodes -->
+                    <div class="absolute top-[60%] left-[40%]">
+                        <div class="w-1.5 h-1.5 bg-accent-cyan rounded-full"></div>
+                        <div class="absolute inset-0 bg-accent-cyan rounded-full animate-seismic"></div>
+                    </div>
+                    <div class="absolute top-[70%] left-[55%]">
+                        <div class="w-1 h-1 bg-white rounded-full"></div>
+                        <div class="absolute inset-0 bg-white rounded-full animate-seismic-delay"></div>
+                    </div>
+                    <div class="absolute top-[65%] left-[65%]">
+                        <div class="w-1 h-1 bg-white rounded-full"></div>
+                    </div>
+                    
+                    <!-- SVG Connecting Lines -->
+                    <svg class="absolute inset-0 w-full h-full" style="opacity: 0.3;">
+                        <path d="M 40% 60% L 55% 70% L 65% 65%" fill="none" stroke="#22d3ee" stroke-width="1" stroke-dasharray="2 4"/>
+                    </svg>
+                </div>
+
+                <!-- Floating HUD Panels -->
+                <div class="absolute top-4 left-4 glass-panel p-3 rounded-lg hud-border hidden md:block">
+                    <p class="text-2xs font-mono text-slate-500 uppercase mb-1">Status</p>
+                    <p class="text-xs font-mono text-accent-cyan">Concept Phase</p>
+                </div>
+                <div class="absolute bottom-12 right-0 glass-panel p-3 rounded-lg hud-border hidden md:block">
+                    <p class="text-2xs font-mono text-slate-500 uppercase mb-1">Target</p>
+                    <p class="text-xs font-mono text-white">Lunar South Pole</p>
+                    <div class="mt-2 text-2xs font-mono text-slate-400 flex flex-col gap-1">
+                        <div class="flex justify-between gap-4"><span>DUR:</span> <span>36 MO</span></div>
+                        <div class="flex justify-between gap-4"><span>PFM:</span> <span>LTV</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 2: THE CHALLENGE -->
+    <section id="challenge" class="relative py-32 border-t border-white/5">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="grid lg:grid-cols-12 gap-12 items-center">
+                
+                <div class="lg:col-span-5 reveal-up">
+                    <div class="flex items-center gap-4 mb-6">
+                        <span class="text-xs font-mono text-slate-500">01</span>
+                        <div class="h-px bg-white/10 flex-grow"></div>
+                        <span class="text-xs font-mono text-slate-500 uppercase tracking-widest">The Challenge</span>
+                    </div>
+                    <h2 class="text-3xl md:text-4xl font-medium text-white tracking-tight mb-6">
+                        The Moon Is Not Silent
+                    </h2>
+                    <p class="text-base text-slate-400 mb-6 leading-relaxed">
+                        As humanity prepares for long-term lunar exploration, understanding the Moon's seismic environment is critical. Current knowledge remains limited, leaving uncertainty around moonquakes, subsurface conditions, landing zones, and the structural safety of future habitats.
+                    </p>
+                    <p class="text-sm font-medium text-slate-300 border-l-2 border-accent-hazard pl-4 py-1">
+                        Without a comprehensive seismic map, mission planners must make important decisions with incomplete information.
+                    </p>
+                </div>
+
+                <div class="lg:col-span-7 relative h-[400px] rounded-2xl glass-panel overflow-hidden reveal-up" style="transition-delay: 200ms;">
+                    <!-- Subsurface Visualization -->
+                    <svg class="w-full h-full" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid slice">
+                        <defs>
+                            <linearGradient id="lunar-crust" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#1e293b"/>
+                                <stop offset="100%" stop-color="#0f172a"/>
+                            </linearGradient>
+                            <radialGradient id="hazard-glow" cx="50%" cy="50%" r="50%">
+                                <stop offset="0%" stop-color="rgba(251, 146, 60, 0.4)"/>
+                                <stop offset="100%" stop-color="rgba(251, 146, 60, 0)"/>
+                            </radialGradient>
+                        </defs>
+                        
+                        <!-- Surface -->
+                        <path d="M0 100 Q 200 80 400 120 T 800 90 L 800 400 L 0 400 Z" fill="url(#lunar-crust)"/>
+                        
+                        <!-- Subsurface Layers (dotted lines) -->
+                        <path d="M0 200 Q 250 180 500 220 T 800 190" fill="none" stroke="rgba(255,255,255,0.1)" stroke-dasharray="4 4"/>
+                        <path d="M0 300 Q 300 280 600 320 T 800 290" fill="none" stroke="rgba(255,255,255,0.05)" stroke-dasharray="8 8"/>
+                        
+                        <!-- Seismic Events -->
+                        <g transform="translate(250, 150)">
+                            <circle r="40" fill="url(#hazard-glow)"/>
+                            <circle r="2" fill="#fb923c"/>
+                            <circle r="15" fill="none" stroke="#fb923c" stroke-width="1" class="animate-seismic"/>
+                            <circle r="30" fill="none" stroke="#fb923c" stroke-width="0.5" class="animate-seismic-delay"/>
+                        </g>
+
+                        <!-- Deep Event -->
+                        <g transform="translate(600, 320)">
+                            <circle r="2" fill="#3b82f6"/>
+                            <circle r="25" fill="none" stroke="#3b82f6" stroke-width="1" opacity="0.5" class="animate-seismic"/>
+                        </g>
+                    </svg>
+
+                    <!-- Labels -->
+                    <div class="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2">
+                        <div class="flex items-center gap-2">
+                            <div class="w-1.5 h-1.5 bg-accent-hazard rounded-full"></div>
+                            <span class="text-xs font-mono text-slate-300">Shallow Quake Risk</span>
+                        </div>
+                    </div>
+                    <div class="absolute bottom-12 right-1/4 translate-x-1/2">
+                        <div class="flex items-center gap-2">
+                            <div class="w-1.5 h-1.5 bg-accent-blue rounded-full"></div>
+                            <span class="text-xs font-mono text-slate-500">Unexplored Subsurface</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 3: THE SOLUTION -->
+    <section id="solution" class="relative py-32 border-t border-white/5 bg-space-800/30">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center max-w-2xl mx-auto mb-16 reveal-up">
+                <div class="flex items-center justify-center gap-4 mb-4">
+                    <span class="text-xs font-mono text-slate-500">02</span>
+                    <span class="text-xs font-mono text-accent-cyan uppercase tracking-widest">The Solution</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-medium text-white tracking-tight mb-4">
+                    A Distributed Lunar Seismic Network
+                </h2>
+                <p class="text-base text-slate-400">
+                    MDMS deploys a coordinated network of instruments across the lunar South Pole. Together, they detect events, compare telemetry, map structures, and return actionable data.
+                </p>
+            </div>
+
+            <!-- Process Flow -->
+            <div class="relative w-full overflow-x-auto pb-8 hide-scrollbar reveal-up" style="transition-delay: 200ms;">
+                <div class="min-w-[800px] flex items-center justify-between relative px-4">
+                    <!-- Connection Line Background -->
+                    <div class="absolute top-1/2 left-8 right-8 h-px bg-white/10 -translate-y-1/2 z-0"></div>
+                    <!-- Animated Data Line -->
+                    <div class="absolute top-1/2 left-8 right-8 h-px bg-gradient-to-r from-transparent via-accent-cyan to-transparent -translate-y-1/2 z-0 opacity-50" style="background-size: 50% 100%; animation: slide-right 3s linear infinite;"></div>
+
+                    <!-- Steps -->
+                    <style>
+                        @keyframes slide-right { from { background-position: -100% 0; } to { background-position: 200% 0; } }
+                        .step-node { @apply relative z-10 flex flex-col items-center gap-4 w-32 text-center; }
+                        .step-icon { @apply w-12 h-12 rounded-full glass-panel flex items-center justify-center text-white border-white/10 transition-colors duration-300; }
+                        .step-node:hover .step-icon { @apply bg-white/10 border-accent-cyan; text-shadow: 0 0 10px rgba(34,211,238,0.5); }
+                    </style>
+
+                    <div class="step-node">
+                        <div class="step-icon"><iconify-icon icon="solar:radar-linear" width="1.5rem"></iconify-icon></div>
+                        <div>
+                            <p class="text-xs font-medium text-white mb-1">Detect</p>
+                            <p class="text-2xs text-slate-500 font-mono">Signal identified</p>
+                        </div>
+                    </div>
+                    <div class="step-node">
+                        <div class="step-icon"><iconify-icon icon="solar:stopwatch-linear" width="1.5rem"></iconify-icon></div>
+                        <div>
+                            <p class="text-xs font-medium text-white mb-1">Synchronize</p>
+                            <p class="text-2xs text-slate-500 font-mono">Time correlation</p>
+                        </div>
+                    </div>
+                    <div class="step-node">
+                        <div class="step-icon"><iconify-icon icon="solar:chart-square-linear" width="1.5rem"></iconify-icon></div>
+                        <div>
+                            <p class="text-xs font-medium text-white mb-1">Analyze</p>
+                            <p class="text-2xs text-slate-500 font-mono">Waveform processing</p>
+                        </div>
+                    </div>
+                    <div class="step-node">
+                        <div class="step-icon"><iconify-icon icon="solar:map-linear" width="1.5rem"></iconify-icon></div>
+                        <div>
+                            <p class="text-xs font-medium text-white mb-1">Map</p>
+                            <p class="text-2xs text-slate-500 font-mono">Source triangulation</p>
+                        </div>
+                    </div>
+                    <div class="step-node">
+                        <div class="step-icon"><iconify-icon icon="solar:shield-warning-linear" width="1.5rem"></iconify-icon></div>
+                        <div>
+                            <p class="text-xs font-medium text-white mb-1">Inform</p>
+                            <p class="text-2xs text-slate-500 font-mono">Hazard assessment</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 4: INTERACTIVE SYSTEM EXPLORER -->
+    <section id="system" class="relative py-32 border-t border-white/5 min-h-screen flex flex-col">
+        <div class="max-w-7xl mx-auto px-6 w-full flex-grow flex flex-col">
+            <div class="mb-12 reveal-up">
+                <div class="flex items-center gap-4 mb-4">
+                    <span class="text-xs font-mono text-slate-500">03</span>
+                    <div class="h-px bg-white/10 w-12"></div>
+                    <span class="text-xs font-mono text-accent-cyan uppercase tracking-widest">System Architecture</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-medium text-white tracking-tight mb-2">
+                    Explore the Mission System
+                </h2>
+                <p class="text-sm text-slate-400">Select a domain to inspect sub-systems and instrumentation.</p>
+            </div>
+
+            <!-- Radial Interface Layout -->
+            <div class="grid lg:grid-cols-2 gap-12 flex-grow items-center reveal-up" style="transition-delay: 200ms;">
+                
+                <!-- Left: HUD Wheel (Simplified CSS/Grid representation for reliability) -->
+                <div class="relative w-full aspect-square max-w-[500px] mx-auto">
+                    <!-- Central Hub -->
+                    <div class="absolute inset-0 m-auto w-32 h-32 rounded-full glass-panel flex flex-col items-center justify-center border-accent-cyan/30 z-20 shadow-[0_0_30px_rgba(34,211,238,0.1)]">
+                        <span class="text-sm font-mono font-medium text-white">MDMS</span>
+                        <span class="text-2xs text-accent-cyan uppercase tracking-widest">Core</span>
+                    </div>
+
+                    <!-- Orbit Rings -->
+                    <div class="absolute inset-0 m-auto w-full h-full rounded-full border border-white/5 border-dashed z-0 spin-slow"></div>
+                    <div class="absolute inset-4 m-auto w-[calc(100%-2rem)] h-[calc(100%-2rem)] rounded-full border border-white/5 z-0"></div>
+
+                    <!-- Categories (Positioned via CSS variables in inline styles) -->
+                    <div id="radial-container" class="absolute inset-0 z-10">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Right: Details Panel -->
+                <div class="glass-panel p-8 rounded-xl hud-border h-full flex flex-col justify-center min-h-[400px]">
+                    <div id="system-details-empty" class="text-center text-slate-500">
+                        <iconify-icon icon="solar:cursor-square-linear" width="2rem" class="mb-4 opacity-50"></iconify-icon>
+                        <p class="text-sm font-mono">Awaiting system selection...</p>
+                    </div>
+                    
+                    <div id="system-details-content" class="hidden flex-col h-full">
+                        <div class="flex items-center gap-3 mb-2">
+                            <iconify-icon id="sys-icon" icon="" class="text-accent-cyan" width="1.5rem"></iconify-icon>
+                            <span id="sys-category" class="text-xs font-mono text-accent-cyan uppercase tracking-widest"></span>
+                        </div>
+                        <h3 id="sys-title" class="text-2xl font-medium text-white tracking-tight mb-4"></h3>
+                        <p id="sys-desc" class="text-sm text-slate-400 mb-6 leading-relaxed"></p>
+                        
+                        <div class="mt-auto border-t border-white/10 pt-4">
+                            <p class="text-2xs font-mono text-slate-500 mb-3 uppercase">Sub-Modules</p>
+                            <div id="sys-modules" class="grid grid-cols-2 gap-2">
+                                <!-- Modules injected here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 5: THE INSTRUMENT -->
+    <section id="instrument" class="relative py-32 border-t border-white/5">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16 reveal-up">
+                <div class="flex items-center justify-center gap-4 mb-4">
+                    <span class="text-xs font-mono text-slate-500">04</span>
+                    <span class="text-xs font-mono text-accent-cyan uppercase tracking-widest">The Instrument</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-medium text-white tracking-tight mb-4">
+                    Inside the MDMS Sensor
+                </h2>
+                <p class="text-base text-slate-400 max-w-2xl mx-auto">
+                    Each unit is designed to survive the lunar environment, detect microscopic surface movements, process signals autonomously, and relay data across the network.
+                </p>
+            </div>
+
+            <div class="grid lg:grid-cols-12 gap-8 items-center glass-panel rounded-2xl p-6 md:p-12 reveal-up" style="transition-delay: 200ms;">
+                
+                <!-- Left: Interactive Schematic -->
+                <div class="lg:col-span-7 relative w-full aspect-[4/3] bg-space-900/50 rounded-xl border border-white/5 flex items-center justify-center overflow-hidden">
+                    <div class="absolute inset-0 grid-bg opacity-30"></div>
+                    
+                    <!-- Abstract Sensor Graphic (SVG) -->
+                    <svg class="w-2/3 h-2/3 relative z-10" viewBox="0 0 200 200" fill="none" stroke="currentColor">
+                        <!-- Housing -->
+                        <path d="M40 160 L160 160 L180 80 L20 80 Z" stroke="rgba(255,255,255,0.2)" stroke-width="2" fill="rgba(255,255,255,0.02)"/>
+                        <path d="M60 80 L140 80 L120 40 L80 40 Z" stroke="rgba(255,255,255,0.4)" stroke-width="2" fill="rgba(34,211,238,0.05)"/>
+                        <!-- Antenna -->
+                        <line x1="100" y1="40" x2="100" y2="10" stroke="rgba(255,255,255,0.5)" stroke-width="2"/>
+                        <circle cx="100" cy="10" r="2" fill="#22d3ee"/>
+                        <!-- Core Seismometer -->
+                        <circle cx="100" cy="120" r="20" stroke="#3b82f6" stroke-width="2" fill="rgba(59,130,246,0.1)"/>
+                        <circle cx="100" cy="120" r="5" fill="#3b82f6"/>
+                        <!-- Base plates -->
+                        <line x1="30" y1="170" x2="170" y2="170" stroke="rgba(255,255,255,0.3)" stroke-width="4"/>
+                        <line x1="50" y1="180" x2="150" y2="180" stroke="rgba(255,255,255,0.1)" stroke-width="2"/>
+                    </svg>
+
+                    <!-- Hotspots -->
+                    <button class="hotspot absolute top-[15%] left-[50%] -translate-x-1/2 -translate-y-1/2 group" data-target="comms">
+                        <div class="w-3 h-3 bg-white rounded-full relative z-10 transition-transform group-hover:scale-125 group-hover:bg-accent-cyan"></div>
+                        <div class="absolute inset-0 bg-white rounded-full animate-ping opacity-75"></div>
+                    </button>
+
+                    <button class="hotspot absolute top-[60%] left-[50%] -translate-x-1/2 -translate-y-1/2 group" data-target="seismo">
+                        <div class="w-3 h-3 bg-white rounded-full relative z-10 transition-transform group-hover:scale-125 group-hover:bg-accent-blue"></div>
+                        <div class="absolute inset-0 bg-white rounded-full animate-ping opacity-75"></div>
+                    </button>
+
+                    <button class="hotspot absolute top-[40%] left-[35%] -translate-x-1/2 -translate-y-1/2 group" data-target="power">
+                        <div class="w-3 h-3 bg-white rounded-full relative z-10 transition-transform group-hover:scale-125 group-hover:bg-white"></div>
+                        <div class="absolute inset-0 bg-white rounded-full animate-ping opacity-75"></div>
+                    </button>
+
+                    <button class="hotspot absolute top-[85%] left-[50%] -translate-x-1/2 -translate-y-1/2 group" data-target="deploy">
+                        <div class="w-3 h-3 bg-white rounded-full relative z-10 transition-transform group-hover:scale-125 group-hover:bg-white"></div>
+                        <div class="absolute inset-0 bg-white rounded-full animate-ping opacity-75"></div>
+                    </button>
+                </div>
+
+                <!-- Right: Info Panel -->
+                <div class="lg:col-span-5 flex flex-col justify-center">
+                    <div id="inst-default" class="text-slate-400 text-sm">
+                        <iconify-icon icon="solar:info-circle-linear" class="mb-2 text-xl"></iconify-icon>
+                        <p>Select a highlighted component on the instrument schematic to view technical specifications.</p>
+                    </div>
+                    
+                    <div id="inst-info" class="hidden">
+                        <div class="flex items-center gap-2 mb-2">
+                            <div class="w-1.5 h-1.5 bg-accent-cyan rounded-full"></div>
+                            <span id="inst-label" class="text-xs font-mono text-accent-cyan uppercase tracking-widest"></span>
+                        </div>
+                        <h3 id="inst-title" class="text-xl font-medium text-white tracking-tight mb-3"></h3>
+                        <p id="inst-desc" class="text-sm text-slate-400 mb-6"></p>
+                        
+                        <div class="bg-black/30 border border-white/5 rounded-lg p-4">
+                            <p class="text-2xs font-mono text-slate-500 uppercase mb-2 border-b border-white/5 pb-2">Technical Data</p>
+                            <ul id="inst-specs" class="text-xs font-mono text-slate-300 space-y-2">
+                                <!-- Specs injected here -->
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 6: DEPLOYMENT -->
+    <section id="deployment" class="relative py-32 border-t border-white/5">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="mb-12 reveal-up">
+                <div class="flex items-center gap-4 mb-4">
+                    <span class="text-xs font-mono text-slate-500">05</span>
+                    <div class="h-px bg-white/10 w-12"></div>
+                    <span class="text-xs font-mono text-slate-500 uppercase tracking-widest">Deployment</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-medium text-white tracking-tight">
+                    From Landing to Lunar Network
+                </h2>
+            </div>
+
+            <!-- Horizontal Step Sequence -->
+            <div class="grid md:grid-cols-3 gap-6 reveal-up" style="transition-delay: 200ms;">
+                
+                <!-- Step 1 -->
+                <div class="glass-panel p-6 rounded-xl border-t-2 border-t-transparent hover:border-t-accent-cyan transition-colors group">
+                    <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-6 group-hover:bg-accent-cyan/10 transition-colors">
+                        <span class="font-mono text-sm text-white">01</span>
+                    </div>
+                    <h3 class="text-base font-medium text-white mb-2">Arrival & Transport</h3>
+                    <p class="text-sm text-slate-400">MDMS instruments arrive at the lunar South Pole and are loaded onto the Lunar Terrain Vehicle (LTV) for distribution.</p>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="glass-panel p-6 rounded-xl border-t-2 border-t-transparent hover:border-t-accent-cyan transition-colors group">
+                    <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-6 group-hover:bg-accent-cyan/10 transition-colors">
+                        <span class="font-mono text-sm text-white">02</span>
+                    </div>
+                    <h3 class="text-base font-medium text-white mb-2">Strategic Placement</h3>
+                    <p class="text-sm text-slate-400">The LTV traverses planned routes, deploying sensors at geologically significant nodes to maximize network coverage.</p>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="glass-panel p-6 rounded-xl border-t-2 border-t-transparent hover:border-t-accent-cyan transition-colors group">
+                    <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-6 group-hover:bg-accent-cyan/10 transition-colors">
+                        <span class="font-mono text-sm text-white">03</span>
+                    </div>
+                    <h3 class="text-base font-medium text-white mb-2">Network Initialization</h3>
+                    <p class="text-sm text-slate-400">Sensors establish position, lock onto orbital communication relays, synchronize timing, and commence continuous monitoring.</p>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 7: MOON SCIENCE -->
+    <section id="science" class="relative py-32 border-t border-white/5 bg-space-800/30">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="grid lg:grid-cols-12 gap-12 items-center">
+                
+                <!-- Left: Controls -->
+                <div class="lg:col-span-5 reveal-up">
+                    <div class="flex items-center gap-4 mb-6">
+                        <span class="text-xs font-mono text-slate-500">06</span>
+                        <div class="h-px bg-white/10 flex-grow"></div>
+                        <span class="text-xs font-mono text-accent-blue uppercase tracking-widest">Moon Science</span>
+                    </div>
+                    <h2 class="text-3xl md:text-4xl font-medium text-white tracking-tight mb-6">
+                        Reading the Interior
+                    </h2>
+                    <p class="text-base text-slate-400 mb-8">
+                        Seismic waves act like an X-ray for planets. By analyzing how vibrations travel through the Moon, MDMS maps its internal structure. Select an event type to observe the data profile.
+                    </p>
+
+                    <div class="space-y-3">
+                        <button class="sci-btn w-full text-left p-4 rounded-lg glass-panel border-l-4 border-transparent hover:bg-white/5 transition-all flex items-center justify-between" data-event="shallow">
+                            <div>
+                                <span class="block text-sm font-medium text-white">Shallow Moonquakes</span>
+                                <span class="block text-xs text-slate-500 mt-1">High frequency, tectonic origin</span>
+                            </div>
+                            <iconify-icon icon="solar:alt-arrow-right-linear" class="text-slate-500"></iconify-icon>
+                        </button>
+                        <button class="sci-btn w-full text-left p-4 rounded-lg glass-panel border-l-4 border-transparent hover:bg-white/5 transition-all flex items-center justify-between" data-event="deep">
+                            <div>
+                                <span class="block text-sm font-medium text-white">Deep Moonquakes</span>
+                                <span class="block text-xs text-slate-500 mt-1">Tidal stress, recurring clusters</span>
+                            </div>
+                            <iconify-icon icon="solar:alt-arrow-right-linear" class="text-slate-500"></iconify-icon>
+                        </button>
+                        <button class="sci-btn w-full text-left p-4 rounded-lg glass-panel border-l-4 border-transparent hover:bg-white/5 transition-all flex items-center justify-between" data-event="impact">
+                            <div>
+                                <span class="block text-sm font-medium text-white">Meteorite Impacts</span>
+                                <span class="block text-xs text-slate-500 mt-1">Surface collision mapping</span>
+                            </div>
+                            <iconify-icon icon="solar:alt-arrow-right-linear" class="text-slate-500"></iconify-icon>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Right: Cross-section Vis -->
+                <div class="lg:col-span-7 flex justify-center reveal-up" style="transition-delay: 200ms;">
+                    <div class="relative w-full max-w-[500px] aspect-square rounded-full border border-white/10 bg-space-900 flex items-center justify-center overflow-hidden">
+                        
+                        <!-- SVG Cross Section -->
+                        <svg class="w-full h-full" viewBox="0 0 200 200">
+                            <!-- Crust -->
+                            <circle cx="100" cy="100" r="90" fill="#0f172a" stroke="rgba(255,255,255,0.1)"/>
+                            <!-- Mantle -->
+                            <circle cx="100" cy="100" r="70" fill="#1e293b" stroke="rgba(255,255,255,0.05)"/>
+                            <!-- Core -->
+                            <circle cx="100" cy="100" r="30" fill="#334155" stroke="rgba(255,255,255,0.2)"/>
+                            
+                            <!-- Sensors on surface -->
+                            <g fill="#22d3ee">
+                                <circle cx="10" cy="100" r="2"/>
+                                <circle cx="40" cy="30" r="2"/>
+                                <circle cx="160" cy="30" r="2"/>
+                            </g>
+
+                            <!-- Dynamic Animations Container -->
+                            <g id="sci-animation-layer"></g>
+                        </svg>
+
+                        <!-- Legend/Labels -->
+                        <div class="absolute bottom-4 left-0 w-full flex justify-center gap-6 text-2xs font-mono text-slate-500">
+                            <span class="flex items-center gap-1"><div class="w-2 h-0.5 bg-slate-700"></div> Core</span>
+                            <span class="flex items-center gap-1"><div class="w-2 h-0.5 bg-slate-800"></div> Mantle</span>
+                            <span class="flex items-center gap-1"><div class="w-2 h-0.5 bg-slate-900 border border-white/20"></div> Crust</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 8: MISSION VALUE -->
+    <section id="value" class="relative py-32 border-t border-white/5">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="mb-16 reveal-up">
+                <div class="flex items-center gap-4 mb-4">
+                    <span class="text-xs font-mono text-slate-500">07</span>
+                    <div class="h-px bg-white/10 w-12"></div>
+                    <span class="text-xs font-mono text-accent-cyan uppercase tracking-widest">Mission Value</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-medium text-white tracking-tight mb-4">
+                    Turning Signals Into Intelligence
+                </h2>
+                <p class="text-base text-slate-400 max-w-2xl">
+                    MDMS transforms small movements beneath the lunar surface into actionable knowledge for science, exploration, and future lunar infrastructure.
+                </p>
+            </div>
+
+            <!-- Dashboard Grid -->
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 reveal-up" style="transition-delay: 200ms;">
+                
+                <div class="glass-panel p-6 rounded-xl flex flex-col">
+                    <iconify-icon icon="solar:rocket-linear" class="text-2xl text-accent-cyan mb-4"></iconify-icon>
+                    <h3 class="text-sm font-medium text-white mb-2">Safer Landing Zones</h3>
+                    <p class="text-xs text-slate-400 flex-grow">Identifying structurally stable regions free from shallow seismic hazards for vehicle touchdown.</p>
+                    <div class="mt-4 h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                        <div class="h-full bg-accent-cyan w-[85%]"></div>
+                    </div>
+                </div>
+
+                <div class="glass-panel p-6 rounded-xl flex flex-col">
+                    <iconify-icon icon="solar:city-linear" class="text-2xl text-accent-blue mb-4"></iconify-icon>
+                    <h3 class="text-sm font-medium text-white mb-2">Infrastructure Planning</h3>
+                    <p class="text-xs text-slate-400 flex-grow">Providing baseline structural data required to engineer long-term habitats and surface power grids.</p>
+                    <div class="mt-4 h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                        <div class="h-full bg-accent-blue w-[92%]"></div>
+                    </div>
+                </div>
+
+                <div class="glass-panel p-6 rounded-xl flex flex-col">
+                    <iconify-icon icon="solar:atom-linear" class="text-2xl text-white mb-4"></iconify-icon>
+                    <h3 class="text-sm font-medium text-white mb-2">Lunar Interior Science</h3>
+                    <p class="text-xs text-slate-400 flex-grow">Resolving decades-old questions about the Moon's core state and mantle composition.</p>
+                    <div class="mt-4 h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                        <div class="h-full bg-white/40 w-[78%]"></div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 9: TIMELINE & PROPOSAL -->
+    <section id="plan" class="relative py-32 border-t border-white/5 bg-space-900 pb-40">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="grid lg:grid-cols-2 gap-16">
+                
+                <!-- Timeline -->
+                <div class="reveal-up">
+                    <div class="flex items-center gap-4 mb-8">
+                        <span class="text-xs font-mono text-slate-500">08</span>
+                        <span class="text-xs font-mono text-white uppercase tracking-widest">Mission Plan</span>
+                    </div>
+                    <h2 class="text-3xl font-medium text-white tracking-tight mb-8">
+                        A Phased Path to Deployment
+                    </h2>
+                    
+                    <div class="relative pl-6 border-l border-white/10 space-y-8">
+                        <div class="relative">
+                            <div class="absolute -left-[29px] top-1 w-3 h-3 rounded-full bg-accent-cyan ring-4 ring-space-900"></div>
+                            <h4 class="text-sm font-medium text-white mb-1">Phase 1: Concept & Engineering</h4>
+                            <p class="text-xs text-slate-500">System design, instrument prototyping, and environmental qualification for lunar survivability.</p>
+                        </div>
+                        <div class="relative">
+                            <div class="absolute -left-[29px] top-1 w-3 h-3 rounded-full bg-white/20 ring-4 ring-space-900"></div>
+                            <h4 class="text-sm font-medium text-white mb-1">Phase 2: Mission Integration</h4>
+                            <p class="text-xs text-slate-500">Assembly, testing with launch vehicle providers, and final software verification.</p>
+                        </div>
+                        <div class="relative">
+                            <div class="absolute -left-[29px] top-1 w-3 h-3 rounded-full bg-white/20 ring-4 ring-space-900"></div>
+                            <h4 class="text-sm font-medium text-white mb-1">Phase 3: Lunar Operations</h4>
+                            <p class="text-xs text-slate-500">South Pole landing, LTV deployment sequence, and commencement of the primary science mission.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Proposal Summary -->
+                <div class="reveal-up" style="transition-delay: 200ms;">
+                    <div class="glass-panel rounded-xl p-8 hud-border">
+                        <div class="border-b border-white/10 pb-4 mb-6">
+                            <h3 class="text-lg font-medium text-white tracking-tight">Proposal Summary</h3>
+                            <p class="text-xs font-mono text-slate-500">MDMS / ID: TBD-202X</p>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-y-6 gap-x-4 mb-8">
+                            <div>
+                                <p class="text-2xs font-mono text-slate-500 uppercase mb-1">Mission Duration</p>
+                                <p class="text-sm text-white">36 Months (Nominal)</p>
+                            </div>
+                            <div>
+                                <p class="text-2xs font-mono text-slate-500 uppercase mb-1">Deployment Region</p>
+                                <p class="text-sm text-white">Lunar South Pole</p>
+                            </div>
+                            <div>
+                                <p class="text-2xs font-mono text-slate-500 uppercase mb-1">Primary Platform</p>
+                                <p class="text-sm text-white">Lunar Terrain Vehicle</p>
+                            </div>
+                            <div>
+                                <p class="text-2xs font-mono text-slate-500 uppercase mb-1">Network Size</p>
+                                <p class="text-sm text-white">[TBD] Sensor Nodes</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-black/40 rounded-lg p-4 border border-white/5 mb-8">
+                            <p class="text-2xs font-mono text-slate-500 uppercase mb-1">Primary Objective</p>
+                            <p class="text-xs text-slate-300">Map subsurface structure and characterize seismic risk for future infrastructure development.</p>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row gap-4">
+                            <button onclick="document.getElementById('system').scrollIntoView({behavior: 'smooth'})" class="flex-1 bg-white text-black px-4 py-2.5 rounded-lg font-medium text-xs hover:bg-slate-200 transition-colors text-center">
+                                Review Architecture
+                            </button>
+                            <button onclick="document.getElementById('hero').scrollIntoView({behavior: 'smooth'})" class="flex-1 border border-white/20 text-white px-4 py-2.5 rounded-lg font-medium text-xs hover:bg-white/5 transition-colors text-center">
+                                Return to Overview
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-8 border-t border-white/5 bg-black text-center">
+        <p class="text-xs font-mono text-slate-600">MDMS CONCEPT PROPOSAL - FOR REVIEW PURPOSES</p>
+    </footer>
+
+    <!-- Interactive Scripts -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            // --- 1. Reveal on Scroll ---
+            const revealElements = document.querySelectorAll('.reveal-up');
+            const revealObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('active');
+                        revealObserver.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+            
+            revealElements.forEach(el => revealObserver.observe(el));
+
+            // --- 2. Navigation State ---
+            const sections = document.querySelectorAll('section');
+            const navLinks = document.querySelectorAll('.nav-link');
+            const navBar = document.getElementById('main-nav');
+
+            window.addEventListener('scroll', () => {
+                let current = '';
+                sections.forEach(section => {
+                    const sectionTop = section.offsetTop;
+                    if (scrollY >= sectionTop - 100) {
+                        current = section.getAttribute('id');
+                    }
+                });
+
+                navLinks.forEach(link => {
+                    link.classList.remove('text-accent-cyan');
+                    if (link.getAttribute('href').includes(current)) {
+                        link.classList.add('text-accent-cyan');
+                    }
+                });
+                
+                if (scrollY > 50) {
+                    navBar.classList.add('bg-space-900/80', 'border-white/10');
+                    navBar.classList.remove('bg-space-900/40', 'border-white/5');
+                } else {
+                    navBar.classList.remove('bg-space-900/80', 'border-white/10');
+                    navBar.classList.add('bg-space-900/40', 'border-white/5');
+                }
+            });
+
+            // --- 3. Radial System Explorer ---
+            const systemData = [
+                { id: 'space', title: 'Space Segment', desc: 'Orbital relays and positioning satellites providing network synchronization and Earth backhaul.', icon: 'solar:satellite-linear', color: '#22d3ee', modules: ['Comms Relay', 'Time Sync', 'Earth Uplink', 'Telemetry'] },
+                { id: 'ground', title: 'Ground Segment', desc: 'Earth-based mission control receiving, processing, and archiving raw seismic data.', icon: 'solar:server-square-linear', color: '#f8fafc', modules: ['Data Archive', 'Command Hub', 'Science Analysis', 'Network Ops'] },
+                { id: 'sensors', title: 'Sensor Network', desc: 'The distributed array of highly sensitive seismometers placed on the lunar surface.', icon: 'solar:radar-linear', color: '#3b82f6', modules: ['Seismometer', 'Thermal Control', 'Power Unit', 'Local Comms'] },
+                { id: 'aircraft', title: 'Aircraft/LTV Segment', desc: 'Lunar Terrain Vehicles acting as transport and deployment mechanisms for sensor nodes.', icon: 'solar:moon-fog-linear', color: '#f8fafc', modules: ['Nav System', 'Deployment Arm', 'AI Processing', 'Radar'] },
+                { id: 'autonomous', title: 'Autonomous Systems', desc: 'Onboard logic for localized event detection without requiring immediate Earth intervention.', icon: 'solar:cpu-linear', color: '#f8fafc', modules: ['Event Trigger', 'Data Compression', 'Fault Recovery'] }
+            ];
+
+            const container = document.getElementById('radial-container');
+            const radius = 140; // px
+            const center = { x: 250, y: 250 }; // approx center based on max-w-[500px]
+
+            systemData.forEach((item, index) => {
+                const angle = (index / systemData.length) * 2 * Math.PI - (Math.PI / 2); // Start at top
+                const x = Math.cos(angle) * radius;
+                const y = Math.sin(angle) * radius;
+
+                const node = document.createElement('button');
+                node.className = 'absolute w-12 h-12 -ml-6 -mt-6 rounded-full glass-panel flex items-center justify-center text-slate-400 hover:text-white hover:border-accent-cyan transition-all group z-30';
+                node.style.transform = `translate(calc(50% + ${x}px), calc(50% + ${y}px))`;
+                node.innerHTML = `
+                    <iconify-icon icon="${item.icon}" width="1.25rem"></iconify-icon>
+                    <span class="absolute -bottom-6 text-[0.6rem] font-mono tracking-wider opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">${item.title}</span>
+                `;
+                
+                node.addEventListener('click', () => {
+                    // Update UI states
+                    document.querySelectorAll('#radial-container button').forEach(b => b.classList.remove('border-accent-cyan', 'text-white', 'bg-white/10'));
+                    node.classList.add('border-accent-cyan', 'text-white', 'bg-white/10');
+                    
+                    // Update Panel
+                    document.getElementById('system-details-empty').style.display = 'none';
+                    const content = document.getElementById('system-details-content');
+                    content.style.display = 'flex';
+                    
+                    document.getElementById('sys-icon').setAttribute('icon', item.icon);
+                    document.getElementById('sys-icon').style.color = item.color;
+                    document.getElementById('sys-category').textContent = item.id;
+                    document.getElementById('sys-category').style.color = item.color;
+                    document.getElementById('sys-title').textContent = item.title;
+                    document.getElementById('sys-desc').textContent = item.desc;
+                    
+                    const modsContainer = document.getElementById('sys-modules');
+                    modsContainer.innerHTML = '';
+                    item.modules.forEach(mod => {
+                        modsContainer.innerHTML += `<div class="bg-white/5 border border-white/5 rounded px-2 py-1.5 text-xs text-slate-300 font-mono">${mod}</div>`;
+                    });
+                });
+                
+                container.appendChild(node);
+            });
+
+            // --- 4. Instrument Hotspots ---
+            const instData = {
+                'comms': { label: 'Comms Module', title: 'UHF Orbital Transceiver', desc: 'Relays localized seismic data bursts to orbital satellites or nearby nodes.', specs: ['Band: UHF S-Band', 'Rate: 256 kbps', 'Power: 2W Peak'] },
+                'seismo': { label: 'Primary Sensor', title: 'Broadband Seismometer', desc: 'Ultra-sensitive triaxial sensor capable of detecting sub-nanometer displacements.', specs: ['Freq: 0.01 to 50 Hz', 'Axes: X, Y, Z', 'Temp Tolerance: Extreme'] },
+                'power': { label: 'Power System', title: 'Radioisotope Heater Unit & Battery', desc: 'Provides continuous power and thermal regulation during the 14-day lunar night.', specs: ['Life: 10 Years', 'Type: RHU + Li-ion', 'Output: 5W Continuous'] },
+                'deploy': { label: 'Interface', title: 'LTV Deployment Base', desc: 'Standardized mechanical coupling for automated placement by the Lunar Terrain Vehicle.', specs: ['Locking: Magnetic', 'Leveling: Auto-actuated'] }
+            };
+
+            const hotspots = document.querySelectorAll('.hotspot');
+            hotspots.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const target = btn.getAttribute('data-target');
+                    const data = instData[target];
+                    
+                    document.getElementById('inst-default').style.display = 'none';
+                    const infoPanel = document.getElementById('inst-info');
+                    infoPanel.style.display = 'block';
+                    
+                    // Add subtle pop animation
+                    infoPanel.classList.remove('opacity-0', 'translate-y-2');
+                    infoPanel.classList.add('opacity-0', 'translate-y-2');
+                    setTimeout(() => infoPanel.classList.remove('opacity-0', 'translate-y-2'), 10);
+                    
+                    document.getElementById('inst-label').textContent = data.label;
+                    document.getElementById('inst-title').textContent = data.title;
+                    document.getElementById('inst-desc').textContent = data.desc;
+                    
+                    const specsList = document.getElementById('inst-specs');
+                    specsList.innerHTML = '';
+                    data.specs.forEach(spec => {
+                        const parts = spec.split(':');
+                        specsList.innerHTML += `<li><span class="text-slate-500">${parts[0]}:</span> ${parts[1]}</li>`;
+                    });
+                });
+            });
+
+            // --- 5. Moon Science Interactive ---
+            const sciButtons = document.querySelectorAll('.sci-btn');
+            const animationLayer = document.getElementById('sci-animation-layer');
+
+            const sciAnimations = {
+                'shallow': `<circle cx="40" cy="30" r="10" fill="none" stroke="#fb923c" stroke-width="2" class="animate-ping"/>
+                            <path d="M40 30 Q 100 80 160 30" fill="none" stroke="rgba(251,146,60,0.5)" stroke-dasharray="4" class="animate-pulse"/>`,
+                'deep': `<circle cx="100" cy="100" r="10" fill="none" stroke="#3b82f6" stroke-width="2" class="animate-ping"/>
+                         <line x1="100" y1="100" x2="40" y2="30" stroke="rgba(59,130,246,0.5)" stroke-dasharray="2" stroke-width="2"/>
+                         <line x1="100" y1="100" x2="160" y2="30" stroke="rgba(59,130,246,0.5)" stroke-dasharray="2" stroke-width="2"/>`,
+                'impact': `<circle cx="160" cy="30" r="5" fill="#fff" class="animate-ping"/>
+                           <path d="M160 30 A 80 80 0 0 0 10 100" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" class="animate-pulse"/>`
+            };
+
+            sciButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    sciButtons.forEach(b => {
+                        b.classList.remove('border-l-accent-cyan', 'bg-white/5');
+                        b.classList.add('border-transparent');
+                    });
+                    btn.classList.remove('border-transparent');
+                    btn.classList.add('border-l-accent-cyan', 'bg-white/5');
+                    
+                    const eventType = btn.getAttribute('data-event');
+                    animationLayer.innerHTML = sciAnimations[eventType];
+                });
+            });
+
+        });
+    </script>
+</body>
+</html>

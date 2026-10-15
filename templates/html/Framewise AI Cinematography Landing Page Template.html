@@ -1,0 +1,1972 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta
+name="description"
+content="Framewise is an intelligent filmmaking companion for cinematic composition, focus, lighting, and camera guidance."
+/>
+<meta name="theme-color" content="#140a05" />
+<title>Framewise — Your AI Cinematography Guide</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r160/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link
+href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&amp;family=Manrope:wght@300;400;500;600&amp;display=swap"
+rel="stylesheet"
+/></head>
+
+  <body
+    class="overflow-x-hidden bg-[#140a05] text-white antialiased selection:bg-orange-300 selection:text-[#1a0c05]"
+    style="font-family:'Manrope',sans-serif;"
+  >
+    <div
+      id="preloader"
+      class="fixed inset-0 z-[100] flex items-center justify-center bg-[#140a05]"
+      aria-hidden="true"
+    >
+      <div class="flex flex-col items-center">
+        <div class="relative flex h-16 w-16 items-center justify-center">
+          <div
+            id="loader-orbit"
+            class="absolute inset-0 rounded-full border border-orange-300/20"
+          ></div>
+          <iconify-icon
+            icon="solar:stars-linear"
+            width="30"
+            height="30"
+            class="text-orange-300"
+            style="--iconify-stroke-width:1.5;"
+          ></iconify-icon>
+        </div>
+        <div class="mt-6 overflow-hidden">
+          <p
+            id="loader-word"
+            class="text-xs font-medium uppercase tracking-[0.28rem] text-white/70"
+          >
+            Framewise
+          </p>
+        </div>
+        <div class="mt-4 h-px w-32 overflow-hidden bg-white/10">
+          <div
+            id="loader-line"
+            class="h-full w-full origin-left bg-gradient-to-r from-yellow-300 via-orange-400 to-red-500"
+          ></div>
+        </div>
+        <p
+          id="loader-counter"
+          class="mt-3 text-xs text-white/30"
+          style="font-family:'DM Mono',monospace;"
+        >
+          100
+        </p>
+      </div>
+    </div>
+    <div
+      id="scroll-progress"
+      class="fixed left-0 top-0 z-[90] h-0.5 w-full origin-left scale-x-0 bg-gradient-to-r from-yellow-300 via-orange-400 to-red-500"
+      aria-hidden="true"
+    ></div>
+
+    <div
+      id="cursor"
+      class="pointer-events-none fixed left-0 top-0 z-[95] hidden h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-orange-300 mix-blend-difference md:block"
+      aria-hidden="true"
+    ></div>
+    <div
+      id="cursor-ring"
+      class="pointer-events-none fixed left-0 top-0 z-[94] hidden h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full border border-orange-200/60 md:block"
+      aria-hidden="true"
+    ></div>
+
+    <div
+      id="cursor-label"
+      class="pointer-events-none fixed left-0 top-0 z-[96] hidden -translate-x-1/2 -translate-y-1/2 rounded-full bg-orange-300 px-4 py-2 text-xs font-medium uppercase tracking-wider text-[#1a0c05]"
+      aria-hidden="true"
+    >
+      View
+    </div>
+    <canvas
+      id="webgl-aura"
+      class="pointer-events-none fixed inset-0 z-0 h-full w-full opacity-50"
+      aria-hidden="true"
+    ></canvas>
+
+    <div
+      class="pointer-events-none fixed inset-0 z-[2] opacity-[0.035]"
+      style="background-image:url('data:image/svg+xml,%3Csvg viewBox=%220 0 180 180%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22n%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.9%22 numOctaves=%224%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23n)%22 opacity=%221%22/%3E%3C/svg%3E');"
+      aria-hidden="true"
+    ></div>
+
+    <div class="relative z-10 overflow-hidden">
+      <header
+        id="site-header"
+        class="fixed inset-x-0 top-0 z-50 text-white transition-colors duration-300"
+        style="padding-top:env(safe-area-inset-top);"
+      >
+        <div
+          class="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-[#140a05]/55 via-[#140a05]/20 to-transparent"
+          aria-hidden="true"
+        ></div>
+        <nav
+          class="relative mx-auto flex max-w-7xl flex-nowrap items-center justify-between gap-3 px-4 py-4 sm:gap-6 sm:px-8 sm:py-5 lg:px-12"
+          aria-label="Primary navigation"
+          style="text-shadow:0 1px 2px rgba(0,0,0,0.35);"
+        >
+          <a
+            href="#"
+            class="magnetic flex shrink-0 items-center gap-2 text-base font-semibold tracking-tight sm:text-lg"
+            aria-label="Framewise home"
+          >
+            <span class="relative flex h-6 w-6 items-center justify-center">
+              <span
+                class="absolute h-5 w-1.5 rotate-45 rounded-full bg-orange-300 blur-sm"
+              ></span>
+              <iconify-icon
+                icon="solar:stars-linear"
+                width="24"
+                height="24"
+                class="relative text-orange-300"
+                style="--iconify-stroke-width:1.5;"
+              ></iconify-icon>
+            </span>
+            <span>Framewise</span>
+          </a>
+
+          <div
+            class="hidden min-w-0 flex-nowrap items-center gap-4 whitespace-nowrap text-[0.68rem] font-medium uppercase tracking-tight text-white/75 md:flex lg:gap-8 lg:text-xs lg:tracking-wide"
+          >
+            <a
+              href="#platform"
+              class="nav-link relative transition hover:text-orange-300"
+            >
+              Studio
+            </a>
+            <a
+              href="#solutions"
+              class="nav-link relative transition hover:text-orange-300"
+            >
+              Workflow
+            </a>
+            <a
+              href="#features"
+              class="nav-link relative transition hover:text-orange-300"
+            >
+              Toolkit
+            </a>
+            <a
+              href="#research"
+              class="nav-link relative transition hover:text-orange-300"
+            >
+              Journal
+            </a>
+            <a
+              href="#community"
+              class="nav-link relative transition hover:text-orange-300"
+            >
+              Network
+            </a>
+            <a
+              href="#join"
+              class="magnetic shrink-0 rounded-lg border border-orange-300/30 bg-orange-300/10 px-3 py-2 text-orange-300 transition hover:bg-orange-300 hover:text-[#1a0c05] lg:px-4"
+            >
+              Get access
+            </a>
+          </div>
+
+          <button
+            id="menu-button"
+            type="button"
+            class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-current backdrop-blur-xl md:hidden"
+            aria-label="Open navigation"
+            aria-expanded="false"
+          >
+            <iconify-icon
+              icon="solar:hamburger-menu-linear"
+              width="22"
+              height="22"
+              style="--iconify-stroke-width:1.5;"
+            ></iconify-icon>
+          </button>
+        </nav>
+
+        <div
+          id="mobile-menu"
+          class="mx-4 hidden origin-top rounded-2xl border border-white/10 bg-[#1f1107]/95 p-4 shadow-2xl backdrop-blur-xl sm:mx-5 md:hidden"
+        >
+          <div class="grid gap-1 text-sm text-white/80">
+            <a href="#platform" class="rounded-xl px-4 py-3 hover:bg-white/5">
+              Studio
+            </a>
+            <a href="#solutions" class="rounded-xl px-4 py-3 hover:bg-white/5">
+              Workflow
+            </a>
+            <a href="#features" class="rounded-xl px-4 py-3 hover:bg-white/5">
+              Toolkit
+            </a>
+            <a href="#research" class="rounded-xl px-4 py-3 hover:bg-white/5">
+              Journal
+            </a>
+            <a
+              href="#join"
+              class="rounded-xl px-4 py-3 text-orange-300 hover:bg-white/5"
+            >
+              Get access
+            </a>
+          </div>
+        </div>
+      </header>
+      <main class="">
+        <section
+          class="relative min-h-screen overflow-hidden px-5 pb-0 pt-36 sm:px-8 lg:px-12"
+          id="platform"
+        >
+          <div
+            id="hero-glow"
+            class="pointer-events-none absolute left-1/2 top-0 h-[34rem] w-[34rem] -translate-x-1/2 rounded-full bg-orange-400/10 blur-3xl"
+          ></div>
+          <div
+            class="pointer-events-none absolute left-8 top-1/3 hidden h-px w-20 bg-white/20 lg:block"
+          ></div>
+          <div
+            class="pointer-events-none absolute right-8 top-1/3 hidden h-px w-20 bg-white/20 lg:block"
+          ></div>
+
+          <div class="relative mx-auto max-w-6xl text-center">
+            <div
+              id="hero-kicker"
+              class="mb-7 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs uppercase tracking-[0.18rem] text-white/50 backdrop-blur-xl"
+            >
+              <span
+                class="h-1.5 w-1.5 rounded-full bg-orange-300 shadow-[0_0_1rem_rgba(253,186,116,0.8)]"
+              ></span>
+              Intelligent visual direction
+            </div>
+
+            <h1
+              class="reveal-words mx-auto max-w-5xl text-5xl font-light leading-[0.98] tracking-tight sm:text-6xl lg:text-7xl"
+              style="font-family:'DM Mono',monospace;"
+            >
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">Your</span>
+              </span>
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">intelligent</span>
+              </span>
+              <span class="mt-2 block font-medium text-[#ffb366]">
+                <span
+                  style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+                >
+                  <span style="display: inline-block;">cinematography</span>
+                </span>
+                <span
+                  style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+                >
+                  <span style="display: inline-block;">guide</span>
+                </span>
+              </span>
+            </h1>
+
+            <p
+              id="hero-copy"
+              class="mx-auto mt-6 max-w-2xl text-sm font-light leading-6 text-white/60 sm:text-base"
+            >
+              Shape exposure, composition, movement, and focus with responsive
+              guidance designed for fearless visual creators.
+            </p>
+
+            <div
+              id="hero-actions"
+              class="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row"
+            >
+              <a
+                href="#join"
+                class="magnetic group relative inline-flex min-w-40 items-center justify-center overflow-hidden rounded-lg p-px"
+              >
+                <span
+                  class="absolute inset-0 bg-gradient-to-r from-yellow-400 via-orange-400 to-red-500"
+                ></span>
+                <span
+                  class="relative flex w-full items-center justify-center gap-2 rounded-[0.45rem] bg-gradient-to-r from-orange-500 to-red-500 px-6 py-3 text-xs font-medium text-white transition group-hover:brightness-110"
+                >
+                  Try the studio beta
+                  <iconify-icon
+                    icon="solar:arrow-right-up-linear"
+                    width="16"
+                    height="16"
+                    style="--iconify-stroke-width:1.5;"
+                  ></iconify-icon>
+                </span>
+              </a>
+              <a
+                href="#showreel"
+                class="magnetic inline-flex min-w-40 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-6 py-3 text-xs font-medium text-white transition hover:border-orange-300/30 hover:bg-white/10"
+              >
+                <iconify-icon
+                  icon="solar:play-circle-linear"
+                  width="18"
+                  height="18"
+                  style="--iconify-stroke-width:1.5;"
+                ></iconify-icon>
+                Watch film
+              </a>
+            </div>
+          </div>
+
+          <div id="showreel" class="relative mx-auto mt-4 max-w-6xl">
+            <div
+              class="pointer-events-none absolute inset-x-24 top-28 h-72 rounded-full bg-orange-400/20 blur-3xl"
+            ></div>
+
+            <div
+              id="hero-device"
+              class="relative mx-auto translate-y-12 overflow-hidden rounded-t-[3rem]"
+            >
+              <video
+                src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/generated-videos/2e815afb-cac1-4c01-90e1-cf3810246e35/1788781992660-34271847-4aac-4437-9a3d-dc9700a9681f.mp4"
+                poster="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2ac7895d-242e-496e-8f7c-3600c6cf80b6_3840w.png"
+                data-aura-generated-video="true"
+                data-aura-video-preset="loop-in-view"
+                muted=""
+                playsinline=""
+                preload="metadata"
+                loop=""
+                aria-label="Cinematic neon wave visual displayed as a filmmaking scene"
+                class="parallax-image h-[32rem] w-full object-cover object-center opacity-75 sm:h-[42rem]"
+              ></video>
+              <div
+                class="absolute inset-0 bg-gradient-to-b from-transparent via-[#1c0e06]/10 to-[#140a05]"
+              ></div>
+
+              <div
+                class="absolute left-1/2 top-1/2 w-[86%] max-w-3xl -translate-x-1/2 -translate-y-1/2 rounded-[2.2rem] border border-white/20 bg-black/25 p-2 shadow-2xl backdrop-blur-sm"
+              >
+                <div
+                  class="relative aspect-video overflow-hidden rounded-[1.7rem] border border-white/10 bg-black"
+                >
+                  <img
+                    src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/451c4f08-0842-4f8f-b448-7968e1f60321_3840w.png"
+                    alt="Abstract blue and orange cinematic scene"
+                    class="h-full w-full scale-105 object-cover opacity-80"
+                  />
+                  <div
+                    class="absolute inset-0"
+                    style="background-image:linear-gradient(rgba(255,255,255,.11) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.11) 1px,transparent 1px);background-size:33.333% 33.333%;"
+                  ></div>
+                  <div
+                    id="focus-frame"
+                    class="absolute left-[37%] top-[28%] h-[36%] w-[27%] border border-orange-200/70"
+                  >
+                    <span
+                      class="absolute -left-px -top-px h-3 w-3 border-l-2 border-t-2 border-orange-200"
+                    ></span>
+                    <span
+                      class="absolute -right-px -top-px h-3 w-3 border-r-2 border-t-2 border-orange-200"
+                    ></span>
+                    <span
+                      class="absolute -bottom-px -left-px h-3 w-3 border-b-2 border-l-2 border-orange-200"
+                    ></span>
+                    <span
+                      class="absolute -bottom-px -right-px h-3 w-3 border-b-2 border-r-2 border-orange-200"
+                    ></span>
+                  </div>
+
+                  <div
+                    class="absolute inset-x-4 top-4 flex items-center justify-between text-xs uppercase tracking-widest text-white/80"
+                  >
+                    <div class="flex gap-4">
+                      <span>
+                        Lens
+                        <br />
+                        <b class="font-normal text-white">50mm</b>
+                      </span>
+                      <span>
+                        FPS
+                        <br />
+                        <b class="font-normal text-white">30</b>
+                      </span>
+                      <span class="hidden sm:block">
+                        Shutter
+                        <br />
+                        <b class="font-normal text-white">1/60</b>
+                      </span>
+                    </div>
+                    <span
+                      class="hidden sm:block"
+                      style="font-family:'DM Mono',monospace;"
+                    >
+                      00:01:08:22
+                    </span>
+                    <div class="flex gap-4">
+                      <span>
+                        ISO
+                        <br />
+                        <b class="font-normal text-white">400</b>
+                      </span>
+                      <span>
+                        WB
+                        <br />
+                        <b class="font-normal text-white">5200K</b>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div
+                    id="guidance-card"
+                    class="absolute bottom-5 left-1/2 flex w-[82%] -translate-x-1/2 items-center gap-3 rounded-xl border border-white/10 bg-[#1c0e06]/85 px-4 py-3 shadow-xl backdrop-blur-md"
+                  >
+                    <iconify-icon
+                      icon="solar:stars-linear"
+                      width="22"
+                      height="22"
+                      class="shrink-0 text-orange-300"
+                      style="--iconify-stroke-width:1.5;"
+                    ></iconify-icon>
+                    <div class="min-w-0 flex-1 text-left">
+                      <p class="text-xs font-medium">Refining visual balance</p>
+                      <p class="truncate text-xs text-white/50">
+                        Shift one step right to reinforce the leading line.
+                      </p>
+                      <div
+                        class="mt-2 h-0.5 overflow-hidden rounded-full bg-white/10"
+                      >
+                        <div
+                          id="analysis-line"
+                          class="h-full w-3/4 origin-left bg-gradient-to-r from-orange-400 to-red-500"
+                        ></div>
+                      </div>
+                    </div>
+                    <span
+                      class="flex h-2 w-2 rounded-full bg-orange-300 shadow-[0_0_1rem_rgba(253,186,116,0.8)]"
+                    ></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div
+          class="relative z-20 overflow-hidden border-y border-white/[0.07] bg-[#180c06]/80 py-4 backdrop-blur-xl"
+        >
+          <div
+            id="marquee-track"
+            class="flex w-max items-center gap-8 whitespace-nowrap text-xs uppercase tracking-[0.22rem] text-white/35"
+          >
+            <span>Composition intelligence</span>
+            <span class="text-orange-300">✦</span>
+            <span>Exposure awareness</span>
+            <span class="text-orange-300">✦</span>
+            <span>Motion analysis</span>
+            <span class="text-orange-300">✦</span>
+            <span>Focus direction</span>
+            <span class="text-orange-300">✦</span>
+            <span>Composition intelligence</span>
+            <span class="text-orange-300">✦</span>
+            <span>Exposure awareness</span>
+            <span class="text-orange-300">✦</span>
+            <span>Motion analysis</span>
+            <span class="text-orange-300">✦</span>
+            <span>Focus direction</span>
+            <span class="text-orange-300">✦</span>
+          </div>
+        </div>
+
+        <section
+          id="solutions"
+          class="relative mx-auto max-w-7xl px-5 pb-32 pt-28 sm:px-8 lg:px-12"
+        >
+          <div
+            class="mb-10 grid gap-8 lg:grid-cols-[1.65fr_0.75fr] lg:items-end"
+          >
+            <h2
+              class="reveal-words max-w-4xl text-4xl font-light leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl"
+              style="font-family:'DM Mono',monospace;"
+            >
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">Turn</span>
+              </span>
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">simple</span>
+              </span>
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">concepts</span>
+              </span>
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">into</span>
+              </span>
+              <span class="font-medium text-[#ffb366]">
+                <span
+                  style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+                >
+                  <span style="display: inline-block;">striking</span>
+                </span>
+                <span
+                  style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+                >
+                  <span style="display: inline-block;">moving</span>
+                </span>
+                <span
+                  style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+                >
+                  <span style="display: inline-block;">images</span>
+                </span>
+              </span>
+            </h2>
+            <p
+              class="fade-up max-w-sm text-sm font-light leading-6 text-white/55 lg:pb-2"
+            >
+              Translate creative instinct into expressive footage with calm,
+              contextual direction that never breaks your rhythm.
+            </p>
+          </div>
+
+          <div class="grid gap-5 lg:grid-cols-2">
+            <article
+              class="tilt-card image-hover relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-300/30 via-white/5 to-red-500/20 p-px lg:col-span-2"
+              data-cursor="Explore"
+            >
+              <div
+                class="grid min-h-[30rem] overflow-hidden rounded-[calc(1rem-1px)] bg-[#1f1107] lg:grid-cols-[1.35fr_0.65fr]"
+              >
+                <div class="relative min-h-80 overflow-hidden">
+                  <img
+                    src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/83e0b40f-346c-41e8-8691-df5116dd86ea_3840w.png"
+                    alt="Neon pastel cinematic landscape"
+                    class="h-full w-full scale-105 object-cover opacity-75"
+                  />
+                  <div
+                    class="absolute inset-0"
+                    style="background-image:linear-gradient(rgba(255,255,255,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.1) 1px,transparent 1px);background-size:33.333% 33.333%;"
+                  ></div>
+                  <div
+                    class="floating-ui absolute bottom-5 left-5 right-5 rounded-xl border border-white/10 bg-[#1c0e06]/85 p-4 backdrop-blur-md"
+                  >
+                    <div class="flex items-start gap-3">
+                      <iconify-icon
+                        icon="solar:stars-linear"
+                        width="22"
+                        height="22"
+                        class="text-orange-300"
+                        style="--iconify-stroke-width:1.5;"
+                      ></iconify-icon>
+                      <div>
+                        <p class="text-xs font-medium">
+                          Spatial rhythm identified
+                        </p>
+                        <p class="mt-1 text-xs text-white/45">
+                          Hold the open space to preserve scale and tension.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="flex flex-col justify-end p-7 sm:p-10">
+                  <span
+                    class="flex h-12 w-12 items-center justify-center rounded-full border border-orange-300/20 bg-orange-300/10"
+                  >
+                    <iconify-icon
+                      icon="solar:videocamera-record-linear"
+                      width="26"
+                      height="26"
+                      class="text-orange-300"
+                      style="--iconify-stroke-width:1.5;"
+                    ></iconify-icon>
+                  </span>
+                  <h3
+                    class="mt-5 text-3xl font-light tracking-tight"
+                    style="font-family:'DM Mono',monospace;"
+                  >
+                    Interpret the scene
+                  </h3>
+                  <p class="mt-3 text-sm leading-6 text-white/50">
+                    Map subjects, movement, contrast, and depth before the first
+                    take begins.
+                  </p>
+                </div>
+              </div>
+            </article>
+
+            <article
+              class="tilt-card image-hover relative overflow-hidden rounded-2xl bg-gradient-to-br from-white/15 via-orange-400/20 to-transparent p-px"
+              data-cursor="Focus"
+            >
+              <div
+                class="flex min-h-[34rem] flex-col overflow-hidden rounded-[calc(1rem-1px)] bg-[#1f1107]"
+              >
+                <div class="p-8">
+                  <iconify-icon
+                    icon="solar:slider-minimalistic-horizontal-linear"
+                    width="28"
+                    height="28"
+                    class="text-orange-300"
+                    style="--iconify-stroke-width:1.5;"
+                  ></iconify-icon>
+                  <h3
+                    class="mt-5 text-3xl font-light tracking-tight"
+                    style="font-family:'DM Mono',monospace;"
+                  >
+                    Dial in the camera
+                  </h3>
+                  <p class="mt-3 max-w-sm text-sm leading-6 text-white/50">
+                    Get considered recommendations for exposure, shutter, focus,
+                    white balance, and focal length.
+                  </p>
+                </div>
+                <div class="mt-auto overflow-hidden">
+                  <img
+                    src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/3bf89e9a-a85f-4901-b965-2497fa7801ad_3840w.png"
+                    alt="Blue abstract wave demonstrating balanced camera settings"
+                    class="h-72 w-full scale-105 object-cover opacity-70"
+                  />
+                </div>
+              </div>
+            </article>
+
+            <article
+              class="tilt-card image-hover relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-400/25 via-white/10 to-red-500/15 p-px"
+              data-cursor="Review"
+            >
+              <div
+                class="flex min-h-[34rem] flex-col overflow-hidden rounded-[calc(1rem-1px)] bg-[#1c0e06]"
+              >
+                <div class="relative h-72 overflow-hidden">
+                  <img
+                    src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/0762d3f4-3ba3-43d8-9f6e-b54007cbe3c5_3840w.png"
+                    alt="Atmospheric filmmaking backdrop"
+                    class="h-full w-full scale-105 object-cover opacity-70"
+                  />
+                  <div
+                    class="floating-ui absolute inset-x-7 bottom-5 rounded-xl border border-white/10 bg-black/50 p-4 backdrop-blur"
+                  >
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs">Motion smoothing available</span>
+                      <span
+                        class="rounded-full bg-orange-300 px-3 py-1 text-xs font-medium text-[#1a0a03]"
+                      >
+                        Enable
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-auto p-8">
+                  <iconify-icon
+                    icon="solar:magic-stick-3-linear"
+                    width="28"
+                    height="28"
+                    class="text-orange-300"
+                    style="--iconify-stroke-width:1.5;"
+                  ></iconify-icon>
+                  <h3
+                    class="mt-5 text-3xl font-light tracking-tight"
+                    style="font-family:'DM Mono',monospace;"
+                  >
+                    Shoot or polish
+                  </h3>
+                  <p class="mt-3 text-sm leading-6 text-white/50">
+                    Follow direction in the moment or review footage with
+                    focused, practical improvement notes.
+                  </p>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section
+          id="features"
+          class="mx-auto max-w-7xl px-5 py-28 sm:px-8 lg:px-12"
+        >
+          <div class="max-w-4xl">
+            <h2
+              class="reveal-words text-4xl font-light leading-[1.06] tracking-tight sm:text-5xl lg:text-6xl"
+              style="font-family:'DM Mono',monospace;"
+            >
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">Focused</span>
+              </span>
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">tools</span>
+              </span>
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">made</span>
+              </span>
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">for</span>
+              </span>
+              <span class="font-medium text-[#ffb366]">
+                <span
+                  style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+                >
+                  <span style="display: inline-block;">filmmakers</span>
+                </span>
+                <span
+                  style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+                >
+                  <span style="display: inline-block;">and</span>
+                </span>
+                <span
+                  style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+                >
+                  <span style="display: inline-block;">storytellers</span>
+                </span>
+              </span>
+            </h2>
+            <p class="fade-up mt-6 max-w-2xl text-sm leading-6 text-white/55">
+              Smart assistance that strengthens your decisions without
+              flattening the instinct and emotion behind the frame.
+            </p>
+          </div>
+
+          <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            <article class="feature-card image-hover group" data-cursor="Frame">
+              <div
+                class="overflow-hidden rounded-xl bg-gradient-to-br from-orange-300/30 via-white/10 to-transparent p-px"
+              >
+                <img
+                  src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/f3e16f3e-a3ef-4d67-9c13-4cc1eb736d76_3840w.png"
+                  alt="Creator filming a cinematic scene"
+                  class="aspect-[4/5] w-full scale-105 rounded-[calc(0.75rem-1px)] object-cover opacity-75"
+                />
+              </div>
+              <h3 class="mt-4 text-sm font-medium">
+                Real-time composition cues
+              </h3>
+              <p class="mt-2 text-xs leading-5 text-white/40">
+                Responsive prompts for framing, visual pace, and subject
+                placement.
+              </p>
+            </article>
+
+            <article
+              class="feature-card image-hover group lg:translate-y-8"
+              data-cursor="Focus"
+            >
+              <div
+                class="overflow-hidden rounded-xl bg-gradient-to-br from-yellow-300/25 via-white/10 to-transparent p-px"
+              >
+                <img
+                  src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/0ab1c7fe-d8b7-4ff5-a64c-09879285f32b_3840w.png"
+                  alt="Portrait in atmospheric cinematic lighting"
+                  class="aspect-[4/5] w-full scale-105 rounded-[calc(0.75rem-1px)] object-cover opacity-75"
+                />
+              </div>
+              <h3 class="mt-4 text-sm font-medium">Responsive focus control</h3>
+              <p class="mt-2 text-xs leading-5 text-white/40">
+                Fluid depth and subject tracking for intentional motion.
+              </p>
+            </article>
+
+            <article
+              class="feature-card image-hover group lg:translate-y-16"
+              data-cursor="Angle"
+            >
+              <div
+                class="overflow-hidden rounded-xl bg-gradient-to-br from-red-300/25 via-white/10 to-transparent p-px"
+              >
+                <img
+                  src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b281cd19-0dfa-465c-86d6-f9d827de4bc0_3840w.png"
+                  alt="Cinematic image representing camera angle guidance"
+                  class="aspect-[4/5] w-full scale-105 rounded-[calc(0.75rem-1px)] object-cover opacity-75"
+                />
+              </div>
+              <h3 class="mt-4 text-sm font-medium">Perspective coaching</h3>
+              <p class="mt-2 text-xs leading-5 text-white/40">
+                Find the viewpoint that gives each scene stronger meaning.
+              </p>
+            </article>
+
+            <article class="feature-card image-hover group" data-cursor="Light">
+              <div
+                class="overflow-hidden rounded-xl bg-gradient-to-br from-orange-300/30 via-white/10 to-transparent p-px"
+              >
+                <img
+                  src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/0e4dbdc1-5fad-43d3-b727-dbd292d95e09_3840w.png"
+                  alt="Creator in dramatic lighting"
+                  class="aspect-[4/5] w-full scale-105 rounded-[calc(0.75rem-1px)] object-cover opacity-75"
+                />
+              </div>
+              <h3 class="mt-4 text-sm font-medium">Exposure awareness</h3>
+              <p class="mt-2 text-xs leading-5 text-white/40">
+                Preserve highlight detail and shadow character without losing
+                atmosphere.
+              </p>
+            </article>
+          </div>
+
+          <div class="fade-up mt-24 max-w-xl lg:ml-12">
+            <iconify-icon
+              icon="solar:stars-linear"
+              width="34"
+              height="34"
+              class="text-orange-300"
+              style="--iconify-stroke-width:1.5;"
+            ></iconify-icon>
+            <p class="mt-6 text-xl font-light leading-8 text-white/75">
+              Framewise reads the relationship between subject, environment,
+              light, and motion—then presents useful options without disrupting
+              your creative flow.
+            </p>
+          </div>
+        </section>
+
+        <section class="relative mx-auto max-w-7xl px-5 py-32 sm:px-8 lg:px-12">
+          <div class="grid items-center gap-12 lg:grid-cols-2">
+            <div>
+              <h2
+                class="reveal-words text-4xl font-light leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl"
+                style="font-family:'DM Mono',monospace;"
+              >
+                <span class="font-medium text-[#ffb366]">
+                  <span
+                    style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+                  >
+                    <span style="display: inline-block;">The</span>
+                  </span>
+                  <span
+                    style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+                  >
+                    <span style="display: inline-block;">Viewfinder</span>
+                  </span>
+                </span>
+                <span
+                  style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+                >
+                  <span style="display: inline-block;">where</span>
+                </span>
+                <span
+                  style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+                >
+                  <span style="display: inline-block;">every</span>
+                </span>
+                <span
+                  style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+                >
+                  <span style="display: inline-block;">creator</span>
+                </span>
+                <span
+                  style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+                >
+                  <span style="display: inline-block;">fits</span>
+                </span>
+              </h2>
+              <a
+                href="#join"
+                class="magnetic mt-8 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 px-6 py-3 text-xs font-medium"
+              >
+                Begin a project
+                <iconify-icon
+                  icon="solar:stars-linear"
+                  width="18"
+                  height="18"
+                  style="--iconify-stroke-width:1.5;"
+                ></iconify-icon>
+              </a>
+              <p
+                class="fade-up mt-28 max-w-lg text-base font-light leading-7 text-white/65 lg:mt-48"
+              >
+                Whether you shoot independently, direct a full crew, or follow
+                stories on the move, Framewise helps every image feel
+                deliberate.
+              </p>
+            </div>
+
+            <div class="portrait-wrap relative">
+              <div
+                class="absolute inset-20 rounded-full bg-orange-300/20 blur-3xl"
+              ></div>
+              <div
+                class="image-hover relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-orange-300/35 via-white/10 to-red-500/20 p-px"
+                data-cursor="Discover"
+              >
+                <div class="relative overflow-hidden rounded-[calc(2rem-1px)]">
+                  <img
+                    src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/d4b30ab7-2ee9-4248-85e9-29ce6d0cd7be_3840w.png"
+                    alt="Filmmaker creating an atmospheric scene"
+                    class="aspect-[4/5] w-full scale-105 object-cover opacity-75"
+                  />
+                  <div
+                    class="absolute inset-0 bg-gradient-to-t from-[#140a05] via-transparent to-transparent"
+                  ></div>
+                  <div
+                    class="floating-ui absolute inset-x-6 bottom-7 rounded-2xl border border-white/10 bg-[#1c0e06]/80 p-5 backdrop-blur-xl"
+                  >
+                    <div class="flex items-start gap-3">
+                      <iconify-icon
+                        icon="solar:lightbulb-bolt-linear"
+                        width="24"
+                        height="24"
+                        class="text-orange-300"
+                        style="--iconify-stroke-width:1.5;"
+                      ></iconify-icon>
+                      <div>
+                        <p class="text-sm font-medium">
+                          Preserve the brightest detail
+                        </p>
+                        <p class="mt-1 text-xs leading-5 text-white/50">
+                          Reduce exposure by 0.7 stops to retain texture in the
+                          practical light.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="mx-auto max-w-3xl px-5 py-32 text-center sm:px-8">
+          <iconify-icon
+            icon="solar:stars-linear"
+            width="40"
+            height="40"
+            class="text-orange-300"
+            style="--iconify-stroke-width:1.5;"
+          ></iconify-icon>
+          <h2
+            class="reveal-words mt-6 text-4xl font-light leading-tight tracking-tight sm:text-5xl"
+            style="font-family:'DM Mono',monospace;"
+          >
+            <span class="font-medium text-[#ffb366]">
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">Expand</span>
+              </span>
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">your</span>
+              </span>
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">visual</span>
+              </span>
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">language</span>
+              </span>
+            </span>
+            <span
+              style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+            >
+              <span style="display: inline-block;">with</span>
+            </span>
+            <span
+              style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+            >
+              <span style="display: inline-block;">Framewise</span>
+            </span>
+          </h2>
+          <p
+            class="fade-up mx-auto mt-5 max-w-xl text-xs leading-5 text-white/50"
+          >
+            Receive clear, contextual direction for composition, light, focus,
+            and exposure wherever you shoot.
+          </p>
+
+          <div class="fade-up mt-12 space-y-3 text-left">
+            <div
+              class="faq-item rounded-xl border border-white/10 bg-[#291609]/80"
+            >
+              <button
+                type="button"
+                class="faq-button flex w-full items-center justify-between p-5 text-left text-sm"
+                aria-expanded="true"
+              >
+                What does Framewise do during production?
+                <iconify-icon
+                  icon="solar:minus-circle-linear"
+                  width="20"
+                  height="20"
+                  class="faq-icon text-orange-300"
+                  style="--iconify-stroke-width:1.5;"
+                ></iconify-icon>
+              </button>
+              <div
+                class="faq-content px-5 pb-5 text-xs leading-5 text-white/45"
+              >
+                It interprets the live camera view and suggests practical
+                refinements for framing, exposure, movement, and focus while you
+                work.
+              </div>
+            </div>
+
+            <div
+              class="faq-item rounded-xl border border-white/10 bg-[#211107]/80"
+            >
+              <button
+                type="button"
+                class="faq-button flex w-full items-center justify-between p-5 text-left text-sm"
+                aria-expanded="false"
+              >
+                Is specialist equipment required?
+                <iconify-icon
+                  icon="solar:add-circle-linear"
+                  width="20"
+                  height="20"
+                  class="faq-icon"
+                  style="--iconify-stroke-width:1.5;"
+                ></iconify-icon>
+              </button>
+              <div
+                class="faq-content hidden px-5 pb-5 text-xs leading-5 text-white/45"
+              >
+                No. Framewise supports modern phones and compatible cameras with
+                device-aware recommendations.
+              </div>
+            </div>
+
+            <div
+              class="faq-item rounded-xl border border-white/10 bg-[#211107]/80"
+            >
+              <button
+                type="button"
+                class="faq-button flex w-full items-center justify-between p-5 text-left text-sm"
+                aria-expanded="false"
+              >
+                Does it take over creative decisions?
+                <iconify-icon
+                  icon="solar:add-circle-linear"
+                  width="20"
+                  height="20"
+                  class="faq-icon"
+                  style="--iconify-stroke-width:1.5;"
+                ></iconify-icon>
+              </button>
+              <div
+                class="faq-content hidden px-5 pb-5 text-xs leading-5 text-white/45"
+              >
+                No. It offers informed possibilities while leaving every
+                aesthetic and narrative decision in your hands.
+              </div>
+            </div>
+
+            <div
+              class="faq-item rounded-xl border border-white/10 bg-[#211107]/80"
+            >
+              <button
+                type="button"
+                class="faq-button flex w-full items-center justify-between p-5 text-left text-sm"
+                aria-expanded="false"
+              >
+                Where is live footage processed?
+                <iconify-icon
+                  icon="solar:add-circle-linear"
+                  width="20"
+                  height="20"
+                  class="faq-icon"
+                  style="--iconify-stroke-width:1.5;"
+                ></iconify-icon>
+              </button>
+              <div
+                class="faq-content hidden px-5 pb-5 text-xs leading-5 text-white/45"
+              >
+                Live analysis is designed around private on-device processing,
+                with optional cloud features clearly identified.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="research"
+          class="mx-auto max-w-7xl px-5 py-28 sm:px-8 lg:px-12"
+        >
+          <h2
+            class="reveal-words text-4xl font-light leading-tight tracking-tight sm:text-5xl"
+            style="font-family:'DM Mono',monospace;"
+          >
+            <span
+              style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+            >
+              <span style="display: inline-block;">Craft</span>
+            </span>
+            <span
+              style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+            >
+              <span style="display: inline-block;">in</span>
+            </span>
+            <span
+              style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+            >
+              <span style="display: inline-block;">progress:</span>
+            </span>
+            <span class="block font-medium text-[#ffb366]">
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">Stories</span>
+              </span>
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">from</span>
+              </span>
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">the</span>
+              </span>
+              <span
+                style="display: inline-block; overflow: hidden; vertical-align: bottom;"
+              >
+                <span style="display: inline-block;">field</span>
+              </span>
+            </span>
+          </h2>
+
+          <div class="mt-12 grid gap-6 lg:grid-cols-2">
+            <article
+              class="journal-card image-hover rounded-2xl bg-gradient-to-br from-orange-300/25 via-white/10 to-transparent p-px"
+              data-cursor="Read"
+            >
+              <div class="rounded-[calc(1rem-1px)] bg-[#211107] p-5">
+                <div class="mb-5 flex items-center gap-3">
+                  <img
+                    src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2f563338-39fa-47ea-9761-658d4f3f84db_1600w.jpg"
+                    alt="Portrait of Adrian Vale"
+                    class="h-8 w-8 rounded-full object-cover"
+                  />
+                  <span class="text-xs font-medium">Adrian Vale</span>
+                </div>
+                <div class="overflow-hidden rounded-xl">
+                  <img
+                    src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/480d87af-f64d-4963-8953-e6b17d56c606_3840w.png"
+                    alt="Atmospheric filmmaking environment"
+                    class="aspect-video w-full scale-105 object-cover opacity-80"
+                  />
+                </div>
+                <h3 class="mt-5 text-lg font-light">
+                  Why adaptive guidance is changing compact film crews
+                </h3>
+                <p class="mt-2 text-xs leading-5 text-white/40">
+                  Notes on faster decisions, protected creative intent, and
+                  keeping attention on performance.
+                </p>
+              </div>
+            </article>
+
+            <article
+              class="journal-card image-hover rounded-2xl bg-gradient-to-br from-red-400/25 via-white/10 to-transparent p-px"
+              data-cursor="Read"
+            >
+              <div class="rounded-[calc(1rem-1px)] bg-[#211107] p-5">
+                <div class="mb-5 flex items-center gap-3">
+                  <img
+                    src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/4f5668c5-fc4a-44e0-bc5e-a664189d3c31_1600w.jpg"
+                    alt="Portrait of Lena Ortiz"
+                    class="h-8 w-8 rounded-full object-cover"
+                  />
+                  <span class="text-xs font-medium">Lena Ortiz</span>
+                </div>
+                <div class="overflow-hidden rounded-xl">
+                  <img
+                    src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/efd75e84-b19f-49fc-bcda-ac358f756056_3840w.png"
+                    alt="Modern architectural scene at dusk"
+                    class="aspect-video w-full scale-105 object-cover opacity-80"
+                  />
+                </div>
+                <h3 class="mt-5 text-lg font-light">
+                  Building a confident eye from the very first scene
+                </h3>
+                <p class="mt-2 text-xs leading-5 text-white/40">
+                  Practical methods for learning composition, available light,
+                  motion, and camera control.
+                </p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section
+          id="join"
+          class="mx-auto max-w-7xl px-5 pb-20 pt-28 sm:px-8 lg:px-12"
+        >
+          <div
+            class="fade-up grid gap-8 border-b border-white/10 pb-12 lg:grid-cols-[1fr_auto] lg:items-end"
+          >
+            <h2
+              class="max-w-3xl text-3xl font-light leading-tight tracking-tight sm:text-4xl"
+              style="font-family:'DM Mono',monospace;"
+            >
+              Your
+              <span class="font-medium text-[#ffb366]">
+                invitation to early access
+              </span>
+              for more intentional filmmaking
+            </h2>
+
+            <form id="newsletter-form" class="w-full max-w-sm">
+              <label for="email" class="sr-only">Email address</label>
+              <div
+                class="rounded-xl bg-gradient-to-r from-yellow-400 via-orange-400 to-red-500 p-px"
+              >
+                <div
+                  class="flex rounded-[calc(0.75rem-1px)] bg-[#1f1107] p-1.5"
+                >
+                  <input
+                    id="email"
+                    type="email"
+                    required=""
+                    placeholder="creator@example.com"
+                    class="min-w-0 flex-1 bg-transparent px-3 text-xs text-white outline-none placeholder:text-white/30"
+                  />
+                  <button
+                    type="submit"
+                    class="magnetic inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 px-4 py-2.5 text-xs font-medium"
+                  >
+                    <iconify-icon
+                      icon="solar:letter-linear"
+                      width="18"
+                      height="18"
+                      style="--iconify-stroke-width:1.5;"
+                    ></iconify-icon>
+                    Join list
+                  </button>
+                </div>
+              </div>
+              <p id="form-message" class="mt-2 text-xs text-white/35">
+                Product notes delivered about twice each month.
+              </p>
+            </form>
+          </div>
+        </section>
+      </main>
+
+      <footer
+        id="community"
+        class="mx-auto max-w-7xl px-5 pb-10 sm:px-8 lg:px-12"
+      >
+        <div class="grid gap-10 py-10 sm:grid-cols-2 lg:grid-cols-6">
+          <div class="sm:col-span-2 lg:col-span-1">
+            <a
+              href="#"
+              class="magnetic flex items-center gap-2 text-lg font-semibold"
+            >
+              <iconify-icon
+                icon="solar:stars-linear"
+                width="24"
+                height="24"
+                class="text-orange-300"
+                style="--iconify-stroke-width:1.5;"
+              ></iconify-icon>
+              Framewise
+            </a>
+          </div>
+          <div>
+            <h3 class="text-sm">Studio</h3>
+            <div class="mt-4 grid gap-3 text-xs text-white/35">
+              <a href="#" class="hover:text-white">Live direction</a>
+              <a href="#" class="hover:text-white">Camera support</a>
+              <a href="#" class="hover:text-white">Product updates</a>
+            </div>
+          </div>
+          <div>
+            <h3 class="text-sm">Productions</h3>
+            <div class="mt-4 grid gap-3 text-xs text-white/35">
+              <a href="#" class="hover:text-white">Crew workspace</a>
+              <a href="#" class="hover:text-white">Studio plans</a>
+              <a href="#" class="hover:text-white">Learning programs</a>
+            </div>
+          </div>
+          <div>
+            <h3 class="text-sm">Journal</h3>
+            <div class="mt-4 grid gap-3 text-xs text-white/35">
+              <a href="#" class="hover:text-white">New stories</a>
+              <a href="#" class="hover:text-white">Product news</a>
+              <a href="#" class="hover:text-white">Set diaries</a>
+            </div>
+          </div>
+          <div>
+            <h3 class="text-sm">Insights</h3>
+            <div class="mt-4 grid gap-3 text-xs text-white/35">
+              <a href="#" class="hover:text-white">Image systems</a>
+              <a href="#" class="hover:text-white">Technical briefs</a>
+            </div>
+          </div>
+          <div>
+            <h3 class="text-sm">Network</h3>
+            <div class="mt-4 grid gap-3 text-xs text-white/35">
+              <a href="#" class="hover:text-white">Member space</a>
+              <a href="#" class="hover:text-white">Creator gallery</a>
+            </div>
+          </div>
+        </div>
+
+        <div
+          class="flex flex-col gap-5 border-t border-white/10 pt-7 text-xs text-white/30 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p>© 2027 Framewise Labs. All rights reserved.</p>
+          <div class="flex items-center gap-4 text-white/70">
+            <a
+              href="#"
+              aria-label="Community chat"
+              class="magnetic hover:text-orange-300"
+            >
+              <iconify-icon
+                icon="solar:chat-round-dots-linear"
+                width="20"
+                height="20"
+                style="--iconify-stroke-width:1.5;"
+              ></iconify-icon>
+            </a>
+            <a
+              href="#"
+              aria-label="Video channel"
+              class="magnetic hover:text-orange-300"
+            >
+              <iconify-icon
+                icon="solar:videocamera-linear"
+                width="20"
+                height="20"
+                style="--iconify-stroke-width:1.5;"
+              ></iconify-icon>
+            </a>
+            <a
+              href="#"
+              aria-label="Global community"
+              class="magnetic hover:text-orange-300"
+            >
+              <iconify-icon
+                icon="solar:global-linear"
+                width="20"
+                height="20"
+                style="--iconify-stroke-width:1.5;"
+              ></iconify-icon>
+            </a>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <script>
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      gsap.registerPlugin(ScrollTrigger);
+
+      if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
+      const preloader = document.getElementById('preloader');
+      const loaderCounter = document.getElementById('loader-counter');
+      const loaderProgress = { value: 0 };
+
+      document.body.style.overflow = 'hidden';
+
+      const loaderTimeline = gsap.timeline({
+        onComplete: () => {
+          document.body.style.overflow = '';
+          ScrollTrigger.refresh();
+        }
+      });
+
+      if (!reducedMotion) {
+        gsap.set('#loader-line', { scaleX: 0 });
+        gsap.set('#loader-word', { yPercent: 120 });
+        gsap.set(['#hero-kicker', '#hero-copy', '#hero-actions'], { y: 24, opacity: 0 });
+        gsap.set('#hero-device', { y: 100, opacity: 0, scale: 0.96 });
+
+        loaderTimeline
+          .to('#loader-word', { yPercent: 0, duration: 0.7, ease: 'power3.out' })
+          .to('#loader-orbit', { rotation: 360, duration: 1.4, ease: 'power2.inOut' }, 0)
+          .to(loaderProgress, {
+            value: 100,
+            duration: 1.35,
+            ease: 'power2.inOut',
+            onUpdate: () => loaderCounter.textContent = String(Math.round(loaderProgress.value)).padStart(2, '0')
+          }, 0)
+          .to('#loader-line', { scaleX: 1, duration: 1.35, ease: 'power2.inOut' }, 0)
+          .to(preloader, { yPercent: -100, duration: 0.9, ease: 'power4.inOut' })
+          .fromTo('.reveal-words:first-of-type span > span', { yPercent: 115 }, { yPercent: 0, duration: 0.9, stagger: 0.035, ease: 'power3.out' }, '-=0.45')
+          .to(['#hero-kicker', '#hero-copy', '#hero-actions'], { y: 0, opacity: 1, duration: 0.75, stagger: 0.09, ease: 'power3.out' }, '-=0.8')
+          .to('#hero-device', { y: 48, opacity: 1, scale: 1, duration: 1.2, ease: 'power3.out' }, '-=0.65');
+      } else {
+        preloader.remove();
+        document.body.style.overflow = '';
+      }
+
+      const menuButton = document.getElementById('menu-button');
+      const mobileMenu = document.getElementById('mobile-menu');
+
+      menuButton.addEventListener('click', () => {
+        const opening = mobileMenu.classList.contains('hidden');
+        menuButton.setAttribute('aria-expanded', String(opening));
+
+        if (opening) {
+          mobileMenu.classList.remove('hidden');
+          gsap.fromTo(mobileMenu, { opacity: 0, scaleY: 0.85, y: -12 }, { opacity: 1, scaleY: 1, y: 0, duration: 0.4, ease: 'power3.out' });
+        } else {
+          gsap.to(mobileMenu, {
+            opacity: 0,
+            scaleY: 0.9,
+            y: -8,
+            duration: 0.25,
+            ease: 'power2.in',
+            onComplete: () => mobileMenu.classList.add('hidden')
+          });
+        }
+      });
+
+      mobileMenu.querySelectorAll('a').forEach(link => {
+        link.addEventListener('click', () => {
+          mobileMenu.classList.add('hidden');
+          menuButton.setAttribute('aria-expanded', 'false');
+        });
+      });
+
+      document.querySelectorAll('a[href^="#"]').forEach(link => {
+        link.addEventListener('click', event => {
+          const target = document.querySelector(link.getAttribute('href'));
+          if (!target || link.getAttribute('href') === '#') return;
+          event.preventDefault();
+          target.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+        });
+      });
+
+      document.querySelectorAll('.faq-button').forEach(button => {
+        button.addEventListener('click', () => {
+          const item = button.closest('.faq-item');
+          const content = item.querySelector('.faq-content');
+          const icon = item.querySelector('.faq-icon');
+          const opening = content.classList.contains('hidden');
+
+          button.setAttribute('aria-expanded', String(opening));
+          icon.setAttribute('icon', opening ? 'solar:minus-circle-linear' : 'solar:add-circle-linear');
+          icon.classList.toggle('text-orange-300', opening);
+
+          if (opening) {
+            content.classList.remove('hidden');
+            gsap.fromTo(content, { height: 0, opacity: 0 }, { height: 'auto', opacity: 1, duration: 0.4, ease: 'power3.out' });
+          } else {
+            gsap.to(content, {
+              height: 0,
+              opacity: 0,
+              duration: 0.3,
+              ease: 'power2.in',
+              onComplete: () => {
+                content.classList.add('hidden');
+                gsap.set(content, { clearProps: 'height,opacity' });
+              }
+            });
+          }
+        });
+      });
+
+      const newsletterForm = document.getElementById('newsletter-form');
+      const formMessage = document.getElementById('form-message');
+
+      newsletterForm.addEventListener('submit', event => {
+        event.preventDefault();
+        gsap.to(newsletterForm, {
+          scale: 0.98,
+          duration: 0.12,
+          yoyo: true,
+          repeat: 1,
+          onComplete: () => {
+            formMessage.textContent = 'Your invitation request is confirmed.';
+            formMessage.classList.remove('text-white/35');
+            formMessage.classList.add('text-orange-300');
+            newsletterForm.reset();
+            gsap.fromTo(formMessage, { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: 0.4 });
+          }
+        });
+      });
+
+      function splitReveal(element) {
+        Array.from(element.childNodes).forEach(node => {
+          if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
+            const fragment = document.createDocumentFragment();
+            node.textContent.split(/(\s+)/).forEach(part => {
+              if (part.trim()) {
+                const mask = document.createElement('span');
+                const word = document.createElement('span');
+                mask.style.display = 'inline-block';
+                mask.style.overflow = 'hidden';
+                mask.style.verticalAlign = 'bottom';
+                word.style.display = 'inline-block';
+                word.textContent = part;
+                mask.appendChild(word);
+                fragment.appendChild(mask);
+              } else {
+                fragment.appendChild(document.createTextNode(part));
+              }
+            });
+            node.replaceWith(fragment);
+          } else if (node.nodeType === Node.ELEMENT_NODE) {
+            const text = node.textContent;
+            node.textContent = '';
+            text.split(/(\s+)/).forEach(part => {
+              if (part.trim()) {
+                const mask = document.createElement('span');
+                const word = document.createElement('span');
+                mask.style.display = 'inline-block';
+                mask.style.overflow = 'hidden';
+                mask.style.verticalAlign = 'bottom';
+                word.style.display = 'inline-block';
+                word.textContent = part;
+                mask.appendChild(word);
+                node.appendChild(mask);
+              } else {
+                node.appendChild(document.createTextNode(part));
+              }
+            });
+          }
+        });
+      }
+
+      document.querySelectorAll('.reveal-words').forEach((element, index) => {
+        splitReveal(element);
+        if (index === 0 || reducedMotion) return;
+
+        gsap.fromTo(
+          element.querySelectorAll('span > span'),
+          { yPercent: 115, opacity: 0 },
+          {
+            yPercent: 0,
+            opacity: 1,
+            duration: 0.9,
+            stagger: 0.028,
+            ease: 'power3.out',
+            scrollTrigger: { trigger: element, start: 'top 86%', once: true }
+          }
+        );
+      });
+
+      if (!reducedMotion) {
+        gsap.utils.toArray('.fade-up').forEach(element => {
+          gsap.fromTo(element, { y: 45, opacity: 0 }, {
+            y: 0,
+            opacity: 1,
+            duration: 1,
+            ease: 'power3.out',
+            scrollTrigger: { trigger: element, start: 'top 88%', once: true }
+          });
+        });
+
+        gsap.utils.toArray('.feature-card').forEach((card, index) => {
+          gsap.fromTo(card, { y: 70, opacity: 0 }, {
+            y: index % 2 ? 32 : 0,
+            opacity: 1,
+            duration: 1,
+            ease: 'power3.out',
+            scrollTrigger: { trigger: card, start: 'top 90%', once: true }
+          });
+        });
+
+        gsap.utils.toArray('.journal-card').forEach((card, index) => {
+          gsap.fromTo(card, { x: index ? 60 : -60, opacity: 0 }, {
+            x: 0,
+            opacity: 1,
+            duration: 1.1,
+            ease: 'power3.out',
+            scrollTrigger: { trigger: card, start: 'top 88%', once: true }
+          });
+        });
+
+        gsap.to('#hero-device', {
+          yPercent: 9,
+          ease: 'none',
+          scrollTrigger: { trigger: '#platform', start: 'top top', end: 'bottom top', scrub: 1.2 }
+        });
+
+        gsap.to('#hero-glow', {
+          y: 180,
+          scale: 1.3,
+          opacity: 0.35,
+          ease: 'none',
+          scrollTrigger: { trigger: '#platform', start: 'top top', end: 'bottom top', scrub: 1.4 }
+        });
+
+        gsap.to('#guidance-card', { y: -7, duration: 2.2, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+        gsap.to('#focus-frame', { scale: 0.96, opacity: 0.65, duration: 1.4, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+        gsap.fromTo('#analysis-line', { scaleX: 0.08 }, { scaleX: 1, duration: 2.5, repeat: -1, ease: 'power2.inOut' });
+        gsap.to('.floating-ui', { y: -6, duration: 2.6, stagger: 0.35, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+
+        gsap.to('#marquee-track', { xPercent: -50, duration: 24, repeat: -1, ease: 'none' });
+
+        gsap.utils.toArray('.image-hover img').forEach(image => {
+          const wrapper = image.closest('.image-hover');
+          gsap.to(image, {
+            yPercent: 7,
+            ease: 'none',
+            scrollTrigger: { trigger: wrapper, start: 'top bottom', end: 'bottom top', scrub: 1.2 }
+          });
+
+          wrapper.addEventListener('mouseenter', () => {
+            gsap.to(image, { scale: 1.1, opacity: 0.95, duration: 0.8, ease: 'power3.out', overwrite: 'auto' });
+          });
+
+          wrapper.addEventListener('mouseleave', () => {
+            gsap.to(image, { scale: 1.05, opacity: 0.75, duration: 0.8, ease: 'power3.out', overwrite: 'auto' });
+          });
+        });
+
+        document.querySelectorAll('.tilt-card').forEach(card => {
+          card.addEventListener('mousemove', event => {
+            const rect = card.getBoundingClientRect();
+            const x = (event.clientX - rect.left) / rect.width - 0.5;
+            const y = (event.clientY - rect.top) / rect.height - 0.5;
+            gsap.to(card, {
+              rotateY: x * 3,
+              rotateX: y * -3,
+              transformPerspective: 1000,
+              duration: 0.5,
+              ease: 'power2.out'
+            });
+          });
+
+          card.addEventListener('mouseleave', () => {
+            gsap.to(card, { rotateX: 0, rotateY: 0, duration: 0.8, ease: 'elastic.out(1,0.5)' });
+          });
+        });
+
+        document.querySelectorAll('.magnetic').forEach(element => {
+          element.addEventListener('mousemove', event => {
+            const rect = element.getBoundingClientRect();
+            gsap.to(element, {
+              x: (event.clientX - rect.left - rect.width / 2) * 0.18,
+              y: (event.clientY - rect.top - rect.height / 2) * 0.18,
+              duration: 0.35,
+              ease: 'power2.out'
+            });
+          });
+
+          element.addEventListener('mouseleave', () => {
+            gsap.to(element, { x: 0, y: 0, duration: 0.7, ease: 'elastic.out(1,0.45)' });
+          });
+        });
+      }
+
+      const header = document.getElementById('site-header');
+      const progress = document.getElementById('scroll-progress');
+      let lastScroll = 0;
+
+      window.addEventListener('scroll', () => {
+        const scrollTop = window.scrollY;
+        const total = document.documentElement.scrollHeight - window.innerHeight;
+        gsap.to(progress, { scaleX: total ? scrollTop / total : 0, duration: 0.15, ease: 'none' });
+
+        if (scrollTop > 30) {
+          header.classList.add('border-b', 'border-white/[0.06]', 'bg-[#140a05]/75', 'backdrop-blur-xl');
+        } else {
+          header.classList.remove('border-b', 'border-white/[0.06]', 'bg-[#140a05]/75', 'backdrop-blur-xl');
+        }
+
+        if (scrollTop > lastScroll && scrollTop > 500) {
+          gsap.to(header, { yPercent: -100, duration: 0.4, ease: 'power2.out' });
+        } else {
+          gsap.to(header, { yPercent: 0, duration: 0.4, ease: 'power2.out' });
+        }
+        lastScroll = scrollTop;
+      }, { passive: true });
+
+      const cursor = document.getElementById('cursor');
+      const cursorRing = document.getElementById('cursor-ring');
+      const cursorLabel = document.getElementById('cursor-label');
+
+      if (!reducedMotion && window.matchMedia('(pointer:fine)').matches) {
+        let mouseX = window.innerWidth / 2;
+        let mouseY = window.innerHeight / 2;
+        let ringX = mouseX;
+        let ringY = mouseY;
+
+        window.addEventListener('mousemove', event => {
+          mouseX = event.clientX;
+          mouseY = event.clientY;
+          gsap.set(cursor, { x: mouseX, y: mouseY });
+          gsap.set(cursorLabel, { x: mouseX, y: mouseY });
+        });
+
+        gsap.ticker.add(() => {
+          ringX += (mouseX - ringX) * 0.16;
+          ringY += (mouseY - ringY) * 0.16;
+          gsap.set(cursorRing, { x: ringX, y: ringY });
+        });
+
+        document.querySelectorAll('a, button').forEach(element => {
+          element.addEventListener('mouseenter', () => gsap.to(cursorRing, { scale: 1.55, borderColor: 'rgba(253,186,116,0.9)', duration: 0.3 }));
+          element.addEventListener('mouseleave', () => gsap.to(cursorRing, { scale: 1, borderColor: 'rgba(254,215,170,0.6)', duration: 0.3 }));
+        });
+
+        document.querySelectorAll('[data-cursor]').forEach(element => {
+          element.addEventListener('mouseenter', () => {
+            cursorLabel.textContent = element.dataset.cursor;
+            gsap.to([cursor, cursorRing], { opacity: 0, duration: 0.2 });
+            cursorLabel.classList.remove('hidden');
+            gsap.fromTo(cursorLabel, { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.35, ease: 'back.out(1.8)' });
+          });
+          element.addEventListener('mouseleave', () => {
+            gsap.to(cursorLabel, {
+              scale: 0.5,
+              opacity: 0,
+              duration: 0.2,
+              onComplete: () => cursorLabel.classList.add('hidden')
+            });
+            gsap.to([cursor, cursorRing], { opacity: 1, duration: 0.2 });
+          });
+        });
+      }
+
+      const canvas = document.getElementById('webgl-aura');
+      const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.z = 8;
+
+      const count = window.innerWidth < 768 ? 140 : 360;
+      const positions = new Float32Array(count * 3);
+      const colors = new Float32Array(count * 3);
+      const orange = new THREE.Color('#ffb366');
+      const red = new THREE.Color('#ff4d4d');
+
+      for (let i = 0; i < count; i++) {
+        const radius = 4 + Math.random() * 8;
+        const angle = Math.random() * Math.PI * 2;
+        positions[i * 3] = Math.cos(angle) * radius;
+        positions[i * 3 + 1] = (Math.random() - 0.5) * 14;
+        positions[i * 3 + 2] = Math.sin(angle) * radius - 4;
+
+        const mixed = orange.clone().lerp(red, Math.random());
+        colors[i * 3] = mixed.r;
+        colors[i * 3 + 1] = mixed.g;
+        colors[i * 3 + 2] = mixed.b;
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+      const material = new THREE.PointsMaterial({
+        size: 0.026,
+        transparent: true,
+        opacity: 0.5,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+
+      const particles = new THREE.Points(geometry, material);
+      scene.add(particles);
+
+      let pointerX = 0;
+      let pointerY = 0;
+
+      window.addEventListener('pointermove', event => {
+        pointerX = (event.clientX / window.innerWidth - 0.5) * 0.3;
+        pointerY = (event.clientY / window.innerHeight - 0.5) * 0.22;
+      });
+
+      const clock = new THREE.Clock();
+
+      function animateAura() {
+        const elapsed = clock.getElapsedTime();
+        particles.rotation.y += ((elapsed * 0.018 + pointerX) - particles.rotation.y) * 0.02;
+        particles.rotation.x += (pointerY - particles.rotation.x) * 0.018;
+        particles.position.y = Math.sin(elapsed * 0.22) * 0.25;
+        renderer.render(scene, camera);
+        requestAnimationFrame(animateAura);
+      }
+
+      animateAura();
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        ScrollTrigger.refresh();
+      });
+    </script>
+
+    <script data-aura-video-controller="true">
+      (function () {
+        function playVideo(video) {
+          var promise = video.play();
+          if (promise && typeof promise.catch === "function") {
+            promise.catch(function () {});
+          }
+        }
+
+        function setupVideo(video) {
+          if (video.__auraVideoReady === true) return;
+          video.__auraVideoReady = true;
+          video.removeAttribute("data-aura-video-ready");
+          video.removeAttribute("data-aura-video-played");
+          video.muted = true;
+          video.playsInline = true;
+
+          var preset = video.dataset.auraVideoPreset || "loop-in-view";
+          if (preset === "hover") {
+            video.addEventListener("mouseenter", function () {
+              playVideo(video);
+            });
+            video.addEventListener("mouseleave", function () {
+              video.pause();
+              video.currentTime = 0;
+            });
+            return;
+          }
+
+          if (!("IntersectionObserver" in window)) {
+            playVideo(video);
+            return;
+          }
+
+          var observer = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+              if (entry.isIntersecting) {
+                if (preset === "play-once" && video.__auraVideoPlayed === true) {
+                  return;
+                }
+                playVideo(video);
+              } else {
+                video.pause();
+              }
+            });
+          }, { threshold: 0.35 });
+
+          if (preset === "play-once") {
+            video.addEventListener("ended", function () {
+              video.__auraVideoPlayed = true;
+            }, { once: true });
+          }
+
+          observer.observe(video);
+        }
+
+        function setupVideos() {
+          document
+            .querySelectorAll("video[data-aura-video-preset]")
+            .forEach(setupVideo);
+        }
+
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", setupVideos);
+        } else {
+          setupVideos();
+        }
+      })();
+    </script>
+    <script data-header-adaptive="true">
+      (function(){var header=document.getElementById('site-header');if(!header)return;var navWrap=header.querySelector('nav > div.hidden');var current='';function themeAt(y){var zones=document.querySelectorAll('[data-header-theme]');for(var i=0;i<zones.length;i++){var r=zones[i].getBoundingClientRect();if(r.top<=y&&r.bottom>=y)return zones[i].getAttribute('data-header-theme');}return 'dark';}function update(){var t=themeAt(header.offsetHeight/2||32);if(t===current)return;current=t;var light=t==='light';header.style.transition='color 280ms ease';header.style.color=light?'#1a0c05':'#ffffff';header.querySelector('nav').style.textShadow=light?'0 1px 2px rgba(255,255,255,0.45)':'0 1px 2px rgba(0,0,0,0.35)';if(navWrap){navWrap.classList.toggle('text-white/75',!light);navWrap.classList.toggle('text-[#1a0c05]/75',light);}}update();window.addEventListener('scroll',update,{passive:true});window.addEventListener('resize',update);})();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PayTrack</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script></head>
+
+<body class="font-inter bg-zinc-900 text-zinc-100 tracking-tight">
+  <!-- Wrapper -->
+  <div class="min-h-screen flex flex-col px-4 py-6 max-w-sm mx-auto space-y-6">
+    <!-- Header -->
+    <header class="flex items-center justify-between">
+      <h1 class="text-xl font-semibold tracking-tight flex items-center space-x-2">
+        <span>P</span><span class="text-indigo-400">T</span>
+      </h1>
+      <div class="flex items-center space-x-3">
+        <!-- Server indicator -->
+        <div id="serverIndicator" class="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+        <button id="refreshBtn" class="p-2 rounded-md hover:bg-zinc-800 transition">
+          <i data-lucide="refresh-ccw" class="w-5 h-5 stroke-zinc-300"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Sync card -->
+    <section class="bg-zinc-800/40 backdrop-blur-md rounded-xl p-4 space-y-3 border border-zinc-700">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-sm font-medium">Home Server</h2>
+          <p id="lastSync" class="text-xs text-zinc-400">Last sync: —</p>
+        </div>
+
+        <!-- custom toggle -->
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" id="autoSync" class="sr-only peer">
+          <div class="w-9 h-5 bg-zinc-600 rounded-full peer peer-checked:bg-indigo-600 transition-all"></div>
+          <div
+            class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-4">
+          </div>
+        </label>
+      </div>
+      <p class="text-xs text-zinc-400 leading-snug">
+        Automatically upload new messages to your private server and mark them when parsed.
+      </p>
+    </section>
+
+    <!-- Messages list -->
+    <section class="flex-1 overflow-y-auto space-y-4 pb-4">
+      <h2 class="text-sm font-medium">Recent Messages</h2>
+      <ul id="msgList" class="space-y-2">
+        <!-- JS populated -->
+      </ul>
+    </section>
+
+    <!-- Parsing success chart -->
+    <section>
+      <h2 class="text-sm font-medium">Parsing Accuracy</h2>
+      <p class="text-xs text-zinc-400 mb-2">Ratio of parsed vs unparsed transactions</p>
+      <div class="w-full bg-zinc-800/40 rounded-xl border border-zinc-700 p-4">
+        <div class="relative mx-auto" style="max-width:220px">
+          <canvas id="parseChart" width="220" height="220"></canvas>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Activate lucide icons
+    lucide.createIcons({ attrs: { 'stroke-width': 1.5 } });
+
+    // Mock data
+    const sampleMessages = [
+      { id: 1, body: "Paid ₹650 to Swiggy Ref No 1234", amount: "₹650", time: "1 m ago", parsed: true },
+      { id: 2, body: "Debit of ₹1,299 at AMAZON *INDIA", amount: "₹1,299", time: "9 m ago", parsed: true },
+      { id: 3, body: "You spent ₹200 at CAFE", amount: "₹200", time: "14 m ago", parsed: false },
+      { id: 4, body: "₹5400 credited to your a/c", amount: "+₹5,400", time: "1 h ago", parsed: true },
+      { id: 5, body: "OTP 334455 for txn of Rs.899", amount: "₹899", time: "2 h ago", parsed: false }
+    ];
+
+    // Populate list without the opacity 0 issue
+    const msgList = document.getElementById("msgList");
+    sampleMessages.forEach((msg) => {
+      const li = document.createElement("li");
+      li.className =
+        "bg-zinc-800/40 border border-zinc-700 rounded-lg p-3 flex items-start space-x-3";
+      li.innerHTML = `
+          <div class="p-2 bg-zinc-700/30 rounded-md">
+            <i data-lucide="message-circle" class="w-5 h-5 stroke-zinc-300"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-xs leading-5">${msg.body}</p>
+            <div class="flex justify-between items-center mt-1">
+              <span class="text-sm font-medium">${msg.amount}</span>
+              <span class="text-[10px] text-zinc-500">${msg.time}</span>
+            </div>
+          </div>
+          <span class="text-[10px] ${msg.parsed ? 'text-emerald-400' : 'text-amber-400'} whitespace-nowrap mt-1">
+            ${msg.parsed ? 'Parsed' : 'Pending'}
+          </span>`;
+      msgList.appendChild(li);
+    });
+    lucide.createIcons({ attrs: { 'stroke-width': 1.5 } }); // Re-scan newly added nodes
+
+    // Update last sync
+    const lastSync = document.getElementById("lastSync");
+    function updateLastSync() {
+      const now = new Date();
+      lastSync.textContent =
+        "Last sync: " +
+        now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+    updateLastSync();
+
+    // Toggle auto-sync
+    const autoSync = document.getElementById("autoSync");
+    autoSync.checked = true;
+    autoSync.addEventListener("change", () => {
+      document.getElementById("serverIndicator").classList.toggle("bg-emerald-500", autoSync.checked);
+      document.getElementById("serverIndicator").classList.toggle("bg-zinc-500", !autoSync.checked);
+    });
+
+    // Refresh button
+    document.getElementById("refreshBtn").addEventListener("click", () => {
+      updateLastSync();
+      // Here: trigger actual message fetch & upload
+    });
+
+    // Chart data
+    const parsedCount = sampleMessages.filter((m) => m.parsed).length;
+    const unparsedCount = sampleMessages.length - parsedCount;
+
+    new Chart(document.getElementById("parseChart"), {
+      type: "doughnut",
+      data: {
+        labels: ["Parsed", "Unparsed"],
+        datasets: [{
+          data: [parsedCount, unparsedCount],
+          backgroundColor: ["#22c55e", "#f59e0b"],
+          borderColor: "transparent"
+        }]
+      },
+      options: {
+        cutout: "70%",
+        plugins: {
+          legend: { display: false },
+        }
+      }
+    });
+  </script>
+</body>
+</html>

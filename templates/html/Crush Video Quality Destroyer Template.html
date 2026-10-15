@@ -1,0 +1,1071 @@
+<!-- The export renderer now keeps its source attached, renders frames on a stable timer, explicitly requests canvas frames when supported, and prevents premature playback pauses. -->
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Crush — Video Quality Destroyer</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap');
+* { box-sizing: border-box; }
+body { font-family: Inter, sans-serif; }
+.mono { font-family: "DM Mono", monospace; }
+input[type="range"] {
+-webkit-appearance: none;
+appearance: none;
+height: 0.35rem;
+border-radius: 9999px;
+outline: none;
+cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+-webkit-appearance: none;
+appearance: none;
+width: 1rem;
+height: 1rem;
+border-radius: 9999px;
+background: #f8fafc;
+border: 0.18rem solid #0f172a;
+box-shadow: 0 0 0 0.12rem #f8fafc;
+cursor: grab;
+}
+input[type="range"]::-moz-range-thumb {
+width: 0.85rem;
+height: 0.85rem;
+border-radius: 9999px;
+background: #f8fafc;
+border: 0.18rem solid #0f172a;
+box-shadow: 0 0 0 0.12rem #f8fafc;
+cursor: grab;
+}
+input[type="range"]::-webkit-slider-thumb:active { cursor: grabbing; }
+.drop-active { border-color: #fb7185 !important; background: #fff1f2 !important; }
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="min-h-screen bg-[#f8f8f6] text-slate-950 selection:bg-rose-200">
+  <div id="loadingScreen" class="pointer-events-none fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#f8f8f6]/95 px-5 opacity-0 transition-opacity duration-300">
+    <div class="flex flex-col items-center">
+      <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/22a5bd2c-77cd-450e-b1f7-951619732b4c_original.gif" alt="Crushing video" class="size-40 object-contain sm:size-48" />
+      <div class="mt-4 flex items-center gap-2">
+        <span class="size-2 animate-pulse rounded-full bg-rose-500"></span>
+        <p class="mono text-xs text-slate-500">PREPARING THE DAMAGE</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="downloadModal" class="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-slate-950/30 px-5 opacity-0 transition-opacity duration-200" aria-hidden="true">
+    <div class="w-full max-w-md scale-95 rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_1rem_3rem_rgba(15,23,42,0.16)] transition sm:p-6" id="downloadPanel">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p class="mono text-xs text-rose-500">EXPORT READY</p>
+          <h2 class="mt-1 text-xl font-semibold tracking-tight text-slate-950">Choose your download</h2>
+          <p class="mt-2 text-sm leading-6 text-slate-500">Keep the fast WEBM export or create an MP4 if your browser supports it.</p>
+        </div>
+        <button id="closeDownloadModal" type="button" class="grid size-9 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-950" aria-label="Close download options">
+          <iconify-icon icon="solar:close-circle-linear" width="20" stroke-width="1.5"></iconify-icon>
+        </button>
+      </div>
+
+      <div class="mt-6 grid gap-3 sm:grid-cols-2">
+        <button id="downloadWebmButton" type="button" class="rounded-xl border border-slate-200 p-4 text-left transition hover:border-slate-300 hover:bg-slate-50">
+          <div class="flex items-center justify-between">
+            <div class="grid size-9 place-items-center rounded-lg bg-slate-100 text-slate-700">
+              <iconify-icon icon="solar:download-minimalistic-linear" width="19" stroke-width="1.5"></iconify-icon>
+            </div>
+            <span class="mono text-xs text-slate-400">WEBM</span>
+          </div>
+          <p class="mt-4 text-sm font-medium text-slate-800">Download WEBM</p>
+          <p class="mt-1 text-xs leading-5 text-slate-500">Instant download of your current export.</p>
+        </button>
+
+        <button id="downloadMp4Button" type="button" class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-left transition hover:border-rose-300 hover:bg-rose-100">
+          <div class="flex items-center justify-between">
+            <div class="grid size-9 place-items-center rounded-lg bg-rose-500 text-white">
+              <iconify-icon icon="solar:videocamera-record-linear" width="19" stroke-width="1.5"></iconify-icon>
+            </div>
+            <span class="mono text-xs text-rose-500">MP4</span>
+          </div>
+          <p class="mt-4 text-sm font-medium text-slate-800">Convert to MP4</p>
+          <p class="mt-1 text-xs leading-5 text-slate-500">Re-encodes the video before downloading.</p>
+        </button>
+      </div>
+
+      <p id="modalHint" class="mt-4 text-center text-xs leading-5 text-slate-400">MP4 availability depends on your browser.</p>
+    </div>
+  </div>
+
+  <main class="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-5 sm:px-8 sm:py-8 lg:px-12">
+    <header class="flex items-center justify-between border-b border-slate-200 pb-5">
+      <a href="#" class="flex items-center gap-3" aria-label="Crush home">
+        <div class="grid size-9 place-items-center rounded-xl bg-slate-950 text-white shadow-sm">
+          <iconify-icon icon="solar:clapperboard-play-linear" width="20" stroke-width="1.5"></iconify-icon>
+        </div>
+        <div>
+          <p class="text-lg font-semibold tracking-tight">crush</p>
+          <p class="mono text-xs text-slate-500">quality destroyer</p>
+        </div>
+      </a>
+      <div class="hidden items-center gap-2 sm:flex">
+        <span class="size-2 rounded-full bg-emerald-500"></span>
+        <span class="mono text-xs text-slate-500">browser-powered</span>
+      </div>
+    </header>
+
+    <section class="grid flex-1 gap-6 py-8 lg:grid-cols-[minmax(0,1.38fr)_minmax(22rem,0.62fr)] lg:py-10">
+      <div class="flex min-h-[32rem] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_1rem_3rem_rgba(15,23,42,0.06)]">
+        <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-6">
+          <div class="flex items-center gap-2">
+            <span id="statusDot" class="size-2 rounded-full bg-slate-300"></span>
+            <span id="previewStatus" class="mono text-xs text-slate-500">NO FILE LOADED</span>
+          </div>
+          <button id="clearButton" type="button" class="hidden items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-950">
+            <iconify-icon icon="solar:trash-bin-trash-linear" width="16" stroke-width="1.5"></iconify-icon>
+            Clear
+          </button>
+        </div>
+
+        <div id="dropZone" class="relative flex flex-1 items-center justify-center p-5 sm:p-8">
+          <div id="emptyState" class="max-w-md text-center">
+            <div class="mx-auto grid size-16 place-items-center rounded-2xl bg-rose-50 text-rose-500">
+              <iconify-icon icon="solar:upload-minimalistic-linear" width="31" stroke-width="1.5"></iconify-icon>
+            </div>
+            <h1 class="mt-6 text-3xl font-semibold tracking-tight text-slate-950">Make it gloriously awful.</h1>
+            <p class="mt-3 text-sm leading-6 text-slate-500">Upload a video, then crush its picture and sound into premium low-quality meme material.</p>
+            <label for="videoInput" class="mt-7 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800">
+              <iconify-icon icon="solar:folder-open-linear" width="18" stroke-width="1.5"></iconify-icon>
+              Choose video
+            </label>
+            <p class="mono mt-4 text-xs text-slate-400">MP4 · WEBM · MOV · drag & drop supported</p>
+          </div>
+
+          <div id="videoState" class="hidden w-full">
+            <div class="overflow-hidden rounded-2xl bg-slate-950 shadow-sm">
+              <video id="videoPreview" controls playsinline class="aspect-video w-full bg-slate-950 object-contain"></video>
+            </div>
+            <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <div class="flex min-w-0 items-center gap-3">
+                <div class="grid size-9 shrink-0 place-items-center rounded-lg bg-rose-50 text-rose-500">
+                  <iconify-icon icon="solar:video-frame-play-horizontal-linear" width="18" stroke-width="1.5"></iconify-icon>
+                </div>
+                <div class="min-w-0">
+                  <p id="fileName" class="truncate text-sm font-medium text-slate-800"></p>
+                  <p id="fileMeta" class="mono mt-0.5 text-xs text-slate-400"></p>
+                </div>
+              </div>
+              <label for="videoInput" class="cursor-pointer rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">Replace video</label>
+            </div>
+          </div>
+          <input id="videoInput" type="file" accept="video/*" class="hidden" />
+        </div>
+      </div>
+
+      <aside class="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_1rem_3rem_rgba(15,23,42,0.04)] sm:p-6">
+        <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
+          <div>
+            <p class="mono text-xs text-rose-500">DEGRADATION CONTROLS</p>
+            <h2 class="mt-1 text-xl font-semibold tracking-tight">Dial in the damage</h2>
+          </div>
+          <div id="damageBadge" class="rounded-full bg-slate-100 px-3 py-1.5 mono text-xs text-slate-600">MILD</div>
+        </div>
+
+        <div class="space-y-6 py-6">
+          <div>
+            <div class="mb-3 flex items-center justify-between">
+              <label for="videoDamage" class="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <iconify-icon icon="solar:videocamera-record-linear" class="text-slate-400" width="18" stroke-width="1.5"></iconify-icon>
+                Video damage
+              </label>
+              <output id="videoDamageValue" class="mono text-xs text-slate-500">35%</output>
+            </div>
+            <input id="videoDamage" type="range" min="0" max="100" value="35" class="w-full" />
+            <div class="mt-2 flex justify-between mono text-xs text-slate-400"><span>watchable</span><span>potato</span></div>
+          </div>
+
+          <div>
+            <div class="mb-3 flex items-center justify-between">
+              <label for="audioDamage" class="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <iconify-icon icon="solar:volume-loud-linear" class="text-slate-400" width="18" stroke-width="1.5"></iconify-icon>
+                Audio damage
+              </label>
+              <output id="audioDamageValue" class="mono text-xs text-slate-500">35%</output>
+            </div>
+            <input id="audioDamage" type="range" min="0" max="100" value="35" class="w-full" />
+            <div class="mt-2 flex justify-between mono text-xs text-slate-400"><span>crisp-ish</span><span>drive-thru speaker</span></div>
+          </div>
+
+          <div>
+            <div class="mb-3 flex items-center justify-between">
+              <label for="fpsControl" class="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <iconify-icon icon="solar:refresh-circle-linear" class="text-slate-400" width="18" stroke-width="1.5"></iconify-icon>
+                Frame rate
+              </label>
+              <output id="fpsValue" class="mono text-xs text-slate-500">24 FPS</output>
+            </div>
+            <input id="fpsControl" type="range" min="5" max="30" value="24" class="w-full" />
+            <div class="mt-2 flex justify-between mono text-xs text-slate-400"><span>5 FPS</span><span>30 FPS</span></div>
+          </div>
+
+          <div class="rounded-2xl bg-[#f8f8f6] p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-slate-700">Extra cursed mode</p>
+                <p class="mt-1 text-xs leading-5 text-slate-500">Adds compression artifacts, noise, and questionable color.</p>
+              </div>
+              <button id="cursedToggle" type="button" aria-pressed="false" class="relative h-6 w-11 shrink-0 rounded-full bg-slate-300 transition">
+                <span class="absolute left-1 top-1 size-4 rounded-full bg-white shadow-sm transition"></span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="border-t border-slate-100 pt-5">
+          <button id="crushButton" type="button" disabled class="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-200 px-4 py-3.5 text-sm font-medium text-slate-400 transition">
+            <iconify-icon icon="solar:magic-stick-3-linear" width="19" stroke-width="1.5"></iconify-icon>
+            Upload a video to crush it
+          </button>
+          <p id="exportHint" class="mt-3 text-center text-xs leading-5 text-slate-400">Your original stays untouched.</p>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="flex flex-col justify-between gap-2 border-t border-slate-200 pt-5 text-xs text-slate-400 sm:flex-row">
+      <p class="mono">GOOD QUALITY IS TEMPORARY. MEMES ARE FOREVER.</p>
+      <p>Processing happens locally in your browser.</p>
+    </footer>
+  </main>
+
+  <script>
+    const videoInput = document.getElementById('videoInput');
+    const dropZone = document.getElementById('dropZone');
+    const emptyState = document.getElementById('emptyState');
+    const videoState = document.getElementById('videoState');
+    const videoPreview = document.getElementById('videoPreview');
+    const clearButton = document.getElementById('clearButton');
+    const crushButton = document.getElementById('crushButton');
+    const cursedToggle = document.getElementById('cursedToggle');
+    const statusDot = document.getElementById('statusDot');
+    const previewStatus = document.getElementById('previewStatus');
+    const exportHint = document.getElementById('exportHint');
+    const loadingScreen = document.getElementById('loadingScreen');
+    const downloadModal = document.getElementById('downloadModal');
+    const downloadPanel = document.getElementById('downloadPanel');
+    const closeDownloadModal = document.getElementById('closeDownloadModal');
+    const downloadWebmButton = document.getElementById('downloadWebmButton');
+    const downloadMp4Button = document.getElementById('downloadMp4Button');
+    const modalHint = document.getElementById('modalHint');
+
+    let videoUrl = null;
+    let crushedUrl = null;
+    let currentFile = null;
+    let cursed = false;
+    let exportReady = false;
+
+    const controls = [
+      { input: document.getElementById('videoDamage'), output: document.getElementById('videoDamageValue') },
+      { input: document.getElementById('audioDamage'), output: document.getElementById('audioDamageValue') }
+    ];
+
+    function setSliderFill(input) {
+      const percentage = ((input.value - input.min) / (input.max - input.min)) * 100;
+      input.style.background = `linear-gradient(90deg, #fb7185 0%, #fb7185 ${percentage}%, #e2e8f0 ${percentage}%, #e2e8f0 100%)`;
+    }
+
+    function setLoading(isLoading, message = 'PREPARING THE DAMAGE') {
+      loadingScreen.querySelector('p').textContent = message;
+      loadingScreen.classList.toggle('opacity-0', !isLoading);
+      loadingScreen.classList.toggle('pointer-events-none', !isLoading);
+    }
+
+    function openDownloadModal() {
+      modalHint.textContent = 'MP4 availability depends on your browser.';
+      modalHint.className = 'mt-4 text-center text-xs leading-5 text-slate-400';
+      downloadModal.classList.remove('pointer-events-none', 'opacity-0');
+      downloadPanel.classList.remove('scale-95');
+      downloadModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeModal() {
+      downloadModal.classList.add('pointer-events-none', 'opacity-0');
+      downloadPanel.classList.add('scale-95');
+      downloadModal.setAttribute('aria-hidden', 'true');
+    }
+
+    function updateDamageLabel() {
+      const damage = (Number(controls[0].input.value) + Number(controls[1].input.value)) / 2;
+      const badge = document.getElementById('damageBadge');
+
+      if (damage < 25) badge.textContent = 'MILD';
+      else if (damage < 55) badge.textContent = 'CRUNCHY';
+      else if (damage < 80) badge.textContent = 'DEEP FRIED';
+      else badge.textContent = 'UNRECOVERABLE';
+
+      badge.className = `rounded-full px-3 py-1.5 mono text-xs ${
+        damage >= 80 ? 'bg-rose-100 text-rose-600' :
+        damage >= 55 ? 'bg-amber-100 text-amber-700' :
+        'bg-slate-100 text-slate-600'
+      }`;
+    }
+
+    function getDownloadName(file, extension) {
+      const lastDot = file.name.lastIndexOf('.');
+      const name = lastDot > 0 ? file.name.slice(0, lastDot) : file.name;
+      return `${name}-crushed.${extension}`;
+    }
+
+    function downloadVideo(url, extension) {
+      if (!url || !currentFile) return;
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = getDownloadName(currentFile, extension);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      exportHint.textContent = `Your crushed .${extension} video is downloading.`;
+      exportHint.className = 'mt-3 text-center text-xs leading-5 text-emerald-600';
+    }
+
+    function getRecorderOptions(videoDamage, audioDamage, format = 'webm') {
+      const types = format === 'mp4'
+        ? [
+            'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+            'video/mp4;codecs=avc1,mp4a.40.2',
+            'video/mp4'
+          ]
+        : [
+            'video/webm;codecs=vp9,opus',
+            'video/webm;codecs=vp8,opus',
+            'video/webm'
+          ];
+
+      const mimeType = types.find(type => MediaRecorder.isTypeSupported(type));
+
+      if (!mimeType) {
+        throw new Error(
+          format === 'mp4'
+            ? 'MP4 conversion is not supported in this browser. Please download WEBM instead.'
+            : 'This browser does not support WEBM video export.'
+        );
+      }
+
+      return {
+        mimeType,
+        videoBitsPerSecond: Math.max(
+          180000,
+          Math.round(2400000 - (videoDamage / 100) * 2180000)
+        ),
+        audioBitsPerSecond: Math.max(
+          16000,
+          Math.round(96000 - (audioDamage / 100) * 80000)
+        )
+      };
+    }
+
+    function makeDistortionCurve(amount) {
+      const count = 44100;
+      const curve = new Float32Array(count);
+      const degree = Math.PI / 180;
+
+      for (let index = 0; index < count; index++) {
+        const value = index * 2 / count - 1;
+        curve[index] = ((3 + amount) * value * 20 * degree) /
+          (Math.PI + amount * Math.abs(value));
+      }
+
+      return curve;
+    }
+
+    function createNoiseBuffer(audioContext) {
+      const buffer = audioContext.createBuffer(
+        1,
+        audioContext.sampleRate * 2,
+        audioContext.sampleRate
+      );
+      const data = buffer.getChannelData(0);
+      let previous = 0;
+
+      for (let index = 0; index < data.length; index++) {
+        const white = Math.random() * 2 - 1;
+        previous = previous * 0.92 + white * 0.08;
+        data[index] = previous;
+      }
+
+      return buffer;
+    }
+
+    function waitForVideo(video, eventName) {
+      return new Promise((resolve, reject) => {
+        const ready = () => {
+          cleanup();
+          resolve();
+        };
+
+        const failed = () => {
+          cleanup();
+          reject(new Error('The video could not be read.'));
+        };
+
+        const cleanup = () => {
+          video.removeEventListener(eventName, ready);
+          video.removeEventListener('error', failed);
+        };
+
+        video.addEventListener(eventName, ready, { once: true });
+        video.addEventListener('error', failed, { once: true });
+      });
+    }
+
+    async function crushVideo(format = 'webm') {
+      const videoDamage = Number(controls[0].input.value);
+      const audioDamage = Number(controls[1].input.value);
+      const fps = Number(document.getElementById('fpsControl').value);
+
+      const source = document.createElement('video');
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d', {
+        alpha: false,
+        desynchronized: false,
+        willReadFrequently: false
+      });
+
+      let audioContext = null;
+      let noiseSource = null;
+      let renderTimer = null;
+      let playbackWatchdog = null;
+      let exportTimeout = null;
+      let canvasStream = null;
+      let outputStream = null;
+      let canvasTrack = null;
+      let recorder = null;
+      let finished = false;
+
+      source.src = videoUrl;
+      source.preload = 'auto';
+      source.playsInline = true;
+      source.setAttribute('playsinline', '');
+      source.setAttribute('webkit-playsinline', '');
+      source.disablePictureInPicture = true;
+      source.controls = false;
+
+      source.style.position = 'fixed';
+      source.style.left = '0';
+      source.style.bottom = '0';
+      source.style.width = '2px';
+      source.style.height = '2px';
+      source.style.opacity = '0.001';
+      source.style.pointerEvents = 'none';
+      source.style.zIndex = '-1';
+
+      document.body.appendChild(source);
+
+      if (source.readyState < HTMLMediaElement.HAVE_METADATA) {
+        await waitForVideo(source, 'loadedmetadata');
+      }
+
+      if (source.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        await waitForVideo(source, 'loadeddata');
+      }
+
+      if (!Number.isFinite(source.duration) || source.duration <= 0) {
+        source.remove();
+        throw new Error('The video duration could not be read.');
+      }
+
+      source.currentTime = 0;
+
+      const sourceWidth = source.videoWidth || 640;
+      const sourceHeight = source.videoHeight || 360;
+      const damageScale = Math.max(0.16, 0.78 - (videoDamage / 100) * 0.6);
+      const maximumWidth = cursed ? 640 : videoDamage < 25 ? 1280 : 960;
+      const requestedWidth = Math.max(160, Math.round(sourceWidth * damageScale));
+      const outputWidth = Math.min(requestedWidth, maximumWidth);
+      const outputScale = outputWidth / sourceWidth;
+      const outputHeight = Math.max(90, Math.round(sourceHeight * outputScale));
+
+      canvas.width = Math.max(2, Math.floor(outputWidth / 2) * 2);
+      canvas.height = Math.max(2, Math.floor(outputHeight / 2) * 2);
+
+      context.fillStyle = '#000000';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+
+      function renderFrame() {
+        if (finished || source.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+
+        context.save();
+        context.imageSmoothingEnabled = videoDamage < 30;
+        context.imageSmoothingQuality = videoDamage < 15 ? 'high' : 'low';
+        context.filter = cursed
+          ? `contrast(${1.15 + videoDamage / 250}) saturate(${0.65 + videoDamage / 240}) hue-rotate(${videoDamage / 9}deg)`
+          : `contrast(${1 + videoDamage / 310}) saturate(${1 - videoDamage / 360})`;
+
+        try {
+          context.drawImage(source, 0, 0, canvas.width, canvas.height);
+        } catch (error) {
+          context.restore();
+          return;
+        }
+
+        context.filter = 'none';
+
+        if (cursed) {
+          const noiseCount = Math.round(35 + videoDamage * 3);
+          context.globalAlpha = 0.1 + videoDamage / 800;
+
+          for (let index = 0; index < noiseCount; index++) {
+            context.fillStyle = Math.random() > 0.5 ? '#ff00bb' : '#00ffd5';
+            context.fillRect(
+              Math.random() * canvas.width,
+              Math.random() * canvas.height,
+              1 + Math.random() * Math.max(2, canvas.width / 18),
+              1 + Math.random() * 3
+            );
+          }
+        }
+
+        context.restore();
+
+        if (canvasTrack && typeof canvasTrack.requestFrame === 'function') {
+          canvasTrack.requestFrame();
+        }
+      }
+
+      renderFrame();
+
+      const supportsManualFrames = (() => {
+        try {
+          const testStream = canvas.captureStream(0);
+          const testTrack = testStream.getVideoTracks()[0];
+          const supported = Boolean(testTrack && typeof testTrack.requestFrame === 'function');
+          testStream.getTracks().forEach(track => track.stop());
+          return supported;
+        } catch (error) {
+          return false;
+        }
+      })();
+
+      canvasStream = canvas.captureStream(supportsManualFrames ? 0 : fps);
+      canvasTrack = canvasStream.getVideoTracks()[0];
+
+      if (!canvasTrack) {
+        source.remove();
+        throw new Error('The browser could not create the video export stream.');
+      }
+
+      outputStream = new MediaStream([canvasTrack]);
+
+      try {
+        audioContext = new AudioContext({
+          latencyHint: 'playback',
+          sampleRate: audioDamage > 70 ? 22050 : 44100
+        });
+
+        const mediaSource = audioContext.createMediaElementSource(source);
+        const highPass = audioContext.createBiquadFilter();
+        const lowPass = audioContext.createBiquadFilter();
+        const midBoost = audioContext.createBiquadFilter();
+        const distortion = audioContext.createWaveShaper();
+        const compressor = audioContext.createDynamicsCompressor();
+        const outputGain = audioContext.createGain();
+        const noiseGain = audioContext.createGain();
+        const audioDestination = audioContext.createMediaStreamDestination();
+
+        highPass.type = 'highpass';
+        highPass.frequency.value = 60 + audioDamage * 13;
+        highPass.Q.value = 0.8;
+
+        lowPass.type = 'lowpass';
+        lowPass.frequency.value = Math.max(1050, 11000 - audioDamage * 92);
+        lowPass.Q.value = 1.4 + audioDamage / 45;
+
+        midBoost.type = 'peaking';
+        midBoost.frequency.value = 1250;
+        midBoost.Q.value = 1.8;
+        midBoost.gain.value = audioDamage * 0.11;
+
+        distortion.curve = makeDistortionCurve(4 + audioDamage * 2.8);
+        distortion.oversample = audioDamage < 45 ? '2x' : 'none';
+
+        compressor.threshold.value = -20 - audioDamage * 0.16;
+        compressor.knee.value = 4;
+        compressor.ratio.value = 4 + audioDamage * 0.1;
+        compressor.attack.value = 0.003;
+        compressor.release.value = 0.11;
+
+        outputGain.gain.value = Math.max(0.48, 0.86 - audioDamage * 0.003);
+
+        noiseSource = audioContext.createBufferSource();
+        noiseSource.buffer = createNoiseBuffer(audioContext);
+        noiseSource.loop = true;
+        noiseGain.gain.value = audioDamage === 0
+          ? 0
+          : 0.001 + Math.pow(audioDamage / 100, 1.5) * 0.024;
+
+        mediaSource.connect(highPass);
+        highPass.connect(lowPass);
+        lowPass.connect(midBoost);
+        midBoost.connect(distortion);
+        distortion.connect(compressor);
+
+        noiseSource.connect(noiseGain);
+        noiseGain.connect(compressor);
+
+        compressor.connect(outputGain);
+        outputGain.connect(audioDestination);
+
+        audioDestination.stream.getAudioTracks().forEach(track => {
+          outputStream.addTrack(track);
+        });
+
+        noiseSource.start();
+        await audioContext.resume();
+      } catch (error) {
+        source.muted = true;
+      }
+
+      const recorderOptions = getRecorderOptions(videoDamage, audioDamage, format);
+      recorder = new MediaRecorder(outputStream, recorderOptions);
+      const chunks = [];
+      const frameInterval = Math.max(16, Math.round(1000 / fps));
+
+      function cleanup() {
+        if (finished) return;
+        finished = true;
+
+        if (renderTimer) clearInterval(renderTimer);
+        if (playbackWatchdog) clearInterval(playbackWatchdog);
+        if (exportTimeout) clearTimeout(exportTimeout);
+
+        source.onended = null;
+        source.onerror = null;
+        source.onpause = null;
+        source.pause();
+
+        if (outputStream) {
+          outputStream.getTracks().forEach(track => track.stop());
+        }
+
+        if (canvasStream) {
+          canvasStream.getTracks().forEach(track => track.stop());
+        }
+
+        if (noiseSource) {
+          try {
+            noiseSource.stop();
+          } catch (error) {}
+        }
+
+        source.removeAttribute('src');
+        source.load();
+        source.remove();
+      }
+
+      return new Promise(async (resolve, reject) => {
+        let settled = false;
+
+        const rejectOnce = async message => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+
+          if (audioContext && audioContext.state !== 'closed') {
+            try {
+              await audioContext.close();
+            } catch (error) {}
+          }
+
+          reject(new Error(message));
+        };
+
+        recorder.ondataavailable = event => {
+          if (event.data && event.data.size > 0) chunks.push(event.data);
+        };
+
+        recorder.onerror = () => {
+          rejectOnce('The export could not be created.');
+        };
+
+        recorder.onstop = async () => {
+          if (settled) return;
+          settled = true;
+
+          renderFrame();
+          cleanup();
+
+          if (audioContext && audioContext.state !== 'closed') {
+            try {
+              await audioContext.close();
+            } catch (error) {}
+          }
+
+          if (!chunks.length) {
+            reject(new Error('The browser produced an empty video export.'));
+            return;
+          }
+
+          resolve(new Blob(chunks, {
+            type: recorder.mimeType || `video/${format}`
+          }));
+        };
+
+        source.onerror = () => {
+          if (recorder.state !== 'inactive') recorder.stop();
+          rejectOnce('The source video stopped decoding during export.');
+        };
+
+        source.onended = () => {
+          renderFrame();
+
+          window.setTimeout(() => {
+            if (recorder.state !== 'inactive') recorder.stop();
+          }, Math.max(120, frameInterval * 2));
+        };
+
+        source.onpause = () => {
+          if (
+            !finished &&
+            !source.ended &&
+            source.currentTime < source.duration - 0.1
+          ) {
+            source.play().catch(() => {});
+          }
+        };
+
+        try {
+          recorder.start(250);
+          renderFrame();
+
+          renderTimer = window.setInterval(renderFrame, frameInterval);
+
+          playbackWatchdog = window.setInterval(() => {
+            if (
+              !finished &&
+              !source.ended &&
+              source.currentTime < source.duration - 0.1 &&
+              (source.paused || source.readyState < HTMLMediaElement.HAVE_FUTURE_DATA)
+            ) {
+              source.play().catch(() => {});
+            }
+          }, 500);
+
+          exportTimeout = window.setTimeout(() => {
+            if (!finished && recorder.state !== 'inactive') {
+              recorder.stop();
+            }
+          }, Math.ceil((source.duration + 8) * 1000));
+
+          await source.play();
+        } catch (error) {
+          if (recorder.state !== 'inactive') {
+            try {
+              recorder.stop();
+            } catch (stopError) {}
+          }
+
+          rejectOnce('Playback must be allowed to export this video.');
+        }
+      });
+    }
+
+    async function createExport(format = 'webm') {
+      const label = format === 'mp4' ? 'CONVERTING TO MP4' : 'DESTROYING QUALITY';
+      setLoading(true, label);
+
+      crushButton.disabled = true;
+      crushButton.classList.add('bg-rose-500', 'hover:bg-rose-500');
+      crushButton.classList.remove('bg-slate-950');
+      crushButton.innerHTML = '<iconify-icon icon="solar:refresh-circle-linear" width="19" stroke-width="1.5"></iconify-icon> Destroying quality…';
+
+      exportHint.textContent = 'Re-encoding the full video. Keep this tab open and visible.';
+      exportHint.className = 'mt-3 text-center text-xs leading-5 text-rose-500';
+
+      try {
+        const crushedVideo = await crushVideo(format);
+
+        if (format === 'webm') {
+          if (crushedUrl) URL.revokeObjectURL(crushedUrl);
+
+          crushedUrl = URL.createObjectURL(crushedVideo);
+          exportReady = true;
+
+          crushButton.disabled = false;
+          crushButton.classList.remove('bg-rose-500', 'hover:bg-rose-500');
+          crushButton.classList.add('bg-slate-950');
+          crushButton.innerHTML = '<iconify-icon icon="solar:download-minimalistic-linear" width="19" stroke-width="1.5"></iconify-icon> Download crushed video';
+
+          exportHint.textContent = `Quality successfully ruined · ${(crushedVideo.size / (1024 * 1024)).toFixed(1)} MB WEBM export ready`;
+          exportHint.className = 'mt-3 text-center text-xs leading-5 text-emerald-600';
+        } else {
+          const mp4Url = URL.createObjectURL(crushedVideo);
+          downloadVideo(mp4Url, 'mp4');
+          window.setTimeout(() => URL.revokeObjectURL(mp4Url), 3000);
+
+          crushButton.disabled = false;
+          crushButton.classList.remove('bg-rose-500', 'hover:bg-rose-500');
+          crushButton.classList.add('bg-slate-950');
+          crushButton.innerHTML = '<iconify-icon icon="solar:download-minimalistic-linear" width="19" stroke-width="1.5"></iconify-icon> Download crushed video';
+        }
+      } catch (error) {
+        crushButton.disabled = false;
+        crushButton.classList.remove('bg-rose-500', 'hover:bg-rose-500');
+        crushButton.classList.add('bg-slate-950');
+        crushButton.innerHTML = '<iconify-icon icon="solar:magic-stick-3-linear" width="19" stroke-width="1.5"></iconify-icon> Try crushing again';
+
+        exportHint.textContent = error.message || 'Something went wrong while crushing the video.';
+        exportHint.className = 'mt-3 text-center text-xs leading-5 text-rose-500';
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    controls.forEach(({ input, output }) => {
+      setSliderFill(input);
+
+      input.addEventListener('input', () => {
+        output.value = `${input.value}%`;
+        setSliderFill(input);
+        updateDamageLabel();
+      });
+    });
+
+    const fpsControl = document.getElementById('fpsControl');
+    const fpsValue = document.getElementById('fpsValue');
+    setSliderFill(fpsControl);
+
+    fpsControl.addEventListener('input', () => {
+      fpsValue.value = `${fpsControl.value} FPS`;
+      setSliderFill(fpsControl);
+    });
+
+    function loadVideo(file) {
+      if (!file || !file.type.startsWith('video/')) {
+        exportHint.textContent = 'Please choose a video file.';
+        exportHint.className = 'mt-3 text-center text-xs leading-5 text-rose-500';
+        return;
+      }
+
+      if (videoUrl) URL.revokeObjectURL(videoUrl);
+      if (crushedUrl) URL.revokeObjectURL(crushedUrl);
+
+      currentFile = file;
+      videoUrl = URL.createObjectURL(file);
+      crushedUrl = null;
+      exportReady = false;
+      videoPreview.src = videoUrl;
+
+      document.getElementById('fileName').textContent = file.name;
+      document.getElementById('fileMeta').textContent = `${(file.size / (1024 * 1024)).toFixed(1)} MB · READY TO RUIN`;
+
+      emptyState.classList.add('hidden');
+      videoState.classList.remove('hidden');
+      clearButton.classList.remove('hidden');
+      clearButton.classList.add('flex');
+
+      statusDot.className = 'size-2 rounded-full bg-emerald-500';
+      previewStatus.textContent = 'SOURCE READY';
+
+      crushButton.disabled = false;
+      crushButton.className = 'flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-3.5 text-sm font-medium text-white transition hover:bg-rose-500 active:scale-[0.99]';
+      crushButton.innerHTML = '<iconify-icon icon="solar:magic-stick-3-linear" width="19" stroke-width="1.5"></iconify-icon> Crush my video';
+
+      exportHint.textContent = 'Your original stays untouched.';
+      exportHint.className = 'mt-3 text-center text-xs leading-5 text-slate-400';
+    }
+
+    videoInput.addEventListener('change', event => loadVideo(event.target.files[0]));
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropZone.addEventListener(eventName, event => {
+        event.preventDefault();
+        dropZone.classList.add('drop-active');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, event => {
+        event.preventDefault();
+        dropZone.classList.remove('drop-active');
+      });
+    });
+
+    dropZone.addEventListener('drop', event => {
+      loadVideo(event.dataTransfer.files[0]);
+    });
+
+    clearButton.addEventListener('click', () => {
+      if (videoUrl) URL.revokeObjectURL(videoUrl);
+      if (crushedUrl) URL.revokeObjectURL(crushedUrl);
+
+      videoUrl = null;
+      crushedUrl = null;
+      currentFile = null;
+      exportReady = false;
+      videoInput.value = '';
+
+      videoPreview.removeAttribute('src');
+      videoPreview.load();
+
+      emptyState.classList.remove('hidden');
+      videoState.classList.add('hidden');
+      clearButton.classList.add('hidden');
+      clearButton.classList.remove('flex');
+
+      statusDot.className = 'size-2 rounded-full bg-slate-300';
+      previewStatus.textContent = 'NO FILE LOADED';
+
+      crushButton.disabled = true;
+      crushButton.className = 'flex w-full items-center justify-center gap-2 rounded-xl bg-slate-200 px-4 py-3.5 text-sm font-medium text-slate-400 transition';
+      crushButton.innerHTML = '<iconify-icon icon="solar:magic-stick-3-linear" width="19" stroke-width="1.5"></iconify-icon> Upload a video to crush it';
+
+      exportHint.textContent = 'Your original stays untouched.';
+      exportHint.className = 'mt-3 text-center text-xs leading-5 text-slate-400';
+    });
+
+    cursedToggle.addEventListener('click', () => {
+      cursed = !cursed;
+      cursedToggle.setAttribute('aria-pressed', cursed);
+      cursedToggle.className = `relative h-6 w-11 shrink-0 rounded-full transition ${cursed ? 'bg-rose-500' : 'bg-slate-300'}`;
+      cursedToggle.querySelector('span').className = `absolute top-1 size-4 rounded-full bg-white shadow-sm transition ${cursed ? 'left-6' : 'left-1'}`;
+      updateDamageLabel();
+    });
+
+    crushButton.addEventListener('click', () => {
+      if (!videoUrl) return;
+      if (exportReady) openDownloadModal();
+      else createExport('webm');
+    });
+
+    closeDownloadModal.addEventListener('click', closeModal);
+
+    downloadModal.addEventListener('click', event => {
+      if (event.target === downloadModal) closeModal();
+    });
+
+    downloadWebmButton.addEventListener('click', () => {
+      closeModal();
+      downloadVideo(crushedUrl, 'webm');
+    });
+
+    downloadMp4Button.addEventListener('click', async () => {
+      const mp4Supported = [
+        'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+        'video/mp4;codecs=avc1,mp4a.40.2',
+        'video/mp4'
+      ].some(type => MediaRecorder.isTypeSupported(type));
+
+      if (!mp4Supported) {
+        modalHint.textContent = 'MP4 export is not supported in this browser. Download WEBM instead.';
+        modalHint.className = 'mt-4 text-center text-xs leading-5 text-rose-500';
+        return;
+      }
+
+      closeModal();
+      await createExport('mp4');
+    });
+
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') closeModal();
+    });
+  </script>
+</body>
+</html>
+<!-- The premature frozen-frame and black-frame export issue is fixed while preserving the existing interface and controls. -->

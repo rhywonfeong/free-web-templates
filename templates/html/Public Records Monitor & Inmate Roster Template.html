@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>JCStream | Real-time Inmate Roster</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<style>
+/* Hide scrollbar for chronological nav while keeping functionality */
+.scrollbar-hide::-webkit-scrollbar {
+display: none;
+}
+.scrollbar-hide {
+-ms-overflow-style: none;
+scrollbar-width: none;
+}
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body
+    class="bg-[#14181f] text-[#ffffff] font-sans antialiased selection:bg-[#30363d] selection:text-white"
+  >
+    <!-- Accessibility Skip Link -->
+    <a
+      href="#main-content"
+      class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 z-[100] bg-[#1c222b] px-4 py-2 border border-[#30363d] rounded text-white text-sm font-semibold shadow-lg"
+    >
+      Skip to main content
+    </a>
+
+    <!-- Masthead -->
+    <header
+      class="sticky top-0 z-50 bg-[#14181f]/90 backdrop-blur-md border-b border-[#30363d] flex flex-col"
+    >
+      <div class="px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+          <a
+            href="/"
+            class="text-xl font-semibold tracking-tighter uppercase focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b949e] rounded"
+          >
+            JCSTREAM
+          </a>
+          <div class="h-4 w-px bg-[#30363d] hidden sm:block"></div>
+          <span
+            class="hidden sm:flex items-center gap-2 text-xs text-[#8b949e] font-mono"
+          >
+            <span class="relative flex h-2 w-2">
+              <span
+                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#238636] opacity-75"
+              ></span>
+              <span
+                class="relative inline-flex rounded-full h-2 w-2 bg-[#238636]"
+              ></span>
+            </span>
+            LIVE MONITOR
+          </span>
+        </div>
+        <div class="flex items-center gap-3">
+          <button
+            aria-label="Search records"
+            class="text-[#8b949e] hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b949e] rounded p-1"
+          >
+            <iconify-icon
+              icon="solar:magnifer-linear"
+              width="20"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </button>
+          <button
+            aria-label="Filter records"
+            class="text-[#8b949e] hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b949e] rounded p-1"
+          >
+            <iconify-icon
+              icon="solar:filter-linear"
+              width="20"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </button>
+        </div>
+      </div>
+
+      <!-- Month Nav (Chronological Filter) -->
+      <nav
+        class="flex overflow-x-auto gap-2 px-4 pb-3 scrollbar-hide"
+        aria-label="Chronological Filter"
+      >
+        <button
+          class="bg-[#ffffff] text-[#14181f] border border-[#ffffff] rounded-full px-3 py-1 flex items-center gap-2 text-xs transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#14181f]"
+          aria-current="page"
+        >
+          <span class="uppercase tracking-widest font-semibold">Oct</span>
+          <span
+            class="font-mono font-semibold bg-[#14181f]/10 px-1.5 rounded-full"
+          >
+            342
+          </span>
+        </button>
+        <button
+          class="bg-[#1c222b] text-[#8b949e] border border-[#30363d] rounded-full px-3 py-1 flex items-center gap-2 text-xs hover:border-[#8b949e] hover:text-white transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b949e]"
+        >
+          <span class="uppercase tracking-widest font-semibold">Sep</span>
+          <span class="font-mono font-semibold text-white">812</span>
+        </button>
+        <button
+          class="bg-[#1c222b] text-[#8b949e] border border-[#30363d] rounded-full px-3 py-1 flex items-center gap-2 text-xs hover:border-[#8b949e] hover:text-white transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b949e]"
+        >
+          <span class="uppercase tracking-widest font-semibold">Aug</span>
+          <span class="font-mono font-semibold text-white">904</span>
+        </button>
+        <button
+          class="bg-[#1c222b] text-[#8b949e] border border-[#30363d] rounded-full px-3 py-1 flex items-center gap-2 text-xs hover:border-[#8b949e] hover:text-white transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b949e]"
+        >
+          <span class="uppercase tracking-widest font-semibold">Jul</span>
+          <span class="font-mono font-semibold text-white">876</span>
+        </button>
+        <button
+          class="bg-[#1c222b] text-[#8b949e] border border-[#30363d] rounded-full px-3 py-1 flex items-center gap-2 text-xs hover:border-[#8b949e] hover:text-white transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b949e]"
+        >
+          <span class="uppercase tracking-widest font-semibold">Jun</span>
+          <span class="font-mono font-semibold text-white">821</span>
+        </button>
+        <button
+          class="bg-[#1c222b] text-[#8b949e] border border-[#30363d] rounded-full px-3 py-1 flex items-center gap-2 text-xs hover:border-[#8b949e] hover:text-white transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b949e]"
+        >
+          <span class="uppercase tracking-widest font-semibold">May</span>
+          <span class="font-mono font-semibold text-white">755</span>
+        </button>
+      </nav>
+    </header>
+
+    <main id="main-content" class="pb-12">
+      <!-- Hero Summary Stat -->
+      <section
+        class="px-4 py-6 sm:py-8 border-b border-[#30363d] flex flex-col sm:flex-row sm:items-end justify-between gap-4"
+      >
+        <div>
+          <h1
+            class="text-5xl font-semibold tracking-tight leading-none text-white"
+          >
+            342
+          </h1>
+          <p
+            class="text-xs text-[#8b949e] uppercase tracking-widest mt-3 font-semibold"
+          >
+            Current Oct Bookings
+          </p>
+        </div>
+        <div class="flex flex-col sm:items-end gap-1">
+          <p
+            class="text-xs text-[#8b949e] font-semibold uppercase tracking-widest flex items-center gap-1.5"
+          >
+            <iconify-icon
+              icon="solar:clock-circle-linear"
+              width="14"
+              stroke-width="1.5"
+            ></iconify-icon>
+            Last Sync
+          </p>
+          <p class="text-xs text-white font-mono">2023-10-27T14:32:00Z</p>
+        </div>
+      </section>
+
+      <!-- Shaded Header for Section Demarcation -->
+      <div class="px-4 py-2 bg-[#1c222b] border-b border-[#30363d]">
+        <h2
+          class="text-xs font-semibold uppercase tracking-wider text-[#8b949e]"
+        >
+          Today
+        </h2>
+      </div>
+
+      <!-- High-Density Fluid Grid -->
+      <div
+        class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2"
+      >
+        <!-- Card Inmate 1 (Felony / Booked) -->
+        <article
+          class="relative bg-[#1c222b] border border-[#30363d] p-3 rounded flex gap-3 hover:border-[#8b949e] transition-colors focus-within:ring-1 focus-within:ring-[#8b949e] focus-within:border-[#8b949e] outline-none group"
+        >
+          <div
+            class="absolute top-0 left-0 bg-[#ff4d4d] text-white px-1.5 py-0.5 rounded-tl rounded-br text-xs font-semibold leading-none z-10 border-b border-r border-[#30363d]"
+            aria-label="Felony Classification"
+          >
+            F
+          </div>
+          <div class="w-12 shrink-0">
+            <img
+              src="https://www.aretheyinjail.com/photos/14808689.jpg"
+              alt="HCSO booking photo of COLLINS, MARCUS"
+              class="w-12 h-[60px] object-cover rounded bg-[#14181f] border border-[#30363d]"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <div class="flex flex-col flex-1 min-w-0 justify-center">
+            <a
+              href="#"
+              class="text-sm font-semibold truncate uppercase text-white tracking-tight hover:underline focus:outline-none before:absolute before:inset-0"
+              aria-label="View record for COLLINS, MARCUS"
+            >
+              COLLINS, MARCUS D.
+            </a>
+            <p
+              class="text-xs text-[#ff4d4d] truncate mt-0.5"
+              title="Aggravated Robbery"
+            >
+              <iconify-icon
+                icon="solar:danger-triangle-linear"
+                width="14"
+                class="mr-1 align-middle"
+              ></iconify-icon>
+              Aggravated Robbery
+            </p>
+            <div class="flex items-center gap-2 mt-2 relative z-20">
+              <span
+                class="font-mono text-xs font-semibold text-[#8b949e] bg-[#14181f] px-1.5 py-0.5 rounded border border-[#30363d]"
+              >
+                INMATE ID #: 14808689
+              </span>
+              <span
+                class="text-xs uppercase font-semibold text-[#238636] ml-auto tracking-widest"
+              >
+                Booked
+              </span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card Inmate 2 (Misdemeanor / Booked) -->
+        <article
+          class="relative bg-[#1c222b] border border-[#30363d] p-3 rounded flex gap-3 hover:border-[#8b949e] transition-colors focus-within:ring-1 focus-within:ring-[#8b949e] focus-within:border-[#8b949e] outline-none group"
+        >
+          <div
+            class="absolute top-0 left-0 bg-[#ffd700] text-[#14181f] px-1.5 py-0.5 rounded-tl rounded-br text-xs font-semibold leading-none z-10 border-b border-r border-[#30363d]"
+            aria-label="Misdemeanor Classification"
+          >
+            M
+          </div>
+          <div class="w-12 shrink-0">
+            <img
+              src="https://www.aretheyinjail.com/photos/14796306.jpg"
+              alt="HCSO booking photo of SMITH, SARAH"
+              class="w-12 h-[60px] object-cover rounded bg-[#14181f] border border-[#30363d]"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <div class="flex flex-col flex-1 min-w-0 justify-center">
+            <a
+              href="#"
+              class="text-sm font-semibold truncate uppercase text-white tracking-tight hover:underline focus:outline-none before:absolute before:inset-0"
+              aria-label="View record for SMITH, SARAH"
+            >
+              SMITH, SARAH A.
+            </a>
+            <p class="text-xs text-[#ffd700] truncate mt-0.5" title="Theft">
+              <iconify-icon
+                icon="solar:info-circle-linear"
+                width="14"
+                class="mr-1 align-middle"
+              ></iconify-icon>
+              Theft
+            </p>
+            <div class="flex items-center gap-2 mt-2 relative z-20">
+              <span
+                class="font-mono text-xs font-semibold text-[#8b949e] bg-[#14181f] px-1.5 py-0.5 rounded border border-[#30363d]"
+              >
+                INMATE ID #: 14796306
+              </span>
+              <span
+                class="text-xs uppercase font-semibold text-[#238636] ml-auto tracking-widest"
+              >
+                Booked
+              </span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card Inmate 3 (Felony / Released) -->
+        <article
+          class="relative bg-[#1c222b] border border-[#30363d] p-3 rounded flex gap-3 hover:border-[#8b949e] transition-colors focus-within:ring-1 focus-within:ring-[#8b949e] focus-within:border-[#8b949e] outline-none group opacity-80 hover:opacity-100"
+        >
+          <div
+            class="absolute top-0 left-0 bg-[#ff4d4d] text-white px-1.5 py-0.5 rounded-tl rounded-br text-xs font-semibold leading-none z-10 border-b border-r border-[#30363d]"
+            aria-label="Felony Classification"
+          >
+            F
+          </div>
+          <div class="w-12 shrink-0">
+            <img
+              src="https://www.aretheyinjail.com/photos/14767950.jpg"
+              alt="HCSO booking photo of JENKINS, TYLER"
+              class="w-12 h-[60px] object-cover rounded bg-[#14181f] border border-[#30363d] grayscale"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <div class="flex flex-col flex-1 min-w-0 justify-center">
+            <a
+              href="#"
+              class="text-sm font-semibold truncate uppercase text-[#8b949e] group-hover:text-white tracking-tight hover:underline focus:outline-none before:absolute before:inset-0 transition-colors"
+              aria-label="View record for JENKINS, TYLER"
+            >
+              JENKINS, TYLER R.
+            </a>
+            <p
+              class="text-xs text-[#ff4d4d] truncate mt-0.5"
+              title="Possession of Controlled Substances"
+            >
+              <iconify-icon
+                icon="solar:danger-triangle-linear"
+                width="14"
+                class="mr-1 align-middle"
+              ></iconify-icon>
+              Possession of Controlled Substances
+            </p>
+            <div class="flex items-center gap-2 mt-2 relative z-20">
+              <span
+                class="font-mono text-xs font-semibold text-[#8b949e] bg-[#14181f] px-1.5 py-0.5 rounded border border-[#30363d]"
+              >
+                INMATE ID #: 14767950
+              </span>
+              <span
+                class="text-xs uppercase font-semibold text-[#8b949e] ml-auto tracking-widest"
+              >
+                Released
+              </span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card Inmate 4 (Misdemeanor / Booked) -->
+        <article
+          class="relative bg-[#1c222b] border border-[#30363d] p-3 rounded flex gap-3 hover:border-[#8b949e] transition-colors focus-within:ring-1 focus-within:ring-[#8b949e] focus-within:border-[#8b949e] outline-none group"
+        >
+          <div
+            class="absolute top-0 left-0 bg-[#ffd700] text-[#14181f] px-1.5 py-0.5 rounded-tl rounded-br text-xs font-semibold leading-none z-10 border-b border-r border-[#30363d]"
+            aria-label="Misdemeanor Classification"
+          >
+            M
+          </div>
+          <div class="w-12 shrink-0">
+            <img
+              src="https://www.aretheyinjail.com/photos/14738888.jpg"
+              alt="HCSO booking photo of RODRIGUEZ, LUIS"
+              class="w-12 h-[60px] object-cover rounded bg-[#14181f] border border-[#30363d]"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <div class="flex flex-col flex-1 min-w-0 justify-center">
+            <a
+              href="#"
+              class="text-sm font-semibold truncate uppercase text-white tracking-tight hover:underline focus:outline-none before:absolute before:inset-0"
+              aria-label="View record for RODRIGUEZ, LUIS"
+            >
+              RODRIGUEZ, LUIS
+            </a>
+            <p
+              class="text-xs text-[#ffd700] truncate mt-0.5"
+              title="Disorderly Conduct"
+            >
+              <iconify-icon
+                icon="solar:info-circle-linear"
+                width="14"
+                class="mr-1 align-middle"
+              ></iconify-icon>
+              Disorderly Conduct
+            </p>
+            <div class="flex items-center gap-2 mt-2 relative z-20">
+              <span
+                class="font-mono text-xs font-semibold text-[#8b949e] bg-[#14181f] px-1.5 py-0.5 rounded border border-[#30363d]"
+              >
+                INMATE ID #: 14738888
+              </span>
+              <span
+                class="text-xs uppercase font-semibold text-[#238636] ml-auto tracking-widest"
+              >
+                Booked
+              </span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card Inmate 5 (Felony / Booked) -->
+        <article
+          class="relative bg-[#1c222b] border border-[#30363d] p-3 rounded flex gap-3 hover:border-[#8b949e] transition-colors focus-within:ring-1 focus-within:ring-[#8b949e] focus-within:border-[#8b949e] outline-none group"
+        >
+          <div
+            class="absolute top-0 left-0 bg-[#ff4d4d] text-white px-1.5 py-0.5 rounded-tl rounded-br text-xs font-semibold leading-none z-10 border-b border-r border-[#30363d]"
+            aria-label="Felony Classification"
+          >
+            F
+          </div>
+          <div class="w-12 shrink-0">
+            <img
+              src="https://www.aretheyinjail.com/photos/14698717.jpg"
+              alt="HCSO booking photo of WASHINGTON, KEVIN"
+              class="w-12 h-[60px] object-cover rounded bg-[#14181f] border border-[#30363d]"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <div class="flex flex-col flex-1 min-w-0 justify-center">
+            <a
+              href="#"
+              class="text-sm font-semibold truncate uppercase text-white tracking-tight hover:underline focus:outline-none before:absolute before:inset-0"
+              aria-label="View record for WASHINGTON, KEVIN"
+            >
+              WASHINGTON, KEVIN T.
+            </a>
+            <p
+              class="text-xs text-[#ff4d4d] truncate mt-0.5"
+              title="Felonious Assault"
+            >
+              <iconify-icon
+                icon="solar:danger-triangle-linear"
+                width="14"
+                class="mr-1 align-middle"
+              ></iconify-icon>
+              Felonious Assault
+            </p>
+            <div class="flex items-center gap-2 mt-2 relative z-20">
+              <span
+                class="font-mono text-xs font-semibold text-[#8b949e] bg-[#14181f] px-1.5 py-0.5 rounded border border-[#30363d]"
+              >
+                INMATE ID #: 14698717
+              </span>
+              <span
+                class="text-xs uppercase font-semibold text-[#238636] ml-auto tracking-widest"
+              >
+                Booked
+              </span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card Inmate 6 (Felony / Booked) -->
+        <article
+          class="relative bg-[#1c222b] border border-[#30363d] p-3 rounded flex gap-3 hover:border-[#8b949e] transition-colors focus-within:ring-1 focus-within:ring-[#8b949e] focus-within:border-[#8b949e] outline-none group"
+        >
+          <div
+            class="absolute top-0 left-0 bg-[#ff4d4d] text-white px-1.5 py-0.5 rounded-tl rounded-br text-xs font-semibold leading-none z-10 border-b border-r border-[#30363d]"
+            aria-label="Felony Classification"
+          >
+            F
+          </div>
+          <div class="w-12 shrink-0">
+            <img
+              src="https://www.aretheyinjail.com/photos/14694504.jpg"
+              alt="HCSO booking photo of BRYANT, JAMES"
+              class="w-12 h-[60px] object-cover rounded bg-[#14181f] border border-[#30363d]"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <div class="flex flex-col flex-1 min-w-0 justify-center">
+            <a
+              href="#"
+              class="text-sm font-semibold truncate uppercase text-white tracking-tight hover:underline focus:outline-none before:absolute before:inset-0"
+              aria-label="View record for BRYANT, JAMES"
+            >
+              BRYANT, JAMES E.
+            </a>
+            <p class="text-xs text-[#ff4d4d] truncate mt-0.5" title="Burglary">
+              <iconify-icon
+                icon="solar:danger-triangle-linear"
+                width="14"
+                class="mr-1 align-middle"
+              ></iconify-icon>
+              Burglary
+            </p>
+            <div class="flex items-center gap-2 mt-2 relative z-20">
+              <span
+                class="font-mono text-xs font-semibold text-[#8b949e] bg-[#14181f] px-1.5 py-0.5 rounded border border-[#30363d]"
+              >
+                INMATE ID #: 14694504
+              </span>
+              <span
+                class="text-xs uppercase font-semibold text-[#238636] ml-auto tracking-widest"
+              >
+                Booked
+              </span>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <!-- Shaded Header for Yesterday -->
+      <div class="px-4 py-2 bg-[#1c222b] border-y border-[#30363d] mt-2">
+        <h2
+          class="text-xs font-semibold uppercase tracking-wider text-[#8b949e]"
+        >
+          Yesterday
+        </h2>
+      </div>
+
+      <!-- Secondary Grid section -->
+      <div
+        class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2"
+      >
+        <!-- Card Inmate 7 (Misdemeanor / Released) -->
+        <article
+          class="relative bg-[#1c222b] border border-[#30363d] p-3 rounded flex gap-3 hover:border-[#8b949e] transition-colors focus-within:ring-1 focus-within:ring-[#8b949e] focus-within:border-[#8b949e] outline-none group opacity-80 hover:opacity-100"
+        >
+          <div
+            class="absolute top-0 left-0 bg-[#ffd700] text-[#14181f] px-1.5 py-0.5 rounded-tl rounded-br text-xs font-semibold leading-none z-10 border-b border-r border-[#30363d]"
+            aria-label="Misdemeanor Classification"
+          >
+            M
+          </div>
+          <div class="w-12 shrink-0">
+            <img
+              src="https://www.aretheyinjail.com/photos/14676166.jpg"
+              alt="HCSO booking photo of MARTINEZ, CARLOS"
+              class="w-12 h-[60px] object-cover rounded bg-[#14181f] border border-[#30363d] grayscale"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <div class="flex flex-col flex-1 min-w-0 justify-center">
+            <a
+              href="#"
+              class="text-sm font-semibold truncate uppercase text-[#8b949e] group-hover:text-white tracking-tight hover:underline focus:outline-none before:absolute before:inset-0 transition-colors"
+              aria-label="View record for MARTINEZ, CARLOS"
+            >
+              MARTINEZ, CARLOS
+            </a>
+            <p
+              class="text-xs text-[#ffd700] truncate mt-0.5"
+              title="Criminal Trespass"
+            >
+              <iconify-icon
+                icon="solar:info-circle-linear"
+                width="14"
+                class="mr-1 align-middle"
+              ></iconify-icon>
+              Criminal Trespass
+            </p>
+            <div class="flex items-center gap-2 mt-2 relative z-20">
+              <span
+                class="font-mono text-xs font-semibold text-[#8b949e] bg-[#14181f] px-1.5 py-0.5 rounded border border-[#30363d]"
+              >
+                INMATE ID #: 14676166
+              </span>
+              <span
+                class="text-xs uppercase font-semibold text-[#8b949e] ml-auto tracking-widest"
+              >
+                Released
+              </span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card Inmate 8 (Felony / Released) -->
+        <article
+          class="relative bg-[#1c222b] border border-[#30363d] p-3 rounded flex gap-3 hover:border-[#8b949e] transition-colors focus-within:ring-1 focus-within:ring-[#8b949e] focus-within:border-[#8b949e] outline-none group opacity-80 hover:opacity-100"
+        >
+          <div
+            class="absolute top-0 left-0 bg-[#ff4d4d] text-white px-1.5 py-0.5 rounded-tl rounded-br text-xs font-semibold leading-none z-10 border-b border-r border-[#30363d]"
+            aria-label="Felony Classification"
+          >
+            F
+          </div>
+          <div class="w-12 shrink-0">
+            <img
+              src="https://www.aretheyinjail.com/photos/14663979.jpg"
+              alt="HCSO booking photo of WILLIAMS, DAVID"
+              class="w-12 h-[60px] object-cover rounded bg-[#14181f] border border-[#30363d] grayscale"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <div class="flex flex-col flex-1 min-w-0 justify-center">
+            <a
+              href="#"
+              class="text-sm font-semibold truncate uppercase text-[#8b949e] group-hover:text-white tracking-tight hover:underline focus:outline-none before:absolute before:inset-0 transition-colors"
+              aria-label="View record for WILLIAMS, DAVID"
+            >
+              WILLIAMS, DAVID L.
+            </a>
+            <p
+              class="text-xs text-[#ff4d4d] truncate mt-0.5"
+              title="Grand Theft of a Motor Vehicle"
+            >
+              <iconify-icon
+                icon="solar:danger-triangle-linear"
+                width="14"
+                class="mr-1 align-middle"
+              ></iconify-icon>
+              Grand Theft of a Motor Vehicle
+            </p>
+            <div class="flex items-center gap-2 mt-2 relative z-20">
+              <span
+                class="font-mono text-xs font-semibold text-[#8b949e] bg-[#14181f] px-1.5 py-0.5 rounded border border-[#30363d]"
+              >
+                INMATE ID #: 14663979
+              </span>
+              <span
+                class="text-xs uppercase font-semibold text-[#8b949e] ml-auto tracking-widest"
+              >
+                Released
+              </span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card Inmate 9 (Misdemeanor / Booked) -->
+        <article
+          class="relative bg-[#1c222b] border border-[#30363d] p-3 rounded flex gap-3 hover:border-[#8b949e] transition-colors focus-within:ring-1 focus-within:ring-[#8b949e] focus-within:border-[#8b949e] outline-none group"
+        >
+          <div
+            class="absolute top-0 left-0 bg-[#ffd700] text-[#14181f] px-1.5 py-0.5 rounded-tl rounded-br text-xs font-semibold leading-none z-10 border-b border-r border-[#30363d]"
+            aria-label="Misdemeanor Classification"
+          >
+            M
+          </div>
+          <div class="w-12 shrink-0">
+            <img
+              src="https://www.aretheyinjail.com/photos/14653644.jpg"
+              alt="HCSO booking photo of BROWN, MICHAEL"
+              class="w-12 h-[60px] object-cover rounded bg-[#14181f] border border-[#30363d]"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <div class="flex flex-col flex-1 min-w-0 justify-center">
+            <a
+              href="#"
+              class="text-sm font-semibold truncate uppercase text-white tracking-tight hover:underline focus:outline-none before:absolute before:inset-0"
+              aria-label="View record for BROWN, MICHAEL"
+            >
+              BROWN, MICHAEL P.
+            </a>
+            <p
+              class="text-xs text-[#ffd700] truncate mt-0.5"
+              title="Operating a Vehicle Under the Influence"
+            >
+              <iconify-icon
+                icon="solar:info-circle-linear"
+                width="14"
+                class="mr-1 align-middle"
+              ></iconify-icon>
+              Operating a Vehicle Under the Influence
+            </p>
+            <div class="flex items-center gap-2 mt-2 relative z-20">
+              <span
+                class="font-mono text-xs font-semibold text-[#8b949e] bg-[#14181f] px-1.5 py-0.5 rounded border border-[#30363d]"
+              >
+                INMATE ID #: 14653644
+              </span>
+              <span
+                class="text-xs uppercase font-semibold text-[#238636] ml-auto tracking-widest"
+              >
+                Booked
+              </span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card Inmate 10 (Felony / Booked) -->
+        <article
+          class="relative bg-[#1c222b] border border-[#30363d] p-3 rounded flex gap-3 hover:border-[#8b949e] transition-colors focus-within:ring-1 focus-within:ring-[#8b949e] focus-within:border-[#8b949e] outline-none group"
+        >
+          <div
+            class="absolute top-0 left-0 bg-[#ff4d4d] text-white px-1.5 py-0.5 rounded-tl rounded-br text-xs font-semibold leading-none z-10 border-b border-r border-[#30363d]"
+            aria-label="Felony Classification"
+          >
+            F
+          </div>
+          <div class="w-12 shrink-0">
+            <img
+              src="https://www.aretheyinjail.com/photos/14584135.jpg"
+              alt="HCSO booking photo of DAVIS, AMANDA"
+              class="w-12 h-[60px] object-cover rounded bg-[#14181f] border border-[#30363d]"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <div class="flex flex-col flex-1 min-w-0 justify-center">
+            <a
+              href="#"
+              class="text-sm font-semibold truncate uppercase text-white tracking-tight hover:underline focus:outline-none before:absolute before:inset-0"
+              aria-label="View record for DAVIS, AMANDA"
+            >
+              DAVIS, AMANDA J.
+            </a>
+            <p
+              class="text-xs text-[#ff4d4d] truncate mt-0.5"
+              title="Trafficking in Drugs"
+            >
+              <iconify-icon
+                icon="solar:danger-triangle-linear"
+                width="14"
+                class="mr-1 align-middle"
+              ></iconify-icon>
+              Trafficking in Drugs
+            </p>
+            <div class="flex items-center gap-2 mt-2 relative z-20">
+              <span
+                class="font-mono text-xs font-semibold text-[#8b949e] bg-[#14181f] px-1.5 py-0.5 rounded border border-[#30363d]"
+              >
+                INMATE ID #: 14584135
+              </span>
+              <span
+                class="text-xs uppercase font-semibold text-[#238636] ml-auto tracking-widest"
+              >
+                Booked
+              </span>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="px-4 py-8 flex justify-center">
+        <button
+          class="bg-[#1c222b] hover:bg-[#30363d] border border-[#30363d] text-white text-xs font-semibold uppercase tracking-widest px-6 py-2 rounded transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b949e]"
+        >
+          Load More Records
+        </button>
+      </div>
+    </main>
+
+    <script>
+      // Observe layout safely without heavy animations
+      document.addEventListener('DOMContentLoaded', () => {
+          const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          if (reduceMotion) {
+              document.documentElement.classList.remove('scroll-smooth');
+          }
+      });
+    </script>
+  </body>
+</html>

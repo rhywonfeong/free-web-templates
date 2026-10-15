@@ -1,0 +1,278 @@
+<html lang="en"><head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Chand Market Tracker</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body {
+font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+-webkit-font-smoothing: antialiased;
+-moz-osx-font-smoothing: grayscale;
+background-color: #F3F5F9;
+}
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.fade-in { animation: fadeIn 0.5s ease-out forwards; opacity: 0; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+</style></head>
+<body class="text-slate-800 antialiased min-h-screen">
+
+    <!-- Mobile Container -->
+    <div class="max-w-md mx-auto min-h-screen flex flex-col relative pb-10">
+        
+        <div class="h-4 w-full"></div>
+
+        <!-- Header -->
+        <header class="px-6 py-4 flex justify-between items-center z-10">
+            <h1 class="text-[34px] font-semibold text-slate-800 tracking-tight">DailyFee</h1>
+            <button class="p-2 text-slate-400 hover:text-slate-600 transition-colors">
+                <i data-lucide="settings" class="w-6 h-6 stroke-[1.5]"></i>
+            </button>
+        </header>
+
+        <!-- Main Content -->
+        <main id="market-container" class="flex-1 px-5 flex flex-col gap-8 pt-2">
+            <!-- Loading State (replaced by JS) -->
+            <div id="loading" class="flex justify-center items-center h-40">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-800"></div>
+            </div>
+        </main>
+
+    </div>
+
+    <!-- Template for Category Section -->
+    <template id="category-template">
+        <div class="section mb-2 fade-in">
+            <div class="flex justify-between items-baseline mb-4 px-1">
+                <div class="flex items-center gap-2">
+                    <span class="category-icon text-2xl"></span>
+                    <h2 class="text-xl font-semibold text-slate-700 tracking-tight category-title"></h2>
+                </div>
+                <span class="text-xs font-medium text-slate-400 date-label"></span>
+            </div>
+            <div class="grid grid-cols-2 gap-4 category-grid">
+                <!-- Cards injected here -->
+            </div>
+        </div>
+    </template>
+
+    <!-- Template for Asset Card -->
+    <template id="card-template">
+        <div class="bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgb(0,0,0,0.02)] border border-white/50 flex flex-col justify-between h-[150px] relative overflow-hidden transition-transform active:scale-95 duration-200">
+            <!-- Top Row: Flag & Name -->
+            <div class="flex justify-between items-start">
+                <div class="asset-icon-container w-8 h-8 rounded-full overflow-hidden flex-shrink-0 bg-slate-50 flex items-center justify-center"></div>
+                <div class="text-right">
+                    <div class="text-xs text-slate-400 font-medium mb-0.5 asset-name truncate max-w-[80px]"></div>
+                    <div class="text-sm font-semibold text-slate-700 asset-code tracking-tight"></div>
+                </div>
+            </div>
+
+            <!-- Bottom Row: Prices -->
+            <div class="flex flex-col items-start mt-auto">
+                <!-- Change Value (formerly prev price) -->
+                <div class="text-sm text-slate-400 font-medium mb-0.5 tracking-tight change-display"></div>
+                <!-- Main Price -->
+                <div class="text-[26px] font-semibold tracking-tighter leading-none current-price flex items-center gap-1"></div>
+            </div>
+        </div>
+    </template>
+
+    <script>
+        lucide.createIcons();
+
+        const API_URL = 'https://api.dailyfee.ir/market_assets';
+        
+        const formatPrice = (price) => {
+            if (!price && price !== 0) return '0';
+            const num = parseFloat(price);
+            if (num < 10 && num > -10) return num.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+            if (num < 1000 && num > -1000) return num.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+            return Math.floor(num).toLocaleString('en-US');
+        };
+
+        const getFormattedDate = () => {
+            const date = new Date();
+            const options = { month: 'short', day: 'numeric', year: 'numeric' };
+            const timeOptions = { hour: 'numeric', minute: 'numeric', hour12: true };
+            return `${date.toLocaleDateString('en-US', options)} at ${date.toLocaleTimeString('en-US', timeOptions)}`;
+        };
+
+        const getFlagUrl = (code) => {
+            const codeMap = {
+                'USD': 'us', 'EUR': 'eu', 'GBP': 'gb', 'CHF': 'ch', 'CAD': 'ca',
+                'AUD': 'au', 'SEK': 'se', 'NOK': 'no', 'RUB': 'ru', 'CNY': 'cn',
+                'JPY': 'jp', 'TRY': 'tr', 'AED': 'ae', 'IQD': 'iq'
+            };
+            const countryCode = codeMap[code?.toUpperCase()];
+            if (countryCode) {
+                return `<img src="https://flagcdn.com/w80/${countryCode}.png" class="w-full h-full object-cover" alt="${code}">`;
+            }
+            if (['BTC', 'ETH', 'USDT', 'XRP', 'DOGE', 'SHIB', 'TRX', 'DOT', 'LTC', 'BCH'].includes(code)) return `<i data-lucide="bitcoin" class="w-5 h-5 text-orange-500 stroke-[1.5]"></i>`;
+            if (['XAU', 'GOLD', '18AYAR', 'SEKKE'].some(x => code?.toUpperCase().includes(x))) return `<i data-lucide="coins" class="w-5 h-5 text-yellow-500 stroke-[1.5]"></i>`;
+            
+            return `<span class="text-xs font-bold text-slate-400">${code?.substring(0,2)}</span>`;
+        };
+
+        async function fetchData() {
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) throw new Error('Network response was not ok');
+                const data = await response.json();
+                processData(data);
+            } catch (error) {
+                console.error('Fetch error:', error);
+                document.getElementById('loading').innerHTML = `
+                    <div class="text-center px-6">
+                        <i data-lucide="wifi-off" class="w-10 h-10 mx-auto text-slate-300 mb-2 stroke-[1.5]"></i>
+                        <p class="text-slate-500">Unable to update rates.</p>
+                        <button onclick="fetchData()" class="mt-4 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium">Retry</button>
+                    </div>
+                `;
+                lucide.createIcons();
+            }
+        }
+
+        function processData(data) {
+            const container = document.getElementById('market-container');
+            const loading = document.getElementById('loading');
+            
+            if(loading) loading.remove();
+            container.innerHTML = '';
+            
+            let categories = {};
+            let items = [];
+
+            // Normalize Data
+            if (Array.isArray(data)) {
+                items = data;
+            } else if (typeof data === 'object') {
+                Object.keys(data).forEach(key => {
+                    if (Array.isArray(data[key])) {
+                        data[key].forEach(i => items.push({...i, categoryKey: key}));
+                    }
+                });
+            }
+
+            // Categorize
+            items.forEach(item => {
+                const code = (item.Code || item.code || '').toUpperCase();
+                const name = (item.Name || item.name || '').toUpperCase();
+                let cat = 'Other';
+
+                if (['USD', 'EUR', 'GBP', 'AED', 'TRY', 'CNY', 'JPY', 'CAD', 'AUD', 'CHF', 'AFN', 'IQD'].includes(code)) cat = 'Currencies';
+                else if (name.includes('GOLD') || name.includes('SEKKE') || code.includes('XAU') || name.includes('COIN')) cat = 'Gold & Coins';
+                else if (['BTC', 'ETH', 'USDT', 'DOGE', 'SHIB', 'TRX'].includes(code) || name.includes('BITCOIN')) cat = 'Cryptocurrencies';
+                
+                // Override if key suggests category
+                if (item.categoryKey) {
+                    if (item.categoryKey.includes('gold')) cat = 'Gold & Coins';
+                    else if (item.categoryKey.includes('cryp')) cat = 'Cryptocurrencies';
+                    else if (cat === 'Other') cat = 'Currencies';
+                }
+
+                if (!categories[cat]) categories[cat] = [];
+                categories[cat].push(item);
+            });
+
+            const order = ['Currencies', 'Gold & Coins', 'Cryptocurrencies'];
+            
+            order.forEach(catName => {
+                if (categories[catName] && categories[catName].length > 0) {
+                    renderCategory(catName, categories[catName], container);
+                }
+            });
+        }
+
+        function renderCategory(title, items, container) {
+            const template = document.getElementById('category-template');
+            const clone = template.content.cloneNode(true);
+            
+            const titleEl = clone.querySelector('.category-title');
+            const iconEl = clone.querySelector('.category-icon');
+            const dateEl = clone.querySelector('.date-label');
+            
+            titleEl.textContent = title;
+            dateEl.textContent = getFormattedDate();
+
+            if (title === 'Currencies') iconEl.textContent = '💵';
+            else if (title.includes('Gold')) iconEl.textContent = '💰';
+            else if (title.includes('Crypto')) iconEl.textContent = '💎';
+
+            const grid = clone.querySelector('.category-grid');
+            items.slice(0, 8).forEach(item => {
+                grid.appendChild(createCard(item));
+            });
+
+            container.appendChild(clone);
+            lucide.createIcons();
+        }
+
+        function createCard(item) {
+            const template = document.getElementById('card-template');
+            const clone = template.content.cloneNode(true);
+
+            // Extract Data
+            const price = parseFloat(item.Price || item.price || item.current_price || 0);
+            const change = parseFloat(item.change_value || item.Change || item.change || 0);
+            
+            const code = (item.Code || item.code || item.symbol || '').toUpperCase();
+            const name = item.Name || item.name || code;
+
+            // Elements
+            const iconContainer = clone.querySelector('.asset-icon-container');
+            const nameEl = clone.querySelector('.asset-name');
+            const codeEl = clone.querySelector('.asset-code');
+            const changeDisplayEl = clone.querySelector('.change-display');
+            const currentPriceEl = clone.querySelector('.current-price');
+
+            // Set basic info
+            iconContainer.innerHTML = getFlagUrl(code);
+            nameEl.textContent = name;
+            codeEl.textContent = code;
+            currentPriceEl.textContent = formatPrice(price);
+
+            // Logic: Change Value Display & Main Price Color
+            let formattedChange = formatPrice(change);
+            
+            // Reset colors
+            currentPriceEl.classList.remove('text-emerald-500', 'text-rose-500', 'text-slate-700');
+
+            if (change > 0) {
+                // Positive Change: Green Price
+                currentPriceEl.classList.add('text-emerald-500');
+                changeDisplayEl.textContent = '+' + formattedChange;
+            } else if (change < 0) {
+                // Negative Change: Red Price
+                currentPriceEl.classList.add('text-rose-500');
+                changeDisplayEl.textContent = formattedChange; // Usually includes '-' from number formatting
+            } else {
+                // No Change: Default Color
+                currentPriceEl.classList.add('text-slate-700');
+                changeDisplayEl.textContent = formattedChange;
+            }
+
+            // Fallback for zero price (invalid data)
+            if(price === 0) {
+                 currentPriceEl.textContent = "-";
+                 changeDisplayEl.textContent = "";
+                 currentPriceEl.classList.remove('text-emerald-500', 'text-rose-500');
+                 currentPriceEl.classList.add('text-slate-400');
+            }
+
+            return clone;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchData();
+            // Refresh every 60 seconds
+            setInterval(fetchData, 60000);
+        });
+    </script>
+
+</body></html>

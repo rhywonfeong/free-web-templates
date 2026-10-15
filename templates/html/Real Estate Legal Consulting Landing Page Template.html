@@ -1,0 +1,941 @@
+<html lang="vi">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nguyễn Khoa BĐS - Tư Vấn Pháp Lý</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600&family=Nunito:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+html {
+scroll-behavior: smooth;
+scroll-padding-top: 100px; /* Offset for fixed navbar */
+}
+body {
+font-family: 'Nunito', sans-serif;
+background-color: #F9F6F0;
+color: #1e293b; /* slate-800 */
+}
+.font-display {
+font-family: 'Lexend', sans-serif !important;
+}
+/* Animations */
+@keyframes fadeSlideIn {
+0% { opacity: 0; transform: translateY(30px); filter: blur(8px); }
+100% { opacity: 1; transform: translateY(0); filter: blur(0px); }
+}
+.animate-on-scroll { animation-play-state: paused !important; }
+.animate-on-scroll.animate { animation-play-state: running !important; }
+/* Custom Toggle */
+.custom-toggle {
+appearance: none;
+width: 2.5rem;
+height: 1.25rem;
+background-color: #cbd5e1; /* slate-300 */
+border-radius: 9999px;
+position: relative;
+cursor: pointer;
+outline: none;
+transition: background-color 0.3s;
+}
+.custom-toggle:checked {
+background-color: #0B2545;
+}
+.custom-toggle::after {
+content: '';
+position: absolute;
+top: 2px;
+left: 2px;
+width: 1rem;
+height: 1rem;
+background-color: white;
+border-radius: 50%;
+transition: transform 0.3s;
+box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.custom-toggle:checked::after {
+transform: translateX(1.25rem);
+}
+/* Pulse Animation for CTA */
+@keyframes softPulse {
+0% { box-shadow: 0 0 0 0 rgba(217, 56, 58, 0.4); }
+70% { box-shadow: 0 0 0 15px rgba(217, 56, 58, 0); }
+100% { box-shadow: 0 0 0 0 rgba(217, 56, 58, 0); }
+}
+.btn-pulse {
+animation: softPulse 2s infinite;
+}
+/* Details/Summary Accordion */
+details > summary {
+list-style: none;
+}
+details > summary::-webkit-details-marker {
+display: none;
+}
+</style>
+<script>
+(function () {
+const once = true;
+if (!window.__inViewIO) {
+window.__inViewIO = new IntersectionObserver((entries) => {
+entries.forEach((entry) => {
+if (entry.isIntersecting) {
+entry.target.classList.add("animate");
+if (once) window.__inViewIO.unobserve(entry.target);
+}
+});
+}, { threshold: 0.1, rootMargin: "0px 0px -5% 0px" });
+}
+window.initInViewAnimations = function (selector = ".animate-on-scroll") {
+document.querySelectorAll(selector).forEach((el) => {
+window.__inViewIO.observe(el);
+});
+};
+document.addEventListener("DOMContentLoaded", () => initInViewAnimations());
+})();
+</script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="antialiased overflow-x-hidden selection:bg-[#D9383A]/30 selection:text-[#D9383A]">
+
+  <!-- ========================================== -->
+  <!-- PART 1: LANDING PAGE                       -->
+  <!-- ========================================== -->
+
+  <!-- 1. Navbar -->
+  <div class="fixed flex z-50 w-full pt-4 px-4 top-0 left-0 justify-center">
+    <nav class="flex w-full max-w-6xl bg-white/80 border border-slate-200 rounded-2xl py-3 px-6 shadow-sm backdrop-blur-md items-center justify-between transition-all">
+      <a href="#" class="flex items-center gap-2 shrink-0">
+        <iconify-icon icon="solar:home-angle-linear" style="color: #C5A880; font-size: 24px; stroke-width: 1.5;"></iconify-icon>
+        <span class="text-xl font-semibold tracking-tight text-[#0B2545] font-display hidden sm:block">
+          Nguyễn Khoa BĐS
+        </span>
+      </a>
+      
+      <!-- Navbar Menus -->
+      <div class="hidden lg:flex items-center gap-8 text-sm font-semibold text-slate-600">
+        <a href="#rui-ro" class="hover:text-[#D9383A] transition-colors">Vấn Đề</a>
+        <a href="#giai-phap" class="hover:text-[#D9383A] transition-colors">Giải Pháp</a>
+        <a href="#dich-vu" class="hover:text-[#D9383A] transition-colors">Dịch Vụ</a>
+        <a href="#quy-trinh" class="hover:text-[#D9383A] transition-colors">Quy Trình</a>
+        <a href="#faq" class="hover:text-[#D9383A] transition-colors">FAQ</a>
+      </div>
+
+      <div class="flex items-center gap-4 shrink-0">
+        <a href="#dich-vu" class="bg-[#D9383A] hover:bg-[#b02a2c] text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors shadow-sm flex items-center gap-2">
+          <span>Kiểm tra hồ sơ ngay</span>
+        </a>
+      </div>
+    </nav>
+  </div>
+
+  <!-- 2. Hero Section -->
+  <section class="min-h-screen flex flex-col pt-32 pb-20 relative items-center justify-center bg-[#0B2545] overflow-hidden">
+    <!-- Subtle Background Elements -->
+    <div class="absolute inset-0 opacity-10 pointer-events-none" style="background-image: radial-gradient(#C5A880 1px, transparent 1px); background-size: 40px 40px;"></div>
+    <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-[#C5A880]/10 rounded-full blur-[100px] pointer-events-none"></div>
+
+    <div class="z-10 text-center max-w-5xl px-6 relative flex flex-col items-center">
+      <div class="[animation:fadeSlideIn_1s_ease-out_0.2s_both] animate-on-scroll inline-flex items-center gap-2 mb-8 px-4 py-1.5 rounded-full border border-[#C5A880]/30 bg-[#C5A880]/10">
+        <iconify-icon icon="solar:shield-check-linear" style="color: #C5A880; font-size: 16px;"></iconify-icon>
+        <span class="text-sm font-semibold text-[#C5A880] uppercase tracking-wider">
+          CHUYÊN GIA TƯ VẤN PHÁP LÝ & XỬ LÝ HỒ SƠ NHÀ ĐẤT
+        </span>
+      </div>
+
+      <h1 class="[animation:fadeSlideIn_1s_ease-out_0.4s_both] animate-on-scroll text-5xl md:text-6xl font-semibold text-white tracking-tight font-display mb-8 leading-[1.2] max-w-4xl">
+        Trước Khi Đặt Cọc Hay Sang Tên, Hãy Kiểm Tra Pháp Lý Để Tránh Mất Tiền & Kẹt Hồ Sơ.
+      </h1>
+
+      <p class="[animation:fadeSlideIn_1s_ease-out_0.6s_both] animate-on-scroll text-lg text-[#F9F6F0]/80 max-w-3xl mb-12 leading-relaxed">
+        Hỗ trợ rà soát sổ đỏ/sổ hồng, quy hoạch và quy trình thủ tục thực tế. Giúp bạn hiểu rõ tình trạng pháp lý và có phương án xử lý an toàn trước khi xuống tiền giao dịch.
+      </p>
+
+      <div class="[animation:fadeSlideIn_1s_ease-out_0.8s_both] animate-on-scroll flex flex-col sm:flex-row gap-4 mb-16 items-center justify-center w-full">
+        <a href="#dich-vu" class="btn-pulse bg-[#D9383A] text-white px-8 py-4 rounded-xl text-base font-semibold transition-transform active:scale-95 shadow-lg w-full sm:w-auto text-center">
+          Nhận Ebook / Checklist Miễn Phí
+        </a>
+        <a href="#dich-vu" class="bg-transparent border border-[#F9F6F0]/30 text-[#F9F6F0] hover:bg-[#F9F6F0]/10 px-8 py-4 rounded-xl text-base font-semibold transition-all w-full sm:w-auto text-center">
+          Đăng ký tư vấn hồ sơ ngay
+        </a>
+      </div>
+
+      <div class="[animation:fadeSlideIn_1s_ease-out_1s_both] animate-on-scroll flex flex-col md:flex-row items-center gap-6 text-[#F9F6F0]/70 text-sm font-medium">
+        <div class="flex items-center gap-2">
+          <iconify-icon icon="solar:star-fall-linear" style="font-size: 20px; color: #C5A880;"></iconify-icon>
+          <span>Hơn 10 năm kinh nghiệm thực chiến</span>
+        </div>
+        <div class="hidden md:block w-1 h-1 rounded-full bg-[#C5A880]"></div>
+        <div class="flex items-center gap-2">
+          <iconify-icon icon="solar:map-point-linear" style="font-size: 20px; color: #C5A880;"></iconify-icon>
+          <span>Hỗ trợ khu vực TP.HCM & Long An</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Problem / Pain Points Section -->
+  <section id="rui-ro" class="py-24 px-6 w-full max-w-7xl mx-auto relative z-20">
+    <div class="text-center mb-16 [animation:fadeSlideIn_1s_ease-out_0.2s_both] animate-on-scroll">
+      <h2 class="text-4xl md:text-5xl font-semibold text-[#0B2545] tracking-tight font-display mb-4">
+        Hàng Tỷ Đồng Có Thể 'Đóng Băng' Vì Những Sai Lầm Pháp Lý Này
+      </h2>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <!-- Item 1 -->
+      <div class="bg-white border border-slate-200 rounded-2xl p-8 hover:shadow-lg transition-shadow [animation:fadeSlideIn_1s_ease-out_0.3s_both] animate-on-scroll">
+        <div class="w-12 h-12 rounded-full bg-[#D9383A]/10 flex items-center justify-center mb-6">
+          <iconify-icon icon="solar:danger-triangle-linear" style="color: #D9383A; font-size: 24px; stroke-width: 1.5;"></iconify-icon>
+        </div>
+        <h3 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-3">Mất trắng tiền cọc</h3>
+        <p class="text-slate-600 text-base leading-relaxed">Đặt cọc xong mới ngã ngửa phát hiện hồ sơ không đủ điều kiện sang tên.</p>
+      </div>
+      <!-- Item 2 -->
+      <div class="bg-white border border-slate-200 rounded-2xl p-8 hover:shadow-lg transition-shadow [animation:fadeSlideIn_1s_ease-out_0.4s_both] animate-on-scroll">
+        <div class="w-12 h-12 rounded-full bg-[#D9383A]/10 flex items-center justify-center mb-6">
+          <iconify-icon icon="solar:document-text-linear" style="color: #D9383A; font-size: 24px; stroke-width: 1.5;"></iconify-icon>
+        </div>
+        <h3 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-3">Sổ mang "bệnh" ngầm</h3>
+        <p class="text-slate-600 text-base leading-relaxed">Sổ đỏ/sổ hồng bị lỗi thông tin, sai ranh, sai tọa độ nhưng chủ nhà không hề hay biết.</p>
+      </div>
+      <!-- Item 3 -->
+      <div class="bg-white border border-slate-200 rounded-2xl p-8 hover:shadow-lg transition-shadow [animation:fadeSlideIn_1s_ease-out_0.5s_both] animate-on-scroll">
+        <div class="w-12 h-12 rounded-full bg-[#D9383A]/10 flex items-center justify-center mb-6">
+          <iconify-icon icon="solar:city-linear" style="color: #D9383A; font-size: 24px; stroke-width: 1.5;"></iconify-icon>
+        </div>
+        <h3 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-3">Dính "Quy hoạch & Ngăn chặn"</h3>
+        <p class="text-slate-600 text-base leading-relaxed">Mua phải nhà đất đang bị vướng quy hoạch, kê biên, thế chấp hoặc có tranh chấp ngầm.</p>
+      </div>
+      <!-- Item 4 -->
+      <div class="bg-white border border-slate-200 rounded-2xl p-8 hover:shadow-lg transition-shadow [animation:fadeSlideIn_1s_ease-out_0.6s_both] animate-on-scroll">
+        <div class="w-12 h-12 rounded-full bg-[#D9383A]/10 flex items-center justify-center mb-6">
+          <iconify-icon icon="solar:hourglass-linear" style="color: #D9383A; font-size: 24px; stroke-width: 1.5;"></iconify-icon>
+        </div>
+        <h3 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-3">Tắc nghẽn thủ tục</h3>
+        <p class="text-slate-600 text-base leading-relaxed">Hồ sơ thừa kế, tặng cho, cấp đổi sổ thiếu trước hụt sau, đi lại nhiều lần vẫn bị trả về.</p>
+      </div>
+      <!-- Item 5 -->
+      <div class="bg-white border border-slate-200 rounded-2xl p-8 hover:shadow-lg transition-shadow [animation:fadeSlideIn_1s_ease-out_0.7s_both] animate-on-scroll">
+        <div class="w-12 h-12 rounded-full bg-[#D9383A]/10 flex items-center justify-center mb-6">
+          <iconify-icon icon="solar:users-group-two-rounded-linear" style="color: #D9383A; font-size: 24px; stroke-width: 1.5;"></iconify-icon>
+        </div>
+        <h3 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-3">Tin lầm "người quen"</h3>
+        <p class="text-slate-600 text-base leading-relaxed">Tin 100% vào lời cam kết của người bán/môi giới mà không có bước kiểm tra chéo độc lập.</p>
+      </div>
+      <!-- Item 6 -->
+      <div class="bg-white border border-slate-200 rounded-2xl p-8 hover:shadow-lg transition-shadow [animation:fadeSlideIn_1s_ease-out_0.8s_both] animate-on-scroll">
+        <div class="w-12 h-12 rounded-full bg-[#D9383A]/10 flex items-center justify-center mb-6">
+          <iconify-icon icon="solar:wallet-money-linear" style="color: #D9383A; font-size: 24px; stroke-width: 1.5;"></iconify-icon>
+        </div>
+        <h3 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-3">Mất thời gian & Chi phí</h3>
+        <p class="text-slate-600 text-base leading-relaxed">Hồ sơ bị cơ quan chức năng ngâm, trả lại nhiều lần vì sai sót thủ tục pháp lý.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Lead Magnet / Free Offer Section -->
+  <section id="giai-phap" class="py-24 px-6 w-full relative bg-white border-y border-slate-200">
+    <div class="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
+      <div class="[animation:fadeSlideIn_1s_ease-out_0.2s_both] animate-on-scroll">
+        <h2 class="text-4xl md:text-5xl font-semibold text-[#0B2545] tracking-tight font-display mb-6">
+          Đừng Giao Dịch Bằng Cảm Tính. Hãy Dùng Công Cụ Của Chuyên Gia!
+        </h2>
+        <p class="text-lg text-slate-600 mb-8 leading-relaxed">
+          Nhận ngay "Checklist 15 Bước Tự Kiểm Tra Sổ Đỏ/Sổ Hồng Tránh Rủi Ro Mất Tiền" được tổng hợp từ hàng trăm hồ sơ thực tế.
+        </p>
+        
+        <!-- Mockup Placeholder -->
+        <div class="w-full aspect-video bg-[#F9F6F0] rounded-2xl border border-slate-200 flex flex-col items-center justify-center relative overflow-hidden">
+          <div class="absolute inset-0 bg-gradient-to-br from-[#0B2545]/5 to-transparent"></div>
+          <iconify-icon icon="solar:book-bookmark-linear" style="color: #C5A880; font-size: 64px;"></iconify-icon>
+          <span class="mt-4 text-[#0B2545] font-semibold text-lg text-center px-4 font-display">Checklist 15 Bước<br>Tự Kiểm Tra Sổ Đỏ</span>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-3xl p-8 md:p-10 border border-slate-200 shadow-xl shadow-slate-200/50 [animation:fadeSlideIn_1s_ease-out_0.4s_both] animate-on-scroll">
+        <form class="space-y-6">
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-2">Họ và tên (*)</label>
+            <input type="text" class="w-full bg-[#F9F6F0] border border-slate-200 rounded-xl px-4 py-3 text-slate-800 focus:border-[#0B2545] focus:outline-none transition-colors" placeholder="Nhập họ và tên">
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-2">Số điện thoại (Zalo) (*)</label>
+            <input type="tel" class="w-full bg-[#F9F6F0] border border-slate-200 rounded-xl px-4 py-3 text-slate-800 focus:border-[#0B2545] focus:outline-none transition-colors" placeholder="Nhập số điện thoại">
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-2">Khu vực nhà đất cần kiểm tra</label>
+            <input type="text" class="w-full bg-[#F9F6F0] border border-slate-200 rounded-xl px-4 py-3 text-slate-800 focus:border-[#0B2545] focus:outline-none transition-colors" placeholder="Vd: Quận Tân Bình, TP.HCM">
+          </div>
+          
+          <!-- Custom Dropdowns via standard select styling to match the aesthetic -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-2">Tình trạng hồ sơ hiện tại</label>
+            <div class="relative">
+              <select class="w-full bg-[#F9F6F0] border border-slate-200 rounded-xl px-4 py-3 text-slate-800 appearance-none focus:border-[#0B2545] focus:outline-none transition-colors">
+                <option value="">Chọn tình trạng</option>
+                <option value="1">Đang xem xét mua</option>
+                <option value="2">Đã cọc, chuẩn bị công chứng</option>
+                <option value="3">Đang vướng thủ tục</option>
+              </select>
+              <iconify-icon icon="solar:alt-arrow-down-linear" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></iconify-icon>
+            </div>
+          </div>
+          
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-2">Gói dịch vụ quan tâm</label>
+            <div class="relative">
+              <select class="w-full bg-[#F9F6F0] border border-slate-200 rounded-xl px-4 py-3 text-slate-800 appearance-none focus:border-[#0B2545] focus:outline-none transition-colors">
+                <option value="">Chọn gói</option>
+                <option value="free">Nhận Checklist Miễn Phí</option>
+                <option value="fast">Kiểm Tra Nhanh</option>
+                <option value="pro">Tư Vấn Chuyên Sâu</option>
+              </select>
+              <iconify-icon icon="solar:alt-arrow-down-linear" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></iconify-icon>
+            </div>
+          </div>
+
+          <button type="button" class="w-full bg-[#D9383A] hover:bg-[#b02a2c] text-white py-4 rounded-xl text-base font-semibold transition-colors mt-4">
+            Tải Checklist Miễn Phí Ngay
+          </button>
+          <p class="text-center text-xs text-slate-500 mt-4 flex items-center justify-center gap-2">
+            <iconify-icon icon="solar:lock-password-linear"></iconify-icon>
+            Thông tin của bạn được bảo mật tuyệt đối.
+          </p>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Benefits Section -->
+  <section class="py-24 px-6 w-full max-w-7xl mx-auto">
+    <div class="text-center mb-16 [animation:fadeSlideIn_1s_ease-out_0.2s_both] animate-on-scroll">
+      <h2 class="text-4xl md:text-5xl font-semibold text-[#0B2545] tracking-tight font-display mb-4">
+        Chủ Động Kiểm Soát Rủi Ro - An Tâm Ký Kết Giao Dịch
+      </h2>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+      <!-- Ben 1 -->
+      <div class="flex gap-4 items-start [animation:fadeSlideIn_1s_ease-out_0.3s_both] animate-on-scroll">
+        <iconify-icon icon="solar:check-circle-linear" style="color: #C5A880; font-size: 28px; stroke-width: 2;" class="shrink-0 mt-1"></iconify-icon>
+        <div>
+          <h4 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-2">Biết trước rủi ro</h4>
+          <p class="text-slate-600 text-base leading-relaxed">"Quét" sạch các vấn đề pháp lý tiềm ẩn trước khi bạn quyết định xuống tiền.</p>
+        </div>
+      </div>
+      <!-- Ben 2 -->
+      <div class="flex gap-4 items-start [animation:fadeSlideIn_1s_ease-out_0.4s_both] animate-on-scroll">
+        <iconify-icon icon="solar:check-circle-linear" style="color: #C5A880; font-size: 28px; stroke-width: 2;" class="shrink-0 mt-1"></iconify-icon>
+        <div>
+          <h4 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-2">Bảo vệ tiền cọc</h4>
+          <p class="text-slate-600 text-base leading-relaxed">Hạn chế tối đa nguy cơ dính bẫy lừa đảo, mất cọc vì hồ sơ không thể công chứng sang tên.</p>
+        </div>
+      </div>
+      <!-- Ben 3 -->
+      <div class="flex gap-4 items-start [animation:fadeSlideIn_1s_ease-out_0.5s_both] animate-on-scroll">
+        <iconify-icon icon="solar:check-circle-linear" style="color: #C5A880; font-size: 28px; stroke-width: 2;" class="shrink-0 mt-1"></iconify-icon>
+        <div>
+          <h4 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-2">Bắt đúng "Bệnh" hồ sơ</h4>
+          <p class="text-slate-600 text-base leading-relaxed">Hiểu rõ hồ sơ của bạn đang thiếu giấy tờ gì, vướng ở khâu nào và cách gỡ rối ra sao.</p>
+        </div>
+      </div>
+      <!-- Ben 4 -->
+      <div class="flex gap-4 items-start [animation:fadeSlideIn_1s_ease-out_0.6s_both] animate-on-scroll">
+        <iconify-icon icon="solar:check-circle-linear" style="color: #C5A880; font-size: 28px; stroke-width: 2;" class="shrink-0 mt-1"></iconify-icon>
+        <div>
+          <h4 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-2">Phương án đo ni đóng giày</h4>
+          <p class="text-slate-600 text-base leading-relaxed">Nhận lộ trình kiểm tra và xử lý phù hợp với thực tế tình trạng nhà đất của riêng bạn.</p>
+        </div>
+      </div>
+      <!-- Ben 5 -->
+      <div class="flex gap-4 items-start [animation:fadeSlideIn_1s_ease-out_0.7s_both] animate-on-scroll">
+        <iconify-icon icon="solar:check-circle-linear" style="color: #C5A880; font-size: 28px; stroke-width: 2;" class="shrink-0 mt-1"></iconify-icon>
+        <div>
+          <h4 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-2">Tiết kiệm thời gian, công sức</h4>
+          <p class="text-slate-600 text-base leading-relaxed">Không còn cảnh tự mò mẫm, chạy vạy hỏi han nhiều nơi nhưng vẫn mơ hồ.</p>
+        </div>
+      </div>
+      <!-- Ben 6 -->
+      <div class="flex gap-4 items-start [animation:fadeSlideIn_1s_ease-out_0.8s_both] animate-on-scroll">
+        <iconify-icon icon="solar:check-circle-linear" style="color: #C5A880; font-size: 28px; stroke-width: 2;" class="shrink-0 mt-1"></iconify-icon>
+        <div>
+          <h4 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-2">Nắm thế chủ động</h4>
+          <p class="text-slate-600 text-base leading-relaxed">Tự tin hơn khi đàm phán, ký cọc, ra phòng công chứng hay nộp hồ sơ tại cơ quan chức năng.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. Service Packages / Pricing Section -->
+  <section id="dich-vu" class="py-24 px-6 w-full max-w-7xl mx-auto">
+    <div class="text-center mb-20 [animation:fadeSlideIn_1s_ease-out_0.2s_both] animate-on-scroll">
+      <h2 class="text-4xl md:text-5xl font-semibold text-[#0B2545] tracking-tight font-display mb-4">
+        Chọn Gói Giải Pháp Phù Hợp Với Tình Trạng Của Bạn
+      </h2>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-center">
+      <!-- Card 1 -->
+      <div class="bg-white border border-slate-200 rounded-3xl p-8 flex flex-col h-full [animation:fadeSlideIn_1s_ease-out_0.3s_both] animate-on-scroll">
+        <h3 class="text-2xl font-semibold text-[#0B2545] tracking-tight mb-2">GÓI TỰ TÌM HIỂU</h3>
+        <div class="mb-8 mt-4">
+          <span class="text-4xl font-semibold text-[#0B2545] tracking-tight font-display">Miễn Phí</span>
+        </div>
+        <p class="text-slate-600 text-base leading-relaxed mb-8 flex-1">
+          Nhận ngay bộ Ebook / Checklist kiểm tra sổ đỏ, sổ hồng cũ. Phù hợp khách hàng mới tìm hiểu.
+        </p>
+        <button class="w-full py-4 border-2 border-slate-200 text-[#0B2545] rounded-xl font-semibold hover:bg-slate-50 transition-colors">
+          Nhận Miễn Phí
+        </button>
+      </div>
+
+      <!-- Card 2 (Highlighted) -->
+      <div class="bg-[#0B2545] border border-[#0B2545] rounded-3xl p-8 flex flex-col h-full relative transform scale-105 shadow-2xl [animation:fadeSlideIn_1s_ease-out_0.4s_both] animate-on-scroll z-10">
+        <div class="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#C5A880] text-[#0B2545] px-4 py-1.5 rounded-full text-xs font-bold tracking-wider">
+          ĐƯỢC CHỌN NHIỀU NHẤT
+        </div>
+        <h3 class="text-2xl font-semibold text-white tracking-tight mb-2 mt-4">KIỂM TRA NHANH HỒ SƠ</h3>
+        <div class="mb-8 mt-4 flex flex-col">
+          <span class="text-slate-400 line-through text-lg">5.000.000đ</span>
+          <span class="text-5xl font-semibold text-white tracking-tight font-display mt-1">2.000.000đ</span>
+        </div>
+        <p class="text-[#F9F6F0]/80 text-base leading-relaxed mb-8 flex-1">
+          Rà soát nhanh sổ/hồ sơ, phân tích tình trạng pháp lý và cảnh báo rủi ro trước giao dịch 3-10 ngày.
+        </p>
+        <button class="w-full py-4 bg-[#D9383A] hover:bg-[#b02a2c] text-white rounded-xl font-semibold transition-colors shadow-lg">
+          Đăng Ký Kiểm Tra Nhanh
+        </button>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="bg-white border border-slate-200 rounded-3xl p-8 flex flex-col h-full [animation:fadeSlideIn_1s_ease-out_0.5s_both] animate-on-scroll">
+        <h3 class="text-2xl font-semibold text-[#0B2545] tracking-tight mb-2">TƯ VẤN CHUYÊN SÂU & ĐỒNG HÀNH</h3>
+        <div class="mb-8 mt-4 flex flex-col">
+          <span class="text-slate-400 line-through text-lg">20.000.000đ</span>
+          <span class="text-4xl font-semibold text-[#0B2545] tracking-tight font-display mt-1">10.000.000đ</span>
+        </div>
+        <p class="text-slate-600 text-base leading-relaxed mb-8 flex-1">
+          Xây dựng phương án gỡ vướng, đồng hành hướng dẫn làm việc với các cơ quan liên quan cho hồ sơ khó, tranh chấp, thừa kế, cấp đổi sổ, tách thửa...
+        </p>
+        <button class="w-full py-4 border-2 border-slate-200 text-[#0B2545] rounded-xl font-semibold hover:bg-slate-50 transition-colors">
+          Đăng Ký Tư Vấn Chuyên Sâu
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. How It Works Section -->
+  <section id="quy-trinh" class="py-24 px-6 w-full bg-white border-y border-slate-200">
+    <div class="max-w-4xl mx-auto">
+      <div class="text-center mb-16 [animation:fadeSlideIn_1s_ease-out_0.2s_both] animate-on-scroll">
+        <h2 class="text-4xl md:text-5xl font-semibold text-[#0B2545] tracking-tight font-display mb-4">
+          6 Bước Đơn Giản Để An Tâm Pháp Lý
+        </h2>
+      </div>
+
+      <div class="relative border-l-2 border-slate-200 ml-4 md:ml-1/2">
+        <!-- Step 1 -->
+        <div class="mb-10 pl-8 relative [animation:fadeSlideIn_1s_ease-out_0.3s_both] animate-on-scroll">
+          <div class="absolute w-8 h-8 bg-[#F9F6F0] border-2 border-[#C5A880] rounded-full -left-[17px] top-0 flex items-center justify-center text-[#C5A880] font-bold text-sm">1</div>
+          <h4 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-2 pt-1">Tiếp nhận nhu cầu</h4>
+          <p class="text-slate-600">Khách hàng để lại thông tin trên form.</p>
+        </div>
+        <!-- Step 2 -->
+        <div class="mb-10 pl-8 relative [animation:fadeSlideIn_1s_ease-out_0.4s_both] animate-on-scroll">
+          <div class="absolute w-8 h-8 bg-[#F9F6F0] border-2 border-[#C5A880] rounded-full -left-[17px] top-0 flex items-center justify-center text-[#C5A880] font-bold text-sm">2</div>
+          <h4 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-2 pt-1">Liên hệ xác nhận</h4>
+          <p class="text-slate-600">Chuyên viên Nguyễn Khoa BĐS gọi điện/Zalo.</p>
+        </div>
+        <!-- Step 3 -->
+        <div class="mb-10 pl-8 relative [animation:fadeSlideIn_1s_ease-out_0.5s_both] animate-on-scroll">
+          <div class="absolute w-8 h-8 bg-[#F9F6F0] border-2 border-[#C5A880] rounded-full -left-[17px] top-0 flex items-center justify-center text-[#C5A880] font-bold text-sm">3</div>
+          <h4 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-2 pt-1">Gửi thông tin</h4>
+          <p class="text-slate-600">Khách hàng cung cấp hình ảnh sổ, giấy tờ liên quan.</p>
+        </div>
+        <!-- Step 4 -->
+        <div class="mb-10 pl-8 relative [animation:fadeSlideIn_1s_ease-out_0.6s_both] animate-on-scroll">
+          <div class="absolute w-8 h-8 bg-[#F9F6F0] border-2 border-[#C5A880] rounded-full -left-[17px] top-0 flex items-center justify-center text-[#C5A880] font-bold text-sm">4</div>
+          <h4 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-2 pt-1">Thẩm định sơ bộ</h4>
+          <p class="text-slate-600">Đánh giá tình trạng, phân loại nhóm rủi ro.</p>
+        </div>
+        <!-- Step 5 -->
+        <div class="mb-10 pl-8 relative [animation:fadeSlideIn_1s_ease-out_0.7s_both] animate-on-scroll">
+          <div class="absolute w-8 h-8 bg-[#F9F6F0] border-2 border-[#C5A880] rounded-full -left-[17px] top-0 flex items-center justify-center text-[#C5A880] font-bold text-sm">5</div>
+          <h4 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-2 pt-1">Đề xuất giải pháp</h4>
+          <p class="text-slate-600">Tư vấn chọn gói kiểm tra nhanh hoặc xử lý chuyên sâu.</p>
+        </div>
+        <!-- Step 6 -->
+        <div class="pl-8 relative [animation:fadeSlideIn_1s_ease-out_0.8s_both] animate-on-scroll">
+          <div class="absolute w-8 h-8 bg-[#F9F6F0] border-2 border-[#D9383A] rounded-full -left-[17px] top-0 flex items-center justify-center text-[#D9383A] font-bold text-sm">6</div>
+          <h4 class="text-xl font-semibold text-[#0B2545] tracking-tight mb-2 pt-1">Triển khai</h4>
+          <p class="text-slate-600">Tiến hành tư vấn chi tiết hoặc đồng hành tháo gỡ vướng mắc.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. Social Proof / Trust Section -->
+  <section class="py-24 px-6 w-full max-w-7xl mx-auto">
+    <div class="text-center max-w-3xl mx-auto [animation:fadeSlideIn_1s_ease-out_0.2s_both] animate-on-scroll">
+      <h2 class="text-4xl md:text-5xl font-semibold text-[#0B2545] tracking-tight font-display mb-8">
+        Người Đồng Hành Đáng Tin Cậy Của Các Giao Dịch Nhà Đất
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12">
+        <div class="p-6 border border-slate-200 bg-white rounded-2xl">
+          <div class="text-3xl font-semibold text-[#C5A880] font-display tracking-tight mb-2">Hàng Trăm</div>
+          <p class="text-sm text-slate-600 font-semibold uppercase tracking-wider">Hồ sơ thực chiến</p>
+        </div>
+        <div class="p-6 border border-slate-200 bg-white rounded-2xl">
+          <div class="text-3xl font-semibold text-[#C5A880] font-display tracking-tight mb-2">Chuyên Sâu</div>
+          <p class="text-sm text-slate-600 font-semibold uppercase tracking-wider">TP.HCM & Long An</p>
+        </div>
+        <div class="p-6 border border-slate-200 bg-white rounded-2xl">
+          <div class="text-3xl font-semibold text-[#C5A880] font-display tracking-tight mb-2">Đa Dạng</div>
+          <p class="text-sm text-slate-600 font-semibold uppercase tracking-wider">Sang tên, Thừa kế, Tách thửa</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9. Testimonials / Case Studies Section -->
+  <section class="py-24 px-6 w-full bg-[#0B2545]">
+    <div class="max-w-7xl mx-auto">
+      <div class="text-center mb-16 [animation:fadeSlideIn_1s_ease-out_0.2s_both] animate-on-scroll">
+        <h2 class="text-4xl md:text-5xl font-semibold text-white tracking-tight font-display mb-4">
+          Những Hồ Sơ Chúng Tôi Đã Hỗ Trợ Kịp Thời
+        </h2>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Case 1 -->
+        <div class="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-sm [animation:fadeSlideIn_1s_ease-out_0.3s_both] animate-on-scroll">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-10 h-10 rounded-full bg-[#C5A880]/20 flex items-center justify-center text-[#C5A880] font-bold">T</div>
+            <div>
+              <div class="text-base font-semibold text-white">Anh T.</div>
+              <div class="text-sm text-white/50">Q.Bình Tân</div>
+            </div>
+          </div>
+          <p class="text-[#F9F6F0]/80 text-base leading-relaxed">
+            "Tính đặt cọc 500 triệu mua nhà. Sau khi nhờ kiểm tra nhanh, phát hiện sổ đang vướng quy hoạch mở đường vào ranh nhà 2m nhưng chủ cũ không nói. Tôi đã kịp dừng giao dịch, cứu nguy số tiền cọc."
+          </p>
+        </div>
+        <!-- Case 2 -->
+        <div class="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-sm [animation:fadeSlideIn_1s_ease-out_0.4s_both] animate-on-scroll">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-10 h-10 rounded-full bg-[#C5A880]/20 flex items-center justify-center text-[#C5A880] font-bold">H</div>
+            <div>
+              <div class="text-base font-semibold text-white">Chị H.</div>
+              <div class="text-sm text-white/50">Long An</div>
+            </div>
+          </div>
+          <p class="text-[#F9F6F0]/80 text-base leading-relaxed">
+            "Làm hồ sơ thừa kế bị trả về 3 lần do sai sót giấy tờ tùy thân của người để lại di sản. Sau khi được rà soát và hướng dẫn, chị đã bổ sung đúng trọng tâm và nộp hồ sơ thành công."
+          </p>
+        </div>
+        <!-- Case 3 -->
+        <div class="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-sm [animation:fadeSlideIn_1s_ease-out_0.5s_both] animate-on-scroll">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-10 h-10 rounded-full bg-[#C5A880]/20 flex items-center justify-center text-[#C5A880] font-bold">M</div>
+            <div>
+              <div class="text-base font-semibold text-white">Bạn M.</div>
+              <div class="text-sm text-white/50">Môi giới</div>
+            </div>
+          </div>
+          <p class="text-[#F9F6F0]/80 text-base leading-relaxed">
+            "Luôn gửi sổ để kiểm tra pháp lý trước khi chào khách. Điều này giúp M. chốt sale tự tin hơn và bảo vệ uy tín với người mua."
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10. FAQ Section -->
+  <section id="faq" class="py-24 px-6 w-full max-w-3xl mx-auto">
+    <div class="text-center mb-16 [animation:fadeSlideIn_1s_ease-out_0.2s_both] animate-on-scroll">
+      <h2 class="text-4xl md:text-5xl font-semibold text-[#0B2545] tracking-tight font-display mb-4">
+        Câu Hỏi Thường Gặp
+      </h2>
+    </div>
+
+    <div class="space-y-4 [animation:fadeSlideIn_1s_ease-out_0.4s_both] animate-on-scroll">
+      <!-- FAQ 1 -->
+      <details class="group bg-white border border-slate-200 rounded-2xl overflow-hidden">
+        <summary class="flex justify-between items-center font-semibold cursor-pointer list-none p-6 text-[#0B2545]">
+          <span>Tôi chỉ có hình chụp sổ, chưa có sổ gốc thì có kiểm tra được không?</span>
+          <span class="transition group-open:rotate-180">
+            <iconify-icon icon="solar:alt-arrow-down-linear"></iconify-icon>
+          </span>
+        </summary>
+        <div class="text-slate-600 p-6 pt-0 leading-relaxed border-t border-slate-100">
+          Hoàn toàn được. Hình ảnh chụp rõ nét các trang sổ là cơ sở ban đầu rất tốt để chúng tôi rà soát các thông tin pháp lý cơ bản.
+        </div>
+      </details>
+      <!-- FAQ 2 -->
+      <details class="group bg-white border border-slate-200 rounded-2xl overflow-hidden">
+        <summary class="flex justify-between items-center font-semibold cursor-pointer list-none p-6 text-[#0B2545]">
+          <span>Bao lâu thì có kết quả kiểm tra nhanh?</span>
+          <span class="transition group-open:rotate-180">
+            <iconify-icon icon="solar:alt-arrow-down-linear"></iconify-icon>
+          </span>
+        </summary>
+        <div class="text-slate-600 p-6 pt-0 leading-relaxed border-t border-slate-100">
+          Thông thường từ 3 - 10 ngày tùy vào mức độ phức tạp của hồ sơ và khu vực nhà đất.
+        </div>
+      </details>
+      <!-- FAQ 3 -->
+      <details class="group bg-white border border-slate-200 rounded-2xl overflow-hidden">
+        <summary class="flex justify-between items-center font-semibold cursor-pointer list-none p-6 text-[#0B2545]">
+          <span>Dịch vụ có cam kết chắc chắn làm được hồ sơ không?</span>
+          <span class="transition group-open:rotate-180">
+            <iconify-icon icon="solar:alt-arrow-down-linear"></iconify-icon>
+          </span>
+        </summary>
+        <div class="text-slate-600 p-6 pt-0 leading-relaxed border-t border-slate-100">
+          Chúng tôi không đưa ra các cam kết "đóng đinh" phi thực tế. Chúng tôi cam kết rà soát kỹ lưỡng, chỉ ra đúng rủi ro và tư vấn phương án xử lý tốt nhất dựa trên quy định pháp luật và thực tế hồ sơ hiện tại của bạn.
+        </div>
+      </details>
+      <!-- FAQ 4 -->
+      <details class="group bg-white border border-slate-200 rounded-2xl overflow-hidden">
+        <summary class="flex justify-between items-center font-semibold cursor-pointer list-none p-6 text-[#0B2545]">
+          <span>Nếu hồ sơ thiếu giấy tờ thì có được hướng dẫn bổ sung không?</span>
+          <span class="transition group-open:rotate-180">
+            <iconify-icon icon="solar:alt-arrow-down-linear"></iconify-icon>
+          </span>
+        </summary>
+        <div class="text-slate-600 p-6 pt-0 leading-relaxed border-t border-slate-100">
+          Có. Nằm trong gói dịch vụ, chúng tôi sẽ liệt kê chi tiết các giấy tờ bạn đang thiếu và hướng dẫn cách xin cấp bổ sung.
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- 11. Final CTA Banner Section -->
+  <section class="py-24 px-6 w-full">
+    <div class="max-w-5xl mx-auto bg-gradient-to-br from-[#0B2545] to-[#13315C] rounded-[2rem] p-10 md:p-16 text-center shadow-2xl relative overflow-hidden [animation:fadeSlideIn_1s_ease-out_0.2s_both] animate-on-scroll">
+      <div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(#ffffff 1px, transparent 1px); background-size: 20px 20px;"></div>
+      
+      <h2 class="text-4xl md:text-5xl font-semibold text-white tracking-tight font-display mb-6 relative z-10 leading-[1.2]">
+        Đừng Để Sự Thiếu Hiểu Biết Về Pháp Lý Khiến Bạn Phải Trả Giá Bằng Tiền Tỷ!
+      </h2>
+      <p class="text-lg text-[#F9F6F0]/90 mb-12 relative z-10 max-w-2xl mx-auto">
+        Hãy để chuyên gia của Nguyễn Khoa BĐS giúp bạn kiểm tra rủi ro và làm chủ giao dịch ngay hôm nay.
+      </p>
+      
+      <div class="flex flex-col sm:flex-row gap-4 justify-center relative z-10">
+        <button class="bg-[#D9383A] hover:bg-[#b02a2c] text-white px-8 py-4 rounded-xl text-base font-semibold transition-colors shadow-lg">
+          Đăng Ký Tư Vấn Ngay
+        </button>
+        <button class="bg-white text-[#0B2545] hover:bg-slate-50 px-8 py-4 rounded-xl text-base font-semibold transition-colors shadow-lg flex items-center justify-center gap-2">
+          <iconify-icon icon="solar:chat-round-dots-linear" style="font-size: 20px;"></iconify-icon>
+          Nhắn Zalo Tư Vấn Nhanh
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 12. Footer Section -->
+  <footer class="bg-white border-t border-slate-200 py-12 px-6">
+    <div class="max-w-7xl mx-auto flex flex-col items-center text-center">
+      <div class="flex items-center gap-2 mb-6">
+        <iconify-icon icon="solar:home-angle-linear" style="color: #C5A880; font-size: 28px; stroke-width: 1.5;"></iconify-icon>
+        <span class="text-2xl font-semibold tracking-tight text-[#0B2545] font-display">
+          Nguyễn Khoa BĐS
+        </span>
+      </div>
+      
+      <div class="flex flex-wrap justify-center gap-6 text-slate-600 mb-8 font-medium">
+        <a href="#" class="hover:text-[#0B2545] transition-colors">Hotline: 090X.XXX.XXX</a>
+        <a href="#" class="hover:text-[#0B2545] transition-colors">Zalo Hỗ Trợ</a>
+        <span>Khu vực: TP.HCM & Long An</span>
+      </div>
+
+      <p class="text-xs text-slate-400 italic max-w-3xl leading-relaxed">
+        * Nội dung tư vấn trên website mang tính tham khảo ban đầu nhằm hỗ trợ khách hàng nhận diện rủi ro. Phương án xử lý cụ thể sẽ phụ thuộc vào tình trạng hồ sơ thực tế, quy hoạch của địa phương và các quy định pháp luật tại thời điểm thực hiện thủ tục.
+      </p>
+    </div>
+  </footer>
+
+  <!-- ========================================== -->
+  <!-- PART 2: COMPANION MINI CMS (ADMIN BACKEND) -->
+  <!-- ========================================== -->
+  
+  <div class="w-full bg-slate-50 border-t-4 border-[#0B2545] mt-20 p-6 md:p-10 font-sans">
+    <div class="max-w-[1400px] mx-auto">
+      <div class="mb-8">
+        <h2 class="text-2xl font-bold text-[#0B2545] tracking-tight">Hệ Thống Quản Trị (Mini CMS)</h2>
+        <p class="text-slate-500 text-sm">Giao diện dành riêng cho Admin</p>
+      </div>
+
+      <div class="flex flex-col lg:flex-row gap-8 items-start">
+        <!-- Sidebar Navigation -->
+        <div class="w-full lg:w-64 shrink-0 bg-white border border-slate-200 rounded-xl p-4">
+          <nav class="space-y-1">
+            <a href="#" class="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors">
+              <iconify-icon icon="solar:pie-chart-2-linear" class="text-lg"></iconify-icon> Dashboard Overview
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 bg-[#0B2545]/5 text-[#0B2545] rounded-lg text-sm font-semibold transition-colors">
+              <iconify-icon icon="solar:document-add-linear" class="text-lg"></iconify-icon> Landing Page Editor
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors">
+              <iconify-icon icon="solar:users-group-rounded-linear" class="text-lg"></iconify-icon> Lead Management
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors">
+              <iconify-icon icon="solar:settings-linear" class="text-lg"></iconify-icon> User Management
+            </a>
+          </nav>
+
+          <!-- Auth Rules Mock Display -->
+          <div class="mt-8 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <div class="text-[10px] font-bold text-amber-800 uppercase tracking-wider mb-2">Auth Rules</div>
+            <div class="text-xs text-amber-700 space-y-2">
+              <p>• Admin Signup: Requires Secret Verification Code.</p>
+              <p>• Member Signup: Restricted to invited whitelist.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="flex-1 w-full space-y-6">
+          
+          <!-- Landing Page Editor Block -->
+          <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <div class="border-b border-slate-200 px-6 py-4 flex justify-between items-center bg-slate-50">
+              <h3 class="font-semibold text-slate-800">Landing Page Sections</h3>
+              <div class="flex gap-2">
+                <button class="px-4 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded shadow-sm hover:bg-slate-50">Lưu Nháp</button>
+                <button class="px-4 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded shadow-sm hover:bg-slate-50">Xem Trước</button>
+                <button class="px-4 py-1.5 text-xs font-semibold text-white bg-[#0B2545] border border-[#0B2545] rounded shadow-sm hover:bg-[#13315C]">Xuất Bản</button>
+              </div>
+            </div>
+
+            <div class="p-0">
+              <!-- Section Row Item (Hero) -->
+              <div class="border-b border-slate-100 p-6 flex flex-col md:flex-row gap-6 items-start">
+                <div class="w-full md:w-1/4">
+                  <div class="flex items-center gap-3 mb-2">
+                    <span class="font-semibold text-slate-800 text-sm">2. Hero Section</span>
+                    <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-emerald-100 text-emerald-700">Published</span>
+                  </div>
+                  <div class="flex items-center gap-2 mt-4">
+                    <input type="checkbox" class="custom-toggle" checked>
+                    <span class="text-xs font-medium text-slate-500">Hiển thị</span>
+                  </div>
+                </div>
+                <div class="flex-1 w-full space-y-4">
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Main Headline</label>
+                    <textarea rows="2" class="w-full text-sm border border-slate-200 rounded-lg p-3 text-slate-800 focus:border-[#0B2545] focus:outline-none resize-none">Trước Khi Đặt Cọc Hay Sang Tên, Hãy Kiểm Tra Pháp Lý Để Tránh Mất Tiền & Kẹt Hồ Sơ.</textarea>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Background Image / Graphic</label>
+                    <div class="w-full border-2 border-dashed border-slate-200 rounded-lg p-4 flex items-center justify-center text-slate-400 bg-slate-50 cursor-pointer hover:bg-slate-100">
+                      <div class="flex flex-col items-center gap-1">
+                        <iconify-icon icon="solar:upload-minimalistic-linear" class="text-xl"></iconify-icon>
+                        <span class="text-xs font-medium">Click to upload file</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section Row Item (Pain Points) -->
+              <div class="p-6 flex flex-col md:flex-row gap-6 items-start">
+                <div class="w-full md:w-1/4">
+                  <div class="flex items-center gap-3 mb-2">
+                    <span class="font-semibold text-slate-800 text-sm">3. Pain Points</span>
+                    <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-amber-100 text-amber-700">Draft</span>
+                  </div>
+                  <div class="flex items-center gap-2 mt-4">
+                    <input type="checkbox" class="custom-toggle">
+                    <span class="text-xs font-medium text-slate-500">Ẩn</span>
+                  </div>
+                </div>
+                <div class="flex-1 w-full space-y-4">
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Headline</label>
+                    <input type="text" class="w-full text-sm border border-slate-200 rounded-lg p-3 text-slate-800 focus:border-[#0B2545] focus:outline-none" value="Hàng Tỷ Đồng Có Thể 'Đóng Băng' Vì Những Sai Lầm Pháp Lý Này">
+                  </div>
+                  <div class="text-xs text-slate-400 italic">... grid items editor collapsed ...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CRM Lead Management Table Block -->
+          <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm overflow-x-auto">
+            <div class="border-b border-slate-200 px-6 py-4 bg-slate-50">
+              <h3 class="font-semibold text-slate-800">Lead Management (Mini CRM)</h3>
+            </div>
+            <table class="w-full text-left text-sm text-slate-600">
+              <thead class="bg-slate-50 text-xs uppercase font-semibold text-slate-500 border-b border-slate-200">
+                <tr>
+                  <th class="px-6 py-3 whitespace-nowrap">Tên khách hàng</th>
+                  <th class="px-6 py-3 whitespace-nowrap">Số điện thoại</th>
+                  <th class="px-6 py-3 whitespace-nowrap">Khu vực</th>
+                  <th class="px-6 py-3 whitespace-nowrap">Gói quan tâm</th>
+                  <th class="px-6 py-3 whitespace-nowrap">Thời gian</th>
+                  <th class="px-6 py-3 whitespace-nowrap">Trạng thái xử lý</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                <tr class="hover:bg-slate-50 transition-colors">
+                  <td class="px-6 py-4 font-medium text-slate-800">Trần Văn A</td>
+                  <td class="px-6 py-4">0901234567</td>
+                  <td class="px-6 py-4">Q.Bình Tân</td>
+                  <td class="px-6 py-4"><span class="px-2 py-1 bg-slate-100 rounded text-xs">Kiểm Tra Nhanh</span></td>
+                  <td class="px-6 py-4 text-xs">10 min ago</td>
+                  <td class="px-6 py-4">
+                    <div class="relative w-32">
+                      <select class="w-full bg-white border border-slate-200 rounded text-xs px-2 py-1.5 appearance-none focus:outline-none focus:border-[#0B2545] text-blue-600 font-semibold cursor-pointer">
+                        <option selected>Mới</option>
+                        <option>Đã liên hệ</option>
+                        <option>Đã tư vấn</option>
+                      </select>
+                      <iconify-icon icon="solar:alt-arrow-down-linear" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[10px]"></iconify-icon>
+                    </div>
+                  </td>
+                </tr>
+                <tr class="hover:bg-slate-50 transition-colors">
+                  <td class="px-6 py-4 font-medium text-slate-800">Lê Thị B</td>
+                  <td class="px-6 py-4">0987654321</td>
+                  <td class="px-6 py-4">Đức Hòa, Long An</td>
+                  <td class="px-6 py-4"><span class="px-2 py-1 bg-slate-100 rounded text-xs">Tư Vấn Chuyên Sâu</span></td>
+                  <td class="px-6 py-4 text-xs">2 hours ago</td>
+                  <td class="px-6 py-4">
+                    <div class="relative w-32">
+                      <select class="w-full bg-white border border-slate-200 rounded text-xs px-2 py-1.5 appearance-none focus:outline-none focus:border-[#0B2545] text-amber-600 font-semibold cursor-pointer">
+                        <option>Mới</option>
+                        <option>Đã liên hệ</option>
+                        <option selected>Cần bổ sung hồ sơ</option>
+                        <option>Đã tư vấn</option>
+                      </select>
+                      <iconify-icon icon="solar:alt-arrow-down-linear" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[10px]"></iconify-icon>
+                    </div>
+                  </td>
+                </tr>
+                <tr class="hover:bg-slate-50 transition-colors">
+                  <td class="px-6 py-4 font-medium text-slate-800">Nguyễn Văn C</td>
+                  <td class="px-6 py-4">0912345678</td>
+                  <td class="px-6 py-4">Q.7, TP.HCM</td>
+                  <td class="px-6 py-4"><span class="px-2 py-1 bg-slate-100 rounded text-xs">Free Checklist</span></td>
+                  <td class="px-6 py-4 text-xs">1 day ago</td>
+                  <td class="px-6 py-4">
+                    <div class="relative w-32">
+                      <select class="w-full bg-white border border-slate-200 rounded text-xs px-2 py-1.5 appearance-none focus:outline-none focus:border-[#0B2545] text-emerald-600 font-semibold cursor-pointer">
+                        <option>Mới</option>
+                        <option>Đã liên hệ</option>
+                        <option selected>Đã mua gói</option>
+                      </select>
+                      <iconify-icon icon="solar:alt-arrow-down-linear" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[10px]"></iconify-icon>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

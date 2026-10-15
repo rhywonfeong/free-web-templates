@@ -1,0 +1,2171 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Color System Design</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@400;500&display=swap');
+body {
+font-family: 'Inter', sans-serif;
+background-color: #FAF9F6;
+}
+.font-serif {
+font-family: 'Playfair Display', serif;
+}
+</style>
+<script>
+setTimeout(() => { if (window.lucide) window.lucide.createIcons(); }, 100);
+</script></head>
+  <body
+    class="text-slate-800 p-4 md:p-8 min-h-screen antialiased flex justify-center"
+  >
+    <div class="max-w-[1600px] w-full flex flex-col xl:flex-row gap-8">
+      <!-- Left Sidebar -->
+      <aside class="w-full xl:w-[300px] shrink-0 flex flex-col gap-8">
+        <!-- Logo Area -->
+        <div>
+          <h1 class="font-serif text-5xl text-[#1E2B4D] tracking-tight mb-2">
+            MIMIYA
+          </h1>
+          <p
+            class="text-sm tracking-[0.35em] text-[#C08461] font-medium uppercase"
+          >
+            Color System
+          </p>
+        </div>
+
+        <!-- Intro Text -->
+        <p class="text-base text-slate-600 leading-relaxed">
+          A circadian-aware color system rooted in care. Our colors shift with
+          the rhythm of the day to support your energy, mood, and nervous
+          system—while the eight care methodologies bring meaning and clarity to
+          every experience.
+        </p>
+
+        <!-- Principles Card -->
+        <div class="bg-[#F4F3ED] rounded-2xl p-6 border border-[#EBEAE4]">
+          <div class="flex items-center gap-3 mb-6">
+            <i
+              data-lucide="heart"
+              class="text-[#C08461]"
+              stroke-width="1.5"
+              width="20"
+              height="20"
+            ></i>
+            <h2
+              class="text-sm font-semibold tracking-widest uppercase text-slate-800"
+            >
+              Our Principles
+            </h2>
+          </div>
+
+          <div class="flex flex-col gap-5">
+            <div class="flex gap-4">
+              <i
+                data-lucide="sun"
+                class="text-[#C08461] shrink-0 mt-0.5"
+                stroke-width="1.5"
+                width="20"
+                height="20"
+              ></i>
+              <div>
+                <h3 class="text-base font-medium text-slate-800">
+                  Circadian-Aware
+                </h3>
+                <p class="text-sm text-slate-600 mt-1">
+                  Colors shift naturally with the time of day.
+                </p>
+              </div>
+            </div>
+            <div class="flex gap-4">
+              <i
+                data-lucide="shield-heart"
+                class="text-[#C08461] shrink-0 mt-0.5"
+                stroke-width="1.5"
+                width="20"
+                height="20"
+              ></i>
+              <div>
+                <h3 class="text-base font-medium text-slate-800">
+                  Care-Informed
+                </h3>
+                <p class="text-sm text-slate-600 mt-1">
+                  Each color reflects a mode of care, not a generic category.
+                </p>
+              </div>
+            </div>
+            <div class="flex gap-4">
+              <i
+                data-lucide="hand-heart"
+                class="text-A[#C08461] text-[#C08461] shrink-0 mt-0.5"
+                stroke-width="1.5"
+                width="20"
+                height="20"
+              ></i>
+              <div>
+                <h3 class="text-base font-medium text-slate-800">
+                  Calm &amp; Warm
+                </h3>
+                <p class="text-sm text-slate-600 mt-1">
+                  Grounded, human, and supportive—never harsh.
+                </p>
+              </div>
+            </div>
+            <div class="flex gap-4">
+              <div
+                class="w-5 h-5 rounded-full border-[1.5px] border-[#C08461] flex items-center justify-center shrink-0 mt-0.5 text-[#C08461] text-[10px] font-medium"
+              >
+                AA
+              </div>
+              <div>
+                <h3 class="text-base font-medium text-slate-800">Accessible</h3>
+                <p class="text-sm text-slate-600 mt-1">
+                  Designed to meet WCAG AA contrast standards.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="flex-1 flex flex-col gap-6">
+        <!-- Section 1: Circadian Color System -->
+        <section
+          class="bg-white rounded-3xl p-6 lg:p-8 border border-slate-200 shadow-sm"
+        >
+          <div
+            class="flex flex-col sm:flex-row sm:items-baseline gap-3 mb-8 border-b border-slate-100 pb-4"
+          >
+            <h2
+              class="text-xl font-medium tracking-tight text-[#1E2B4D] uppercase"
+            >
+              Circadian Color System
+            </h2>
+            <p class="text-base text-slate-500">
+              The interface gently adapts with the rhythm of the day.
+            </p>
+          </div>
+
+          <div
+            class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 xl:gap-4 mt-6"
+          >
+            <!-- Morning -->
+            <div class="flex flex-col gap-3">
+              <div class="flex justify-center items-center gap-1.5 mb-1">
+                <i
+                  data-lucide="sun"
+                  class="text-amber-400 w-4 h-4 shrink-0"
+                  stroke-width="2"
+                ></i>
+                <div class="flex flex-col">
+                  <span
+                    class="text-[9px] font-bold text-slate-800 uppercase tracking-widest leading-tight"
+                  >
+                    Morning
+                  </span>
+                  <span class="text-[8px] text-slate-500 font-medium">
+                    6am - 9am
+                  </span>
+                </div>
+              </div>
+              <div
+                class="w-full aspect-square rounded-xl overflow-hidden relative bg-gradient-to-b from-[#FFF5D1] via-[#FCE3AA] to-[#F1C881] border border-slate-100/50 shadow-sm"
+              >
+                <div
+                  class="absolute w-6 h-6 bg-white/80 rounded-full left-6 top-6 shadow-[0_0_15px_rgba(255,255,255,0.9)]"
+                ></div>
+                <div
+                  class="absolute w-[140%] h-1/2 bg-gradient-to-b from-[#E6B972] to-[#D1A65E] rounded-[100%] -bottom-4 -left-[20%] opacity-80"
+                ></div>
+                <div
+                  class="absolute w-[120%] h-2/5 bg-gradient-to-b from-[#B8C08A] to-[#99A865] rounded-[100%] -bottom-2 -right-[10%]"
+                ></div>
+                <div
+                  class="absolute w-[130%] h-1/3 bg-gradient-to-b from-[#8FA873] to-[#6A8B4D] rounded-[100%] -bottom-1 -left-[15%]"
+                ></div>
+              </div>
+              <p
+                class="text-[9px] text-slate-600 text-center leading-snug min-h-[28px]"
+              >
+                Fresh, gentle,
+                <br />
+                and awakening.
+              </p>
+              <div class="flex justify-center gap-1">
+                <div class="w-4 h-4 rounded-full bg-[#FCE3AA]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#F8E2B2]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#B1D1CE]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#96C1AE]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#9BB083]"></div>
+              </div>
+              <div
+                class="w-full h-2.5 rounded-full bg-gradient-to-r from-[#FCE3AA] via-[#D3DEBD] to-[#B1D1CE]"
+              ></div>
+            </div>
+
+            <!-- Late Morning -->
+            <div class="flex flex-col gap-3">
+              <div class="flex justify-center items-center gap-1.5 mb-1">
+                <i
+                  data-lucide="sun-medium"
+                  class="text-amber-500 w-4 h-4 shrink-0"
+                  stroke-width="2"
+                ></i>
+                <div class="flex flex-col">
+                  <span
+                    class="text-[9px] font-bold text-slate-800 uppercase tracking-widest leading-tight"
+                  >
+                    Late Morning
+                  </span>
+                  <span class="text-[8px] text-slate-500 font-medium">
+                    9am - 12pm
+                  </span>
+                </div>
+              </div>
+              <div
+                class="w-full aspect-square rounded-xl overflow-hidden relative bg-gradient-to-b from-[#FFF9E6] via-[#F2E5C1] to-[#E3CD99] border border-slate-100/50 shadow-sm"
+              >
+                <div
+                  class="absolute w-8 h-8 bg-white/95 rounded-full left-1/2 -translate-x-1/2 top-4 shadow-[0_0_20px_rgba(255,255,255,1)]"
+                ></div>
+                <div
+                  class="absolute w-[150%] h-1/2 bg-gradient-to-b from-[#D4CCAD] to-[#A4B59D] rounded-[100%] -bottom-4 -left-[25%]"
+                ></div>
+                <div
+                  class="absolute w-[130%] h-2/5 bg-gradient-to-b from-[#8AA99A] to-[#679185] rounded-[100%] -bottom-2 -right-[15%]"
+                ></div>
+                <div
+                  class="absolute w-[120%] h-1/3 bg-gradient-to-b from-[#4A7D71] to-[#36665B] rounded-[100%] -bottom-1 -left-[10%]"
+                ></div>
+              </div>
+              <p
+                class="text-[9px] text-slate-600 text-center leading-snug min-h-[28px]"
+              >
+                Clear, energizing,
+                <br />
+                and focused.
+              </p>
+              <div class="flex justify-center gap-1">
+                <div class="w-4 h-4 rounded-full bg-[#FDE18C]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#F5DFB4]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#9CC9C1]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#53988E]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#EC8D63]"></div>
+              </div>
+              <div
+                class="w-full h-2.5 rounded-full bg-gradient-to-r from-[#FDE18C] via-[#B8D5BA] to-[#53988E]"
+              ></div>
+            </div>
+
+            <!-- Afternoon -->
+            <div class="flex flex-col gap-3">
+              <div class="flex justify-center items-center gap-1.5 mb-1">
+                <i
+                  data-lucide="sun"
+                  class="text-amber-500 w-4 h-4 shrink-0"
+                  stroke-width="2"
+                ></i>
+                <div class="flex flex-col">
+                  <span
+                    class="text-[9px] font-bold text-slate-800 uppercase tracking-widest leading-tight"
+                  >
+                    Afternoon
+                  </span>
+                  <span class="text-[8px] text-slate-500 font-medium">
+                    12pm - 4pm
+                  </span>
+                </div>
+              </div>
+              <div
+                class="w-full aspect-square rounded-xl overflow-hidden relative bg-gradient-to-b from-[#E6F4F1] via-[#D1EBE7] to-[#A9D3D0] border border-slate-100/50 shadow-sm"
+              >
+                <div
+                  class="absolute w-8 h-8 bg-white/90 rounded-full left-1/2 -translate-x-1/2 top-2 shadow-[0_0_20px_rgba(255,255,255,0.9)]"
+                ></div>
+                <div
+                  class="absolute w-[140%] h-1/2 bg-gradient-to-b from-[#87C2BC] to-[#60A59E] rounded-[100%] -bottom-4 -right-[20%]"
+                ></div>
+                <div
+                  class="absolute w-[130%] h-2/5 bg-gradient-to-b from-[#559891] to-[#3B7F78] rounded-[100%] -bottom-2 -left-[15%]"
+                ></div>
+                <div
+                  class="absolute w-[120%] h-1/3 bg-gradient-to-b from-[#356E68] to-[#25524D] rounded-[100%] -bottom-1 -right-[10%]"
+                ></div>
+              </div>
+              <p
+                class="text-[9px] text-slate-600 text-center leading-snug min-h-[28px]"
+              >
+                Steady, supportive,
+                <br />
+                and productive.
+              </p>
+              <div class="flex justify-center gap-1">
+                <div class="w-4 h-4 rounded-full bg-[#EC8D63]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#EBB39C]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#83BFB3]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#659C8F]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#43766C]"></div>
+              </div>
+              <div
+                class="w-full h-2.5 rounded-full bg-gradient-to-r from-[#EC8D63] via-[#ACAF9B] to-[#43766C]"
+              ></div>
+            </div>
+
+            <!-- Golden Hour -->
+            <div class="flex flex-col gap-3">
+              <div class="flex justify-center items-center gap-1.5 mb-1">
+                <i
+                  data-lucide="sunrise"
+                  class="text-orange-400 w-4 h-4 shrink-0"
+                  stroke-width="2"
+                ></i>
+                <div class="flex flex-col">
+                  <span
+                    class="text-[9px] font-bold text-slate-800 uppercase tracking-widest leading-tight"
+                  >
+                    Golden Hour
+                  </span>
+                  <span class="text-[8px] text-slate-500 font-medium">
+                    4pm - 6pm
+                  </span>
+                </div>
+              </div>
+              <div
+                class="w-full aspect-square rounded-xl overflow-hidden relative bg-gradient-to-b from-[#FDE1C8] via-[#F8B3A8] to-[#E58992] border border-slate-100/50 shadow-sm"
+              >
+                <div
+                  class="absolute w-7 h-7 bg-white/90 rounded-full left-1/2 -translate-x-1/2 bottom-8 shadow-[0_0_20px_rgba(255,255,255,0.8)]"
+                ></div>
+                <div
+                  class="absolute w-[150%] h-1/2 bg-gradient-to-b from-[#C46A85] to-[#994764] rounded-[100%] -bottom-3 -left-[25%]"
+                ></div>
+                <div
+                  class="absolute w-[130%] h-2/5 bg-gradient-to-b from-[#8C4669] to-[#602946] rounded-[100%] -bottom-2 -right-[15%]"
+                ></div>
+                <div
+                  class="absolute w-[120%] h-1/3 bg-gradient-to-b from-[#4A2440] to-[#2E1428] rounded-[100%] -bottom-1 -left-[10%]"
+                ></div>
+              </div>
+              <p
+                class="text-[9px] text-slate-600 text-center leading-snug min-h-[28px]"
+              >
+                Warm, softening,
+                <br />
+                and connecting.
+              </p>
+              <div class="flex justify-center gap-1">
+                <div class="w-4 h-4 rounded-full bg-[#F3A988]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#EC8A91]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#917596]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#76749A]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#906371]"></div>
+              </div>
+              <div
+                class="w-full h-2.5 rounded-full bg-gradient-to-r from-[#F3A988] via-[#BF8093] to-[#76749A]"
+              ></div>
+            </div>
+
+            <!-- Evening -->
+            <div class="flex flex-col gap-3">
+              <div class="flex justify-center items-center gap-1.5 mb-1">
+                <i
+                  data-lucide="moon"
+                  class="text-[#83639F] w-4 h-4 shrink-0"
+                  stroke-width="2"
+                ></i>
+                <div class="flex flex-col">
+                  <span
+                    class="text-[9px] font-bold text-slate-800 uppercase tracking-widest leading-tight"
+                  >
+                    Evening
+                  </span>
+                  <span class="text-[8px] text-slate-500 font-medium">
+                    6pm - 9pm
+                  </span>
+                </div>
+              </div>
+              <div
+                class="w-full aspect-square rounded-xl overflow-hidden relative bg-gradient-to-b from-[#DED6EB] via-[#AA93C3] to-[#83639F] border border-slate-100/50 shadow-sm"
+              >
+                <div
+                  class="absolute w-4 h-4 bg-transparent shadow-[inset_-3px_-2px_0_0_white] rounded-full top-4 right-6 -rotate-[15deg]"
+                ></div>
+                <div
+                  class="absolute w-12 h-0.5 bg-white/20 rounded-full top-7 left-4 blur-[0.5px]"
+                ></div>
+                <div
+                  class="absolute w-[140%] h-1/2 bg-gradient-to-b from-[#6A5A8F] to-[#453763] rounded-[100%] -bottom-4 -right-[20%]"
+                ></div>
+                <div
+                  class="absolute w-[120%] h-2/5 bg-gradient-to-b from-[#4A3D69] to-[#2B2144] rounded-[100%] -bottom-2 -left-[10%]"
+                ></div>
+                <div
+                  class="absolute w-[130%] h-1/3 bg-gradient-to-b from-[#251C3B] to-[#120D20] rounded-[100%] -bottom-1 -right-[15%]"
+                ></div>
+              </div>
+              <p
+                class="text-[9px] text-slate-600 text-center leading-snug min-h-[28px]"
+              >
+                Settling, calming,
+                <br />
+                and unwinding.
+              </p>
+              <div class="flex justify-center gap-1">
+                <div class="w-4 h-4 rounded-full bg-[#C9C2E3]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#978FBC]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#66759B]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#526786]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#5C676A]"></div>
+              </div>
+              <div
+                class="w-full h-2.5 rounded-full bg-gradient-to-r from-[#C9C2E3] via-[#8587A4] to-[#526786]"
+              ></div>
+            </div>
+
+            <!-- Night -->
+            <div class="flex flex-col gap-3">
+              <div class="flex justify-center items-center gap-1.5 mb-1">
+                <i
+                  data-lucide="moon"
+                  class="text-[#384F70] w-4 h-4 shrink-0"
+                  stroke-width="2"
+                ></i>
+                <div class="flex flex-col">
+                  <span
+                    class="text-[9px] font-bold text-slate-800 uppercase tracking-widest leading-tight"
+                  >
+                    Night
+                  </span>
+                  <span class="text-[8px] text-slate-500 font-medium">
+                    9pm - 12am
+                  </span>
+                </div>
+              </div>
+              <div
+                class="w-full aspect-square rounded-xl overflow-hidden relative bg-gradient-to-b from-[#8CA2C9] via-[#4A648E] to-[#293F62] border border-slate-100/50 shadow-sm"
+              >
+                <div
+                  class="absolute w-5 h-5 bg-transparent shadow-[inset_-4px_-2px_0_0_white] rounded-full top-4 left-1/2 -translate-x-1/2 -rotate-12"
+                ></div>
+                <div
+                  class="absolute w-0.5 h-0.5 bg-white rounded-full top-3 left-4"
+                ></div>
+                <div
+                  class="absolute w-1 h-1 bg-white/70 rounded-full top-6 right-6"
+                ></div>
+                <div
+                  class="absolute w-0.5 h-0.5 bg-white/50 rounded-full top-8 left-8"
+                ></div>
+                <div
+                  class="absolute w-[150%] h-1/2 bg-gradient-to-b from-[#1E2D4A] to-[#121C30] rounded-[100%] -bottom-3 -left-[25%]"
+                ></div>
+                <div
+                  class="absolute w-[130%] h-2/5 bg-gradient-to-b from-[#142036] to-[#0A1220] rounded-[100%] -bottom-2 -right-[15%]"
+                ></div>
+                <div
+                  class="absolute w-[120%] h-1/3 bg-gradient-to-b from-[#0C1526] to-[#040810] rounded-[100%] -bottom-1 -left-[10%]"
+                ></div>
+              </div>
+              <p
+                class="text-[9px] text-slate-600 text-center leading-snug min-h-[28px]"
+              >
+                Deep rest, safety,
+                <br />
+                and restoration.
+              </p>
+              <div class="flex justify-center gap-1">
+                <div class="w-4 h-4 rounded-full bg-[#1F365C]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#384F70]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#5A7492]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#7C6D65]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#9C8379]"></div>
+              </div>
+              <div
+                class="w-full h-2.5 rounded-full bg-gradient-to-r from-[#1F365C] via-[#4E5D74] to-[#9C8379]"
+              ></div>
+            </div>
+
+            <!-- Late Night -->
+            <div class="flex flex-col gap-3">
+              <div class="flex justify-center items-center gap-1.5 mb-1">
+                <i
+                  data-lucide="moon"
+                  class="text-[#25283D] w-4 h-4 shrink-0"
+                  stroke-width="2"
+                ></i>
+                <div class="flex flex-col">
+                  <span
+                    class="text-[9px] font-bold text-slate-800 uppercase tracking-widest leading-tight"
+                  >
+                    Late Night
+                  </span>
+                  <span class="text-[8px] text-slate-500 font-medium">
+                    12am - 6am
+                  </span>
+                </div>
+              </div>
+              <div
+                class="w-full aspect-square rounded-xl overflow-hidden relative bg-gradient-to-b from-[#4C5B72] via-[#243147] to-[#121A2A] border border-slate-100/50 shadow-sm"
+              >
+                <div
+                  class="absolute w-3 h-3 bg-transparent shadow-[inset_-2px_-1px_0_0_rgba(255,255,255,0.8)] rounded-full top-5 right-5 -rotate-12"
+                ></div>
+                <div
+                  class="absolute w-1 h-1 bg-white/60 rounded-full top-4 left-6"
+                ></div>
+                <div
+                  class="absolute w-0.5 h-0.5 bg-white/40 rounded-full top-8 left-12"
+                ></div>
+                <div
+                  class="absolute w-0.5 h-0.5 bg-white/80 rounded-full top-6 right-10"
+                ></div>
+                <div
+                  class="absolute w-[140%] h-1/2 bg-gradient-to-b from-[#0F1624] to-[#080B12] rounded-[100%] -bottom-4 -right-[20%]"
+                ></div>
+                <div
+                  class="absolute w-[130%] h-2/5 bg-gradient-to-b from-[#090D15] to-[#040609] rounded-[100%] -bottom-2 -left-[15%]"
+                ></div>
+                <div
+                  class="absolute w-[120%] h-1/3 bg-gradient-to-b from-[#05080E] to-[#000000] rounded-[100%] -bottom-1 -right-[10%]"
+                ></div>
+              </div>
+              <p
+                class="text-[9px] text-slate-600 text-center leading-snug min-h-[28px]"
+              >
+                Repair, protection,
+                <br />
+                and deep healing.
+              </p>
+              <div class="flex justify-center gap-1">
+                <div class="w-4 h-4 rounded-full bg-[#25283D]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#3B3C52]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#47435B]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#5D5460]"></div>
+                <div class="w-4 h-4 rounded-full bg-[#756770]"></div>
+              </div>
+              <div
+                class="w-full h-2.5 rounded-full bg-gradient-to-r from-[#25283D] via-[#484155] to-[#756770]"
+              ></div>
+            </div>
+          </div>
+
+          <div
+            class="mt-8 flex items-center gap-3 text-slate-400 max-w-[80%] mx-auto"
+          >
+            <i
+              data-lucide="sun"
+              stroke-width="2"
+              width="16"
+              height="16"
+              class="text-amber-400 shrink-0"
+            ></i>
+            <p class="text-[10px] font-medium shrink-0">
+              Colors transition gradually across the day to support your nervous
+              system.
+            </p>
+            <div class="flex-1 h-[1.5px] bg-[#D4D7DF] relative">
+              <div
+                class="absolute -right-[1px] top-1/2 -translate-y-1/2 w-1.5 h-1.5 border-t-[1.5px] border-r-[1.5px] border-[#D4D7DF] rotate-45"
+              ></div>
+            </div>
+            <i
+              data-lucide="moon"
+              stroke-width="2"
+              width="16"
+              height="16"
+              class="text-indigo-900 shrink-0 ml-1"
+            ></i>
+          </div>
+        </section>
+
+        <!-- Section 2: Five Care Methodologies -->
+        <section
+          class="bg-white rounded-3xl p-6 lg:p-8 border border-slate-200 shadow-sm relative overflow-hidden"
+        >
+          <div
+            class="flex flex-col sm:flex-row sm:items-baseline gap-3 mb-8 border-b border-slate-100 pb-4"
+          >
+            <h2
+              class="text-xl font-medium tracking-tight text-[#1E2B4D] uppercase"
+            >
+              Eight Care Methodologies
+            </h2>
+            <p class="text-base text-slate-500">
+              These colors represent the eight core ways we support postpartum
+              recovery. They appear throughout the app in features, content, and
+              moments of care.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div
+              class="flex flex-col items-center bg-slate-50/50 p-4 rounded-2xl border border-slate-100"
+            >
+              <div
+                class="w-20 h-20 rounded-full bg-[#E8F1FA] flex items-center justify-center mb-5 relative"
+              >
+                <i
+                  data-lucide="moon"
+                  class="text-[#4A72B2] absolute w-10 h-10"
+                  stroke-width="1.5"
+                ></i>
+                <i
+                  data-lucide="sparkles"
+                  class="text-[#4A72B2] absolute top-4 right-4 w-4 h-4"
+                  stroke-width="1.5"
+                ></i>
+              </div>
+              <h3
+                class="text-sm font-semibold tracking-widest uppercase text-[#1E2B4D] mb-3"
+              >
+                Rest
+              </h3>
+              <p class="text-sm text-slate-600 text-center mb-6 min-h-[80px]">
+                Rest, pause, sleep, regulation, and nervous system restoration.
+              </p>
+              <div class="flex flex-col gap-2 w-full">
+                <div class="flex justify-between gap-1 w-full">
+                  <div class="h-8 flex-1 rounded-md bg-[#D8E5F6]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#A8C7E6]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#6C8FC6]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#4A6CA8]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#2B3D66]"></div>
+                </div>
+                <div
+                  class="flex justify-between gap-1 w-full text-[10px] text-slate-400 font-mono"
+                >
+                  <span class="flex-1 text-center truncate">#D8E5F6</span>
+                  <span class="flex-1 text-center truncate">#A8C7E6</span>
+                  <span class="flex-1 text-center truncate">#6C8FC6</span>
+                  <span class="flex-1 text-center truncate">#4A6CA8</span>
+                  <span class="flex-1 text-center truncate">#2B3D66</span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="flex flex-col items-center bg-slate-50/50 p-4 rounded-2xl border border-slate-100"
+            >
+              <div
+                class="w-20 h-20 rounded-full bg-[#FFF5DC] flex items-center justify-center mb-5 relative"
+              >
+                <div
+                  class="w-8 h-4 rounded-b-full bg-[#E58943] absolute bottom-6"
+                ></div>
+                <div class="absolute top-4 flex gap-1">
+                  <div
+                    class="w-0.5 h-3 bg-[#E58943] rounded-full rotate-12"
+                  ></div>
+                  <div class="w-0.5 h-4 bg-[#E58943] rounded-full -mt-1"></div>
+                  <div
+                    class="w-0.5 h-3 bg-[#E58943] rounded-full -rotate-12"
+                  ></div>
+                </div>
+              </div>
+              <h3
+                class="text-sm font-semibold tracking-widest uppercase text-[#1E2B4D] mb-3"
+              >
+                Nourishment
+              </h3>
+              <p class="text-sm text-slate-600 text-center mb-6 min-h-[80px]">
+                Food, hydration, replenishment, warmth, and physical repair.
+              </p>
+              <div class="flex flex-col gap-2 w-full">
+                <div class="flex justify-between gap-1 w-full">
+                  <div class="h-8 flex-1 rounded-md bg-[#FFF2CC]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#FFD88A]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#FDBA74]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#E98D4F]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#C4632F]"></div>
+                </div>
+                <div
+                  class="flex justify-between gap-1 w-full text-[10px] text-slate-400 font-mono"
+                >
+                  <span class="flex-1 text-center truncate">#FFF2CC</span>
+                  <span class="flex-1 text-center truncate">#FFD88A</span>
+                  <span class="flex-1 text-center truncate">#FDBA74</span>
+                  <span class="flex-1 text-center truncate">#E98D4F</span>
+                  <span class="flex-1 text-center truncate">#C4632F</span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="flex flex-col items-center bg-slate-50/50 p-4 rounded-2xl border border-slate-100"
+            >
+              <div
+                class="w-20 h-20 rounded-full bg-[#FDE8EE] flex items-center justify-center mb-5 relative"
+              >
+                <i
+                  data-lucide="hand-heart"
+                  class="text-[#D35A7C] absolute w-10 h-10"
+                  stroke-width="1.5"
+                ></i>
+              </div>
+              <h3
+                class="text-sm font-semibold tracking-widest uppercase text-[#1E2B4D] mb-3"
+              >
+                Loving Touch
+              </h3>
+              <p class="text-sm text-slate-600 text-center mb-6 min-h-[80px]">
+                Body care, massage, physical tenderness, skin-to-skin, and
+                connection.
+              </p>
+              <div class="flex flex-col gap-2 w-full">
+                <div class="flex justify-between gap-1 w-full">
+                  <div class="h-8 flex-1 rounded-md bg-[#FFE1E6]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#F7B4BE]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#EC8FA1]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#D56A82]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#9C4C66]"></div>
+                </div>
+                <div
+                  class="flex justify-between gap-1 w-full text-[10px] text-slate-400 font-mono"
+                >
+                  <span class="flex-1 text-center truncate">#FFE1E6</span>
+                  <span class="flex-1 text-center truncate">#F7B4BE</span>
+                  <span class="flex-1 text-center truncate">#EC8FA1</span>
+                  <span class="flex-1 text-center truncate">#D56A82</span>
+                  <span class="flex-1 text-center truncate">#9C4C66</span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="flex flex-col items-center bg-slate-50/50 p-4 rounded-2xl border border-slate-100"
+            >
+              <div
+                class="w-20 h-20 rounded-full bg-[#EBE4F2] flex items-center justify-center mb-5 relative"
+              >
+                <i
+                  data-lucide="book-open"
+                  class="text-[#7D5EA7] absolute w-10 h-10"
+                  stroke-width="1.5"
+                ></i>
+              </div>
+              <h3
+                class="text-sm font-semibold tracking-widest uppercase text-[#1E2B4D] mb-3"
+              >
+                Wisdom
+              </h3>
+              <p class="text-sm text-slate-600 text-center mb-6 min-h-[80px]">
+                Guidance, elders, birthworkers, education, reflection, and
+                ancestral knowing.
+              </p>
+              <div class="flex flex-col gap-2 w-full">
+                <div class="flex justify-between gap-1 w-full">
+                  <div class="h-8 flex-1 rounded-md bg-[#E6DDF5]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#C9B7E6]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#A388D4]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#7C5EA9]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#4A3A74]"></div>
+                </div>
+                <div
+                  class="flex justify-between gap-1 w-full text-[10px] text-slate-400 font-mono"
+                >
+                  <span class="flex-1 text-center truncate">#E6DDF5</span>
+                  <span class="flex-1 text-center truncate">#C9B7E6</span>
+                  <span class="flex-1 text-center truncate">#A388D4</span>
+                  <span class="flex-1 text-center truncate">#7C5EA9</span>
+                  <span class="flex-1 text-center truncate">#4A3A74</span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="flex flex-col items-center bg-slate-50/50 p-4 rounded-2xl border border-slate-100"
+            >
+              <div
+                class="w-20 h-20 rounded-full bg-[#E9F3EA] flex items-center justify-center mb-5 relative"
+              >
+                <i
+                  data-lucide="leaf"
+                  class="text-[#519B64] absolute w-10 h-10"
+                  stroke-width="1.5"
+                ></i>
+              </div>
+              <h3
+                class="text-sm font-semibold tracking-widest uppercase text-[#1E2B4D] mb-3"
+              >
+                Embodiment
+              </h3>
+              <p class="text-sm text-slate-600 text-center mb-6 min-h-[80px]">
+                Breath, movement, grounding, sunlight, circadian rhythm, and
+                body awareness.
+              </p>
+              <div class="flex flex-col gap-2 w-full">
+                <div class="flex justify-between gap-1 w-full">
+                  <div class="h-8 flex-1 rounded-md bg-[#D7E8D9]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#A8D5C0]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#74BAA1]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#4E8E7D]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#2F5E54]"></div>
+                </div>
+                <div
+                  class="flex justify-between gap-1 w-full text-[10px] text-slate-400 font-mono"
+                >
+                  <span class="flex-1 text-center truncate">#D7E8D9</span>
+                  <span class="flex-1 text-center truncate">#A8D5C0</span>
+                  <span class="flex-1 text-center truncate">#74BAA1</span>
+                  <span class="flex-1 text-center truncate">#4E8E7D</span>
+                  <span class="flex-1 text-center truncate">#2F5E54</span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="flex flex-col items-center bg-slate-50/50 p-4 rounded-2xl border border-slate-100"
+            >
+              <div
+                class="w-20 h-20 rounded-full bg-[#E1EFEB] flex items-center justify-center mb-5 relative"
+              >
+                <i
+                  data-lucide="users"
+                  class="text-[#478282] absolute w-10 h-10"
+                  stroke-width="1.5"
+                ></i>
+              </div>
+              <h3
+                class="text-sm font-semibold tracking-widest uppercase text-[#1E2B4D] mb-3"
+              >
+                Village
+              </h3>
+              <p class="text-sm text-slate-600 text-center mb-6 min-h-[80px]">
+                Community, support systems, shared care, seeking help, and
+                collective nurturing.
+              </p>
+              <div class="flex flex-col gap-2 w-full">
+                <div class="flex justify-between gap-1 w-full">
+                  <div class="h-8 flex-1 rounded-md bg-[#D6E6E6]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#A3C6C6]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#6FA5A5]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#478282]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#265A5A]"></div>
+                </div>
+                <div
+                  class="flex justify-between gap-1 w-full text-[10px] text-slate-400 font-mono"
+                >
+                  <span class="flex-1 text-center truncate">#D6E6E6</span>
+                  <span class="flex-1 text-center truncate">#A3C6C6</span>
+                  <span class="flex-1 text-center truncate">#6FA5A5</span>
+                  <span class="flex-1 text-center truncate">#478282</span>
+                  <span class="flex-1 text-center truncate">#265A5A</span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="flex flex-col items-center bg-slate-50/50 p-4 rounded-2xl border border-slate-100"
+            >
+              <div
+                class="w-20 h-20 rounded-full bg-[#FFF9E6] flex items-center justify-center mb-5 relative"
+              >
+                <i
+                  data-lucide="sun"
+                  class="text-[#D99B18] absolute w-10 h-10"
+                  stroke-width="1.5"
+                ></i>
+              </div>
+              <h3
+                class="text-sm font-semibold tracking-widest uppercase text-[#1E2B4D] mb-3"
+              >
+                Joy
+              </h3>
+              <p class="text-sm text-slate-600 text-center mb-6 min-h-[80px]">
+                Play, lightness, laughter, celebration, bonding, and moments of
+                delight.
+              </p>
+              <div class="flex flex-col gap-2 w-full">
+                <div class="flex justify-between gap-1 w-full">
+                  <div class="h-8 flex-1 rounded-md bg-[#FFF6D9]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#FDE08B]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#F4C244]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#D99B18]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#99690B]"></div>
+                </div>
+                <div
+                  class="flex justify-between gap-1 w-full text-[10px] text-slate-400 font-mono"
+                >
+                  <span class="flex-1 text-center truncate">#FFF6D9</span>
+                  <span class="flex-1 text-center truncate">#FDE08B</span>
+                  <span class="flex-1 text-center truncate">#F4C244</span>
+                  <span class="flex-1 text-center truncate">#D99B18</span>
+                  <span class="flex-1 text-center truncate">#99690B</span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="flex flex-col items-center bg-slate-50/50 p-4 rounded-2xl border border-slate-100"
+            >
+              <div
+                class="w-20 h-20 rounded-full bg-[#F4F1F1] flex items-center justify-center mb-5 relative"
+              >
+                <i
+                  data-lucide="shield-half"
+                  class="text-[#8A7474] absolute w-10 h-10"
+                  stroke-width="1.5"
+                ></i>
+              </div>
+              <h3
+                class="text-sm font-semibold tracking-widest uppercase text-[#1E2B4D] mb-3"
+              >
+                Cocooning
+              </h3>
+              <p class="text-sm text-slate-600 text-center mb-6 min-h-[80px]">
+                Protection, boundaries, retreating, inward focus, and a safe
+                sanctuary.
+              </p>
+              <div class="flex flex-col gap-2 w-full">
+                <div class="flex justify-between gap-1 w-full">
+                  <div class="h-8 flex-1 rounded-md bg-[#EFEBEA]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#D6CACA]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#B3A1A1]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#8A7474]"></div>
+                  <div class="h-8 flex-1 rounded-md bg-[#5C4949]"></div>
+                </div>
+                <div
+                  class="flex justify-between gap-1 w-full text-[10px] text-slate-400 font-mono"
+                >
+                  <span class="flex-1 text-center truncate">#EFEBEA</span>
+                  <span class="flex-1 text-center truncate">#D6CACA</span>
+                  <span class="flex-1 text-center truncate">#B3A1A1</span>
+                  <span class="flex-1 text-center truncate">#8A7474</span>
+                  <span class="flex-1 text-center truncate">#5C4949</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="mt-8 flex items-center gap-3 text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-100"
+          >
+            <i
+              data-lucide="sun-snow"
+              stroke-width="1.5"
+              width="20"
+              height="20"
+              class="shrink-0"
+            ></i>
+            <p class="text-sm">
+              These colors remain consistent throughout the day. Only their
+              brightness and depth subtly shift with the circadian palette to
+              create harmony and reduce visual noise.
+            </p>
+          </div>
+        </section>
+
+        <!-- Bottom Row: 3 Columns -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- Applying the System -->
+          <section
+            class="bg-white rounded-3xl p-6 lg:p-8 border border-slate-200 shadow-sm col-span-1 flex flex-col"
+          >
+            <h2
+              class="text-sm font-semibold tracking-widest uppercase text-[#1E2B4D] mb-2"
+            >
+              Applying the System
+            </h2>
+            <p class="text-sm text-slate-500 mb-6">
+              Every screen is the intersection of:
+            </p>
+
+            <div class="flex flex-wrap items-center gap-3 mb-8">
+              <div
+                class="flex items-center gap-3 border border-slate-200 rounded-xl p-3 bg-slate-50/50 flex-1 min-w-[140px]"
+              >
+                <i
+                  data-lucide="sun"
+                  class="text-amber-500 shrink-0"
+                  stroke-width="1.5"
+                  width="20"
+                  height="20"
+                ></i>
+                <div>
+                  <p
+                    class="text-[10px] font-semibold tracking-wider uppercase text-slate-700"
+                  >
+                    Time of Day
+                  </p>
+                  <p class="text-xs text-slate-500 leading-tight mt-0.5">
+                    Sets the mood and overall palette
+                  </p>
+                </div>
+              </div>
+              <i
+                data-lucide="plus"
+                class="text-slate-300 shrink-0"
+                stroke-width="2"
+                width="16"
+                height="16"
+              ></i>
+              <div
+                class="flex items-center gap-3 border border-slate-200 rounded-xl p-3 bg-slate-50/50 flex-1 min-w-[140px]"
+              >
+                <i
+                  data-lucide="heart"
+                  class="text-[#7D5EA7] shrink-0"
+                  stroke-width="1.5"
+                  width="20"
+                  height="20"
+                ></i>
+                <div>
+                  <p
+                    class="text-[10px] font-semibold tracking-wider uppercase text-slate-700"
+                  >
+                    Care Methodology
+                  </p>
+                  <p class="text-xs text-slate-500 leading-tight mt-0.5">
+                    Sets the meaning and accent color
+                  </p>
+                </div>
+              </div>
+              <i
+                data-lucide="equal"
+                class="text-slate-300 shrink-0"
+                stroke-width="2"
+                width="16"
+                height="16"
+              ></i>
+              <div
+                class="flex items-center gap-3 border border-slate-200 rounded-xl p-3 bg-green-50/30 flex-1 min-w-[140px]"
+              >
+                <i
+                  data-lucide="sparkles"
+                  class="text-green-600 shrink-0"
+                  stroke-width="1.5"
+                  width="20"
+                  height="20"
+                ></i>
+                <div>
+                  <p
+                    class="text-[10px] font-semibold tracking-wider uppercase text-slate-700"
+                  >
+                    Experience
+                  </p>
+                  <p class="text-xs text-slate-500 leading-tight mt-0.5">
+                    A coherent, calming, care-informed interface
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-auto">
+              <h3
+                class="text-xs font-semibold tracking-widest uppercase text-slate-400 mb-2"
+              >
+                Example
+              </h3>
+              <p class="text-sm text-slate-600 mb-4">
+                A Nourishment feature opened in the Evening will use Evening's
+                circadian palette with Nourishment as the accent.
+              </p>
+
+              <div
+                class="flex items-center gap-2 bg-slate-50 p-2 rounded-2xl border border-slate-100"
+              >
+                <div
+                  class="flex items-center gap-2 bg-[#DED6EA] text-[#42385E] px-3 py-1.5 rounded-lg"
+                >
+                  <i
+                    data-lucide="moon"
+                    stroke-width="1.5"
+                    width="16"
+                    height="16"
+                  ></i>
+                  <div class="flex flex-col">
+                    <span
+                      class="text-[10px] font-semibold uppercase tracking-wider"
+                    >
+                      Evening
+                    </span>
+                    <span class="text-[10px] opacity-70 leading-none">
+                      6pm - 9pm
+                    </span>
+                  </div>
+                </div>
+                <i
+                  data-lucide="plus"
+                  class="text-slate-400"
+                  stroke-width="2"
+                  width="12"
+                  height="12"
+                ></i>
+                <div
+                  class="flex items-center gap-2 bg-[#FDE9C8] text-[#B8571E] px-3 py-1.5 rounded-lg h-full"
+                >
+                  <div class="relative w-4 h-4">
+                    <div
+                      class="w-3 h-1.5 rounded-b-full bg-current absolute bottom-0"
+                    ></div>
+                    <div class="absolute top-0 flex gap-0.5 left-0.5">
+                      <div
+                        class="w-px h-1.5 bg-current rounded-full rotate-12"
+                      ></div>
+                      <div
+                        class="w-px h-2 bg-current rounded-full -mt-0.5"
+                      ></div>
+                    </div>
+                  </div>
+                  <span
+                    class="text-[10px] font-semibold uppercase tracking-wider"
+                  >
+                    Nourishment
+                  </span>
+                </div>
+                <i
+                  data-lucide="equal"
+                  class="text-slate-400"
+                  stroke-width="2"
+                  width="12"
+                  height="12"
+                ></i>
+
+                <!-- Fake UI Card Example -->
+                <div
+                  class="flex-1 bg-gradient-to-br from-[#4F416D] to-[#2B2341] rounded-xl p-3 flex items-center justify-between relative overflow-hidden h-[60px]"
+                >
+                  <div class="z-10">
+                    <p class="text-white text-xs font-medium mb-0.5">
+                      Feed Her
+                    </p>
+                    <p class="text-[9px] text-white/70 leading-tight">
+                      Dinner is on the way
+                      <br />
+                      Broth, warmth, and care.
+                    </p>
+                    <div class="flex -space-x-1 mt-1">
+                      <div
+                        class="w-4 h-4 rounded-full bg-slate-300 border border-[#3A2F53]"
+                      ></div>
+                      <div
+                        class="w-4 h-4 rounded-full bg-slate-400 border border-[#3A2F53]"
+                      ></div>
+                      <div
+                        class="w-4 h-4 rounded-full bg-slate-500 border border-[#3A2F53]"
+                      ></div>
+                    </div>
+                  </div>
+                  <div
+                    class="w-10 h-10 rounded-full bg-orange-400/20 blur-md absolute right-2"
+                  ></div>
+                  <div class="relative w-8 h-8 z-10 mr-1">
+                    <div
+                      class="w-8 h-4 rounded-b-full bg-orange-300 absolute bottom-0 shadow-lg"
+                    ></div>
+                    <div class="absolute top-0 flex gap-1 left-2">
+                      <div
+                        class="w-[1.5px] h-3 bg-orange-200 rounded-full rotate-12"
+                      ></div>
+                      <div
+                        class="w-[1.5px] h-4 bg-orange-200 rounded-full -mt-1"
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Intensity & States -->
+          <section
+            class="bg-white rounded-3xl p-6 lg:p-8 border border-slate-200 shadow-sm col-span-1 flex flex-col"
+          >
+            <h2
+              class="text-sm font-semibold tracking-widest uppercase text-[#1E2B4D] mb-2"
+            >
+              Intensity &amp; States
+            </h2>
+            <p class="text-sm text-slate-500 mb-8">
+              Each methodology color can express different states while
+              maintaining clarity and accessibility.
+            </p>
+
+            <div class="flex justify-between items-end mb-10">
+              <div class="flex flex-col items-center gap-2">
+                <span
+                  class="text-[9px] font-semibold tracking-wider uppercase text-slate-500"
+                >
+                  Default
+                </span>
+                <div class="w-12 h-6 rounded-md bg-[#F4B4C1]"></div>
+              </div>
+              <div class="flex flex-col items-center gap-2">
+                <span
+                  class="text-[9px] font-semibold tracking-wider uppercase text-slate-500"
+                >
+                  Active
+                </span>
+                <div class="w-12 h-6 rounded-md bg-[#D96B84]"></div>
+              </div>
+              <div class="flex flex-col items-center gap-2">
+                <span
+                  class="text-[9px] font-semibold tracking-wider uppercase text-slate-500"
+                >
+                  Completed
+                </span>
+                <div class="w-12 h-6 rounded-md bg-[#9F4B65]"></div>
+              </div>
+              <div class="flex flex-col items-center gap-2">
+                <span
+                  class="text-[9px] font-semibold tracking-wider uppercase text-slate-500 text-center leading-tight"
+                >
+                  Needs
+                  <br />
+                  Attention
+                </span>
+                <div class="w-12 h-6 rounded-md bg-[#E89393]"></div>
+              </div>
+              <div class="flex flex-col items-center gap-2">
+                <span
+                  class="text-[9px] font-semibold tracking-wider uppercase text-slate-500"
+                >
+                  Disabled
+                </span>
+                <div class="w-12 h-6 rounded-md bg-[#E2E8F0]"></div>
+              </div>
+            </div>
+
+            <div class="mt-auto">
+              <h3
+                class="text-xs font-semibold tracking-widest uppercase text-slate-400 mb-6"
+              >
+                Example in Use
+              </h3>
+              <div class="flex justify-between">
+                <!-- Default Bath -->
+                <div class="flex flex-col items-center gap-2">
+                  <div
+                    class="w-10 h-10 rounded-full bg-[#FDE8EE] flex items-center justify-center text-[#D96B84]"
+                  >
+                    <i
+                      data-lucide="bath"
+                      stroke-width="1.5"
+                      width="20"
+                      height="20"
+                    ></i>
+                  </div>
+                  <div class="text-center">
+                    <p class="text-[11px] font-medium text-slate-800">Bath</p>
+                    <p class="text-[9px] text-slate-400">Today</p>
+                  </div>
+                </div>
+                <!-- Active Bath -->
+                <div class="flex flex-col items-center gap-2">
+                  <div
+                    class="w-10 h-10 rounded-full bg-[#D96B84] flex items-center justify-center text-white relative"
+                  >
+                    <i
+                      data-lucide="bath"
+                      stroke-width="1.5"
+                      width="20"
+                      height="20"
+                    ></i>
+                    <i
+                      data-lucide="sparkles"
+                      stroke-width="1.5"
+                      width="10"
+                      height="10"
+                      class="absolute top-2 right-2"
+                    ></i>
+                  </div>
+                  <div class="text-center">
+                    <p class="text-[11px] font-medium text-slate-800">Bath</p>
+                    <p class="text-[9px] text-slate-400">Tap to start</p>
+                  </div>
+                </div>
+                <!-- Completed Bath -->
+                <div class="flex flex-col items-center gap-2">
+                  <div
+                    class="w-10 h-10 rounded-full bg-[#FDE8EE] flex items-center justify-center text-[#9F4B65] border border-[#9F4B65]/20"
+                  >
+                    <i
+                      data-lucide="check-circle-2"
+                      stroke-width="1.5"
+                      width="20"
+                      height="20"
+                    ></i>
+                  </div>
+                  <div class="text-center">
+                    <p class="text-[11px] font-medium text-slate-800">Bath</p>
+                    <p class="text-[9px] text-slate-400">Completed</p>
+                  </div>
+                </div>
+                <!-- Alert Bath -->
+                <div class="flex flex-col items-center gap-2">
+                  <div
+                    class="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-500"
+                  >
+                    <i
+                      data-lucide="alert-circle"
+                      stroke-width="1.5"
+                      width="20"
+                      height="20"
+                    ></i>
+                  </div>
+                  <div class="text-center">
+                    <p class="text-[11px] font-medium text-slate-800">Bath</p>
+                    <p class="text-[9px] text-slate-400">Gentle reminder</p>
+                  </div>
+                </div>
+                <!-- Disabled Bath -->
+                <div class="flex flex-col items-center gap-2">
+                  <div
+                    class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400"
+                  >
+                    <i
+                      data-lucide="bath"
+                      stroke-width="1.5"
+                      width="20"
+                      height="20"
+                      class="opacity-50"
+                    ></i>
+                    <div
+                      class="absolute w-5 h-px bg-slate-400 -rotate-45"
+                    ></div>
+                  </div>
+                  <div class="text-center">
+                    <p class="text-[11px] font-medium text-slate-400">Bath</p>
+                    <p class="text-[9px] text-slate-400">Not available</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Accessibility -->
+          <section
+            class="bg-white rounded-3xl p-6 lg:p-8 border border-slate-200 shadow-sm col-span-1 flex flex-col"
+          >
+            <h2
+              class="text-sm font-semibold tracking-widest uppercase text-[#1E2B4D] mb-2"
+            >
+              Accessibility
+            </h2>
+            <p class="text-sm text-slate-500 mb-6">
+              All color pairings meet WCAG AA contrast standards for text and
+              key UI elements.
+            </p>
+
+            <div
+              class="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-8"
+            >
+              <div
+                class="w-10 h-10 rounded-full bg-[#E2EADA] text-[#4E775B] flex items-center justify-center font-medium text-sm shrink-0 border border-[#C5D8B8]"
+              >
+                AA
+              </div>
+              <p class="text-xs text-slate-600 leading-relaxed flex-1">
+                Tested for readability in both light and dark modes.
+              </p>
+              <div
+                class="w-20 h-14 rounded-lg bg-gradient-to-b from-[#48537A] to-[#1D2542] shrink-0 relative overflow-hidden"
+              >
+                <i
+                  data-lucide="moon"
+                  class="text-white/80 absolute top-1.5 left-1/2 -translate-x-1/2"
+                  stroke-width="2"
+                  width="12"
+                  height="12"
+                ></i>
+                <div
+                  class="absolute bottom-0 w-[120%] -left-[10%] h-1/2 bg-[#2E3A59] rounded-t-full"
+                ></div>
+              </div>
+              <p
+                class="text-[10px] text-slate-500 w-24 leading-tight border-l border-slate-200 pl-3"
+              >
+                The system is designed to feel soft, warm, and regulating in
+                every mode.
+              </p>
+            </div>
+
+            <div class="mt-auto">
+              <h3
+                class="text-xs font-semibold tracking-widest uppercase text-slate-400 mb-4"
+              >
+                Example Text Contrast (AA)
+              </h3>
+              <div class="grid grid-cols-4 gap-3">
+                <!-- On Light -->
+                <div class="flex flex-col items-center">
+                  <span class="text-[10px] text-slate-500 mb-2">On Light</span>
+                  <div
+                    class="w-full bg-white border border-slate-200 rounded-xl py-3 flex items-center justify-center gap-2 shadow-sm"
+                  >
+                    <span class="text-sm font-medium text-slate-800">Aa</span>
+                    <span class="text-[10px] text-slate-500">4.6:1</span>
+                  </div>
+                </div>
+                <!-- On Colored -->
+                <div class="flex flex-col items-center">
+                  <span class="text-[10px] text-slate-500 mb-2">
+                    On Colored
+                  </span>
+                  <div
+                    class="w-full bg-[#FCE5A4] rounded-xl py-3 flex items-center justify-center gap-2 shadow-sm"
+                  >
+                    <span class="text-sm font-medium text-[#7A4B20]">Aa</span>
+                    <span class="text-[10px] text-[#7A4B20]/70">4.7:1</span>
+                  </div>
+                </div>
+                <!-- On Dark -->
+                <div class="flex flex-col items-center">
+                  <span class="text-[10px] text-slate-500 mb-2">On Dark</span>
+                  <div
+                    class="w-full bg-[#202E4F] rounded-xl py-3 flex items-center justify-center gap-2 shadow-sm"
+                  >
+                    <span class="text-sm font-medium text-white">Aa</span>
+                    <span class="text-[10px] text-white/70">6.7:1</span>
+                  </div>
+                </div>
+                <!-- On Gradient -->
+                <div class="flex flex-col items-center">
+                  <span class="text-[10px] text-slate-500 mb-2">
+                    On Gradient
+                  </span>
+                  <div
+                    class="w-full bg-gradient-to-r from-[#B995A9] to-[#79629E] rounded-xl py-3 flex items-center justify-center gap-2 shadow-sm"
+                  >
+                    <span class="text-sm font-medium text-white">Aa</span>
+                    <span class="text-[10px] text-white/80">4.8:1</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+        <section
+          class="bg-white rounded-3xl p-6 lg:p-8 border border-slate-200 shadow-sm mt-6"
+        >
+          <div
+            class="flex flex-col sm:flex-row sm:items-baseline gap-3 mb-8 border-b border-slate-100 pb-4"
+          >
+            <h2
+              class="text-xl font-medium tracking-tight text-[#1E2B4D] uppercase"
+            >
+              Icon &amp; Symbol System
+            </h2>
+            <p class="text-base text-slate-500">
+              Rooted in Circadian Rhythm and Care Methodologies.
+            </p>
+          </div>
+
+          <!-- I. CARE METHODOLOGY SPECIFIC ICONS -->
+          <div class="mb-10">
+            <h3
+              class="text-sm font-semibold tracking-widest uppercase text-slate-800 mb-4"
+            >
+              I. Care Methodology Specific Icons
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div
+                class="bg-[#E8F1FA] border border-[#B6D0ED] rounded-xl pt-0 overflow-hidden flex flex-col items-center pb-4"
+              >
+                <div
+                  class="w-full bg-[#4A72B2] text-white text-xs font-semibold text-center uppercase py-2 mb-6"
+                >
+                  Rest
+                </div>
+                <div
+                  class="grid grid-cols-2 gap-y-6 gap-x-4 w-full justify-items-center px-4"
+                >
+                  <i
+                    data-lucide="moon"
+                    class="text-[#2B3D66] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="waves"
+                    class="text-[#2B3D66] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="bed-double"
+                    class="text-[#2B3D66] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="brain"
+                    class="text-[#2B3D66] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="eye-off"
+                    class="text-[#2B3D66] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="battery-charging"
+                    class="text-[#2B3D66] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                </div>
+              </div>
+              <div
+                class="bg-[#FFF5DC] border border-[#FDE0A6] rounded-xl pt-0 overflow-hidden flex flex-col items-center pb-4"
+              >
+                <div
+                  class="w-full bg-[#E98D4F] text-white text-xs font-semibold text-center uppercase py-2 mb-6"
+                >
+                  Nourishment
+                </div>
+                <div
+                  class="grid grid-cols-2 gap-y-6 gap-x-4 w-full justify-items-center px-4"
+                >
+                  <i
+                    data-lucide="soup"
+                    class="text-[#C4632F] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="apple"
+                    class="text-[#C4632F] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="baby"
+                    class="text-[#C4632F] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="wheat"
+                    class="text-[#C4632F] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="utensils-crossed"
+                    class="text-[#C4632F] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="bar-chart-2"
+                    class="text-[#C4632F] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                </div>
+              </div>
+              <div
+                class="bg-[#FDE8EE] border border-[#F4C4D0] rounded-xl pt-0 overflow-hidden flex flex-col items-center pb-4"
+              >
+                <div
+                  class="w-full bg-[#D56A82] text-white text-xs font-semibold text-center uppercase py-2 mb-6"
+                >
+                  Loving Touch
+                </div>
+                <div
+                  class="grid grid-cols-2 gap-y-6 gap-x-4 w-full justify-items-center px-4"
+                >
+                  <i
+                    data-lucide="handshake"
+                    class="text-[#9C4C66] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="layers"
+                    class="text-[#9C4C66] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="person-standing"
+                    class="text-[#9C4C66] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="hand-heart"
+                    class="text-[#9C4C66] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="milk"
+                    class="text-[#9C4C66] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="heart-handshake"
+                    class="text-[#9C4C66] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                </div>
+              </div>
+              <div
+                class="bg-[#EBE4F2] border border-[#D1BEE8] rounded-xl pt-0 overflow-hidden flex flex-col items-center pb-4"
+              >
+                <div
+                  class="w-full bg-[#7D5EA7] text-white text-xs font-semibold text-center uppercase py-2 mb-6"
+                >
+                  Wisdom
+                </div>
+                <div
+                  class="grid grid-cols-2 gap-y-6 gap-x-4 w-full justify-items-center px-4"
+                >
+                  <i
+                    data-lucide="trees"
+                    class="text-[#4A3A74] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="dribbble"
+                    class="text-[#4A3A74] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="book-open"
+                    class="text-[#4A3A74] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="users"
+                    class="text-[#4A3A74] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="library"
+                    class="text-[#4A3A74] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="volume-2"
+                    class="text-[#4A3A74] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                </div>
+              </div>
+              <div
+                class="bg-[#E9F3EA] border border-[#C5DFCA] rounded-xl pt-0 overflow-hidden flex flex-col items-center pb-4"
+              >
+                <div
+                  class="w-full bg-[#519B64] text-white text-xs font-semibold text-center uppercase py-2 mb-6"
+                >
+                  Embodiment
+                </div>
+                <div
+                  class="grid grid-cols-2 gap-y-6 gap-x-4 w-full justify-items-center px-4"
+                >
+                  <i
+                    data-lucide="accessibility"
+                    class="text-[#2F5E54] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="footprints"
+                    class="text-[#2F5E54] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="compass"
+                    class="text-[#2F5E54] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="refresh-cw"
+                    class="text-[#2F5E54] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="wind"
+                    class="text-[#2F5E54] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="sprout"
+                    class="text-[#2F5E54] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                </div>
+              </div>
+              <div
+                class="bg-[#E1EFEB] border border-[#B6D9D9] rounded-xl pt-0 overflow-hidden flex flex-col items-center pb-4"
+              >
+                <div
+                  class="w-full bg-[#478282] text-white text-xs font-semibold text-center uppercase py-2 mb-6"
+                >
+                  Village
+                </div>
+                <div
+                  class="grid grid-cols-2 gap-y-6 gap-x-4 w-full justify-items-center px-4"
+                >
+                  <i
+                    data-lucide="home"
+                    class="text-[#265A5A] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="network"
+                    class="text-[#265A5A] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="message-circle-heart"
+                    class="text-[#265A5A] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="phone-call"
+                    class="text-[#265A5A] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="users"
+                    class="text-[#265A5A] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="heart-handshake"
+                    class="text-[#265A5A] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                </div>
+              </div>
+              <div
+                class="bg-[#FFF9E6] border border-[#FDE08B] rounded-xl pt-0 overflow-hidden flex flex-col items-center pb-4"
+              >
+                <div
+                  class="w-full bg-[#D99B18] text-white text-xs font-semibold text-center uppercase py-2 mb-6"
+                >
+                  Joy
+                </div>
+                <div
+                  class="grid grid-cols-2 gap-y-6 gap-x-4 w-full justify-items-center px-4"
+                >
+                  <i
+                    data-lucide="sun"
+                    class="text-[#99690B] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="smile"
+                    class="text-[#99690B] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="sparkles"
+                    class="text-[#99690B] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="music"
+                    class="text-[#99690B] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="camera"
+                    class="text-[#99690B] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="party-popper"
+                    class="text-[#99690B] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                </div>
+              </div>
+              <div
+                class="bg-[#F4F1F1] border border-[#D6CACA] rounded-xl pt-0 overflow-hidden flex flex-col items-center pb-4"
+              >
+                <div
+                  class="w-full bg-[#8A7474] text-white text-xs font-semibold text-center uppercase py-2 mb-6"
+                >
+                  Cocooning
+                </div>
+                <div
+                  class="grid grid-cols-2 gap-y-6 gap-x-4 w-full justify-items-center px-4"
+                >
+                  <i
+                    data-lucide="shield-half"
+                    class="text-[#5C4949] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="door-closed"
+                    class="text-[#5C4949] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="tent"
+                    class="text-[#5C4949] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="bed"
+                    class="text-[#5C4949] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="cup-soda"
+                    class="text-[#5C4949] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                  <i
+                    data-lucide="lock"
+                    class="text-[#5C4949] w-7 h-7"
+                    stroke-width="1.5"
+                  ></i>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- II & III. Utility and Navigation -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Circadian Adaptations -->
+            <div
+              class="bg-[#F8F7F3] border border-slate-200 rounded-xl p-5 col-span-1 flex flex-col"
+            >
+              <h3
+                class="text-xs font-semibold tracking-widest uppercase text-slate-800 mb-4"
+              >
+                II. Circadian Adaptations
+              </h3>
+              <div class="grid grid-cols-3 gap-3 mt-auto">
+                <div class="flex flex-col items-center gap-1.5">
+                  <div
+                    class="w-12 h-12 rounded-xl bg-gradient-to-b from-[#FFF5D1] to-[#EAE1C0] flex items-center justify-center"
+                  >
+                    <i
+                      data-lucide="soup"
+                      class="text-[#C4632F] w-6 h-6"
+                      stroke-width="1.5"
+                    ></i>
+                  </div>
+                  <span class="text-[9px] font-medium uppercase text-slate-500">
+                    Morning
+                  </span>
+                </div>
+                <div class="flex flex-col items-center gap-1.5">
+                  <div
+                    class="w-12 h-12 rounded-xl bg-gradient-to-b from-[#E6F4F1] to-[#A8CECB] flex items-center justify-center"
+                  >
+                    <i
+                      data-lucide="bath"
+                      class="text-[#D56A82] w-6 h-6"
+                      stroke-width="1.5"
+                    ></i>
+                  </div>
+                  <span class="text-[9px] font-medium uppercase text-slate-500">
+                    Afternoon
+                  </span>
+                </div>
+                <div class="flex flex-col items-center gap-1.5">
+                  <div
+                    class="w-12 h-12 rounded-xl bg-gradient-to-b from-[#B6C5DD] to-[#48638C] flex items-center justify-center"
+                  >
+                    <i
+                      data-lucide="moon"
+                      class="text-white w-6 h-6"
+                      stroke-width="1.5"
+                    ></i>
+                  </div>
+                  <span class="text-[9px] font-medium uppercase text-slate-500">
+                    Night
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Utility Icons -->
+            <div
+              class="bg-[#F8F7F3] border border-slate-200 rounded-xl p-5 col-span-1 lg:col-span-2 flex flex-col"
+            >
+              <h3
+                class="text-xs font-semibold tracking-widest uppercase text-slate-800 mb-4"
+              >
+                New Utility Icons
+              </h3>
+              <div class="flex justify-around items-end h-full pb-2">
+                <div class="flex flex-col items-center gap-3">
+                  <i
+                    data-lucide="timer"
+                    class="text-[#C4632F] w-9 h-9"
+                    stroke-width="1.5"
+                  ></i>
+                  <span
+                    class="text-[9px] font-bold uppercase tracking-wider text-slate-600"
+                  >
+                    Feeding
+                  </span>
+                </div>
+                <div class="flex flex-col items-center gap-3">
+                  <i
+                    data-lucide="bed"
+                    class="text-[#4A72B2] w-9 h-9"
+                    stroke-width="1.5"
+                  ></i>
+                  <span
+                    class="text-[9px] font-bold uppercase tracking-wider text-slate-600"
+                  >
+                    Sleep
+                  </span>
+                </div>
+                <div class="flex flex-col items-center gap-3">
+                  <i
+                    data-lucide="heart-pulse"
+                    class="text-[#D56A82] w-9 h-9"
+                    stroke-width="1.5"
+                  ></i>
+                  <span
+                    class="text-[9px] font-bold uppercase tracking-wider text-slate-600 text-center leading-tight"
+                  >
+                    Mood
+                    <br />
+                    Tracking
+                  </span>
+                </div>
+                <div class="flex flex-col items-center gap-3">
+                  <i
+                    data-lucide="book-open-check"
+                    class="text-[#7D5EA7] w-9 h-9"
+                    stroke-width="1.5"
+                  ></i>
+                  <span
+                    class="text-[9px] font-bold uppercase tracking-wider text-slate-600"
+                  >
+                    Journal
+                  </span>
+                </div>
+                <div class="flex flex-col items-center gap-3">
+                  <i
+                    data-lucide="calendar-plus"
+                    class="text-[#519B64] w-9 h-9"
+                    stroke-width="1.5"
+                  ></i>
+                  <span
+                    class="text-[9px] font-bold uppercase tracking-wider text-slate-600"
+                  >
+                    Appointment
+                  </span>
+                </div>
+                <div class="flex flex-col items-center gap-3">
+                  <i
+                    data-lucide="stethoscope"
+                    class="text-slate-600 w-9 h-9"
+                    stroke-width="1.5"
+                  ></i>
+                  <span
+                    class="text-[9px] font-bold uppercase tracking-wider text-slate-600"
+                  >
+                    Baby Stats
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- III. Navigation & UI Symbols + Status Indicators -->
+          <div class="mt-6 flex flex-col lg:flex-row gap-6">
+            <div
+              class="bg-[#F8F7F3] border border-slate-200 rounded-xl p-5 flex-1"
+            >
+              <h3
+                class="text-xs font-semibold tracking-widest uppercase text-slate-800 mb-6"
+              >
+                III. Navigation &amp; UI Symbols
+              </h3>
+              <div class="flex gap-6 items-center justify-around h-12">
+                <i
+                  data-lucide="home"
+                  class="text-slate-700 w-8 h-8 fill-slate-700"
+                  stroke-width="1"
+                ></i>
+                <i
+                  data-lucide="calendar"
+                  class="text-slate-700 w-8 h-8 fill-slate-700"
+                  stroke-width="1"
+                ></i>
+                <i
+                  data-lucide="message-square"
+                  class="text-slate-700 w-8 h-8 fill-slate-700"
+                  stroke-width="1"
+                ></i>
+                <i
+                  data-lucide="user-circle"
+                  class="text-slate-700 w-8 h-8 fill-slate-700"
+                  stroke-width="1"
+                ></i>
+                <i
+                  data-lucide="user"
+                  class="text-slate-700 w-8 h-8 fill-slate-700"
+                  stroke-width="1"
+                ></i>
+                <i
+                  data-lucide="move"
+                  class="text-slate-700 w-8 h-8"
+                  stroke-width="1.5"
+                ></i>
+              </div>
+            </div>
+
+            <div
+              class="bg-[#F8F7F3] border border-slate-200 rounded-xl p-5 w-full lg:w-1/3"
+            >
+              <h3
+                class="text-xs font-semibold tracking-widest uppercase text-slate-800 mb-6"
+              >
+                Status Indicators
+              </h3>
+              <div class="flex justify-around items-center">
+                <div class="flex flex-col items-center gap-2">
+                  <div
+                    class="w-8 h-8 rounded-full bg-[#D56A82] flex items-center justify-center text-white"
+                  >
+                    <i data-lucide="check" class="w-5 h-5" stroke-width="3"></i>
+                  </div>
+                  <span
+                    class="text-[9px] font-medium text-slate-500 text-center leading-tight"
+                  >
+                    Completed
+                  </span>
+                </div>
+                <div class="flex flex-col items-center gap-2">
+                  <div
+                    class="w-8 h-8 rounded-full bg-[#F7B4BE] flex items-center justify-center text-[#9C4C66]"
+                  >
+                    <span class="font-bold text-lg leading-none mt-0.5">!</span>
+                  </div>
+                  <span
+                    class="text-[9px] font-medium text-slate-500 text-center leading-tight"
+                  >
+                    Needs Attention
+                  </span>
+                </div>
+                <div class="flex flex-col items-center gap-2">
+                  <div
+                    class="w-8 h-8 rounded-full bg-slate-300 flex items-center justify-center text-slate-500"
+                  >
+                    <i data-lucide="x" class="w-5 h-5" stroke-width="3"></i>
+                  </div>
+                  <span
+                    class="text-[9px] font-medium text-slate-500 text-center leading-tight"
+                  >
+                    Disabled
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Footer Note -->
+        <div
+          class="mt-4 flex flex-col md:flex-row md:items-center gap-4 text-sm text-[#735D97] bg-[#F5F2F9] py-4 px-6 rounded-2xl border border-[#E9E4F0]"
+        >
+          <div class="flex items-center gap-2 font-medium shrink-0">
+            <div
+              class="w-6 h-6 rounded-full bg-[#735D97] flex items-center justify-center text-white"
+            >
+              <i
+                data-lucide="heart"
+                stroke-width="2"
+                width="12"
+                height="12"
+              ></i>
+            </div>
+            <span>Designed for Postpartum Brain. Rooted in Care.</span>
+          </div>
+          <div class="hidden md:block w-px h-4 bg-[#D3C7E3]"></div>
+          <p class="text-slate-600">
+            Our colors support energy, emotional balance, and connection—helping
+            every mother feel seen, supported, and held.
+          </p>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      lucide.createIcons();
+    </script>
+  </body>
+</html>

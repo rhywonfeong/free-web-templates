@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Together — Product foundation</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script></head>
+<body class="min-h-screen bg-stone-100 font-sans text-slate-900">
+  <main class="flex min-h-screen items-center justify-center p-4 sm:p-8">
+    <div class="w-full max-w-6xl overflow-hidden rounded-3xl border border-stone-200 bg-stone-50 shadow-sm">
+      <header class="sticky top-0 z-20 border-b border-stone-200 bg-stone-50/95 px-3 py-3 backdrop-blur sm:px-5">
+        <div class="mx-auto flex max-w-6xl items-center justify-between rounded-full border border-stone-200 bg-white px-5 py-3 shadow-lg shadow-stone-300/30 sm:px-7">
+          <a href="#welcome" class="flex items-center gap-2 text-sm font-semibold tracking-tight">
+            <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-teal-700 text-white">
+              <iconify-icon icon="solar:heart-angle-linear" width="20" stroke-width="1.5"></iconify-icon>
+            </span>
+            together
+          </a>
+
+          <nav id="app-nav" class="hidden items-center gap-1 text-sm font-medium text-slate-600 md:flex">
+            <a href="#dashboard" class="rounded-full px-4 py-2 transition hover:bg-stone-100 hover:text-slate-950">Today</a>
+            <a href="#buddy" class="rounded-full px-4 py-2 transition hover:bg-stone-100 hover:text-slate-950">Buddy</a>
+            <a href="#catchup" class="rounded-full px-4 py-2 transition hover:bg-stone-100 hover:text-slate-950">Catch-up</a>
+          </nav>
+
+          <a id="header-action" href="#login" class="rounded-full border border-slate-600 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-800 hover:text-white">Sign in</a>
+        </div>
+      </header>
+
+      <main class="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-16">
+        <section id="welcome" class="flex min-h-[520px] items-center">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">A space for two</p>
+            <h1 class="mt-5 max-w-xl text-4xl font-semibold tracking-tight text-slate-950 sm:text-6xl">Keep showing up for what matters.</h1>
+            <p class="mt-6 max-w-md text-lg leading-8 text-slate-600">A private, practical space for you and one trusted friend. Take small steps, stay connected, and make room for real life.</p>
+            <div class="mt-9 flex flex-col gap-3 sm:flex-row">
+              <a href="#signup" class="rounded-full bg-slate-900 px-6 py-3.5 text-center text-sm font-medium text-white transition hover:bg-teal-700">Create an account</a>
+              <a href="#login" class="rounded-full border border-slate-600 bg-white px-6 py-3.5 text-center text-sm font-medium text-slate-700 transition hover:bg-slate-800 hover:text-white">Sign in</a>
+            </div>
+            <p class="mt-5 text-xs text-slate-500">Not therapy or crisis support. Just two people in each other’s corner.</p>
+          </div>
+        </section>
+
+        <section id="signup" class="hidden border-t border-stone-200 py-16">
+          <div class="mx-auto max-w-md">
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">Start here</p>
+            <h2 class="mt-3 text-3xl font-semibold tracking-tight">Create your space</h2>
+            <p class="mt-3 text-slate-600">Set up your private starting point. You can invite one buddy after your first weekly action is clear.</p>
+            <div class="mt-8 space-y-4">
+              <label class="block text-sm font-medium">Your name<input value="Sam" class="mt-2 w-full rounded-xl border border-stone-300 bg-white px-4 py-3.5 text-slate-900 outline-none ring-teal-700 focus:ring-2"></label>
+              <label class="block text-sm font-medium">Email<input value="sam@example.com" type="email" class="mt-2 w-full rounded-xl border border-stone-300 bg-white px-4 py-3.5 text-slate-900 outline-none ring-teal-700 focus:ring-2"></label>
+              <label class="block text-sm font-medium">Password<input type="password" value="password" class="mt-2 w-full rounded-xl border border-stone-300 bg-white px-4 py-3.5 text-slate-900 outline-none ring-teal-700 focus:ring-2"></label>
+            </div>
+            <a href="#onboarding" class="mt-6 block rounded-full bg-slate-900 px-5 py-3.5 text-center text-sm font-medium text-white transition hover:bg-teal-700">Create account and continue</a>
+            <p class="mt-5 text-center text-sm text-slate-500">Already joined? <a href="#login" class="font-medium text-slate-900 underline">Log in</a></p>
+          </div>
+        </section>
+
+        <section id="login" class="hidden border-t border-stone-200 py-16">
+          <div class="mx-auto max-w-md rounded-3xl border border-stone-200 bg-white p-6 sm:p-8">
+            <h2 class="text-3xl font-semibold tracking-tight">Welcome back</h2>
+            <p class="mt-2 text-slate-600">Pick up where you left off.</p>
+            <label class="mt-7 block text-sm font-medium">Email<input value="sam@example.com" class="mt-2 w-full rounded-xl border border-stone-300 px-4 py-3.5"></label>
+            <label class="mt-4 block text-sm font-medium">Password<input type="password" value="password" class="mt-2 w-full rounded-xl border border-stone-300 px-4 py-3.5"></label>
+            <a href="#dashboard" class="mt-6 block rounded-full bg-slate-900 px-5 py-3.5 text-center text-sm font-medium text-white transition hover:bg-teal-700">Log in</a>
+          </div>
+        </section>
+
+        <section id="onboarding" class="hidden border-t border-stone-200 py-16">
+          <div class="mx-auto max-w-2xl">
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">Personal setup · 1 of 4</p>
+            <h2 class="mt-3 text-3xl font-semibold tracking-tight">What guides you?</h2>
+            <p class="mt-3 text-slate-600">Start with why this matters to you. This stays private unless you choose to share it later.</p>
+            <label class="mt-8 block text-sm font-medium">I am doing this because…<textarea class="mt-3 min-h-36 w-full rounded-2xl border border-stone-300 bg-white p-4 leading-7">I want to stay connected to the people I care about, even when life feels demanding.</textarea></label>
+            <a href="#values" class="mt-7 inline-block rounded-full bg-slate-900 px-6 py-3.5 text-sm font-medium text-white transition hover:bg-teal-700">Continue to my values</a>
+          </div>
+        </section>
+
+        <section id="values" class="hidden border-t border-stone-200 py-16">
+          <div class="mx-auto max-w-3xl">
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">Personal setup · 2 of 4</p>
+            <div class="mt-3 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 class="text-3xl font-semibold tracking-tight">Choose up to five values</h2>
+                <p class="mt-3 text-slate-600">Values are personal directions for living. Use these suggestions for inspiration, or add values in your own words.</p>
+              </div>
+              <span id="value-count" class="text-sm font-medium text-teal-700">0 of 5 chosen</span>
+            </div>
+
+            <div id="values-grid" class="mt-8 grid gap-3 sm:grid-cols-2">
+              <button type="button" data-value class="value-choice rounded-2xl border border-stone-300 bg-white p-5 text-left transition hover:border-teal-400"><span class="font-semibold">Connection</span><span class="mt-1 block text-sm text-slate-600">Showing up for people I care about.</span></button>
+              <button type="button" data-value class="value-choice rounded-2xl border border-stone-300 bg-white p-5 text-left transition hover:border-teal-400"><span class="font-semibold">Courage</span><span class="mt-1 block text-sm text-slate-600">Making room for what feels difficult.</span></button>
+              <button type="button" data-value class="value-choice rounded-2xl border border-stone-300 bg-white p-5 text-left transition hover:border-teal-400"><span class="font-semibold">Curiosity</span><span class="mt-1 block text-sm text-slate-600">Staying open instead of certain.</span></button>
+              <button type="button" data-value class="value-choice rounded-2xl border border-stone-300 bg-white p-5 text-left transition hover:border-teal-400"><span class="font-semibold">Care</span><span class="mt-1 block text-sm text-slate-600">Treating myself and others with attention.</span></button>
+              <button type="button" data-value class="value-choice rounded-2xl border border-stone-300 bg-white p-5 text-left transition hover:border-teal-400"><span class="font-semibold">Creativity</span><span class="mt-1 block text-sm text-slate-600">Making space to make things.</span></button>
+              <button type="button" data-value class="value-choice rounded-2xl border border-stone-300 bg-white p-5 text-left transition hover:border-teal-400"><span class="font-semibold">Honesty</span><span class="mt-1 block text-sm text-slate-600">Being real with myself and others.</span></button>
+              <button type="button" data-value class="value-choice rounded-2xl border border-stone-300 bg-white p-5 text-left transition hover:border-teal-400"><span class="font-semibold">Growth</span><span class="mt-1 block text-sm text-slate-600">Learning from life as it happens.</span></button>
+              <button type="button" data-value class="value-choice rounded-2xl border border-stone-300 bg-white p-5 text-left transition hover:border-teal-400"><span class="font-semibold">Play</span><span class="mt-1 block text-sm text-slate-600">Making room for joy and lightness.</span></button>
+            </div>
+
+            <div class="mt-5 rounded-2xl border border-dashed border-stone-300 bg-white p-5 sm:p-6">
+              <label for="custom-value-input" class="text-sm font-medium">Add a value that is personal to you</label>
+              <div class="mt-3 flex flex-col gap-3 sm:flex-row">
+                <input id="custom-value-input" type="text" maxlength="50" placeholder="For example: Faith, Independence, Community" class="w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none ring-teal-700 placeholder:text-slate-400 focus:ring-2">
+                <button id="add-custom-value" type="button" class="shrink-0 rounded-full border border-slate-600 px-5 py-3 text-sm font-medium text-slate-800 transition hover:bg-slate-800 hover:text-white">Add value</button>
+              </div>
+              <p id="custom-value-message" class="mt-3 hidden text-sm text-rose-700" aria-live="polite"></p>
+            </div>
+
+            <a href="#direction" class="mt-7 inline-block rounded-full bg-slate-900 px-6 py-3.5 text-sm font-medium text-white transition hover:bg-teal-700">Continue</a>
+          </div>
+        </section>
+
+        <section id="direction" class="hidden border-t border-stone-200 py-16">
+          <div class="mx-auto max-w-2xl">
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">Personal setup · 3 of 4</p>
+            <h2 class="mt-3 text-3xl font-semibold tracking-tight">Your bigger direction</h2>
+            <p class="mt-3 text-slate-600">Not a perfect future. Just a direction you want to keep turning toward.</p>
+            <label class="mt-8 block text-sm font-medium">I want to keep moving toward a life where I…<textarea class="mt-3 min-h-36 w-full rounded-2xl border border-stone-300 bg-white p-4 leading-7">feel close to the people I love, even when life feels demanding.</textarea></label>
+            <a href="#monthly" class="mt-7 inline-block rounded-full bg-slate-900 px-6 py-3.5 text-sm font-medium text-white transition hover:bg-teal-700">Set a monthly commitment</a>
+          </div>
+        </section>
+
+        <section id="monthly" class="hidden border-t border-stone-200 py-16">
+          <div class="mx-auto max-w-3xl">
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">Personal setup · 4 of 4</p>
+            <h2 class="mt-3 text-3xl font-semibold tracking-tight">A commitment for this month</h2>
+            <p class="mt-3 text-slate-600">Choose one small commitment that can guide your attention this month. You can revise it later.</p>
+            <div class="mt-8 grid gap-4 md:grid-cols-3">
+              <button data-commitment class="commitment-choice rounded-2xl border-2 border-teal-700 bg-teal-50 p-5 text-left"><p class="text-xs font-semibold uppercase tracking-wider text-teal-700">Connection</p><p class="mt-2 font-semibold">Be more present with family</p></button>
+              <button data-commitment class="commitment-choice rounded-2xl border border-stone-200 bg-white p-5 text-left"><p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Creativity</p><p class="mt-2 font-semibold">Start building freelance work</p></button>
+              <button data-commitment class="commitment-choice rounded-2xl border border-stone-200 bg-white p-5 text-left"><p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Care</p><p class="mt-2 font-semibold">Protect time to properly rest</p></button>
+            </div>
+            <a href="#weekly" class="mt-7 inline-block rounded-full bg-slate-900 px-6 py-3.5 text-sm font-medium text-white transition hover:bg-teal-700">Choose this week’s action</a>
+          </div>
+        </section>
+
+        <section id="weekly" class="hidden border-t border-stone-200 py-16">
+          <div class="mx-auto max-w-xl rounded-3xl border border-stone-200 bg-white p-6 sm:p-9">
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">This week</p>
+            <h2 class="mt-3 text-3xl font-semibold tracking-tight">Make it specific</h2>
+            <p class="mt-3 text-slate-600">What is one small action you could make room for?</p>
+            <label class="mt-7 block text-sm font-medium">My action<textarea class="mt-2 min-h-28 w-full rounded-2xl border border-stone-300 p-4">Call Mum for ten minutes on Thursday evening.</textarea></label>
+            <a href="#pair" class="mt-7 block rounded-full bg-slate-900 px-5 py-3.5 text-center text-sm font-medium text-white transition hover:bg-teal-700">Continue to invite a buddy</a>
+          </div>
+        </section>
+
+        <section id="pair" class="hidden border-t border-stone-200 py-16">
+          <div class="grid gap-10 lg:grid-cols-[1fr_1.2fr]">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-violet-700">One trusted person</p>
+              <h2 class="mt-3 text-3xl font-semibold tracking-tight">Pair with a buddy</h2>
+              <p class="mt-4 max-w-sm leading-7 text-slate-600">Together is deliberately for one private connection. Choose someone you already trust to be honest and practical with you.</p>
+            </div>
+            <div class="rounded-3xl border border-stone-200 bg-white p-6 sm:p-8">
+              <div id="invite-form">
+                <h3 class="text-lg font-semibold tracking-tight">Invite Liam</h3>
+                <p class="mt-2 text-sm leading-6 text-slate-600">They will receive a private invitation to join your shared space.</p>
+                <label class="mt-6 block text-sm font-medium">Liam’s email<input value="liam@example.com" class="mt-2 w-full rounded-xl border border-stone-300 px-4 py-3.5"></label>
+                <button id="send-invite" class="mt-5 w-full rounded-full bg-slate-900 px-5 py-3.5 text-sm font-medium text-white transition hover:bg-teal-700">Send invitation</button>
+              </div>
+
+              <div id="invite-success" class="hidden">
+                <span class="flex h-11 w-11 items-center justify-center rounded-full bg-teal-100 text-teal-800">
+                  <iconify-icon icon="solar:check-circle-linear" width="23" stroke-width="1.5"></iconify-icon>
+                </span>
+                <h3 class="mt-5 text-xl font-semibold tracking-tight">Invitation sent to Liam</h3>
+                <p class="mt-2 leading-7 text-slate-600">Your shared space is ready. Liam can join using the invitation email or the code below.</p>
+                <div class="mt-5 flex items-center justify-between rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                  <span class="text-sm text-slate-600">Invite code</span>
+                  <span class="rounded-lg bg-white px-3 py-1.5 font-mono text-sm font-semibold tracking-wider text-slate-900">TIDE-47</span>
+                </div>
+                <p class="mt-4 text-sm text-slate-500">Next: go to your dashboard to begin your first daily check-in.</p>
+                <a href="#dashboard" class="mt-6 inline-block rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-teal-700">Go to dashboard</a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="dashboard" class="hidden border-t border-stone-200 py-16">
+          <div class="flex flex-wrap items-end justify-between gap-5">
+            <div>
+              <p class="text-sm text-slate-500">Today <span class="ml-1 text-xs">(demo)</span></p>
+              <h2 class="mt-1 text-4xl font-semibold tracking-tight">Hi, Sam.</h2>
+            </div>
+            <a href="#checkin" class="rounded-full bg-slate-900 px-6 py-3.5 text-sm font-medium text-white transition hover:bg-teal-700">Check in</a>
+          </div>
+
+          <div class="mt-10 grid gap-4 lg:grid-cols-3">
+            <section class="rounded-3xl border border-stone-200 bg-white p-6">
+              <p class="text-xs font-semibold uppercase tracking-[0.16em] text-teal-700">This month</p>
+              <h3 class="mt-3 text-lg font-semibold tracking-tight">Be more present with family</h3>
+              <p class="mt-3 text-sm leading-6 text-slate-600">One direction to return to this month.</p>
+            </section>
+
+            <section class="rounded-3xl border border-stone-200 bg-white p-6">
+              <p class="text-xs font-semibold uppercase tracking-[0.16em] text-violet-700">This week</p>
+              <h3 class="mt-3 text-lg font-semibold tracking-tight">Call Mum for ten minutes on Thursday evening.</h3>
+              <p class="mt-3 text-sm leading-6 text-slate-600">A small, specific action connected to your commitment.</p>
+            </section>
+
+            <section class="rounded-3xl border border-stone-200 bg-white p-6">
+              <p class="text-xs font-semibold uppercase tracking-[0.16em] text-violet-700">Your buddy</p>
+              <div class="mt-3 flex items-center gap-3">
+                <span class="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 text-sm font-semibold text-violet-800">L</span>
+                <h3 class="text-lg font-semibold tracking-tight">Liam</h3>
+              </div>
+              <a href="#catchup" class="mt-5 inline-flex items-center gap-2 text-sm font-medium text-slate-900 underline underline-offset-4">Plan a catch-up <iconify-icon icon="solar:arrow-right-linear" width="16" stroke-width="1.5"></iconify-icon></a>
+            </section>
+          </div>
+        </section>
+
+        <section id="checkin" class="hidden border-t border-stone-200 py-16">
+          <div class="mx-auto max-w-2xl">
+            <div id="checkin-form">
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">Daily check-in</p>
+              <h2 class="mt-3 text-3xl font-semibold tracking-tight">How are you arriving?</h2>
+              <p class="mt-3 text-slate-600">Choose the word that feels closest. This is shared with Liam after you check in.</p>
+
+              <div class="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <button type="button" data-feeling="Steady" class="feeling-choice rounded-2xl border border-stone-300 bg-white px-4 py-5 text-sm font-medium transition hover:border-teal-500">Steady</button>
+                <button type="button" data-feeling="Stretched" class="feeling-choice rounded-2xl border border-stone-300 bg-white px-4 py-5 text-sm font-medium transition hover:border-teal-500">Stretched</button>
+                <button type="button" data-feeling="Hopeful" class="feeling-choice rounded-2xl border border-stone-300 bg-white px-4 py-5 text-sm font-medium transition hover:border-teal-500">Hopeful</button>
+                <button type="button" data-feeling="Flat" class="feeling-choice rounded-2xl border border-stone-300 bg-white px-4 py-5 text-sm font-medium transition hover:border-teal-500">Flat</button>
+              </div>
+
+              <label class="mt-7 block text-sm font-medium">Anything you want Liam to know? <span class="font-normal text-slate-500">Optional</span><textarea class="mt-2 min-h-28 w-full rounded-2xl border border-stone-300 bg-white p-4 leading-7" placeholder="A short note, if it would help."></textarea></label>
+              <button id="complete-checkin" disabled class="mt-7 rounded-full bg-slate-300 px-6 py-3.5 text-sm font-medium text-white transition">Complete check-in</button>
+            </div>
+
+            <div id="checkin-success" class="hidden rounded-3xl border border-stone-200 bg-white p-6 sm:p-8">
+              <span class="flex h-11 w-11 items-center justify-center rounded-full bg-teal-100 text-teal-800">
+                <iconify-icon icon="solar:check-circle-linear" width="23" stroke-width="1.5"></iconify-icon>
+              </span>
+              <p class="mt-5 text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">Check-in complete</p>
+              <h2 class="mt-3 text-3xl font-semibold tracking-tight">You checked in as <span id="selected-feeling">steady</span>.</h2>
+              <p class="mt-3 leading-7 text-slate-600">Liam can now see this check-in in your shared space. There is nothing else you need to do today.</p>
+              <p class="mt-4 rounded-xl bg-stone-100 px-4 py-3 text-xs leading-5 text-slate-500">Demo state: this completion is shown only for the prototype and is not saved.</p>
+              <a href="#dashboard" class="mt-6 inline-block rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-teal-700">Go to dashboard</a>
+            </div>
+          </div>
+        </section>
+
+        <section id="buddy" class="hidden border-t border-stone-200 py-16">
+          <div class="mx-auto max-w-3xl">
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-violet-700">Your connection</p>
+            <div class="mt-3 flex items-center gap-4">
+              <span class="flex h-12 w-12 items-center justify-center rounded-full bg-violet-100 text-lg font-semibold text-violet-800">L</span>
+              <div>
+                <h2 class="text-3xl font-semibold tracking-tight">Liam</h2>
+                <p class="mt-1 text-slate-600">Your one trusted buddy.</p>
+              </div>
+            </div>
+            <div class="mt-8 rounded-3xl border border-stone-200 bg-white p-6">
+              <p class="text-sm font-medium">Shared focus</p>
+              <p class="mt-2 leading-7 text-slate-600">You are working toward being more present with family, one small action at a time.</p>
+              <a href="#catchup" class="mt-5 inline-block rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-teal-700">Plan a catch-up</a>
+            </div>
+          </div>
+        </section>
+
+        <section id="catchup" class="hidden border-t border-stone-200 py-16">
+          <div class="mx-auto max-w-2xl">
+            <div id="catchup-form">
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-violet-700">Catch-up</p>
+              <h2 class="mt-3 text-3xl font-semibold tracking-tight">Make space to talk</h2>
+              <p class="mt-3 text-slate-600">A simple weekly moment to connect with Liam. Keep it practical and kind.</p>
+
+              <div class="mt-8 rounded-3xl border border-stone-200 bg-white p-6">
+                <label class="block text-sm font-medium">When would you like to catch up?
+                  <input value="Thursday evening" class="mt-2 w-full rounded-xl border border-stone-300 px-4 py-3.5 text-slate-900 outline-none ring-violet-700 focus:ring-2">
+                </label>
+                <label class="mt-5 block text-sm font-medium">A simple intention <span class="font-normal text-slate-500">Optional</span>
+                  <textarea class="mt-2 min-h-24 w-full rounded-2xl border border-stone-300 p-4 leading-7">Talk about how this week is going and what would help next.</textarea>
+                </label>
+                <button id="plan-catchup" class="mt-6 rounded-full bg-slate-900 px-6 py-3.5 text-sm font-medium text-white transition hover:bg-violet-700">Plan catch-up</button>
+              </div>
+            </div>
+
+            <div id="catchup-success" class="hidden rounded-3xl border border-stone-200 bg-white p-6 sm:p-8">
+              <span class="flex h-11 w-11 items-center justify-center rounded-full bg-violet-100 text-violet-800">
+                <iconify-icon icon="solar:calendar-mark-linear" width="23" stroke-width="1.5"></iconify-icon>
+              </span>
+              <p class="mt-5 text-xs font-semibold uppercase tracking-[0.2em] text-violet-700">Catch-up planned</p>
+              <h2 class="mt-3 text-3xl font-semibold tracking-tight">You made space for Liam.</h2>
+              <p class="mt-3 leading-7 text-slate-600">Your catch-up is set for Thursday evening. Liam would be notified in the full product.</p>
+              <p class="mt-4 rounded-xl bg-stone-100 px-4 py-3 text-xs leading-5 text-slate-500">Demo state: this catch-up is shown only for the prototype and is not saved.</p>
+              <a href="#dashboard" class="mt-6 inline-block rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-teal-700">Go to dashboard</a>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="border-t border-stone-200 px-5 py-8 text-center text-sm text-slate-500">
+        Together is a private peer-support space, not therapy, medical advice, or crisis support.
+      </footer>
+    </div>
+  </main>
+
+  <script>
+    (function () {
+      var appPages = ["dashboard", "checkin", "buddy", "catchup"];
+      var selectedFeeling = "";
+
+      function showPage() {
+        var id = window.location.hash.slice(1) || "welcome";
+        var target = document.getElementById(id);
+
+        if (!target || target.tagName !== "SECTION") {
+          target = document.getElementById("welcome");
+          id = "welcome";
+        }
+
+        document.querySelectorAll("main > section[id]").forEach(function (section) {
+          section.classList.toggle("hidden", section !== target);
+        });
+
+        var isInApp = appPages.includes(id);
+        var nav = document.getElementById("app-nav");
+        var action = document.getElementById("header-action");
+
+        nav.classList.toggle("hidden", !isInApp);
+        action.href = isInApp ? "#checkin" : "#login";
+        action.textContent = isInApp ? "Check in" : "Sign in";
+        action.className = isInApp
+          ? "rounded-full bg-teal-800 px-5 py-3 text-sm font-medium text-white transition hover:bg-teal-900"
+          : "rounded-full border border-slate-600 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-800 hover:text-white";
+
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      function updateValueCount() {
+        var count = document.querySelectorAll(".value-choice.border-teal-700").length;
+        document.getElementById("value-count").textContent = count + " of 5 chosen";
+        return count;
+      }
+
+      function setValueSelected(button, selected) {
+        button.classList.toggle("border-2", selected);
+        button.classList.toggle("border-teal-700", selected);
+        button.classList.toggle("bg-teal-50", selected);
+        button.classList.toggle("border", !selected);
+        button.classList.toggle("border-stone-300", !selected);
+        button.classList.toggle("bg-white", !selected);
+        button.setAttribute("aria-pressed", selected ? "true" : "false");
+      }
+
+      function showValueMessage(message) {
+        var messageElement = document.getElementById("custom-value-message");
+        messageElement.textContent = message;
+        messageElement.classList.remove("hidden");
+      }
+
+      function clearValueMessage() {
+        var messageElement = document.getElementById("custom-value-message");
+        messageElement.textContent = "";
+        messageElement.classList.add("hidden");
+      }
+
+      function toggleValue(button) {
+        var isSelected = button.classList.contains("border-teal-700");
+
+        if (!isSelected && updateValueCount() >= 5) {
+          showValueMessage("You can choose up to five values. Deselect one to choose another.");
+          return;
+        }
+
+        setValueSelected(button, !isSelected);
+        clearValueMessage();
+        updateValueCount();
+      }
+
+      function addCustomValue() {
+        var input = document.getElementById("custom-value-input");
+        var value = input.value.trim();
+        var normalizedValue = value.toLowerCase();
+        var grid = document.getElementById("values-grid");
+
+        if (!value) {
+          showValueMessage("Write a value before adding it.");
+          input.focus();
+          return;
+        }
+
+        var existingValues = Array.from(grid.querySelectorAll(".value-choice")).map(function (button) {
+          return button.querySelector("span").textContent.trim().toLowerCase();
+        });
+
+        if (existingValues.includes(normalizedValue)) {
+          showValueMessage("That value is already in your list.");
+          input.focus();
+          return;
+        }
+
+        if (updateValueCount() >= 5) {
+          showValueMessage("You have already chosen five values. Deselect one before adding another.");
+          return;
+        }
+
+        var button = document.createElement("button");
+        button.type = "button";
+        button.setAttribute("data-value", "");
+        button.setAttribute("aria-pressed", "true");
+        button.className = "value-choice rounded-2xl border-2 border-teal-700 bg-teal-50 p-5 text-left transition hover:border-teal-400";
+        button.innerHTML = '<span class="font-semibold"></span><span class="mt-1 block text-sm text-slate-600">A value you added for yourself.</span>';
+        button.querySelector("span").textContent = value;
+
+        grid.appendChild(button);
+        input.value = "";
+        clearValueMessage();
+        updateValueCount();
+      }
+
+      window.addEventListener("hashchange", showPage);
+      showPage();
+
+      document.getElementById("values-grid").addEventListener("click", function (event) {
+        var button = event.target.closest("[data-value]");
+        if (button) {
+          toggleValue(button);
+        }
+      });
+
+      document.getElementById("add-custom-value").addEventListener("click", addCustomValue);
+
+      document.getElementById("custom-value-input").addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          addCustomValue();
+        }
+      });
+
+      document.querySelectorAll("[data-commitment]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          document.querySelectorAll("[data-commitment]").forEach(function (item) {
+            item.classList.remove("border-2", "border-teal-700", "bg-teal-50");
+            item.classList.add("border", "border-stone-200", "bg-white");
+          });
+
+          button.classList.remove("border", "border-stone-200", "bg-white");
+          button.classList.add("border-2", "border-teal-700", "bg-teal-50");
+        });
+      });
+
+      document.getElementById("send-invite").addEventListener("click", function () {
+        document.getElementById("invite-form").classList.add("hidden");
+        document.getElementById("invite-success").classList.remove("hidden");
+      });
+
+      document.querySelectorAll(".feeling-choice").forEach(function (button) {
+        button.addEventListener("click", function () {
+          document.querySelectorAll(".feeling-choice").forEach(function (item) {
+            item.classList.remove("border-2", "border-teal-700", "bg-teal-50");
+            item.classList.add("border", "border-stone-300", "bg-white");
+          });
+
+          button.classList.remove("border", "border-stone-300", "bg-white");
+          button.classList.add("border-2", "border-teal-700", "bg-teal-50");
+
+          selectedFeeling = button.getAttribute("data-feeling");
+          var completeButton = document.getElementById("complete-checkin");
+          completeButton.disabled = false;
+          completeButton.classList.remove("bg-slate-300");
+          completeButton.classList.add("bg-slate-900", "hover:bg-teal-700");
+        });
+      });
+
+      document.getElementById("complete-checkin").addEventListener("click", function () {
+        if (!selectedFeeling) {
+          return;
+        }
+
+        document.getElementById("selected-feeling").textContent = selectedFeeling.toLowerCase();
+        document.getElementById("checkin-form").classList.add("hidden");
+        document.getElementById("checkin-success").classList.remove("hidden");
+      });
+
+      document.getElementById("plan-catchup").addEventListener("click", function () {
+        document.getElementById("catchup-form").classList.add("hidden");
+        document.getElementById("catchup-success").classList.remove("hidden");
+      });
+    }());
+  </script>
+</body>
+</html>

@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Card de Prompt Dinâmico - TrendlyAI</title>
+<link href="https://unpkg.com/@geist-ui/fonts/geist-sans.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<style>
+:root {
+--brand-pink: #bf4ea1;
+--brand-mint: #9df4e9;
+--grad-primary: linear-gradient(135deg, var(--brand-pink) 0%, var(--brand-mint) 100%);
+}
+body { -webkit-tap-highlight-color: transparent; }
+.prompt-card {
+position: relative; overflow: hidden; background-color: rgba(255, 255, 255, 0.05);
+backdrop-filter: blur(10px); border-radius: 16px; padding: 24px;
+border: 1px solid rgba(255, 255, 255, 0.1);
+transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+cursor: pointer;
+}
+.card-glow::before {
+content: ''; position: absolute; inset: 0; background: var(--grad-primary);
+opacity: 0.1; filter: blur(30px); border-radius: inherit;
+animation: pulse-glow 5s ease-in-out infinite; pointer-events: none;
+}
+@keyframes pulse-glow { 0%, 100% { opacity: 0.08; transform: scale(0.95); } 50% { opacity: 0.15; transform: scale(1.05); } }
+.prompt-card:hover { transform: translateY(-8px) scale(1.02); box-shadow: 0 15px 35px rgba(0,0,0,0.4); }
+.border-glow { position: absolute; inset: 0; border-radius: inherit; opacity: 0; transition: opacity 0.4s ease; pointer-events: none; mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+.prompt-card:hover .border-glow { opacity: 1; }
+.border-glow::before { content: ''; position: absolute; inset: -150%; background: conic-gradient(from 180deg at 50% 50%, var(--brand-pink), var(--brand-mint), var(--brand-pink)); animation: spin 4s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.liquid-glass-tag { backdrop-filter: blur(10px); background-color: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.16); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2); border-radius: 9999px; padding: 4px 12px; font-size: 11px; font-weight: 500; color: white; }
+.prompt-modal-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.5); backdrop-filter: blur(8px); transition: opacity 0.4s ease; }
+.prompt-modal-container {
+position: fixed; z-index: 101; background: rgba(26, 27, 30, 0.8);
+backdrop-filter: blur(24px); border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.prompt-modal-inner-content { opacity: 0; transition: opacity 0.2s ease 0.2s; }
+.prompt-modal-container.open .prompt-modal-inner-content { opacity: 1; }
+.contained-card { background-color: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; }
+.tool-logo-card { transition: all 0.2s ease; background-color: rgba(255,255,255,0.05); border: 1px solid transparent; }
+.tool-logo-card:hover { transform: scale(1.1); background-color: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.15); }
+.prompt-preview { background-color: rgba(0,0,0,0.2); border-radius: 8px; font-size: 13px; line-height: 1.6; color: #d1d5db; max-height: 120px; overflow: hidden; position: relative; padding: 1rem; font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace; }
+.prompt-preview::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 40px; background: linear-gradient(to top, rgba(16,17,20,1), transparent); }
+.prompt-textarea { font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace; font-size: 13px; line-height: 1.6; }
+#toast-notification { position: fixed; bottom: 1.5rem; left: 50%; transform: translate(-50%, 20px); opacity: 0; transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); z-index: 200; pointer-events: none; backdrop-filter: blur(16px); background-color: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); border-radius: 9999px; padding: 0.75rem 1.5rem; color: white; font-size: 0.875rem; font-weight: 500; }
+#toast-notification.show { transform: translate(-50%, 0); opacity: 1; }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.fade-in { animation: fadeIn 0.8s ease-out forwards; opacity: 0; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+.modal-scroll-container { overscroll-behavior: contain; min-height: 0; }
+@media (min-width: 769px) {
+.prompt-modal-container { transition: all 0.4s cubic-bezier(0.45, 0, 0.55, 1); will-change: width, height, top, left; }
+}
+@media (max-width: 768px) {
+.prompt-modal-container {
+bottom: 0; left: 0; right: 0; width: 100%; height: 90vh;
+border-radius: 20px 20px 0 0; border-bottom: none;
+transform: translateY(100%); transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.prompt-modal-container.open { transform: translateY(0); }
+}
+</style></head>
+<body class="min-h-screen bg-gray-950 font-['Inter'] text-white flex items-center justify-center p-4">
+    
+    <div id="prompt-container" class="w-full max-w-md"></div>
+
+    <div id="prompt-modal-backdrop" class="prompt-modal-backdrop hidden opacity-0"></div>
+    <div id="prompt-modal-container" class="prompt-modal-container"></div>
+
+    <div id="toast-notification">Prompt copiado!</div>
+
+<script>
+const promptsData = [
+    { 
+        id: "prompt-roteiro-viral-001", 
+        title: "Crie um Roteiro Viral em 30 Segundos", 
+        description: "Transforme qualquer ideia em uma estrutura de roteiro de 3 atos para engajamento máximo.", 
+        type: "text-generation", 
+        tags: ["roteiro", "storytelling"], 
+        compatible_with: ["Claude", "ChatGPT"], 
+        sequence_prompts: ["prompt-titulos-seo-002"], 
+        content: `Você é um especialista em storytelling viral para redes sociais.
+
+CONTEXTO:
+- Tema: [TEMA]
+- Público-alvo: [PÚBLICO-ALVO]
+- Tom de voz: [TOM DE VOZ]
+- Duração: 30-60 segundos
+
+ESTRUTURA OBRIGATÓRIA:
+1. GANCHO (0-3s): Uma frase impactante que pare o scroll
+2. DESENVOLVIMENTO (3-45s): Apresente o problema/solução/história
+3. CALL TO ACTION (45-60s): Convide para ação específica
+
+CRITÉRIOS DE SUCESSO:
+- Use linguagem simples e direta
+- Inclua elementos de curiosidade ou surpresa
+- Termine com uma pergunta ou convite à interação
+- Mantenha o ritmo acelerado
+
+Crie o roteiro seguindo exatamente esta estrutura.`, 
+        how_to_use: "Substitua [TEMA], [PÚBLICO-ALVO] e [TOM DE VOZ] pelos seus dados específicos antes de usar o prompt." 
+    },
+    { 
+        id: "prompt-titulos-seo-002", 
+        title: "Crie Títulos Otimizados para SEO", 
+        description: "Use este prompt para gerar títulos magnéticos e otimizados para mecanismos de busca.", 
+        type: "text-generation", 
+        tags: ["seo", "títulos"], 
+        compatible_with: ["Claude", "ChatGPT"], 
+        content: `Crie 5 títulos otimizados para SEO sobre [TEMA] seguindo estas diretrizes:
+
+1. Entre 50-60 caracteres
+2. Inclua palavra-chave principal no início
+3. Use números quando possível
+4. Inclua gatilhos emocionais
+5. Seja específico e claro
+
+FÓRMULAS TESTADAS:
+- "Como [AÇÃO] em [TEMPO] (Guia [ANO])"
+- "[NÚMERO] Formas de [RESULTADO] sem [OBSTÁCULO]"
+- "O Segredo para [BENEFÍCIO] que [AUTORIDADE] não Conta"
+
+Para cada título, explique brevemente por que ele funciona.`, 
+        how_to_use: "Substitua [TEMA] pelo assunto desejado e ajuste as variáveis conforme necessário." 
+    }
+];
+
+const toolLogos = { 
+    "Claude": `<svg viewBox="0 0 24 24" fill="currentColor" class="w-full h-full"><path d="M12 2L2 7v10c0 5.55 3.84 9.74 9 11 5.16-1.26 9-5.45 9-11V7l-10-5z"/></svg>`, 
+    "ChatGPT": `<svg viewBox="0 0 24 24" fill="currentColor" class="w-full h-full"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16z"/></svg>` 
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    const promptContainer = document.getElementById('prompt-container');
+    const modalBackdrop = document.getElementById('prompt-modal-backdrop');
+    const modalContainer = document.getElementById('prompt-modal-container');
+    let currentPromptId = null;
+    let originalCardRect = null;
+    let isMobile = window.innerWidth <= 768;
+
+    function renderCard(prompt) {
+        const tagsHTML = prompt.tags.map(tag => `<span class="liquid-glass-tag">${tag}</span>`).join('');
+        return `
+            <div class="prompt-card fade-in relative card-glow" data-prompt-id="${prompt.id}">
+                <div class="border-glow"><div></div></div>
+                <div class="relative z-10">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex-1">
+                            <h3 class="text-lg font-semibold text-white mb-2 leading-snug" style="font-family:'Geist',sans-serif;">${prompt.title}</h3>
+                            <p class="text-sm text-white/70 line-clamp-2 leading-relaxed">${prompt.description}</p>
+                        </div>
+                        <div class="ml-4 flex-shrink-0">
+                            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--brand-pink)] to-[var(--brand-mint)] flex items-center justify-center">
+                                <i data-lucide="zap" class="w-5 h-5 text-white"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex flex-wrap gap-2 mb-4">
+                        ${tagsHTML}
+                    </div>
+                    
+                    <div class="flex items-center justify-between text-xs text-white/50">
+                        <span>Clique para abrir</span>
+                        <div class="flex items-center gap-1">
+                            <i data-lucide="arrow-right" class="w-3 h-3"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+    }
+    
+    function populateOficina(promptId) {
+        const prompt = promptsData.find(p => p.id === promptId);
+        if (!prompt) return;
+
+        let howToUseHTML = '', recommendationsHTML = '', promptAreaHTML = '', nextStepsHTML = '';
+
+        if (prompt.how_to_use) {
+            howToUseHTML = `<div class="contained-card p-4 relative overflow-hidden card-glow">
+                <div class="relative">
+                    <div class="flex items-start gap-3">
+                        <i data-lucide="compass" class="w-5 h-5 text-[var(--brand-mint)] flex-shrink-0 mt-1"></i>
+                        <div>
+                            <h4 class="font-semibold">Guia Rápido</h4>
+                            <p class="text-sm text-white/70 mt-1">${prompt.how_to_use}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        if (prompt.compatible_with?.length > 0) {
+            const toolsHTML = prompt.compatible_with.map(tool => `
+                <div class="tool-logo-card p-2 rounded-lg flex flex-col items-center gap-1" title="${tool}">
+                    <div class="w-8 h-8 text-white/70 flex items-center justify-center">
+                        ${toolLogos[tool] || `<i data-lucide="cpu" class="w-4 h-4"></i>`}
+                    </div>
+                    <span class="text-xs text-white/60">${tool}</span>
+                </div>
+            `).join('');
+            recommendationsHTML = `<div class="contained-card p-4">
+                <h4 class="font-semibold mb-3 flex items-center gap-2">
+                    <i data-lucide="verified" class="w-4 h-4 text-[var(--brand-mint)]"></i>
+                    Também funciona com
+                </h4>
+                <div class="flex items-center flex-wrap gap-3">
+                    ${toolsHTML}
+                </div>
+            </div>`;
+        }
+
+        if (prompt.content) {
+            const savedContent = localStorage.getItem(prompt.id) || prompt.content;
+            const promptPreviewHTML = savedContent.substring(0, 200).replace(/\n/g, '<br>') + (savedContent.length > 200 ? '...' : '');
+            promptAreaHTML = `<div class="contained-card p-4 space-y-4">
+                <div class="flex justify-between items-center">
+                    <h4 class="font-semibold flex items-center gap-2">
+                        <i data-lucide="code-2" class="w-4 h-4 text-[var(--brand-mint)]"></i>
+                        Prompt Principal
+                    </h4>
+                    <button class="copy-prompt-btn p-2 rounded-lg hover:bg-white/10 transition-colors" title="Copiar prompt">
+                        <i data-lucide="copy" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                <div id="prompt-display-mode">
+                    <div class="prompt-preview">${promptPreviewHTML}</div>
+                    <button id="expand-prompt-btn" class="mt-3 text-sm font-semibold text-[var(--brand-mint)] hover:text-white transition-colors">
+                        Expandir para editar
+                    </button>
+                </div>
+                <div id="prompt-edit-mode" class="hidden">
+                    <textarea class="prompt-textarea w-full bg-black/30 p-4 rounded-lg text-sm leading-relaxed border border-white/10 resize-none focus:outline-none focus:border-[var(--brand-pink)]/50 transition-colors" rows="1">${savedContent}</textarea>
+                    <div class="mt-3 flex items-center gap-3">
+                        <button class="save-prompt-btn hidden bg-green-500/20 text-green-300 text-xs font-semibold px-3 py-1.5 rounded-full hover:bg-green-500/30 transition-colors">
+                            Salvar Alterações
+                        </button>
+                        <button id="collapse-prompt-btn" class="text-sm text-white/60 hover:text-white transition-colors">
+                            Recolher
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        if (prompt.sequence_prompts?.length > 0) {
+            const nextStepsHTMLContent = prompt.sequence_prompts.map(id => {
+                const nextPrompt = promptsData.find(p => p.id === id);
+                return nextPrompt ? `
+                    <a href="#" class="next-step-link block bg-white/5 hover:bg-white/10 p-3 rounded-lg transition-colors group" data-next-prompt-id="${id}">
+                        <p class="font-semibold text-xs text-[var(--brand-mint)] mb-1">Próximo Passo:</p>
+                        <p class="font-medium text-sm flex justify-between items-center">
+                            <span>${nextPrompt.title}</span>
+                            <i data-lucide="arrow-right" class="w-4 h-4 opacity-60 group-hover:opacity-100 group-hover:translate-x-1 transition-all"></i>
+                        </p>
+                    </a>
+                ` : '';
+            }).join('');
+            nextStepsHTML = `<div class="contained-card p-4 relative overflow-hidden card-glow">
+                <div class="relative">
+                    <h4 class="font-semibold mb-3 flex items-center gap-2">
+                        <i data-lucide="workflow" class="w-4 h-4 text-[var(--brand-mint)]"></i>
+                        Jornada Conectada
+                    </h4>
+                    <div class="space-y-3">
+                        ${nextStepsHTMLContent}
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        modalContainer.innerHTML = `
+            <button id="close-modal-btn" class="absolute top-4 right-4 w-10 h-10 flex items-center justify-center text-white/70 hover:text-white transition-colors bg-black/20 hover:bg-black/40 rounded-full z-10">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+            <div class="prompt-modal-inner-content h-full">
+                <div class="p-6 pt-12 md:pt-6 h-full flex flex-col">
+                    <div class="flex-shrink-0 flex justify-between items-start mb-6">
+                        <h2 id="modal-title" class="text-2xl font-semibold tracking-tight pr-10" style="font-family:'Geist',sans-serif;">${prompt.title}</h2>
+                    </div>
+                    <div class="modal-scroll-container flex-grow overflow-y-auto space-y-6 hide-scrollbar -mr-2 pr-2">
+                        ${howToUseHTML}${recommendationsHTML}${promptAreaHTML}${nextStepsHTML}
+                    </div>
+                </div>
+            </div>`;
+        
+        lucide.createIcons({ strokeWidth: 1.5 });
+    }
+    
+    function openOficina(cardElement) {
+        currentPromptId = cardElement.dataset.promptId;
+        populateOficina(currentPromptId);
+        document.body.style.overflow = 'hidden';
+        modalBackdrop.classList.remove('hidden');
+        
+        if (!isMobile) {
+            originalCardRect = cardElement.getBoundingClientRect();
+            Object.assign(modalContainer.style, { 
+                width: `${originalCardRect.width}px`, 
+                height: `${originalCardRect.height}px`, 
+                top: `${originalCardRect.top}px`, 
+                left: `${originalCardRect.left}px`, 
+                transform: '', 
+                borderRadius: '16px' 
+            });
+        }
+
+        requestAnimationFrame(() => {
+            modalBackdrop.style.opacity = '1';
+            if (!isMobile) {
+                Object.assign(modalContainer.style, { 
+                    width: 'min(90vw, 800px)', 
+                    height: 'min(85vh, 750px)', 
+                    top: '50%', 
+                    left: '50%', 
+                    transform: 'translate(-50%, -50%)', 
+                    borderRadius: '20px' 
+                });
+            }
+            setTimeout(() => modalContainer.classList.add('open'), 10);
+        });
+    }
+    
+    function closeOficina() {
+        if (!currentPromptId) return;
+        document.body.style.overflow = '';
+        modalBackdrop.style.opacity = '0';
+        modalContainer.classList.remove('open');
+        
+        if (!isMobile && originalCardRect) {
+            Object.assign(modalContainer.style, { 
+                width: `${originalCardRect.width}px`, 
+                height: `${originalCardRect.height}px`, 
+                top: `${originalCardRect.top}px`, 
+                left: `${originalCardRect.left}px`, 
+                transform: '', 
+                borderRadius: '16px' 
+            });
+        }
+        
+        setTimeout(() => {
+            modalBackdrop.classList.add('hidden');
+            currentPromptId = null;
+        }, 500);
+    }
+    
+    function autoResizeTextarea(textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 300) + 'px';
+    }
+
+    function showToast(message) {
+        const toast = document.getElementById('toast-notification');
+        toast.textContent = message;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    promptContainer.addEventListener('click', e => {
+        const card = e.target.closest('.prompt-card');
+        if (card) openOficina(card);
+    });
+
+    modalContainer.addEventListener('click', e => {
+        if (!currentPromptId) return;
+        
+        if (e.target.closest('#close-modal-btn')) {
+            closeOficina();
+        }
+        
+        if (e.target.closest('#expand-prompt-btn')) {
+            document.getElementById('prompt-display-mode').classList.add('hidden');
+            document.getElementById('prompt-edit-mode').classList.remove('hidden');
+            const textarea = document.querySelector('.prompt-textarea');
+            autoResizeTextarea(textarea);
+            textarea.focus();
+        }
+        
+        if (e.target.closest('#collapse-prompt-btn')) {
+            document.getElementById('prompt-edit-mode').classList.add('hidden');
+            document.getElementById('prompt-display-mode').classList.remove('hidden');
+        }
+        
+        const copyBtn = e.target.closest('.copy-prompt-btn');
+        if (copyBtn) {
+            const editMode = document.getElementById('prompt-edit-mode');
+            const textarea = editMode?.querySelector('.prompt-textarea');
+            const textToCopy = (!editMode?.classList.contains('hidden') && textarea) 
+                ? textarea.value
+                : (localStorage.getItem(currentPromptId) || promptsData.find(p=>p.id === currentPromptId).content);
+            
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                showToast('Prompt copiado!');
+            });
+        }
+        
+        if (e.target.closest('.save-prompt-btn')) {
+            const textarea = document.querySelector('.prompt-textarea');
+            localStorage.setItem(currentPromptId, textarea.value);
+            showToast('Alterações salvas!');
+            e.target.closest('.save-prompt-btn').classList.add('hidden');
+        }
+        
+        const nextStepLink = e.target.closest('.next-step-link');
+        if (nextStepLink) {
+            e.preventDefault();
+            const nextPromptId = nextStepLink.dataset.nextPromptId;
+            currentPromptId = nextPromptId;
+            populateOficina(nextPromptId);
+        }
+    });
+
+    modalContainer.addEventListener('input', e => {
+        if (e.target.classList.contains('prompt-textarea')) {
+            autoResizeTextarea(e.target);
+            const saveBtn = e.target.closest('.contained-card').querySelector('.save-prompt-btn');
+            if (saveBtn) saveBtn.classList.remove('hidden');
+        }
+    });
+
+    modalBackdrop.addEventListener('click', closeOficina);
+    document.addEventListener('keydown', e => { 
+        if (e.key === 'Escape' && currentPromptId) closeOficina(); 
+    });
+
+    window.addEventListener('resize', () => { isMobile = window.innerWidth <= 768; });
+
+    // Initialize with first prompt
+    const initialPromptId = promptsData[0].id;
+    promptContainer.innerHTML = renderCard(promptsData.find(p => p.id === initialPromptId));
+    lucide.createIcons({ strokeWidth: 1.5 });
+});
+</script>
+</body>
+</html>

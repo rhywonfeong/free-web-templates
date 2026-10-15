@@ -1,0 +1,867 @@
+<!doctype html>
+<html lang="id">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ANISTREAM — Anime TV & Movie</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://code.iconify.design/iconify-icon/1.0.8/iconify-icon.min.js"></script>
+<style>
+/* keep everything in style attributes per instruction */
+</style></head>
+<body class="min-h-screen bg-slate-950 text-slate-100" style="font-family: Inter, DM Sans, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;">
+<?php
+  session_start();
+
+  // =========================
+  // CONFIG (EDIT THIS)
+  // =========================
+  // IMPORTANT:
+  // - Keep Client ID in code (public)
+  // - Keep Client Secret ONLY in server environment (not in this file)
+  //
+  // cPanel examples:
+  // - Setup "Environment Variables" (if available) or add to .htaccess:
+  //   SetEnv MAL_CLIENT_SECRET "your_secret_here"
+  //
+  // You can also set it in server config / php-fpm pool.
+  $MAL_CLIENT_ID = '104a110153499ca7047f033a16cbc7d6';
+  $MAL_CLIENT_SECRET = getenv('MAL_CLIENT_SECRET') ?: ''; // <-- not stored in file
+
+  // Auto-detect redirect URI based on current URL (works on cPanel).
+  $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+  $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+  $path = strtok($_SERVER['REQUEST_URI'], '?');
+  $REDIRECT_URI = $scheme . '://' . $host . $path;
+
+  // Optional: embed providers (replace with your own sources).
+  $EMBED_PROVIDERS = [
+    [
+      'name' => 'Provider A',
+      'note' => 'Search embed by title',
+      'url'  => 'https://example.com/embed/search?q={query}',
+    ],
+    [
+      'name' => 'Provider B',
+      'note' => 'Search embed by title',
+      'url'  => 'https://example.org/player?search={query}',
+    ],
+  ];
+
+  // =========================
+  // HELPERS
+  // =========================
+  function base64url_encode($data) {
+    return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+  }
+  function random_verifier($len = 64) {
+    $bytes = random_bytes($len);
+    return base64url_encode($bytes);
+  }
+  function pkce_challenge($verifier) {
+    return base64url_encode(hash('sha256', $verifier, true));
+  }
+  function http_json($url, $headers = [], $method = 'GET', $body = null) {
+    $opts = [
+      'http' => [
+        'method' => $method,
+        'header' => implode("\r\n", $headers),
+        'ignore_errors' => true,
+      ],
+    ];
+    if ($body !== null) {
+      $opts['http']['content'] = $body;
+    }
+    $context = stream_context_create($opts);
+    $res = @file_get_contents($url, false, $context);
+    $status = 0;
+    if (isset($http_response_header) && is_array($http_response_header)) {
+      foreach ($http_response_header as $h) {
+        if (preg_match('#^HTTP/\S+\s+(\d{3})#', $h, $m)) { $status = intval($m[1]); break; }
+      }
+    }
+    $json = json_decode($res ?? '', true);
+    return [$status, $json, $res];
+  }
+  function esc($s) {
+    return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+  }
+
+  // =========================
+  // ROUTING
+  // =========================
+  $view = $_GET['view'] ?? 'home';
+  $q = trim($_GET['q'] ?? '');
+  $type = $_GET['type'] ?? 'all';
+  $season = $_GET['season'] ?? '';
+  $year = $_GET['year'] ?? '';
+  $id = $_GET['id'] ?? '';
+  $embed = $_GET['embed'] ?? '';
+
+  $error = '';
+  $notice = '';
+
+  // =========================
+  // AUTH: Login / Logout / Callback
+  // =========================
+  if (isset($_GET['logout'])) {
+    $_SESSION = [];
+    if (ini_get("session.use_cookies")) {
+      $params = session_get_cookie_params();
+      setcookie(session_name(), '', time() - 42000, $params["path"], $params["domain"], $params["secure"], $params["httponly"]);
+    }
+    session_destroy();
+    header("Location: " . $REDIRECT_URI);
+    exit;
+  }
+
+  // Require secret only for OAuth token exchange (login/callback).
+  if (isset($_GET['login'])) {
+    if (!$MAL_CLIENT_SECRET) {
+      $error = 'MAL_CLIENT_SECRET belum diset di server environment. Set dulu sebelum login.';
+    } else {
+      $state = base64url_encode(random_bytes(24));
+      $verifier = random_verifier(48);
+      $challenge = pkce_challenge($verifier);
+      $_SESSION['oauth_state'] = $state;
+      $_SESSION['pkce_verifier'] = $verifier;
+
+      $authUrl = "https://myanimelist.net/v1/oauth2/authorize?"
+        . http_build_query([
+          'response_type' => 'code',
+          'client_id' => $MAL_CLIENT_ID,
+          'redirect_uri' => $REDIRECT_URI,
+          'code_challenge' => $challenge,
+          'code_challenge_method' => 'S256',
+          'state' => $state,
+        ]);
+
+      header("Location: " . $authUrl);
+      exit;
+    }
+  }
+
+  if (isset($_GET['code'])) {
+    if (!$MAL_CLIENT_SECRET) {
+      $error = 'MAL_CLIENT_SECRET belum diset di server environment. Tidak bisa menukar code menjadi token.';
+    } else {
+      $code = $_GET['code'];
+      $state = $_GET['state'] ?? '';
+      $expected = $_SESSION['oauth_state'] ?? '';
+      $verifier = $_SESSION['pkce_verifier'] ?? '';
+
+      if (!$expected || !$verifier || !$state || $state !== $expected) {
+        $error = 'OAuth state tidak valid. Coba login ulang.';
+      } else {
+        $tokenUrl = "https://myanimelist.net/v1/oauth2/token";
+        $post = http_build_query([
+          'client_id' => $MAL_CLIENT_ID,
+          'client_secret' => $MAL_CLIENT_SECRET,
+          'grant_type' => 'authorization_code',
+          'code' => $code,
+          'redirect_uri' => $REDIRECT_URI,
+          'code_verifier' => $verifier,
+        ]);
+
+        [$status, $json, $raw] = http_json(
+          $tokenUrl,
+          [
+            "Content-Type: application/x-www-form-urlencoded",
+          ],
+          "POST",
+          $post
+        );
+
+        if ($status >= 200 && $status < 300 && isset($json['access_token'])) {
+          $_SESSION['mal_token'] = $json;
+          unset($_SESSION['oauth_state'], $_SESSION['pkce_verifier']);
+          header("Location: " . $REDIRECT_URI . "?view=browse");
+          exit;
+        } else {
+          $error = 'Gagal mendapatkan token dari MAL. Pastikan Client ID/Secret benar dan Redirect URL cocok.';
+        }
+      }
+    }
+  }
+
+  // =========================
+  // MAL API CALLS
+  // =========================
+  $token = $_SESSION['mal_token']['access_token'] ?? null;
+
+  function mal_get($endpoint, $token, $clientId) {
+    $url = "https://api.myanimelist.net/v2/" . ltrim($endpoint, '/');
+    $headers = [
+      "Accept: application/json",
+    ];
+    if ($token) $headers[] = "Authorization: Bearer " . $token;
+    else $headers[] = "X-MAL-CLIENT-ID: " . $clientId;
+
+    return http_json($url, $headers, "GET", null);
+  }
+
+  $user = null;
+  if ($token) {
+    [$sU, $jU] = mal_get("users/@me?fields=anime_statistics", $token, $MAL_CLIENT_ID);
+    if ($sU >= 200 && $sU < 300) $user = $jU;
+  }
+
+  $browseItems = [];
+  $browseMeta = ['next' => null];
+  if ($view === 'browse') {
+    if ($q !== '') {
+      $fields = "id,title,main_picture,mean,rank,popularity,media_type,num_episodes,status,start_date,genres";
+      $limit = 24;
+      $endpoint = "anime?q=" . urlencode($q) . "&limit=" . $limit . "&fields=" . urlencode($fields);
+      [$s, $j] = mal_get($endpoint, $token, $MAL_CLIENT_ID);
+      if ($s >= 200 && $s < 300) {
+        $browseItems = $j['data'] ?? [];
+        $browseMeta['next'] = $j['paging']['next'] ?? null;
+      } else {
+        $error = 'Gagal mengambil data pencarian dari MAL.';
+      }
+    } else if ($season && $year) {
+      $fields = "id,title,main_picture,mean,rank,popularity,media_type,num_episodes,status,start_date,genres";
+      $limit = 24;
+      $endpoint = "anime/season/" . urlencode($year) . "/" . urlencode($season)
+        . "?limit=" . $limit . "&fields=" . urlencode($fields);
+      [$s, $j] = mal_get($endpoint, $token, $MAL_CLIENT_ID);
+      if ($s >= 200 && $s < 300) {
+        $browseItems = $j['data'] ?? [];
+        $browseMeta['next'] = $j['paging']['next'] ?? null;
+      } else {
+        $error = 'Gagal mengambil data season dari MAL.';
+      }
+    } else {
+      $fields = "id,title,main_picture,mean,rank,popularity,media_type,num_episodes,status,start_date,genres";
+      $limit = 24;
+      $rankingType = "all";
+      $endpoint = "anime/ranking?ranking_type=" . urlencode($rankingType) . "&limit=" . $limit . "&fields=" . urlencode($fields);
+      [$s, $j] = mal_get($endpoint, $token, $MAL_CLIENT_ID);
+      if ($s >= 200 && $s < 300) {
+        $browseItems = $j['data'] ?? [];
+        $browseMeta['next'] = $j['paging']['next'] ?? null;
+      } else {
+        $error = 'Gagal mengambil ranking dari MAL.';
+      }
+    }
+
+    if ($type !== 'all' && $browseItems) {
+      $browseItems = array_values(array_filter($browseItems, function($row) use ($type) {
+        $mt = strtolower($row['node']['media_type'] ?? '');
+        if ($type === 'tv') return in_array($mt, ['tv', 'tv_special', 'ona', 'ova'], true);
+        if ($type === 'movie') return ($mt === 'movie');
+        return true;
+      }));
+    }
+  }
+
+  $detail = null;
+  if (($view === 'detail' || $view === 'watch') && $id) {
+    $fields = "id,title,main_picture,alternative_titles,start_date,end_date,synopsis,mean,rank,popularity,num_list_users,num_scoring_users,media_type,status,num_episodes,average_episode_duration,genres,studios,source,rating,nsfw,created_at,updated_at";
+    [$sD, $jD] = mal_get("anime/" . urlencode($id) . "?fields=" . urlencode($fields), $token, $MAL_CLIENT_ID);
+    if ($sD >= 200 && $sD < 300) $detail = $jD;
+    else $error = 'Gagal mengambil detail anime.';
+  }
+
+  $embedUrl = '';
+  $embedLabel = '';
+  if ($view === 'watch' && $detail) {
+    $title = $detail['title'] ?? '';
+    $safeQuery = urlencode($title);
+    if ($embed !== '') {
+      foreach ($EMBED_PROVIDERS as $p) {
+        if ($p['name'] === $embed) {
+          $embedUrl = str_replace('{query}', $safeQuery, $p['url']);
+          $embedLabel = $p['name'];
+          break;
+        }
+      }
+    }
+  }
+
+  $brand = "ANISTREAM";
+?>
+
+  <div class="relative">
+    <div class="absolute inset-0 -z-10">
+      <div class="h-72 w-full bg-gradient-to-b from-indigo-500/15 via-slate-950 to-slate-950"></div>
+      <div class="pointer-events-none absolute inset-0 opacity-60" style="background-image: radial-gradient(circle at 20% 20%, rgba(99,102,241,0.22) 0%, rgba(2,6,23,0) 45%), radial-gradient(circle at 80% 30%, rgba(56,189,248,0.14) 0%, rgba(2,6,23,0) 55%);"></div>
+    </div>
+
+    <header class="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between py-6">
+        <a href="?view=home" class="group inline-flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 ring-1 ring-white/10 backdrop-blur">
+            <span class="text-sm font-semibold tracking-tight text-slate-100" style="font-family: DM Sans, Inter, system-ui;">AS</span>
+          </div>
+          <div class="leading-tight">
+            <div class="text-sm font-semibold tracking-tight text-slate-100" style="font-family: DM Sans, Inter, system-ui; letter-spacing: -0.02em;">
+              <?php echo esc($brand); ?>
+            </div>
+            <div class="text-xs text-slate-300/80">Anime TV & Movie • English UI</div>
+          </div>
+        </a>
+
+        <nav class="hidden items-center gap-2 sm:flex">
+          <a href="?view=browse" class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-slate-200 ring-1 ring-white/10 hover:bg-white/5">
+            <iconify-icon icon="lucide:compass" class="text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+            Browse
+          </a>
+          <a href="?view=browse&type=tv" class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-slate-200 ring-1 ring-white/10 hover:bg-white/5">
+            <iconify-icon icon="lucide:tv" class="text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+            TV
+          </a>
+          <a href="?view=browse&type=movie" class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-slate-200 ring-1 ring-white/10 hover:bg-white/5">
+            <iconify-icon icon="lucide:clapperboard" class="text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+            Movies
+          </a>
+        </nav>
+
+        <div class="flex items-center gap-2">
+          <?php if ($user): ?>
+            <div class="hidden items-center gap-2 rounded-xl bg-white/5 px-3 py-2 ring-1 ring-white/10 sm:flex">
+              <iconify-icon icon="lucide:user" class="text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+              <div class="text-xs">
+                <div class="font-medium text-slate-100"><?php echo esc($user['name'] ?? 'User'); ?></div>
+                <div class="text-slate-300/80">Connected</div>
+              </div>
+            </div>
+            <a href="?logout=1" class="inline-flex items-center gap-2 rounded-xl bg-white/5 px-3 py-2 text-xs font-medium text-slate-100 ring-1 ring-white/10 hover:bg-white/10">
+              <iconify-icon icon="lucide:log-out" class="text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+              Logout
+            </a>
+          <?php else: ?>
+            <a href="?login=1" class="inline-flex items-center gap-2 rounded-xl bg-indigo-500/20 px-3 py-2 text-xs font-medium text-indigo-100 ring-1 ring-indigo-400/20 hover:bg-indigo-500/25">
+              <iconify-icon icon="lucide:shield-check" class="text-indigo-200" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+              Connect MAL
+            </a>
+          <?php endif; ?>
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
+      <?php if ($error): ?>
+        <div class="mb-6 rounded-2xl bg-rose-500/10 p-4 ring-1 ring-rose-400/20">
+          <div class="flex items-start gap-3">
+            <iconify-icon icon="lucide:triangle-alert" class="mt-0.5 text-rose-200" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+            <div>
+              <div class="text-sm font-medium tracking-tight text-rose-100">Error</div>
+              <div class="mt-1 text-xs text-rose-100/80"><?php echo esc($error); ?></div>
+            </div>
+          </div>
+        </div>
+      <?php endif; ?>
+
+      <?php if ($notice): ?>
+        <div class="mb-6 rounded-2xl bg-sky-500/10 p-4 ring-1 ring-sky-400/20">
+          <div class="flex items-start gap-3">
+            <iconify-icon icon="lucide:info" class="mt-0.5 text-sky-200" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+            <div>
+              <div class="text-sm font-medium tracking-tight text-sky-100">Notice</div>
+              <div class="mt-1 text-xs text-sky-100/80"><?php echo esc($notice); ?></div>
+            </div>
+          </div>
+        </div>
+      <?php endif; ?>
+
+      <?php if ($view === 'home'): ?>
+        <section class="grid gap-6 lg:grid-cols-12">
+          <div class="lg:col-span-7">
+            <div class="rounded-3xl bg-white/5 p-6 ring-1 ring-white/10 backdrop-blur">
+              <div class="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10">
+                <iconify-icon icon="lucide:sparkles" class="text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                <span class="text-xs font-medium text-slate-200">Anime TV & Movie discovery</span>
+              </div>
+
+              <h1 class="mt-4 text-3xl font-semibold tracking-tight text-slate-50" style="font-family: DM Sans, Inter, system-ui;">
+                Browse anime from MAL, then watch via your own embeds.
+              </h1>
+              <p class="mt-3 text-sm text-slate-200/80">
+                Template ini fokus untuk browsing data (judul, rating, genre, sinopsis) dari MyAnimeList. Fitur “watch” memakai embed provider yang kamu tentukan sendiri.
+              </p>
+
+              <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <a href="?view=browse" class="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-500/20 px-4 py-3 text-sm font-medium text-indigo-100 ring-1 ring-indigo-400/20 hover:bg-indigo-500/25">
+                  <iconify-icon icon="lucide:compass" class="text-indigo-200" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                  Start browsing
+                </a>
+                <?php if (!$user): ?>
+                  <a href="?login=1" class="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/5 px-4 py-3 text-sm font-medium text-slate-100 ring-1 ring-white/10 hover:bg-white/10">
+                    <iconify-icon icon="lucide:shield-check" class="text-slate-200" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                    Connect account (optional)
+                  </a>
+                <?php endif; ?>
+              </div>
+
+              <div class="mt-6 grid gap-3 sm:grid-cols-3">
+                <div class="rounded-2xl bg-slate-900/40 p-4 ring-1 ring-white/10">
+                  <div class="flex items-center gap-2 text-xs font-medium text-slate-200">
+                    <iconify-icon icon="lucide:search" class="text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                    Search
+                  </div>
+                  <div class="mt-2 text-xs text-slate-300/80">Cari TV atau movie berdasarkan judul.</div>
+                </div>
+                <div class="rounded-2xl bg-slate-900/40 p-4 ring-1 ring-white/10">
+                  <div class="flex items-center gap-2 text-xs font-medium text-slate-200">
+                    <iconify-icon icon="lucide:calendar" class="text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                    Seasonal
+                  </div>
+                  <div class="mt-2 text-xs text-slate-300/80">Filter anime per season & year.</div>
+                </div>
+                <div class="rounded-2xl bg-slate-900/40 p-4 ring-1 ring-white/10">
+                  <div class="flex items-center gap-2 text-xs font-medium text-slate-200">
+                    <iconify-icon icon="lucide:play-circle" class="text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                    Watch
+                  </div>
+                  <div class="mt-2 text-xs text-slate-300/80">Embed player via provider pilihanmu.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-6 rounded-3xl bg-white/5 p-6 ring-1 ring-white/10">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <div class="text-sm font-semibold tracking-tight text-slate-100" style="font-family: DM Sans, Inter, system-ui;">Quick search</div>
+                  <div class="mt-1 text-xs text-slate-300/80">Contoh: “Frieren”, “One Piece”, “Your Name”.</div>
+                </div>
+                <a href="?view=browse" class="hidden items-center gap-2 rounded-xl bg-white/5 px-3 py-2 text-xs font-medium text-slate-100 ring-1 ring-white/10 hover:bg-white/10 sm:inline-flex">
+                  <iconify-icon icon="lucide:arrow-right" class="text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                  Browse
+                </a>
+              </div>
+
+              <form action="" method="get" class="mt-4">
+                <input type="hidden" name="view" value="browse" />
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div class="relative flex-1">
+                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                      <iconify-icon icon="lucide:search" class="text-slate-400" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                    </div>
+                    <input name="q" value="" placeholder="Search anime title…" class="w-full rounded-2xl bg-slate-900/50 py-3 pl-10 pr-3 text-sm text-slate-100 placeholder:text-slate-500 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400/30" />
+                  </div>
+                  <button class="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-500/20 px-4 py-3 text-sm font-medium text-indigo-100 ring-1 ring-indigo-400/20 hover:bg-indigo-500/25">
+                    <iconify-icon icon="lucide:sparkles" class="text-indigo-200" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                    Search
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <aside class="lg:col-span-5">
+            <div class="rounded-3xl bg-white/5 p-6 ring-1 ring-white/10">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-sm font-semibold tracking-tight text-slate-100" style="font-family: DM Sans, Inter, system-ui;">Seasonal browse</div>
+                  <div class="mt-1 text-xs text-slate-300/80">Ambil data dari endpoint season.</div>
+                </div>
+                <iconify-icon icon="lucide:calendar-days" class="text-slate-300" width="20" height="20" style="--iconify-stroke-width:1.5;"></iconify-icon>
+              </div>
+
+              <form action="" method="get" class="mt-4 grid gap-3 sm:grid-cols-2">
+                <input type="hidden" name="view" value="browse" />
+                <div class="rounded-2xl bg-slate-900/50 p-3 ring-1 ring-white/10">
+                  <label class="text-xs font-medium text-slate-200">Season</label>
+                  <select name="season" class="mt-2 w-full rounded-xl bg-slate-950/40 px-3 py-2 text-sm text-slate-100 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400/30">
+                    <option value="">Pick</option>
+                    <option value="winter">Winter</option>
+                    <option value="spring">Spring</option>
+                    <option value="summer">Summer</option>
+                    <option value="fall">Fall</option>
+                  </select>
+                </div>
+                <div class="rounded-2xl bg-slate-900/50 p-3 ring-1 ring-white/10">
+                  <label class="text-xs font-medium text-slate-200">Year</label>
+                  <input name="year" inputmode="numeric" placeholder="2026" class="mt-2 w-full rounded-xl bg-slate-950/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400/30" />
+                </div>
+                <div class="sm:col-span-2">
+                  <button class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-white/5 px-4 py-3 text-sm font-medium text-slate-100 ring-1 ring-white/10 hover:bg-white/10">
+                    <iconify-icon icon="lucide:filter" class="text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                    Browse season
+                  </button>
+                </div>
+              </form>
+
+              <div class="mt-5 rounded-2xl bg-slate-900/40 p-4 ring-1 ring-white/10">
+                <div class="flex items-start gap-3">
+                  <iconify-icon icon="lucide:lock" class="mt-0.5 text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                  <div>
+                    <div class="text-xs font-medium text-slate-200">Catatan penting</div>
+                    <div class="mt-1 text-xs text-slate-300/80">
+                      Client Secret sudah dipindah ke environment server. File ini tidak menyimpan secret.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </section>
+
+      <?php elseif ($view === 'browse'): ?>
+
+        <section class="mb-6">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 class="text-2xl font-semibold tracking-tight text-slate-50" style="font-family: DM Sans, Inter, system-ui;">Browse</h2>
+              <div class="mt-1 text-xs text-slate-300/80">Search, seasonal, atau ranking. Klik kartu untuk detail.</div>
+            </div>
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <form action="" method="get" class="flex items-center gap-2">
+                <input type="hidden" name="view" value="browse" />
+                <div class="relative">
+                  <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                    <iconify-icon icon="lucide:search" class="text-slate-400" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                  </div>
+                  <input name="q" value="<?php echo esc($q); ?>" placeholder="Search…" class="w-full rounded-2xl bg-slate-900/50 py-2.5 pl-10 pr-3 text-sm text-slate-100 placeholder:text-slate-500 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400/30 sm:w-64" />
+                </div>
+                <select name="type" class="rounded-2xl bg-slate-900/50 px-3 py-2.5 text-sm text-slate-100 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400/30">
+                  <option value="all" <?php echo $type==='all'?'selected':''; ?>>All</option>
+                  <option value="tv" <?php echo $type==='tv'?'selected':''; ?>>TV</option>
+                  <option value="movie" <?php echo $type==='movie'?'selected':''; ?>>Movie</option>
+                </select>
+                <button class="inline-flex items-center gap-2 rounded-2xl bg-indigo-500/20 px-3 py-2.5 text-sm font-medium text-indigo-100 ring-1 ring-indigo-400/20 hover:bg-indigo-500/25">
+                  <iconify-icon icon="lucide:arrow-right" class="text-indigo-200" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                  Go
+                </button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <?php if (!$browseItems): ?>
+            <div class="sm:col-span-2 lg:col-span-3 xl:col-span-4 rounded-3xl bg-white/5 p-8 ring-1 ring-white/10">
+              <div class="flex items-start gap-3">
+                <iconify-icon icon="lucide:inbox" class="mt-0.5 text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                <div>
+                  <div class="text-sm font-medium tracking-tight text-slate-100">No results</div>
+                  <div class="mt-1 text-xs text-slate-300/80">Coba kata kunci lain atau buka halaman browse tanpa search untuk ranking.</div>
+                </div>
+              </div>
+            </div>
+          <?php endif; ?>
+
+          <?php foreach ($browseItems as $row): ?>
+            <?php
+              $n = $row['node'] ?? [];
+              $aid = $n['id'] ?? '';
+              $title = $n['title'] ?? '';
+              $pic = $n['main_picture']['large'] ?? ($n['main_picture']['medium'] ?? '');
+              $mean = $n['mean'] ?? null;
+              $media = strtoupper((string)($n['media_type'] ?? ''));
+              $eps = $n['num_episodes'] ?? null;
+            ?>
+            <a href="?view=detail&id=<?php echo esc($aid); ?>" class="group rounded-3xl bg-white/5 ring-1 ring-white/10 hover:bg-white/10 overflow-hidden">
+              <div class="relative aspect-[4/5] bg-slate-900/40">
+                <?php if ($pic): ?>
+                  <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg" alt="<?php echo esc($title); ?>" class="h-full w-full object-cover opacity-95 transition group-hover:opacity-100" loading="lazy" />
+                <?php else: ?>
+                  <div class="flex h-full w-full items-center justify-center text-xs text-slate-400">No image</div>
+                <?php endif; ?>
+                <div class="absolute inset-x-0 bottom-0 p-3" style="background: linear-gradient(to top, rgba(2,6,23,0.92), rgba(2,6,23,0));">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="inline-flex items-center gap-2 rounded-full bg-slate-950/50 px-2.5 py-1 text-xs text-slate-200 ring-1 ring-white/10 backdrop-blur">
+                      <iconify-icon icon="lucide:clapperboard" class="text-slate-300" width="16" height="16" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                      <?php echo esc($media ?: 'ANIME'); ?>
+                    </div>
+                    <?php if ($mean): ?>
+                      <div class="inline-flex items-center gap-1 rounded-full bg-slate-950/50 px-2.5 py-1 text-xs text-slate-200 ring-1 ring-white/10 backdrop-blur">
+                        <iconify-icon icon="lucide:star" class="text-amber-200" width="16" height="16" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                        <?php echo esc(number_format((float)$mean, 2)); ?>
+                      </div>
+                    <?php endif; ?>
+                  </div>
+                </div>
+              </div>
+              <div class="p-4">
+                <div class="text-sm font-semibold tracking-tight text-slate-50" style="font-family: DM Sans, Inter, system-ui;">
+                  <?php echo esc($title); ?>
+                </div>
+                <div class="mt-2 flex items-center justify-between gap-3">
+                  <div class="text-xs text-slate-300/80">
+                    <?php echo $eps ? esc($eps . ' eps') : '—'; ?>
+                  </div>
+                  <div class="inline-flex items-center gap-2 text-xs font-medium text-slate-200">
+                    View
+                    <iconify-icon icon="lucide:arrow-right" class="text-slate-300" width="16" height="16" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                  </div>
+                </div>
+              </div>
+            </a>
+          <?php endforeach; ?>
+        </section>
+
+      <?php elseif ($view === 'detail' && $detail): ?>
+        <?php
+          $title = $detail['title'] ?? '';
+          $pic = $detail['main_picture']['large'] ?? ($detail['main_picture']['medium'] ?? '');
+          $synopsis = $detail['synopsis'] ?? '';
+          $mean = $detail['mean'] ?? null;
+          $rank = $detail['rank'] ?? null;
+          $pop = $detail['popularity'] ?? null;
+          $media = strtoupper((string)($detail['media_type'] ?? ''));
+          $eps = $detail['num_episodes'] ?? null;
+          $status = $detail['status'] ?? '';
+          $genres = $detail['genres'] ?? [];
+          $studios = $detail['studios'] ?? [];
+        ?>
+
+        <section class="grid gap-6 lg:grid-cols-12">
+          <div class="lg:col-span-4">
+            <div class="rounded-3xl bg-white/5 ring-1 ring-white/10 overflow-hidden">
+              <div class="aspect-[4/5] bg-slate-900/40">
+                <?php if ($pic): ?>
+                  <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg" alt="<?php echo esc($title); ?>" class="h-full w-full object-cover" />
+                <?php else: ?>
+                  <div class="flex h-full w-full items-center justify-center text-xs text-slate-400">No image</div>
+                <?php endif; ?>
+              </div>
+              <div class="p-4">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-slate-200 ring-1 ring-white/10">
+                    <iconify-icon icon="lucide:clapperboard" class="text-slate-300" width="16" height="16" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                    <?php echo esc($media ?: 'ANIME'); ?>
+                  </span>
+                  <?php if ($eps): ?>
+                    <span class="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-slate-200 ring-1 ring-white/10">
+                      <iconify-icon icon="lucide:list-video" class="text-slate-300" width="16" height="16" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                      <?php echo esc($eps . ' eps'); ?>
+                    </span>
+                  <?php endif; ?>
+                </div>
+
+                <div class="mt-4 grid grid-cols-3 gap-2">
+                  <div class="rounded-2xl bg-slate-900/40 p-3 ring-1 ring-white/10">
+                    <div class="text-xs text-slate-300/80">Score</div>
+                    <div class="mt-1 text-sm font-semibold tracking-tight text-slate-50"><?php echo $mean ? esc(number_format((float)$mean, 2)) : '—'; ?></div>
+                  </div>
+                  <div class="rounded-2xl bg-slate-900/40 p-3 ring-1 ring-white/10">
+                    <div class="text-xs text-slate-300/80">Rank</div>
+                    <div class="mt-1 text-sm font-semibold tracking-tight text-slate-50"><?php echo $rank ? esc('#' . $rank) : '—'; ?></div>
+                  </div>
+                  <div class="rounded-2xl bg-slate-900/40 p-3 ring-1 ring-white/10">
+                    <div class="text-xs text-slate-300/80">Pop.</div>
+                    <div class="mt-1 text-sm font-semibold tracking-tight text-slate-50"><?php echo $pop ? esc('#' . $pop) : '—'; ?></div>
+                  </div>
+                </div>
+
+                <div class="mt-4 flex flex-col gap-2">
+                  <a href="?view=watch&id=<?php echo esc($detail['id']); ?>" class="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-500/20 px-4 py-3 text-sm font-medium text-indigo-100 ring-1 ring-indigo-400/20 hover:bg-indigo-500/25">
+                    <iconify-icon icon="lucide:play" class="text-indigo-200" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                    Watch
+                  </a>
+                  <a href="?view=browse" class="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/5 px-4 py-3 text-sm font-medium text-slate-100 ring-1 ring-white/10 hover:bg-white/10">
+                    <iconify-icon icon="lucide:arrow-left" class="text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                    Back to browse
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="lg:col-span-8">
+            <div class="rounded-3xl bg-white/5 p-6 ring-1 ring-white/10">
+              <h2 class="text-3xl font-semibold tracking-tight text-slate-50" style="font-family: DM Sans, Inter, system-ui;"><?php echo esc($title); ?></h2>
+
+              <div class="mt-3 flex flex-wrap gap-2">
+                <?php if ($status): ?>
+                  <span class="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-slate-200 ring-1 ring-white/10">
+                    <iconify-icon icon="lucide:activity" class="text-slate-300" width="16" height="16" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                    <?php echo esc(ucwords(str_replace('_',' ', $status))); ?>
+                  </span>
+                <?php endif; ?>
+
+                <?php foreach (array_slice($genres, 0, 6) as $g): ?>
+                  <span class="inline-flex items-center rounded-full bg-slate-900/40 px-3 py-1 text-xs text-slate-200 ring-1 ring-white/10">
+                    <?php echo esc($g['name'] ?? ''); ?>
+                  </span>
+                <?php endforeach; ?>
+              </div>
+
+              <div class="mt-5 grid gap-4 sm:grid-cols-2">
+                <div class="rounded-2xl bg-slate-900/40 p-4 ring-1 ring-white/10">
+                  <div class="text-xs font-medium text-slate-200">Studios</div>
+                  <div class="mt-2 text-xs text-slate-300/80">
+                    <?php
+                      if (!$studios) echo '—';
+                      else {
+                        $names = array_map(fn($s) => $s['name'] ?? '', $studios);
+                        echo esc(implode(', ', array_filter($names)));
+                      }
+                    ?>
+                  </div>
+                </div>
+                <div class="rounded-2xl bg-slate-900/40 p-4 ring-1 ring-white/10">
+                  <div class="text-xs font-medium text-slate-200">Source</div>
+                  <div class="mt-2 text-xs text-slate-300/80"><?php echo esc($detail['source'] ?? '—'); ?></div>
+                </div>
+              </div>
+
+              <div class="mt-6 rounded-2xl bg-slate-900/40 p-5 ring-1 ring-white/10">
+                <div class="flex items-center justify-between gap-4">
+                  <div class="text-xs font-medium text-slate-200">Synopsis</div>
+                  <div class="text-xs text-slate-400">from MAL</div>
+                </div>
+                <p class="mt-3 text-sm text-slate-200/80 whitespace-pre-line"><?php echo esc($synopsis ?: '—'); ?></p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      <?php elseif ($view === 'watch' && $detail): ?>
+        <?php
+          $title = $detail['title'] ?? '';
+          $pic = $detail['main_picture']['large'] ?? ($detail['main_picture']['medium'] ?? '');
+        ?>
+
+        <section class="mb-6">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div class="min-w-0">
+              <div class="flex items-center gap-3">
+                <a href="?view=detail&id=<?php echo esc($detail['id']); ?>" class="inline-flex items-center gap-2 rounded-xl bg-white/5 px-3 py-2 text-xs font-medium text-slate-100 ring-1 ring-white/10 hover:bg-white/10">
+                  <iconify-icon icon="lucide:arrow-left" class="text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                  Detail
+                </a>
+                <div class="text-xs text-slate-300/80">Watch</div>
+              </div>
+              <h2 class="mt-3 truncate text-2xl font-semibold tracking-tight text-slate-50" style="font-family: DM Sans, Inter, system-ui;"><?php echo esc($title); ?></h2>
+              <div class="mt-1 text-xs text-slate-300/80">Pilih embed provider (contoh) atau ganti URL provider di konfigurasi.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="grid gap-6 lg:grid-cols-12">
+          <div class="lg:col-span-8">
+            <div class="rounded-3xl bg-white/5 ring-1 ring-white/10 overflow-hidden">
+              <div class="aspect-video bg-slate-900/50">
+                <?php if ($embedUrl): ?>
+                  <iframe
+                    src="<?php echo esc($embedUrl); ?>"
+                    class="h-full w-full"
+                    allowfullscreen
+                    loading="lazy"
+                    referrerpolicy="no-referrer"
+                    allow="autoplay; fullscreen; picture-in-picture"
+                    title="<?php echo esc($title . ' — ' . $embedLabel); ?>"
+                  ></iframe>
+                <?php else: ?>
+                  <div class="flex h-full w-full items-center justify-center p-8 text-center">
+                    <div class="max-w-md">
+                      <div class="mx-auto inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-slate-200 ring-1 ring-white/10">
+                        <iconify-icon icon="lucide:play-circle" class="text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                        No embed selected
+                      </div>
+                      <div class="mt-4 text-sm text-slate-200/80">
+                        Pilih provider di panel kanan untuk memuat player.
+                      </div>
+                    </div>
+                  </div>
+                <?php endif; ?>
+              </div>
+            </div>
+
+            <div class="mt-4 rounded-3xl bg-white/5 p-5 ring-1 ring-white/10">
+              <div class="flex items-start gap-3">
+                <iconify-icon icon="lucide:info" class="mt-0.5 text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                <div>
+                  <div class="text-xs font-medium text-slate-200">Tips</div>
+                  <div class="mt-1 text-xs text-slate-300/80">
+                    Untuk TV (multi-episode), kamu bisa kembangkan endpoint watch jadi menerima parameter <span class="font-medium text-slate-200">ep</span> lalu bentuk URL embed sesuai provider.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <aside class="lg:col-span-4">
+            <div class="rounded-3xl bg-white/5 p-6 ring-1 ring-white/10">
+              <div class="flex items-center gap-3">
+                <div class="h-12 w-12 overflow-hidden rounded-2xl bg-slate-900/50 ring-1 ring-white/10">
+                  <?php if ($pic): ?>
+                    <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg" alt="<?php echo esc($title); ?>" class="h-full w-full object-cover" />
+                  <?php endif; ?>
+                </div>
+                <div class="min-w-0">
+                  <div class="truncate text-sm font-semibold tracking-tight text-slate-50" style="font-family: DM Sans, Inter, system-ui;"><?php echo esc($title); ?></div>
+                  <div class="mt-1 text-xs text-slate-300/80">Select a provider</div>
+                </div>
+              </div>
+
+              <div class="mt-5 grid gap-2">
+                <?php foreach ($EMBED_PROVIDERS as $p): ?>
+                  <?php
+                    $active = ($embed === $p['name']);
+                    $href = "?view=watch&id=" . urlencode($detail['id']) . "&embed=" . urlencode($p['name']);
+                  ?>
+                  <a href="<?php echo esc($href); ?>"
+                     class="<?php echo $active ? 'bg-indigo-500/15 ring-indigo-400/25' : 'bg-slate-900/40 ring-white/10 hover:bg-white/10'; ?> group rounded-2xl p-4 ring-1">
+                    <div class="flex items-start justify-between gap-3">
+                      <div>
+                        <div class="text-sm font-medium tracking-tight text-slate-100"><?php echo esc($p['name']); ?></div>
+                        <div class="mt-1 text-xs text-slate-300/80"><?php echo esc($p['note']); ?></div>
+                      </div>
+                      <iconify-icon icon="lucide:external-link" class="<?php echo $active ? 'text-indigo-200' : 'text-slate-300'; ?>" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                    </div>
+                  </a>
+                <?php endforeach; ?>
+              </div>
+
+              <div class="mt-5 rounded-2xl bg-amber-500/10 p-4 ring-1 ring-amber-400/20">
+                <div class="flex items-start gap-3">
+                  <iconify-icon icon="lucide:shield-alert" class="mt-0.5 text-amber-200" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                  <div>
+                    <div class="text-xs font-medium text-amber-100">Legal & safety</div>
+                    <div class="mt-1 text-xs text-amber-100/80">
+                      Gunakan hanya sumber embed yang kamu miliki haknya/diizinkan. Template ini hanya contoh integrasi data & UI.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </section>
+
+      <?php else: ?>
+        <div class="rounded-3xl bg-white/5 p-8 ring-1 ring-white/10">
+          <div class="flex items-start gap-3">
+            <iconify-icon icon="lucide:route-off" class="mt-0.5 text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+            <div>
+              <div class="text-sm font-medium tracking-tight text-slate-100">Page not found</div>
+              <div class="mt-1 text-xs text-slate-300/80">Coba kembali ke browse.</div>
+              <div class="mt-4">
+                <a href="?view=browse" class="inline-flex items-center gap-2 rounded-2xl bg-white/5 px-4 py-3 text-sm font-medium text-slate-100 ring-1 ring-white/10 hover:bg-white/10">
+                  <iconify-icon icon="lucide:compass" class="text-slate-300" width="18" height="18" style="--iconify-stroke-width:1.5;"></iconify-icon>
+                  Browse
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      <?php endif; ?>
+    </main>
+
+    <footer class="border-t border-white/10">
+      <div class="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-8 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+        <div class="flex items-center gap-2">
+          <span class="font-medium tracking-tight text-slate-300" style="font-family: DM Sans, Inter, system-ui; letter-spacing:-0.02em;"><?php echo esc($brand); ?></span>
+          <span>•</span>
+          <span>Data by MyAnimeList API</span>
+        </div>
+        <div class="flex items-center gap-4">
+          <a href="?view=home" class="hover:text-slate-200">Home</a>
+          <a href="?view=browse" class="hover:text-slate-200">Browse</a>
+          <a href="?view=browse&type=movie" class="hover:text-slate-200">Movies</a>
+        </div>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

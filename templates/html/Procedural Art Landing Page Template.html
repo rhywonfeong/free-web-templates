@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Procedural Bloom System</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+body {
+font-family: 'Inter', sans-serif;
+background-color: #f5f3ee;
+margin: 0;
+overflow: hidden;
+touch-action: none;
+}
+.slider-track {
+touch-action: none;
+user-select: none;
+-webkit-user-select: none;
+}
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="relative w-screen h-screen flex items-center justify-center">
+
+    <!-- Primary Canvas for L-System Engine -->
+    <canvas id="renderEngine" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+
+    <!-- Overlay UI Panel -->
+    <div class="absolute top-6 right-6 md:top-10 md:right-10 flex flex-col items-center p-6 bg-[#fcfaf7]/85 backdrop-blur-xl rounded-2xl border border-black/5 shadow-[0_8px_32px_rgba(0,0,0,0.04)] select-none">
+        
+        <div class="flex items-center justify-between w-full mb-6">
+            <span class="text-lg font-medium tracking-tight text-slate-800">Parameters</span>
+            <button id="regenerateBtn" class="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer">
+                <i data-lucide="refresh-cw" stroke-width="1.5" class="w-4 h-4"></i>
+            </button>
+        </div>
+
+        <!-- Variable Controllers (I M R P) -->
+        <div class="flex space-x-5 mb-8">
+            <!-- I: Iterations -->
+            <div class="flex flex-col items-center space-y-3">
+                <div class="slider-track relative w-4 h-32 bg-black/5 rounded-full overflow-hidden cursor-pointer" data-id="I">
+                    <div class="slider-fill absolute bottom-0 left-0 w-full bg-[#c3aed6] rounded-full pointer-events-none transition-all duration-100 ease-out" style="height: 60%"></div>
+                </div>
+                <span class="text-sm font-medium text-slate-500">I</span>
+            </div>
+
+            <!-- M: Mutation -->
+            <div class="flex flex-col items-center space-y-3">
+                <div class="slider-track relative w-4 h-32 bg-black/5 rounded-full overflow-hidden cursor-pointer" data-id="M">
+                    <div class="slider-fill absolute bottom-0 left-0 w-full bg-[#7b9c6a] rounded-full pointer-events-none transition-all duration-100 ease-out" style="height: 40%"></div>
+                </div>
+                <span class="text-sm font-medium text-slate-500">M</span>
+            </div>
+
+            <!-- R: Rotation -->
+            <div class="flex flex-col items-center space-y-3">
+                <div class="slider-track relative w-4 h-32 bg-black/5 rounded-full overflow-hidden cursor-pointer" data-id="R">
+                    <div class="slider-fill absolute bottom-0 left-0 w-full bg-[#adc4e5] rounded-full pointer-events-none transition-all duration-100 ease-out" style="height: 50%"></div>
+                </div>
+                <span class="text-sm font-medium text-slate-500">R</span>
+            </div>
+
+            <!-- P: Proportion -->
+            <div class="flex flex-col items-center space-y-3">
+                <div class="slider-track relative w-4 h-32 bg-black/5 rounded-full overflow-hidden cursor-pointer" data-id="P">
+                    <div class="slider-fill absolute bottom-0 left-0 w-full bg-[#edb9d6] rounded-full pointer-events-none transition-all duration-100 ease-out" style="height: 75%"></div>
+                </div>
+                <span class="text-sm font-medium text-slate-500">P</span>
+            </div>
+        </div>
+
+        <!-- Status Toggle -->
+        <button id="bloomToggle" class="flex items-center space-x-3 px-4 py-2 rounded-full hover:bg-black/5 transition-colors group cursor-pointer">
+            <div id="bloomIndicator" class="w-3 h-3 rounded-full bg-[#edb9d6] shadow-[0_0_8px_rgba(237,185,214,0.6)] transition-all duration-300"></div>
+            <span class="text-base font-medium text-slate-700 tracking-tight group-hover:text-slate-900 transition-colors">BLOOM</span>
+        </button>
+
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // System Architecture & Core Logic
+        const canvas = document.getElementById('renderEngine');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        
+        let width, height;
+        let isGenerating = false;
+
+        // Color Palette
+        const colors = {
+            bg: '#f5f3ee',
+            trunk: '#656156',
+            leaf: '#7b9c6a',
+            flowers: ['#edb9d6', '#adc4e5', '#c3aed6', '#f3dcb5']
+        };
+
+        // State Machine
+        const state = {
+            I: { val: 6, min: 3, max: 9, pct: 0.5 },    // Iterations (Depth)
+            M: { val: 0.4, min: 0, max: 1, pct: 0.4 },  // Mutation (Randomness)
+            R: { val: 30, min: 10, max: 60, pct: 0.4 }, // Rotation Angle (Spread)
+            P: { val: 0.75, min: 0.5, max: 0.9, pct: 0.625 }, // Proportion (Length retention)
+            bloom: true
+        };
+
+        // Initialization & Screen Management
+        function initCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            ctx.scale(dpr, dpr);
+            renderSystem();
+        }
+
+        window.addEventListener('resize', () => {
+            clearTimeout(window.resizeTimer);
+            window.resizeTimer = setTimeout(initCanvas, 100);
+        });
+
+        // Drawing Primitives
+        function drawDot(x, y, radius, color) {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawPill(x, y, length, angle, thickness, color) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = thickness;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + Math.cos(angle) * length, y + Math.sin(angle) * length);
+            ctx.stroke();
+        }
+
+        // Sub-System: Environmental Groundcover
+        function generateGround() {
+            const density = 2500;
+            for (let i = 0; i < density; i++) {
+                // Bias points towards the bottom center
+                let u = Math.random() + Math.random() - 1; 
+                let v = Math.random() * Math.random(); 
+                
+                let x = width / 2 + (u * width * 0.5);
+                let y = height - (v * height * 0.35);
+
+                let isFlower = state.bloom && Math.random() > 0.6;
+                let color = isFlower 
+                    ? colors.flowers[Math.floor(Math.random() * colors.flowers.length)]
+                    : colors.leaf;
+
+                if (!state.bloom && Math.random() > 0.3) continue;
+
+                let size = Math.random() * 2.5 + 1.5;
+                drawDot(x, y, size, color);
+            }
+        }
+
+        // Sub-System: Algorithmic Branching (L-System Simulation)
+        function generateBranch(x, y, length, angle, depth) {
+            if (depth === 0) {
+                if (state.bloom || Math.random() > 0.5) {
+                    drawPill(x, y, 12, angle + (Math.random()-0.5), 6, colors.leaf);
+                }
+                return;
+            }
+
+            let ex = x + Math.cos(angle) * length;
+            let ey = y + Math.sin(angle) * length;
+
+            // Render thickness using parallel dot lines (Digital Pointillism)
+            let steps = Math.floor(length / 3);
+            let thickness = Math.max(1, depth * 1.2);
+            
+            for (let i = 0; i <= steps; i++) {
+                let t = i / steps;
+                let cx = x + (ex - x) * t;
+                let cy = y + (ey - y) * t;
+
+                for (let j = 0; j < thickness; j++) {
+                    let offset = (j - thickness / 2) * 3.5;
+                    let px = cx + Math.cos(angle + Math.PI / 2) * offset;
+                    let py = cy + Math.sin(angle + Math.PI / 2) * offset;
+
+                    // Apply procedural noise based on M (Mutation)
+                    px += (Math.random() - 0.5) * state.M.val * 8;
+                    py += (Math.random() - 0.5) * state.M.val * 8;
+
+                    drawDot(px, py, 2.2, colors.trunk);
+                }
+
+                // Spontaneous leaf generation along branches
+                if (depth <= 3 && Math.random() < 0.05 * (state.bloom ? 1 : 0.2)) {
+                    drawPill(cx, cy, 10, angle + Math.PI/2 * (Math.random() > 0.5 ? 1 : -1), 5, colors.leaf);
+                }
+            }
+
+            // Recursive branching calculation
+            let numBranches = Math.random() > 0.2 ? 2 : 3;
+            for (let k = 0; k < numBranches; k++) {
+                let spread = (state.R.val * Math.PI / 180) * (Math.random() * 0.5 + 0.5);
+                let baseAngle = angle + (k - (numBranches - 1) / 2) * spread;
+                
+                // Mutate trajectory
+                let newAngle = baseAngle + (Math.random() - 0.5) * state.M.val;
+                let newLen = length * (state.P.val + (Math.random() - 0.5) * 0.15);
+
+                generateBranch(ex, ey, newLen, newAngle, depth - 1);
+            }
+        }
+
+        // Master Render Controller
+        function renderSystem() {
+            if (isGenerating) return;
+            isGenerating = true;
+
+            // Clear Environment
+            ctx.fillStyle = colors.bg;
+            ctx.fillRect(0, 0, width, height);
+
+            generateGround();
+            
+            // Initiate core tree from anchor point
+            let startLen = height * 0.22;
+            generateBranch(width / 2, height - 40, startLen, -Math.PI / 2, Math.floor(state.I.val));
+
+            isGenerating = false;
+        }
+
+        // UI Event Integration & Input Mapping
+        function initUI() {
+            const tracks = document.querySelectorAll('.slider-track');
+            
+            tracks.forEach(track => {
+                let isDragging = false;
+                const param = track.dataset.id;
+                const fill = track.querySelector('.slider-fill');
+
+                const updateSlider = (e) => {
+                    const rect = track.getBoundingClientRect();
+                    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                    let pos = Math.max(0, Math.min(1, (rect.bottom - clientY) / rect.height));
+                    
+                    state[param].pct = pos;
+                    state[param].val = state[param].min + pos * (state[param].max - state[param].min);
+                    
+                    fill.style.height = `${pos * 100}%`;
+                };
+
+                const startDrag = (e) => {
+                    isDragging = true;
+                    updateSlider(e);
+                };
+
+                const stopDrag = () => {
+                    if (isDragging) {
+                        isDragging = false;
+                        renderSystem();
+                    }
+                };
+
+                track.addEventListener('mousedown', startDrag);
+                track.addEventListener('touchstart', startDrag, {passive: true});
+                
+                window.addEventListener('mousemove', (e) => { if (isDragging) updateSlider(e); });
+                window.addEventListener('touchmove', (e) => { if (isDragging) updateSlider(e); }, {passive: true});
+                
+                window.addEventListener('mouseup', stopDrag);
+                window.addEventListener('touchend', stopDrag);
+            });
+
+            const bloomToggle = document.getElementById('bloomToggle');
+            const bloomIndicator = document.getElementById('bloomIndicator');
+            
+            bloomToggle.addEventListener('click', () => {
+                state.bloom = !state.bloom;
+                if (state.bloom) {
+                    bloomIndicator.classList.replace('bg-slate-300', 'bg-[#edb9d6]');
+                    bloomIndicator.classList.replace('shadow-none', 'shadow-[0_0_8px_rgba(237,185,214,0.6)]');
+                } else {
+                    bloomIndicator.classList.replace('bg-[#edb9d6]', 'bg-slate-300');
+                    bloomIndicator.classList.replace('shadow-[0_0_8px_rgba(237,185,214,0.6)]', 'shadow-none');
+                }
+                renderSystem();
+            });
+
+            document.getElementById('regenerateBtn').addEventListener('click', renderSystem);
+        }
+
+        // Initialize Architecture
+        initUI();
+        initCanvas();
+
+    </script>
+</body>
+</html>

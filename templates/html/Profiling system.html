@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TYPESCAN — Ваш персональный профайлер</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link
+href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;display=swap"
+rel="stylesheet"
+/>
+<script>
+tailwind.config = {
+theme: {
+extend: {
+fontFamily: {
+sans: ['Inter', 'sans-serif'],
+},
+letterSpacing: {
+tighter: '-0.04em',
+tight: '-0.02em',
+},
+keyframes: {
+wave: {
+'0%': { boxShadow: '0 0 0 0 rgba(24, 24, 27, 0.5)' },
+'70%': { boxShadow: '0 0 0 25px rgba(24, 24, 27, 0)' },
+'100%': { boxShadow: '0 0 0 0 rgba(24, 24, 27, 0)' }
+},
+scan: {
+'0%': { left: '-30%' },
+'100%': { left: '130%' }
+}
+},
+animation: {
+wave: 'wave 1.5s ease-out',
+scan: 'scan 2.1s ease-in-out infinite'
+}
+}
+}
+}
+</script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body
+    class="bg-zinc-50 text-zinc-900 font-sans antialiased selection:bg-zinc-200"
+  >
+    <!-- Navigation -->
+    <nav
+      class="fixed top-0 w-full z-50 bg-zinc-50/80 backdrop-blur-md border-b border-zinc-200/50"
+    >
+      <div
+        class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between"
+      >
+        <a
+          href="#"
+          onclick="event.preventDefault(); window.scrollTo({top: 0, behavior: 'smooth'});"
+          class="text-sm font-semibold tracking-tighter uppercase text-zinc-900 cursor-pointer"
+        >
+          <img
+            src="https://i.ibb.co/M5xvq3s3/Typescan.png"
+            alt="Typescan"
+            class="h-10 w-auto transition-transform duration-300 ease-out hover:scale-105"
+          />
+        </a>
+        <div class="hidden md:flex gap-8 text-sm font-medium text-zinc-500">
+          <a
+            href="#features"
+            class="hover:text-zinc-900 transition-all duration-300 ease-out hover:scale-105 hover:animate-wave rounded-full px-2 py-1 -mx-2 -my-1"
+            onclick="event.preventDefault(); document.getElementById('features').scrollIntoView({ behavior: 'smooth', block: 'center' }); history.pushState(null, null, '#features');"
+          >
+            Возможности
+          </a>
+          <a
+            href="#science"
+            class="hover:text-zinc-900 transition-all duration-300 ease-out hover:scale-105 hover:animate-wave rounded-full px-2 py-1 -mx-2 -my-1"
+          >
+            Технология
+          </a>
+          <a
+            href="#scenarios"
+            class="hover:text-zinc-900 transition-all duration-300 ease-out hover:scale-105 hover:animate-wave rounded-full px-2 py-1 -mx-2 -my-1"
+          >
+            Сценарии
+          </a>
+          <a
+            href="#contacts"
+            class="hover:text-zinc-900 transition-all duration-300 ease-out hover:scale-105 hover:animate-wave rounded-full px-2 py-1 -mx-2 -my-1"
+            onclick="event.preventDefault(); document.getElementById('contacts').scrollIntoView({ behavior: 'smooth', block: 'center' }); history.pushState(null, null, '#contacts');"
+          >
+            Контакты
+          </a>
+        </div>
+        <button
+          class="bg-zinc-900 text-white text-sm font-medium px-4 py-2 rounded-full hover:bg-zinc-800 transition-all duration-300 ease-out hover:scale-105 hover:animate-wave"
+        >
+          Перейти
+        </button>
+      </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section
+      class="overflow-hidden md:pb-32 md:pl-6 md:pr-6 md:pt-22 pt-32 pr-6 pb-20 pl-6"
+    >
+      <div class="max-w-4xl mx-auto text-center flex flex-col items-center">
+        <div
+          class="relative inline-block h-24 mb-8 overflow-hidden group cursor-pointer"
+        >
+          <img
+            src="https://i.ibb.co/M5xvq3s3/Typescan.png"
+            alt="Typescan"
+            class="h-24 w-auto relative z-10"
+          />
+          <div
+            class="absolute top-0 h-full bg-gradient-to-r from-transparent via-zinc-400/30 to-transparent border-r border-zinc-400/50 z-20 group-hover:animate-scan [-webkit-mask-image:linear-gradient(to_right,transparent,black_75%,black)] [mask-image:linear-gradient(to_right,transparent,black_75%,black)] w-6 backdrop-blur-md"
+            style="left: -30%;"
+          ></div>
+        </div>
+
+        <h1
+          class="text-3xl md:text-5xl font-semibold tracking-tight text-zinc-900 mb-6 leading-tight"
+        >
+          <br class="hidden md:block" />
+          <span class="text-zinc-400">С одного взгляда.</span>
+        </h1>
+
+        <p
+          class="text-base md:text-xl text-zinc-500 font-normal max-w-2xl mb-10 leading-relaxed"
+        >
+          TYPESCAN — ваш персональный ассистент на переговорах, при найме,
+          профориентации и во многих других сферах. Загрузите фото, и система на
+          основе нейротипологии раскроет мотивы, страхи и сильные стороны
+          собеседника.
+        </p>
+
+        <div class="flex gap-4">
+          <button
+            class="bg-zinc-900 text-white text-base font-medium px-6 py-3 rounded-full hover:bg-zinc-800 transition-all duration-300 ease-out hover:scale-105 hover:animate-wave"
+          >
+            Попробовать сейчас
+          </button>
+        </div>
+      </div>
+
+      <!-- Abstract App Interface Mockup -->
+      <div id="features" class="max-w-7xl mx-auto relative mt-40">
+        <h2
+          class="text-3xl md:text-4xl font-semibold tracking-tight text-zinc-900 mb-16 text-center"
+        >
+          Как это работает
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-12 relative">
+          <div
+            class="hidden md:block absolute top-8 left-[15%] right-[15%] h-[1px] bg-zinc-200 z-0"
+          ></div>
+          <div class="relative z-10 flex flex-col items-center text-center">
+            <div
+              class="w-16 h-16 bg-white border border-zinc-200 rounded-full flex items-center justify-center text-zinc-900 text-xl font-semibold shadow-sm mb-6 transition-all duration-300 ease-out hover:scale-110 hover:animate-wave cursor-pointer hover:-translate-y-1"
+            >
+              1
+            </div>
+            <h3 class="text-lg font-medium text-zinc-900 mb-2">
+              Сделайте снимок
+            </h3>
+            <p class="text-sm text-zinc-500">
+              Загрузите фотографию из галереи или сделайте снимок прямо в
+              приложении.
+            </p>
+          </div>
+          <div class="relative z-10 flex flex-col items-center text-center">
+            <div
+              class="w-16 h-16 bg-white border border-zinc-200 rounded-full flex items-center justify-center text-zinc-900 text-xl font-semibold shadow-sm mb-6 transition-all duration-300 ease-out hover:scale-110 hover:animate-wave cursor-pointer hover:-translate-y-1"
+            >
+              2
+            </div>
+            <h3 class="text-lg font-medium text-zinc-900 mb-2">
+              Задайте сценарий
+            </h3>
+            <p class="text-sm text-zinc-500">
+              Выберите цель: переговоры, собеседование или базовый профиль.
+            </p>
+          </div>
+          <div class="relative z-10 flex flex-col items-center text-center">
+            <div
+              class="w-16 h-16 bg-zinc-900 border border-zinc-900 rounded-full flex items-center justify-center text-white text-xl font-semibold shadow-sm mb-6 transition-all duration-300 ease-out hover:scale-110 hover:animate-wave cursor-pointer hover:-translate-y-1"
+            >
+              3
+            </div>
+            <h3 class="text-lg font-medium text-zinc-900 mb-2">
+              Получите отчет
+            </h3>
+            <p class="text-sm text-zinc-500">
+              Изучите профиль с конкретными рекомендациями к действию.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Scenarios Section -->
+    <section id="scenarios" class="py-24 bg-white px-6">
+      <div class="max-w-7xl mx-auto">
+        <div class="text-center max-w-2xl mx-auto mb-16">
+          <h2
+            class="text-3xl md:text-4xl font-semibold tracking-tight text-zinc-900 mb-4"
+          >
+            Адаптация под ваши задачи
+          </h2>
+          <p class="text-base text-zinc-500">
+            Выберите подходящий сценарий анализа, чтобы получить именно ту
+            информацию, которая нужна вам прямо сейчас. Свяжитесь с нами и мы
+            добавим сценарий, разработанный специально для решения ваших задач.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <!-- Card 1 -->
+          <div
+            class="p-8 rounded-2xl bg-zinc-50 border border-zinc-100 flex flex-col items-start hover:shadow-lg hover:shadow-zinc-100 transition-shadow"
+          >
+            <div
+              class="w-12 h-12 rounded-full bg-white border border-zinc-200 flex items-center justify-center mb-6 shadow-sm transition-all duration-300 ease-out hover:scale-110 hover:animate-wave cursor-pointer hover:-translate-y-1"
+            >
+              <iconify-icon
+                icon="solar:handshake-linear"
+                class="text-zinc-700 text-xl"
+                stroke-width="1.5"
+              ></iconify-icon>
+              <iconify-icon
+                icon="mingcute:briefcase-2-line"
+                class="text-zinc-700 text-xl"
+                stroke-width="1.5"
+                width="20"
+                height="20"
+                style="color: rgb(63, 63, 70)"
+              ></iconify-icon>
+            </div>
+            <h3 class="text-xl font-semibold tracking-tight text-zinc-900 mb-3">
+              Переговоры
+            </h3>
+            <p class="text-sm text-zinc-500 leading-relaxed mb-6 flex-grow">
+              Определите сильные и слабые стороны оппонента. Узнайте, какая
+              тактика вызовет доверие, как правильно аргументировать позицию и
+              какие факторы могут вызвать настороженность собеседника.
+            </p>
+            <ul class="text-sm text-zinc-600 space-y-2 w-full">
+              <li
+                class="flex items-center gap-2 border-t border-zinc-200/60 pt-2"
+              >
+                <iconify-icon
+                  icon="solar:check-circle-linear"
+                  class="text-zinc-400"
+                ></iconify-icon>
+                Точки давления
+              </li>
+              <li
+                class="flex items-center gap-2 border-t border-zinc-200/60 pt-2"
+              >
+                <iconify-icon
+                  icon="solar:check-circle-linear"
+                  class="text-zinc-400"
+                ></iconify-icon>
+                Триггеры доверия
+              </li>
+            </ul>
+          </div>
+
+          <!-- Card 2 -->
+          <div
+            class="p-8 rounded-2xl bg-zinc-50 border border-zinc-100 flex flex-col items-start hover:shadow-lg hover:shadow-zinc-100 transition-shadow"
+          >
+            <div
+              class="w-12 h-12 rounded-full bg-white border border-zinc-200 flex items-center justify-center mb-6 shadow-sm transition-all duration-300 ease-out hover:scale-110 hover:animate-wave cursor-pointer hover:-translate-y-1"
+            >
+              <iconify-icon
+                icon="mingcute:government-line"
+                class="text-zinc-700 text-xl"
+                stroke-width="1.5"
+                width="20"
+                height="20"
+                style="color: rgb(63, 63, 70)"
+              ></iconify-icon>
+            </div>
+            <h3 class="text-xl font-semibold tracking-tight text-zinc-900 mb-3">
+              Найм сотрудников
+            </h3>
+            <p class="text-sm text-zinc-500 leading-relaxed mb-6 flex-grow">
+              Снизьте риски при подборе персонала. Оцените врожденный потенциал
+              к нагрузкам, стиль работы в команде и соответствие кандидата
+              предлагаемой должности.
+            </p>
+            <ul class="text-sm text-zinc-600 space-y-2 w-full">
+              <li
+                class="flex items-center gap-2 border-t border-zinc-200/60 pt-2"
+              >
+                <iconify-icon
+                  icon="solar:check-circle-linear"
+                  class="text-zinc-400"
+                ></iconify-icon>
+                Стрессоустойчивость
+              </li>
+              <li
+                class="flex items-center gap-2 border-t border-zinc-200/60 pt-2"
+              >
+                <iconify-icon
+                  icon="solar:check-circle-linear"
+                  class="text-zinc-400"
+                ></iconify-icon>
+                Истинная мотивация
+              </li>
+            </ul>
+          </div>
+
+          <!-- Card 3 -->
+          <div
+            class="p-8 rounded-2xl bg-zinc-50 border border-zinc-100 flex flex-col items-start hover:shadow-lg hover:shadow-zinc-100 transition-shadow"
+          >
+            <div
+              class="w-12 h-12 rounded-full bg-white border border-zinc-200 flex items-center justify-center mb-6 shadow-sm transition-all duration-300 ease-out hover:scale-110 hover:animate-wave cursor-pointer hover:-translate-y-1"
+            >
+              <iconify-icon
+                icon="mingcute:chart-horizontal-2-line"
+                class="text-zinc-700 text-xl"
+                stroke-width="1.5"
+                width="20"
+                height="20"
+                style="color: rgb(63, 63, 70)"
+              ></iconify-icon>
+            </div>
+            <h3 class="text-xl font-semibold tracking-tight text-zinc-900 mb-3">
+              Общий анализ
+            </h3>
+            <p class="text-sm text-zinc-500 leading-relaxed mb-6 flex-grow">
+              Узнайте общий базовый профиль человека. Система подскажет, какой
+              вид деятельности, хобби или спорт больше всего соответствует его
+              генетическим предрасположенностям.
+            </p>
+            <ul class="text-sm text-zinc-600 space-y-2 w-full">
+              <li
+                class="flex items-center gap-2 border-t border-zinc-200/60 pt-2"
+              >
+                <iconify-icon
+                  icon="solar:check-circle-linear"
+                  class="text-zinc-400"
+                ></iconify-icon>
+                Скрытые таланты
+              </li>
+              <li
+                class="flex items-center gap-2 border-t border-zinc-200/60 pt-2"
+              >
+                <iconify-icon
+                  icon="solar:check-circle-linear"
+                  class="text-zinc-400"
+                ></iconify-icon>
+                Вектор развития
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Science/Tech Section (Dark) -->
+    <section id="science" class="py-24 bg-zinc-900 text-white px-6">
+      <div
+        class="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-16"
+      >
+        <div class="w-full lg:w-1/2">
+          <div
+            class="text-xs font-medium tracking-wide text-zinc-400 uppercase mb-4"
+          >
+            Научный подход
+          </div>
+          <h2
+            class="text-3xl md:text-5xl font-semibold tracking-tight text-white mb-6 leading-tight"
+          >
+            Профайлер
+            <br />
+            <span class="text-zinc-500">нового поколения.</span>
+          </h2>
+          <div class="space-y-6 text-zinc-400 text-base leading-relaxed">
+            <p class="">
+              В основе TYPESCAN лежит база данных многолетних исследований в
+              области нейротипологии и психологии. Мы не гадаем по лицу. Мы
+              анализируем связь между генетикой, формированием мозга и
+              анатомическими чертами лица.
+            </p>
+            <p class="">
+              Каждая анатомическая черта — форма носа, ширина посадки глаз,
+              строение челюсти — является маркером врожденных поведенческих
+              особенностей. Алгоритмы TYPESCAN считывают эти микропараметры с
+              фотографии, сопоставляют их с базой данных и формируют точный
+              психологический портрет.
+            </p>
+          </div>
+
+          <div
+            class="mt-10 grid grid-cols-2 gap-6 pt-8 border-t border-zinc-800"
+          >
+            <div>
+              <div class="text-2xl font-semibold text-white mb-1">94%</div>
+              <div class="text-xs text-zinc-500">
+                Точность распознавания анатомических точек
+              </div>
+            </div>
+            <div>
+              <div class="text-2xl font-semibold text-white mb-1">30+</div>
+              <div class="text-xs text-zinc-500">
+                Анализируемых параметров лица
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- How it Works -->
+    <section id="app-mockup" class="py-24 bg-zinc-50 px-6">
+      <div class="max-w-5xl mx-auto relative">
+        <div
+          class="absolute inset-0 bg-gradient-to-b from-zinc-200/50 to-transparent blur-3xl -z-10 rounded-full"
+          style="transform: scale(0.8) translateY(-20%);"
+        ></div>
+        <div
+          class="bg-white border border-zinc-200/80 rounded-2xl md:rounded-[2rem] shadow-2xl shadow-zinc-200/50 overflow-hidden"
+        >
+          <div
+            class="w-full bg-zinc-100 relative p-4 md:p-12 flex items-center justify-center"
+          >
+            <a href="https://ibb.co/MDPdJP8m" class="w-full block">
+              <img
+                src="https://i.ibb.co/svs7Xs5Z/2026-07-12-23-38-35.png"
+                alt="2026-07-12-23-38-35"
+                border="0"
+                class="w-full h-auto object-contain rounded-xl md:rounded-2xl border border-zinc-200 shadow-sm"
+              />
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="py-32 bg-white px-6 border-t border-zinc-100">
+      <div class="max-w-3xl mx-auto text-center flex flex-col items-center">
+        <h2
+          class="text-4xl md:text-5xl font-semibold tracking-tight text-zinc-900 mb-6"
+        >
+          Готовы видеть больше?
+        </h2>
+        <p class="text-base text-zinc-500 mb-10 max-w-lg">
+          Присоединяйтесь к профессионалам, которые уже используют научный
+          подход к профайлингу для достижения своих целей.
+        </p>
+        <button
+          class="bg-zinc-900 text-white text-base font-medium px-8 py-4 rounded-full hover:bg-zinc-800 transition-all duration-300 ease-out hover:scale-105 hover:animate-wave"
+        >
+          Перейти в TYPESCAN
+        </button>
+        <p class="text-xs text-zinc-400 mt-6">
+          Доступно для iOS и Android. Базовый профиль бесплатно.
+        </p>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <section
+      id="contacts"
+      class="py-24 bg-zinc-50 px-6 border-t border-zinc-200/60"
+    >
+      <div class="max-w-3xl mx-auto text-center flex flex-col items-center">
+        <h2
+          class="text-3xl md:text-4xl font-semibold tracking-tight text-zinc-900 mb-4"
+        >
+          Контакты
+        </h2>
+        <p class="text-base text-zinc-500 mb-8 max-w-lg">
+          Остались вопросы, нужна помощь или хотите обсудить сотрудничество?
+          Напишите нам.
+        </p>
+        <a
+          href="mailto:0000msk@mail.ru"
+          class="inline-flex items-center gap-3 text-lg font-medium text-zinc-900 bg-white border border-zinc-200 px-6 py-3 rounded-full shadow-sm hover:shadow-md hover:border-zinc-300 transition-all duration-300 ease-out hover:-translate-y-1"
+        >
+          <iconify-icon
+            icon="solar:letter-linear"
+            class="text-xl text-zinc-500"
+          ></iconify-icon>
+          0000msk@mail.ru
+        </a>
+      </div>
+    </section>
+    <footer class="bg-zinc-50 py-12 px-6 border-t border-zinc-200/60">
+      <div
+        class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6"
+      >
+        <a
+          href="#"
+          onclick="event.preventDefault(); window.scrollTo({top: 0, behavior: 'smooth'});"
+          class="text-sm font-semibold tracking-tighter uppercase text-zinc-900 cursor-pointer"
+        >
+          <img
+            src="https://i.ibb.co/M5xvq3s3/Typescan.png"
+            alt="Typescan"
+            class="h-6 w-auto transition-transform duration-300 ease-out hover:scale-105"
+          />
+        </a>
+        <div class="flex gap-6 text-sm text-zinc-500">
+          <a
+            href="#"
+            class="hover:text-zinc-900 transition-all duration-300 ease-out hover:scale-105 hover:animate-wave rounded-full px-2 py-1 -mx-2 -my-1"
+          >
+            Политика конфиденциальности
+          </a>
+          <a
+            href="https://ibb.co/bR2pPypF"
+            class="hover:text-zinc-900 transition-all duration-300 ease-out hover:scale-105 hover:animate-wave rounded-full px-2 py-1 -mx-2 -my-1"
+            target="_blank"
+          >
+            Правила пользования
+          </a>
+        </div>
+        <div class="text-xs text-zinc-400">
+          © 2026 Typescan. Все права защищены.
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

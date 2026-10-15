@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nami Head Spa — A Refined Glow, The Japanese Way</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.14/dist/lenis.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link
+href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&amp;family=Trirong:wght@300;400&amp;family=Noto+Serif+JP:wght@300;400&amp;display=swap"
+rel="stylesheet"
+/>
+<style>
+:root{
+--cream:#FFF6EF; --night:#241B15; --ink:#3a2e24; --gold:#997950; --blush:#D88FBC;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;background:var(--cream);color:var(--ink);font-family:'Trirong',serif;overflow-x:hidden;cursor:none;}
+h1,h2,h3,.serif{font-family:'Playfair Display',serif;}
+.jp{font-family:'Noto Serif JP',serif;}
+#loader{position:fixed;inset:0;z-index:110;background:var(--night);display:flex;align-items:center;justify-content:center;clip-path:inset(0 0 0 0);}
+#loader span{color:var(--cream);font-family:'Playfair Display',serif;font-size:14px;letter-spacing:.4em;text-transform:uppercase;opacity:.8;}
+#gl{position:fixed;top:0;left:0;width:100%;height:100%;z-index:5;pointer-events:none;}
+#grain{position:fixed;top:0;left:0;width:100%;height:100%;z-index:80;pointer-events:none;mix-blend-mode:overlay;opacity:.05;}
+#curDot,#curRing{position:fixed;top:0;left:0;z-index:100;pointer-events:none;border-radius:50%;mix-blend-mode:difference;background:#fff;}
+#curDot{width:6px;height:6px;margin:-3px 0 0 -3px;}
+#curRing{width:34px;height:34px;margin:-17px 0 0 -17px;border:1px solid #fff;background:transparent;}
+@media (hover:none){ #curDot,#curRing{display:none;} body{cursor:auto;} }
+main{position:relative;z-index:20;}
+.pill{border:2px solid var(--cream);border-radius:60px;padding:.7rem 1.8rem;color:var(--cream);display:inline-flex;align-items:center;gap:.5rem;position:relative;overflow:hidden;transition:color .4s ease;}
+.pill::before{content:'';position:absolute;inset:0;background:var(--cream);transform:translateY(101%);transition:transform .45s cubic-bezier(.7,0,.3,1);z-index:-1;}
+.pill:hover{color:var(--night);}
+.pill:hover::before{transform:translateY(0);}
+.pill-dark{border-color:var(--gold);color:var(--gold);}
+.pill-dark::before{background:var(--gold);}
+.pill-dark:hover{color:var(--cream);}
+#journey{border-radius:32px 32px 0 0;background:var(--cream);position:relative;z-index:20;margin-top:-40px;}
+.heroLine{overflow:hidden;}
+.heroLine span{display:inline-block;transform:translateY(110%);}
+.chapter{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;opacity:0;pointer-events:none;}
+.galNum{-webkit-text-stroke:2px var(--gold);color:transparent;transition:color .3s;}
+.galCard.is-active .galNum{color:var(--gold);-webkit-text-stroke:0;}
+#footerWord{line-height:.85;white-space:nowrap;transform:translateY(110%);}
+::-webkit-scrollbar{display:none;}
+.noscroll::-webkit-scrollbar{display:none;}
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body class="antialiased">
+    <canvas
+      id="gl"
+      data-engine="three.js r160"
+      width="2804"
+      height="1257"
+      style="width: 2804px; height: 1257px;"
+    ></canvas>
+    <canvas id="grain" width="2804" height="1257"></canvas>
+    <div id="curDot"></div>
+    <div id="curRing"></div>
+
+    <!-- NAV -->
+    <nav
+      id="nav"
+      class="fixed top-0 left-0 right-0 px-6 md:px-12 py-5 flex items-center justify-between"
+      style="z-index:90;"
+    >
+      <a href="#" class="flex items-center gap-3">
+        <div
+          class="w-9 h-9 flex items-center justify-center"
+          style="border-radius:58% 42% 55% 45% / 48% 55% 45% 52%; border:2px solid var(--cream);"
+        >
+          <span class="jp text-sm" style="color:var(--cream);">波</span>
+        </div>
+        <span class="serif text-xl tracking-tight" style="color:var(--cream);">
+          nami
+        </span>
+      </a>
+      <div
+        class="hidden md:flex items-center gap-8 text-sm"
+        style="color:var(--cream);"
+      >
+        <a href="#about" class="hover:opacity-70 transition-opacity">About</a>
+        <a href="#headspa" class="hover:opacity-70 transition-opacity">
+          Headspa
+        </a>
+        <a href="#location" class="hover:opacity-70 transition-opacity">
+          Location
+        </a>
+        <a href="#giftcard" class="hover:opacity-70 transition-opacity">
+          Gift Card
+        </a>
+      </div>
+      <a href="#contact" class="pill hidden sm:inline-flex text-sm">
+        Book Your Experience
+      </a>
+    </nav>
+
+    <main class="">
+      <!-- SECTION 1: HERO -->
+      <header class="relative min-h-screen flex items-end overflow-hidden">
+        <div class="relative z-10 px-6 md:px-16 pb-24 md:pb-32 max-w-3xl">
+          <p
+            class="text-xs md:text-sm uppercase mb-6"
+            style="color:var(--cream); letter-spacing:.35em;"
+          >
+            Nami Head Spa · Winnipeg
+          </p>
+          <h1
+            class="uppercase leading-[0.95] mb-10"
+            style="font-family:'Playfair Display',serif; font-weight:500; color:var(--cream); font-size:clamp(2.8rem,8vw,7rem);"
+          >
+            <div class="heroLine"><span>A Refined Glow,</span></div>
+            <div class="heroLine"><span>The Japanese Way</span></div>
+          </h1>
+          <div class="heroLine">
+            <span>
+              <a href="#contact" class="pill text-sm md:text-base">
+                Book Your Experience
+              </a>
+            </span>
+          </div>
+        </div>
+        <div
+          class="absolute bottom-8 right-8 md:right-16 flex flex-col items-center gap-2"
+          style="color:var(--cream);"
+        >
+          <span class="text-xs" style="letter-spacing:.3em;">SCROLL</span>
+          <iconify-icon
+            icon="mingcute:down-line"
+            width="20"
+            id="scrollIcon"
+          ></iconify-icon>
+        </div>
+      </header>
+
+      <!-- WORDMARK BAND -->
+      <section
+        class="pt-16 pb-10 px-6 flex flex-col items-center text-center"
+        data-reveal=""
+      >
+        <p
+          class="text-xs md:text-sm uppercase mb-4"
+          style="color:var(--gold); letter-spacing:.4em;"
+        >
+          Premium Headspa Service
+        </p>
+        <span
+          class="serif text-2xl tracking-tight jp"
+          style="color:var(--ink);"
+        >
+          波 · nami
+        </span>
+      </section>
+
+      <!-- JOURNEY WRAP -->
+      <div id="journey" style="border-radius: 0px;" class="">
+        <!-- SECTION 2: MANIFESTO -->
+        <section
+          id="about"
+          class="py-20 md:py-28 px-6 md:px-12 max-w-6xl mx-auto"
+        >
+          <div class="grid md:grid-cols-2 gap-14 items-center">
+            <div class="relative h-[380px] md:h-[520px]" data-collage="">
+              <div
+                class="absolute left-0 top-6 w-[62%] h-[68%] overflow-hidden shadow-xl"
+                style="border-radius:24px; transform:rotate(-4deg);"
+                data-collage-item=""
+                data-speed="0.15"
+              >
+                <img
+                  src="https://images.unsplash.com/photo-1600334129128-685c5582fd35?w=800&amp;q=80"
+                  class="w-full h-full object-cover"
+                  alt=""
+                />
+              </div>
+              <div
+                class="absolute right-2 top-0 w-[44%] h-[46%] overflow-hidden shadow-lg"
+                style="border-radius:20px; transform:rotate(3deg);"
+                data-collage-item=""
+                data-speed="0.3"
+              >
+                <img
+                  src="https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=600&amp;q=80"
+                  class="w-full h-full object-cover"
+                  alt=""
+                />
+              </div>
+              <div
+                class="absolute right-8 bottom-4 w-[52%] h-[44%] overflow-hidden shadow-2xl"
+                style="border-radius:60% 40% 55% 45% / 50% 58% 42% 50%; transform:rotate(-2deg);"
+                data-collage-item=""
+                data-speed="0.45"
+              >
+                <img
+                  src="https://images.unsplash.com/photo-1519415387722-a1c3bbef716c?w=700&amp;q=80"
+                  class="w-full h-full object-cover"
+                  alt=""
+                />
+              </div>
+            </div>
+            <div data-reveal="" class="">
+              <p
+                class="text-xs uppercase mb-4"
+                style="color:var(--gold); letter-spacing:.35em;"
+              >
+                Our Philosophy
+              </p>
+              <h2
+                class="text-3xl md:text-5xl tracking-tight leading-tight mb-6"
+              >
+                Beauty is a way of life
+              </h2>
+              <p
+                class="text-sm md:text-base leading-relaxed mb-8"
+                style="color:#6b5a48; font-weight:300;"
+              >
+                Nami brings the considered ritual of the Japanese head spa to
+                Winnipeg. Every visit is an unhurried ceremony — warm water,
+                mindful touch, and calm refinement.
+              </p>
+              <a href="#contact" class="pill pill-dark text-sm">
+                Book Your Experience
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <!-- SECTION 3: SCROLL FILM — SERVICES (pinned) -->
+        <section id="headspa" class="relative" style="height:400vh;">
+          <div class="sticky top-0 h-screen overflow-hidden">
+            <div class="absolute inset-0" id="filmBg">
+              <img
+                src="https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=1800&amp;q=80"
+                class="w-full h-full object-cover absolute inset-0 chapterImg"
+                data-ch="0"
+                alt=""
+                style="transition: opacity 0.8s;"
+              />
+              <img
+                src="https://images.unsplash.com/photo-1600334129128-685c5582fd35?w=1800&amp;q=80"
+                class="w-full h-full object-cover absolute inset-0 chapterImg"
+                data-ch="1"
+                style="opacity:0;"
+                alt=""
+              />
+              <img
+                src="https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=1800&amp;q=80"
+                class="w-full h-full object-cover absolute inset-0 chapterImg"
+                data-ch="2"
+                style="opacity:0;"
+                alt=""
+              />
+              <div
+                class="absolute inset-0"
+                style="background:linear-gradient(0deg, rgba(30,20,15,.55), rgba(30,20,15,.1))"
+              >
+                <script>
+                  (function(){
+                    function init(){
+                      var bg = document.getElementById('filmBg');
+                      if(!bg) return;
+                      var sticky = bg.parentElement;
+                      var section = bg.closest('section');
+                      if(!section || !sticky) return;
+                      var imgs = Array.prototype.slice.call(bg.querySelectorAll('.chapterImg'));
+                      if(!imgs.length) return;
+                      var maxCh = 0;
+                      imgs.forEach(function(im){
+                        var c = parseInt(im.getAttribute('data-ch') || '0', 10);
+                        if(c > maxCh) maxCh = c;
+                      });
+                      var chapters = maxCh + 1;
+                      /* Make sure the section is tall enough to scroll through and the inner wrapper is pinned */
+                      if(section.offsetHeight < window.innerHeight * 1.5){
+                        section.style.minHeight = ((chapters + 1) * 100) + 'vh';
+                      }
+                      var cs = window.getComputedStyle(sticky);
+                      if(cs.position !== 'sticky' && cs.position !== 'fixed'){
+                        sticky.style.position = 'sticky';
+                        sticky.style.top = '0';
+                        sticky.style.height = '100vh';
+                        sticky.style.overflow = 'hidden';
+                      }
+                      imgs.forEach(function(im){ im.style.transition = 'opacity .8s ease'; });
+                      function update(){
+                        var total = section.offsetHeight - window.innerHeight;
+                        var p = Math.min(1, Math.max(0, -section.getBoundingClientRect().top / Math.max(total, 1)));
+                        var idx = Math.min(chapters - 1, Math.floor(p * chapters));
+                        imgs.forEach(function(im){
+                          var c = parseInt(im.getAttribute('data-ch') || '0', 10);
+                          im.style.opacity = (c === idx) ? '1' : '0';
+                        });
+                        /* Sync any chapter text blocks that use the same data-ch pattern */
+                        document.querySelectorAll('.chapterTxt[data-ch], .chapterText[data-ch]').forEach(function(el){
+                          var c = parseInt(el.getAttribute('data-ch') || '-1', 10);
+                          el.style.transition = 'opacity .6s ease, transform .6s ease';
+                          el.style.opacity = (c === idx) ? '1' : '0';
+                          el.style.transform = (c === idx) ? 'translateY(0)' : 'translateY(14px)';
+                        });
+                      }
+                      window.addEventListener('scroll', update, { passive: true });
+                      window.addEventListener('resize', update);
+                      update();
+                    }
+                    if(document.readyState === 'loading'){
+                      document.addEventListener('DOMContentLoaded', init);
+                    } else {
+                      init();
+                    }
+                  })();
+                </script>
+              </div>
+            </div>
+
+            <div
+              class="chapter"
+              data-progress="0.05"
+              style="padding-left:6vw; max-width:36rem;"
+            >
+              <span
+                class="text-xs uppercase mb-3"
+                style="color:var(--cream); letter-spacing:.3em;"
+              >
+                Ⅰ
+              </span>
+              <h3 class="text-3xl md:text-5xl mb-3" style="color:var(--cream);">
+                Japanese Head Spa
+              </h3>
+              <p
+                class="text-sm md:text-base mb-6"
+                style="color:var(--cream); font-weight:300;"
+              >
+                A 90-minute scalp cleansing and massage ritual, the traditional
+                way.
+              </p>
+              <div class="flex items-center gap-4">
+                <span
+                  class="serif"
+                  style="color:var(--cream); font-size:3.5rem; opacity:.85;"
+                >
+                  100€
+                </span>
+                <a
+                  href="#contact"
+                  class="text-sm inline-flex items-center gap-1"
+                  style="color:var(--cream);"
+                >
+                  Reserve
+                  <iconify-icon
+                    icon="mingcute:right-line"
+                    width="18"
+                  ></iconify-icon>
+                </a>
+              </div>
+            </div>
+
+            <div
+              class="chapter"
+              data-progress="0.38"
+              style="padding-right:6vw; align-items:flex-end; text-align:right; max-width:36rem; margin-left:auto;"
+            >
+              <span
+                class="text-xs uppercase mb-3"
+                style="color:var(--cream); letter-spacing:.3em;"
+              >
+                Ⅱ
+              </span>
+              <h3 class="text-3xl md:text-5xl mb-3" style="color:var(--cream);">
+                Body Massage
+              </h3>
+              <p
+                class="text-sm md:text-base"
+                style="color:var(--cream); font-weight:300;"
+              >
+                Slow, restorative pressure work to release what the week has
+                held.
+              </p>
+            </div>
+
+            <div
+              class="chapter"
+              data-progress="0.70"
+              style="padding-left:6vw; max-width:36rem;"
+            >
+              <span
+                class="text-xs uppercase mb-3"
+                style="color:var(--cream); letter-spacing:.3em;"
+              >
+                Ⅲ
+              </span>
+              <h3 class="text-3xl md:text-5xl mb-3" style="color:var(--cream);">
+                Warm Botanical Ritual
+              </h3>
+              <p
+                class="text-sm md:text-base"
+                style="color:var(--cream); font-weight:300;"
+              >
+                Every step follows a choreography perfected over generations —
+                nothing rushed.
+              </p>
+            </div>
+
+            <!-- progress bar + roman markers -->
+            <div
+              class="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-6"
+              style="z-index:5;"
+            >
+              <span
+                class="filmMark text-sm"
+                data-i="0"
+                style="color:var(--cream); opacity:.4;"
+              >
+                Ⅰ
+              </span>
+              <div
+                class="w-40 md:w-64 h-[2px] relative"
+                style="background:rgba(255,255,255,.25);"
+              >
+                <div
+                  id="filmProgress"
+                  class="absolute top-0 left-0 h-full"
+                  style="background: var(--blush); width: 0%;"
+                ></div>
+              </div>
+              <span
+                class="filmMark text-sm"
+                data-i="1"
+                style="color:var(--cream); opacity:.4;"
+              >
+                Ⅱ
+              </span>
+              <span
+                class="filmMark text-sm"
+                data-i="2"
+                style="color:var(--cream); opacity:.4;"
+              >
+                Ⅲ
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <!-- SECTION 4: HORIZONTAL GALLERY (pinned) -->
+        <div
+          class="pin-spacer"
+          style="order: 0; place-self: auto; grid-area: auto; z-index: auto; float: none; flex-shrink: 1; display: block; margin: 0px; inset: 0px; position: relative; flex-basis: auto; overflow: visible; box-sizing: border-box; width: 2804px; height: 5016px; padding: 0px 0px 1873px;"
+        >
+          <div
+            class="pin-spacer"
+            style="order: 0; place-self: auto; grid-area: auto; z-index: auto; float: none; flex-shrink: 1; display: block; margin: 0px; inset: 0px; position: relative; flex-basis: auto; overflow: visible; box-sizing: border-box; width: 2804px; height: 5016px; padding: 0px 0px 1873px;"
+          >
+            <div
+              class="pin-spacer"
+              style="order: 0; place-self: auto; grid-area: auto; z-index: auto; float: none; flex-shrink: 1; display: block; margin: 0px; inset: 0px; position: relative; flex-basis: auto; overflow: visible; box-sizing: border-box; width: 2804px; height: 5016px; padding: 0px 0px 1873px;"
+            >
+              <div
+                class="pin-spacer"
+                style="order: 0; place-self: auto; grid-area: auto; z-index: auto; float: none; flex-shrink: 1; display: block; margin: 0px; inset: 0px; position: relative; flex-basis: auto; overflow: visible; box-sizing: border-box; width: 2804px; height: 5016px; padding: 0px 0px 1873px;"
+              >
+                <section
+                  id="gallery"
+                  class="relative"
+                  style="height: 3142.5px; inset: 0px auto auto 0px; margin: 0px; max-width: 2804px; width: 2804px; max-height: 3142.5px; padding: 0px;"
+                >
+                  <div
+                    class="sticky top-0 h-screen overflow-hidden flex items-center"
+                    style="background: var(--night); overflow-x: hidden;"
+                  >
+                    <div
+                      id="galTrack"
+                      class="flex gap-10 px-[8vw] noscroll"
+                      style="will-change:transform;"
+                    >
+                      <div class="galCard shrink-0 w-[70vw] md:w-[32vw]">
+                        <span
+                          class="galNum serif block mb-4"
+                          style="font-size:6rem;"
+                        >
+                          01
+                        </span>
+                        <div
+                          class="w-full h-[45vh] overflow-hidden rounded-2xl mb-4"
+                        >
+                          <img
+                            src="https://images.unsplash.com/photo-1600334129128-685c5582fd35?w=1000&amp;q=80"
+                            class="w-full h-full object-cover"
+                            alt=""
+                          />
+                        </div>
+                        <p class="serif" style="color:var(--cream);">
+                          Kyoto Ritual Room
+                        </p>
+                      </div>
+                      <div class="galCard shrink-0 w-[70vw] md:w-[32vw]">
+                        <span
+                          class="galNum serif block mb-4"
+                          style="font-size:6rem;"
+                        >
+                          02
+                        </span>
+                        <div
+                          class="w-full h-[45vh] overflow-hidden rounded-2xl mb-4"
+                        >
+                          <img
+                            src="https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=1000&amp;q=80"
+                            class="w-full h-full object-cover"
+                            alt=""
+                          />
+                        </div>
+                        <p class="serif" style="color:var(--cream);">
+                          Botanical Steam Bar
+                        </p>
+                      </div>
+                      <div class="galCard shrink-0 w-[70vw] md:w-[32vw]">
+                        <span
+                          class="galNum serif block mb-4"
+                          style="font-size:6rem;"
+                        >
+                          03
+                        </span>
+                        <div
+                          class="w-full h-[45vh] overflow-hidden rounded-2xl mb-4"
+                        >
+                          <img
+                            src="https://images.unsplash.com/photo-1519415387722-a1c3bbef716c?w=1000&amp;q=80"
+                            class="w-full h-full object-cover"
+                            alt=""
+                          />
+                        </div>
+                        <p class="serif" style="color:var(--cream);">
+                          Quiet Hands Lounge
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 5: DISSOLVE / NIGHTFALL -->
+        <section
+          id="nightfall"
+          class="relative py-24 md:py-40 px-6 md:px-12"
+          style="background-image: ; background-position-x: ; background-position-y: ; background-size: ; background-repeat: ; background-attachment: ; background-origin: ; background-clip: ; background-color: rgb(255, 246, 239);"
+        >
+          <div class="max-w-4xl mx-auto text-center mb-14" data-reveal="">
+            <p
+              class="text-xs uppercase mb-4"
+              style="color:var(--gold); letter-spacing:.35em;"
+            >
+              Day into Evening
+            </p>
+            <h2 class="text-3xl md:text-5xl tracking-tight">
+              Stillness, poured slowly
+            </h2>
+          </div>
+          <div
+            id="dissolveWrap"
+            class="relative w-full mx-auto max-w-5xl overflow-hidden"
+            style="clip-path:inset(11vh 24vw); border-radius:24px; transition:clip-path .1s;"
+          >
+            <img
+              id="dayImg"
+              src="https://images.unsplash.com/photo-1552693673-1bf958298935?w=1600&amp;q=80"
+              class="w-full h-[70vh] object-cover"
+              alt=""
+            />
+            <img
+              id="nightImg"
+              src="https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1600&amp;q=80"
+              class="w-full h-[70vh] object-cover absolute inset-0"
+              style="opacity:0;"
+              alt=""
+            />
+          </div>
+        </section>
+        <section
+          id="kalm-benefits"
+          class="py-20 md:py-32 px-6 md:px-12 max-w-7xl mx-auto"
+        >
+          <div class="grid md:grid-cols-2 gap-14 items-center">
+            <div class="hidden md:block relative h-[560px]">
+              <div
+                class="kbPhoto absolute left-0 top-10 w-[46%] h-[54%] overflow-hidden shadow-xl"
+                data-kspeed="1"
+                style="border-radius:18px;"
+              >
+                <img
+                  src="https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=700&amp;q=80"
+                  class="w-full h-full object-cover"
+                  alt="Head spa treatment"
+                />
+              </div>
+              <div
+                class="kbPhoto absolute right-6 top-0 w-[40%] h-[40%] overflow-hidden shadow-lg"
+                data-kspeed="1.3"
+                style="border-radius:18px;"
+              >
+                <img
+                  src="https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600&amp;q=80"
+                  class="w-full h-full object-cover"
+                  alt="Skincare products"
+                />
+              </div>
+              <div
+                class="kbPhoto absolute left-10 bottom-0 w-[38%] h-[32%] overflow-hidden shadow-lg"
+                data-kspeed="1.15"
+                style="border-radius:18px;"
+              >
+                <img
+                  src="https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=600&amp;q=80"
+                  class="w-full h-full object-cover"
+                  alt="Scalp massage"
+                />
+              </div>
+              <div
+                class="kbPhoto absolute right-0 bottom-10 w-[44%] h-[44%] overflow-hidden shadow-2xl"
+                data-kspeed="1.2"
+                style="border-radius:18px;"
+              >
+                <img
+                  src="https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=700&amp;q=80"
+                  class="w-full h-full object-cover"
+                  alt="Quiet spa room"
+                />
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4 md:hidden">
+              <img
+                src="https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=500&amp;q=80"
+                class="kbPhoto w-full h-40 object-cover shadow-lg"
+                style="border-radius:16px;"
+                alt="Head spa treatment"
+              />
+              <img
+                src="https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=500&amp;q=80"
+                class="kbPhoto w-full h-40 object-cover shadow-lg"
+                style="border-radius:16px;"
+                alt="Skincare products"
+              />
+              <img
+                src="https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=500&amp;q=80"
+                class="kbPhoto w-full h-40 object-cover shadow-lg"
+                style="border-radius:16px;"
+                alt="Scalp massage"
+              />
+              <img
+                src="https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=500&amp;q=80"
+                class="kbPhoto w-full h-40 object-cover shadow-lg"
+                style="border-radius:16px;"
+                alt="Quiet spa room"
+              />
+            </div>
+            <div>
+              <p
+                class="kbHead text-xs uppercase mb-4"
+                style="color:var(--gold); letter-spacing:.35em;"
+              >
+                Kalm Moments Head Spa &amp; Massage
+              </p>
+              <h2
+                class="kbHead text-3xl md:text-5xl tracking-tight leading-tight mb-6"
+              >
+                Why Choose
+                <em class="serif" style="color:var(--gold);">Kalm Moments?</em>
+              </h2>
+              <p
+                class="kbHead text-sm md:text-base leading-relaxed mb-10 max-w-md"
+                style="color:#6b5a48; font-weight:300;"
+              >
+                From skilled hands and world-class products to a quiet, private
+                space — every detail is designed so you leave glowing,
+                refreshed, and effortlessly cared for.
+              </p>
+              <ul class="flex flex-col gap-6 list-none p-0 m-0">
+                <li class="kbItem flex items-start gap-4">
+                  <span
+                    class="w-10 h-10 shrink-0 flex items-center justify-center rounded-full"
+                    style="border:1px solid rgba(153,121,80,.4); color:var(--gold);"
+                  >
+                    <iconify-icon
+                      icon="mingcute:leaf-line"
+                      width="18"
+                    ></iconify-icon>
+                  </span>
+                  <div>
+                    <p class="serif mb-1">Expert Therapists</p>
+                    <p class="text-sm" style="color:#6b5a48; font-weight:300;">
+                      Certified, with at least 2 years of experience from
+                      leading spas.
+                    </p>
+                  </div>
+                </li>
+                <li class="kbItem flex items-start gap-4">
+                  <span
+                    class="w-10 h-10 shrink-0 flex items-center justify-center rounded-full"
+                    style="border:1px solid rgba(153,121,80,.4); color:var(--gold);"
+                  >
+                    <iconify-icon
+                      icon="mingcute:sparkles-line"
+                      width="18"
+                    ></iconify-icon>
+                  </span>
+                  <div>
+                    <p class="serif mb-1">World-Class Products</p>
+                    <p class="text-sm" style="color:#6b5a48; font-weight:300;">
+                      Counter-brand skincare &amp; haircare — only the very
+                      best.
+                    </p>
+                  </div>
+                </li>
+                <li class="kbItem flex items-start gap-4">
+                  <span
+                    class="w-10 h-10 shrink-0 flex items-center justify-center rounded-full"
+                    style="border:1px solid rgba(153,121,80,.4); color:var(--gold);"
+                  >
+                    <iconify-icon
+                      icon="mingcute:cloud-line"
+                      width="18"
+                    ></iconify-icon>
+                  </span>
+                  <div>
+                    <p class="serif mb-1">All-in-One Wellness</p>
+                    <p class="text-sm" style="color:#6b5a48; font-weight:300;">
+                      Face, hair, skin &amp; body — beautifully done in one
+                      quiet place.
+                    </p>
+                  </div>
+                </li>
+                <li class="kbItem flex items-start gap-4">
+                  <span
+                    class="w-10 h-10 shrink-0 flex items-center justify-center rounded-full"
+                    style="border:1px solid rgba(153,121,80,.4); color:var(--gold);"
+                  >
+                    <iconify-icon
+                      icon="mingcute:flower-line"
+                      width="18"
+                    ></iconify-icon>
+                  </span>
+                  <div>
+                    <p class="serif mb-1">Private &amp; Pristine</p>
+                    <p class="text-sm" style="color:#6b5a48; font-weight:300;">
+                      Spotlessly clean, peaceful, your own calm corner of the
+                      city.
+                    </p>
+                  </div>
+                </li>
+                <li class="kbItem flex items-start gap-4">
+                  <span
+                    class="w-10 h-10 shrink-0 flex items-center justify-center rounded-full"
+                    style="border:1px solid rgba(153,121,80,.4); color:var(--gold);"
+                  >
+                    <iconify-icon
+                      icon="mingcute:bank-card-line"
+                      width="18"
+                    ></iconify-icon>
+                  </span>
+                  <div>
+                    <p class="serif mb-1">Effortless Visit</p>
+                    <p class="text-sm" style="color:#6b5a48; font-weight:300;">
+                      Easy booking, friendly service, and major credit cards
+                      welcomed.
+                    </p>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <script>
+            (function(){
+              function initKalm(){
+                if(!window.gsap || !window.ScrollTrigger){ setTimeout(initKalm, 100); return; }
+                gsap.registerPlugin(ScrollTrigger);
+                var sec = document.getElementById('kalm-benefits');
+                if(!sec) return;
+                var photos = sec.querySelectorAll('.kbPhoto');
+                photos.forEach(function(el, i){
+                  var s = parseFloat(el.getAttribute('data-kspeed')) || 1;
+                  gsap.from(el, { y: 20 + s*8, autoAlpha:0, duration:0.9, delay: i*0.1, ease:'power2.out', scrollTrigger:{ trigger:sec, start:'top 80%' } });
+                });
+                gsap.from(sec.querySelectorAll('.kbHead'), { y:24, autoAlpha:0, duration:0.8, ease:'power2.out', stagger:0.1, scrollTrigger:{ trigger:sec, start:'top 80%' } });
+                gsap.from(sec.querySelectorAll('.kbItem'), { y:16, autoAlpha:0, duration:0.6, ease:'power2.out', stagger:0.1, scrollTrigger:{ trigger:sec, start:'top 72%' } });
+                sec.querySelectorAll('.kbPhoto[data-kspeed]').forEach(function(el){
+                  var s = parseFloat(el.getAttribute('data-kspeed')) || 1;
+                  gsap.to(el, { yPercent: -10*s, ease:'none', scrollTrigger:{ trigger:sec, start:'top bottom', end:'bottom top', scrub:true } });
+                });
+              }
+              if(document.readyState === 'loading'){ document.addEventListener('DOMContentLoaded', initKalm); } else { initKalm(); }
+            })();
+          </script>
+        </section>
+
+        <!-- SECTION 6: TESTIMONIALS -->
+        <section class="py-20 md:py-32 px-6 md:px-12 max-w-7xl mx-auto">
+          <div class="text-center mb-16" data-reveal="">
+            <p
+              class="text-xs uppercase mb-4"
+              style="color:var(--gold); letter-spacing:.35em;"
+            >
+              Nami's Testimonials
+            </p>
+            <h2 class="text-3xl md:text-5xl tracking-tight">
+              What our clients say about us
+            </h2>
+          </div>
+          <div class="relative" style="min-height:520px;" data-collage="">
+            <div
+              class="p-8 rounded-3xl absolute"
+              style="background: rgb(255, 255, 255); box-shadow: rgba(153, 121, 80, 0.08) 0px 10px 40px; width: 300px; left: 2%; top: 0px;"
+              data-collage-item=""
+            >
+              <p class="serif mb-2">Jorgovan</p>
+              <div class="flex gap-1 mb-3" style="color:var(--gold);">
+                ★★★★★
+              </div>
+              <p class="text-sm" style="color:#6b5a48; font-weight:300;">
+                The most calming ninety minutes I've spent in years.
+              </p>
+            </div>
+            <div
+              class="p-8 rounded-3xl absolute"
+              style="background: rgb(255, 255, 255); box-shadow: rgba(153, 121, 80, 0.08) 0px 10px 40px; width: 300px; left: 26%; top: 180px;"
+              data-collage-item=""
+            >
+              <p class="serif mb-2">Mira</p>
+              <div class="flex gap-1 mb-3" style="color:var(--gold);">
+                ★★★★★
+              </div>
+              <p class="text-sm" style="color:#6b5a48; font-weight:300;">
+                Every detail is considered. This is true self-care.
+              </p>
+            </div>
+            <div
+              class="p-8 rounded-3xl absolute"
+              style="background: rgb(255, 255, 255); box-shadow: rgba(153, 121, 80, 0.08) 0px 10px 40px; width: 300px; left: 52%; top: 40px;"
+              data-collage-item=""
+            >
+              <p class="serif mb-2">Daniel</p>
+              <div class="flex gap-1 mb-3" style="color:var(--gold);">
+                ★★★★★
+              </div>
+              <p class="text-sm" style="color:#6b5a48; font-weight:300;">
+                The real thing, right here in Winnipeg.
+              </p>
+            </div>
+            <div
+              class="p-8 rounded-3xl absolute"
+              style="background: rgb(255, 255, 255); box-shadow: rgba(153, 121, 80, 0.08) 0px 10px 40px; width: 300px; left: 76%; top: 220px;"
+              data-collage-item=""
+            >
+              <p class="serif mb-2">Sofie</p>
+              <div class="flex gap-1 mb-3" style="color:var(--gold);">
+                ★★★★★
+              </div>
+              <p class="text-sm" style="color:#6b5a48; font-weight:300;">
+                The most peaceful hour of her year.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- SECTION 7: CONTACT -->
+        <section
+          id="contact"
+          class="relative py-20 md:py-32 px-6 md:px-12 overflow-hidden"
+        >
+          <div
+            class="max-w-6xl mx-auto grid md:grid-cols-2 gap-14 items-start relative"
+            data-reveal=""
+          >
+            <div>
+              <h2
+                class="uppercase text-3xl md:text-5xl tracking-tight leading-tight mb-6"
+              >
+                Get In Touch
+              </h2>
+              <p
+                class="text-sm md:text-base leading-relaxed max-w-sm"
+                style="color:#6b5a48; font-weight:300;"
+              >
+                Questions about the ritual, gift cards, or availability? Write
+                to us — or call, and we'll hold a quiet hour just for you.
+              </p>
+            </div>
+            <form class="flex flex-col gap-4">
+              <input
+                type="text"
+                placeholder="Your name"
+                class="w-full px-6 py-4 text-sm bg-transparent outline-none"
+                style="border:2px solid rgba(153,121,80,.4); border-radius:60px;"
+              />
+              <input
+                type="email"
+                placeholder="Email address"
+                class="w-full px-6 py-4 text-sm bg-transparent outline-none"
+                style="border:2px solid rgba(153,121,80,.4); border-radius:60px;"
+              />
+              <textarea
+                rows="4"
+                placeholder="Your message"
+                class="w-full px-6 py-4 text-sm bg-transparent outline-none resize-none"
+                style="border:2px solid rgba(153,121,80,.4); border-radius:28px;"
+              ></textarea>
+              <div class="flex flex-wrap items-center gap-4 pt-2">
+                <button
+                  type="submit"
+                  class="pill"
+                  style="background:var(--gold); border-color:var(--gold); color:var(--cream);"
+                >
+                  Send a message
+                </button>
+                <span class="text-sm" style="color:#6b5a48;">or</span>
+                <a href="tel:+385999999999" class="pill pill-dark text-sm">
+                  Call +385 99 999 9999
+                </a>
+              </div>
+            </form>
+          </div>
+        </section>
+      </div>
+      <!-- /#journey -->
+
+      <!-- FOOTER -->
+      <footer
+        class="relative pt-16 pb-6 px-6 md:px-12"
+        style="background:var(--night); border-radius:0;"
+      >
+        <div
+          class="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-6 mb-10"
+        >
+          <div class="flex items-center gap-3">
+            <span class="jp" style="color:var(--cream);">波</span>
+            <span class="serif text-xl" style="color:var(--cream);">nami</span>
+          </div>
+          <div
+            class="flex items-center gap-6 text-sm"
+            style="color:var(--cream); opacity:.8;"
+          >
+            <a href="#about">About</a>
+            <a href="#headspa">Headspa</a>
+            <a href="#location">Location</a>
+            <a href="#giftcard">Gift Card</a>
+          </div>
+          <div id="magnet" class="pill text-sm" style="display:inline-block;">
+            Book Your Experience
+          </div>
+        </div>
+        <div class="overflow-hidden">
+          <div id="footerWord" class="serif" style="color:var(--cream);">
+            nami
+          </div>
+        </div>
+        <div
+          class="max-w-6xl mx-auto pt-8 mt-8 text-center"
+          style="border-top:1px solid rgba(255,246,239,.15);"
+        >
+          <p class="text-xs" style="color:var(--cream); opacity:.6;">
+            © 2026 Nami Head Spa. All rights reserved.
+          </p>
+        </div>
+      </footer>
+    </main>
+
+    <script>
+      gsap.registerPlugin(ScrollTrigger);
+
+      /* ---------- LENIS ---------- */
+      const lenis = new Lenis({ lerp: 0.08, smoothWheel: true });
+      lenis.on('scroll', ScrollTrigger.update);
+      gsap.ticker.add((time)=> lenis.raf(time*1000));
+      gsap.ticker.lagSmoothing(0);
+
+      /* ---------- CUSTOM CURSOR ---------- */
+      const curDot = document.getElementById('curDot');
+      const curRing = document.getElementById('curRing');
+      let mx=innerWidth/2,my=innerHeight/2,rx=mx,ry=my;
+      window.addEventListener('mousemove', e=>{mx=e.clientX; my=e.clientY; curDot.style.transform=`translate(${mx}px,${my}px)`;});
+      gsap.ticker.add(()=>{ rx+=(mx-rx)*0.15; ry+=(my-ry)*0.15; curRing.style.transform=`translate(${rx}px,${ry}px)`; });
+
+      /* ---------- GRAIN ---------- */
+      const grainCanvas = document.getElementById('grain');
+      const gctx = grainCanvas.getContext('2d');
+      function sizeGrain(){ grainCanvas.width=innerWidth; grainCanvas.height=innerHeight; }
+      sizeGrain(); window.addEventListener('resize', sizeGrain);
+      function drawGrain(){
+        const w=grainCanvas.width,h=grainCanvas.height;
+        const imgData = gctx.createImageData(w,h);
+        const buf = new Uint32Array(imgData.data.buffer);
+        for(let i=0;i<buf.length;i++){ const v = (Math.random()*255)|0; buf[i]=(255<<24)|(v<<16)|(v<<8)|v; }
+        gctx.putImageData(imgData,0,0);
+        requestAnimationFrame(drawGrain);
+      }
+      drawGrain();
+
+      /* ---------- THREE.JS HERO SHADER + PETALS ---------- */
+      const glCanvas = document.getElementById('gl');
+      const renderer = new THREE.WebGLRenderer({canvas:glCanvas, alpha:true, antialias:true});
+      renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+      renderer.setSize(innerWidth, innerHeight);
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 100);
+      camera.position.z = 5;
+
+      const texLoader = new THREE.TextureLoader();
+      const heroTex = texLoader.load('https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=1800&q=80');
+
+      const heroUniforms = {
+        uTexture: { value: heroTex },
+        uTime: { value: 0 },
+        uDarken: { value: 0 },
+        uMouse: { value: new THREE.Vector2(0.5,0.5) },
+      };
+
+      const heroMat = new THREE.ShaderMaterial({
+        uniforms: heroUniforms,
+        vertexShader: `
+          uniform float uTime;
+          uniform vec2 uMouse;
+          varying vec2 vUv;
+          void main(){
+            vUv = uv;
+            vec3 pos = position;
+            float dist = distance(uv, uMouse);
+            pos.z += sin(dist*10.0 - uTime*1.5) * 0.05 * smoothstep(0.5,0.0,dist);
+            pos.z += sin(pos.x*2.0 + uTime*0.3) * 0.02;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos,1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform sampler2D uTexture;
+          uniform float uDarken;
+          varying vec2 vUv;
+          void main(){
+            vec4 tex = texture2D(uTexture, vUv);
+            tex.rgb *= (1.0 - uDarken*0.5);
+            tex.rgb = mix(tex.rgb, vec3(0.85,0.56,0.74), 0.12);
+            gl_FragColor = tex;
+          }
+        `,
+      });
+
+      const heroGeo = new THREE.PlaneGeometry(8, 5, 64, 64);
+      const heroPlane = new THREE.Mesh(heroGeo, heroMat);
+      scene.add(heroPlane);
+
+      function fitPlaneToCover(plane, cam){
+        const dist = cam.position.z - plane.position.z;
+        const vFov = cam.fov * Math.PI/180;
+        const h = 2*Math.tan(vFov/2)*dist;
+        const w = h*cam.aspect;
+        const imgAspect = 1800/1200;
+        const planeAspect = w/h;
+        if(imgAspect > planeAspect){ plane.scale.set(planeAspect/imgAspect * (w/8), (h/5), 1); }
+        plane.scale.set(w/8, h/5, 1);
+      }
+      fitPlaneToCover(heroPlane, camera);
+
+      /* petals */
+      const PETAL_COUNT = 140;
+      const petalCanvas = document.createElement('canvas');
+      petalCanvas.width = 64; petalCanvas.height = 64;
+      const pctx = petalCanvas.getContext('2d');
+      pctx.fillStyle = '#e9a9c9';
+      pctx.beginPath();
+      pctx.ellipse(32,32,26,16,Math.PI/4,0,Math.PI*2);
+      pctx.fill();
+      const petalTex = new THREE.CanvasTexture(petalCanvas);
+
+      const petalGeo = new THREE.PlaneGeometry(0.12,0.12);
+      const petalMat = new THREE.MeshBasicMaterial({map:petalTex, transparent:true, depthWrite:false});
+      const petals = new THREE.InstancedMesh(petalGeo, petalMat, PETAL_COUNT);
+      scene.add(petals);
+
+      const petalData = [];
+      const dummy = new THREE.Object3D();
+      for(let i=0;i<PETAL_COUNT;i++){
+        petalData.push({
+          x: (Math.random()-0.5)*8,
+          y: Math.random()*6-3,
+          z: (Math.random()-0.5)*2,
+          speed: 0.2+Math.random()*0.4,
+          rot: Math.random()*Math.PI,
+          rotSpeed: (Math.random()-0.5)*0.02,
+          drift: Math.random()*0.5,
+        });
+      }
+      let petalMode = 'down'; // 'down' | 'up' | 'settle'
+
+      function updatePetals(dt){
+        for(let i=0;i<PETAL_COUNT;i++){
+          const p = petalData[i];
+          const dir = petalMode==='up' ? -1 : 1;
+          const settle = petalMode==='settle' ? 0.05 : 1;
+          p.y -= p.speed*dt*dir*settle;
+          p.x += Math.sin(p.y*2 + i)*0.002*dir;
+          p.rot += p.rotSpeed;
+          if(dir>0 && p.y < -3){ p.y = 3; }
+          if(dir<0 && p.y > 3){ p.y = -3; }
+          dummy.position.set(p.x, p.y, p.z);
+          dummy.rotation.z = p.rot;
+          dummy.scale.setScalar(1);
+          dummy.updateMatrix();
+          petals.setMatrixAt(i, dummy.matrix);
+        }
+        petals.instanceMatrix.needsUpdate = true;
+      }
+
+      let lastT = performance.now();
+      function animate(t){
+        const dt = Math.min((t-lastT)/1000, 0.05);
+        lastT = t;
+        heroUniforms.uTime.value = t*0.001;
+        updatePetals(dt);
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+      }
+      requestAnimationFrame(animate);
+
+      window.addEventListener('resize', ()=>{
+        camera.aspect = innerWidth/innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+        fitPlaneToCover(heroPlane, camera);
+      });
+      window.addEventListener('mousemove', e=>{
+        heroUniforms.uMouse.value.set(e.clientX/innerWidth, 1-e.clientY/innerHeight);
+      });
+
+      /* toggle canvas visibility with IntersectionObserver for perf */
+      const heroSection = document.querySelector('header');
+      const io = new IntersectionObserver((entries)=>{
+        entries.forEach(en=>{ glCanvas.style.opacity = en.isIntersecting ? 1 : 0.4; });
+      }, {threshold:0.1});
+      io.observe(heroSection);
+
+      /* ---------- SCROLLTRIGGER: petal mode + hero scrub ---------- */
+      ScrollTrigger.create({
+        trigger: heroSection, start:'top top', end:'bottom top',
+        onUpdate(self){
+          heroUniforms.uDarken.value = self.progress;
+          heroPlane.scale.multiplyScalar(1 + self.progress*0.001);
+        }
+      });
+      ScrollTrigger.create({ trigger:'#headspa', start:'top center', onEnter:()=> petalMode='up', onLeaveBack:()=> petalMode='down' });
+      ScrollTrigger.create({ trigger:'footer', start:'top center', onEnter:()=> petalMode='settle', onLeaveBack:()=> petalMode='up' });
+
+      /* ---------- LOADER ---------- */
+      window.addEventListener('load', ()=>{
+        gsap.to('#loader', { clipPath:'inset(0 0 100% 0)', duration:0.9, delay:0.3, ease:'power3.inOut', onComplete(){ document.getElementById('loader').remove(); ScrollTrigger.refresh(); introHero(); } });
+      });
+
+      /* ---------- HERO TEXT REVEAL ---------- */
+      function introHero(){
+        gsap.to('.heroLine span', { y:'0%', duration:1, ease:'power3.out', stagger:0.12, delay:0.1 });
+      }
+
+      /* ---------- GENERIC REVEALS ---------- */
+      document.querySelectorAll('[data-reveal]').forEach(el=>{
+        gsap.from(el, { y:40, autoAlpha:0, duration:0.9, ease:'power2.out', scrollTrigger:{ trigger:el, start:'top 85%' } });
+      });
+
+      /* ---------- COLLAGE PARALLAX ---------- */
+      document.querySelectorAll('[data-collage]').forEach(group=>{
+        const items = group.querySelectorAll('[data-collage-item]');
+        gsap.from(items, { y:60, autoAlpha:0, duration:1, ease:'power2.out', stagger:0.12, scrollTrigger:{ trigger:group, start:'top 80%' } });
+        items.forEach(it=>{
+          const speed = parseFloat(it.dataset.speed || 0.2);
+          gsap.to(it, { yPercent: -20*speed*10, ease:'none', scrollTrigger:{ trigger:group, start:'top bottom', end:'bottom top', scrub:true } });
+        });
+      });
+
+      /* ---------- SCROLL FILM (pinned chapters) ---------- */
+      const filmSection = document.getElementById('headspa');
+      const chapters = gsap.utils.toArray('.chapter');
+      const chapterImgs = gsap.utils.toArray('.chapterImg');
+      const filmProgress = document.getElementById('filmProgress');
+      const filmMarks = gsap.utils.toArray('.filmMark');
+
+      ScrollTrigger.create({
+        trigger: filmSection, start:'top top', end:'bottom bottom', scrub:true,
+        onUpdate(self){
+          const p = self.progress;
+          filmProgress.style.width = (p*100)+'%';
+          chapters.forEach(ch=>{
+            const cp = parseFloat(ch.dataset.progress);
+            const dist = Math.abs(p-cp);
+            const visible = dist < 0.12;
+            gsap.to(ch, { autoAlpha: visible?1:0, y: visible?0:20, duration:0.3, overwrite:true });
+          });
+          const chapIdx = p<0.33?0:p<0.66?1:2;
+          chapterImgs.forEach(img=> gsap.to(img,{opacity: (+img.dataset.ch===chapIdx)?1:0, duration:0.6}));
+          filmMarks.forEach((m,i)=> m.style.opacity = i===chapIdx ? 1 : 0.4);
+        }
+      });
+
+      /* ---------- HORIZONTAL GALLERY ---------- */
+      const galSection = document.getElementById('gallery');
+      const galTrack = document.getElementById('galTrack');
+      const galCards = gsap.utils.toArray('.galCard');
+
+      function isMobile(){ return innerWidth < 768; }
+
+      let galST;
+      function setupGallery(){
+        if(galST) galST.kill();
+        if(isMobile()){
+          galTrack.style.transform = 'none';
+          galTrack.parentElement.style.overflowX = 'auto';
+          galTrack.parentElement.style.scrollbarWidth = 'none';
+          return;
+        }
+        galTrack.parentElement.style.overflowX = 'hidden';
+        const scrollDist = galTrack.scrollWidth - innerWidth + 200;
+        galST = ScrollTrigger.create({
+          trigger: galSection, start:'top top', end:()=> '+='+(scrollDist+innerHeight), scrub:true, pin:true,
+          onUpdate(self){
+            gsap.set(galTrack, { x: -scrollDist*self.progress });
+            galCards.forEach(card=>{
+              const rect = card.getBoundingClientRect();
+              const center = Math.abs((rect.left+rect.width/2) - innerWidth/2);
+              card.classList.toggle('is-active', center < rect.width/2);
+            });
+          }
+        });
+      }
+      setupGallery();
+      window.addEventListener('resize', ()=> setupGallery());
+
+      /* ---------- DISSOLVE / NIGHTFALL ---------- */
+      ScrollTrigger.create({
+        trigger:'#nightfall', start:'top bottom', end:'bottom top', scrub:true,
+        onUpdate(self){
+          const p = self.progress;
+          const inset = 11*(1-p);
+          const insetX = 24*(1-p);
+          document.getElementById('dissolveWrap').style.clipPath = `inset(${inset}vh ${insetX}vw)`;
+          document.getElementById('nightImg').style.opacity = p;
+          document.body.style.setProperty('--cream-lerp', p);
+        }
+      });
+      gsap.to('#nightfall', {
+        backgroundColor:'#241B15', ease:'none',
+        scrollTrigger:{ trigger:'#nightfall', start:'top bottom', end:'bottom top', scrub:true }
+      });
+
+      /* ---------- JOURNEY RADIUS MORPH ---------- */
+      ScrollTrigger.create({
+        trigger:'#journey', start:'top bottom', end:'top top', scrub:true,
+        onUpdate(self){ document.getElementById('journey').style.borderRadius = `${32*(1-self.progress)}px ${32*(1-self.progress)}px 0 0`; }
+      });
+
+      /* ---------- FOOTER WORDMARK ---------- */
+      function sizeFooterWord(){
+        document.getElementById('footerWord').style.fontSize = (Math.max(3, innerWidth/3.95/16))+'rem';
+      }
+      sizeFooterWord();
+      window.addEventListener('resize', sizeFooterWord);
+      gsap.to('#footerWord', { y:'0%', duration:1, ease:'power3.out', scrollTrigger:{ trigger:'footer', start:'top 70%' } });
+
+      /* ---------- MAGNETIC BUTTON ---------- */
+      const magnet = document.getElementById('magnet');
+      magnet.addEventListener('mousemove', e=>{
+        const r = magnet.getBoundingClientRect();
+        const relX = e.clientX - (r.left+r.width/2);
+        const relY = e.clientY - (r.top+r.height/2);
+        gsap.to(magnet, { x: relX*0.3, y: relY*0.3, duration:0.3 });
+      });
+      magnet.addEventListener('mouseleave', ()=> gsap.to(magnet, { x:0, y:0, duration:0.4, ease:'elastic.out(1,0.4)' }));
+
+      window.addEventListener('load', ()=> ScrollTrigger.refresh());
+    </script>
+  </body>
+</html>

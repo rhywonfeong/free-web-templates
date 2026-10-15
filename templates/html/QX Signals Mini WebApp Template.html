@@ -1,0 +1,1471 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="utf-8" />
+<title>QX Signals — Telegram Mini WebApp</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<meta name="theme-color" content="#0b0f17" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://telegram.org/js/telegram-web-app.js"></script></head>
+  <body class="bg-[#0B0F17] text-slate-200 antialiased font-[Inter]">
+    <!-- Mobile-first Telegram Mini WebApp (User + Admin) -->
+    <!-- Notes:
+      - Update baseURL to your backend. If baseURL includes 'your-backend', app runs in mock mode.
+      - JWT stored in localStorage 'qx_token', role in 'qx_role'.
+      - Telegram Mini App integration: Reads Telegram.WebApp.initDataUnsafe when available.
+      - API Sketch (Express):
+        POST   /api/auth/login            { emailOrMobile, password } -> { token, role, user }
+        POST   /api/admin/login           { email, password } -> { token, role: 'admin' }
+        GET    /api/me                    Authorization: Bearer -> { user }
+        GET    /api/user/feed             -> { currentSignal, season, waitingUntil, resultForLast, balance, profit }
+        POST   /api/user/respond          { signalId, decision: 'yes'|'not' } -> 200
+        GET    /api/user/trades           -> [ { ...trade } ]
+        GET    /api/user/trades/:id       -> { ...trade }
+        POST   /api/admin/users/invite    { name?, email?, mobile?, quotexId? } -> { inviteUrl, otp }
+        GET    /api/admin/users           -> [ { id, name, quotexId, blocked } ]
+        GET    /api/admin/users/:id       -> { ...fullUser }
+        PATCH  /api/admin/users/:id       { blocked } -> 200
+        GET    /api/admin/stats           -> { totalUsers, totalWins, totalLosses }
+        POST   /api/admin/signals         { asset, direction, entryTime, duration, payout, step } -> { signal }
+        PATCH  /api/admin/signals/:id     { result: 'win'|'loss'|'draw' } -> 200
+        POST   /api/admin/season/close    -> 200
+        POST   /api/admin/season/run      { nextWindow: { from, to } } -> 200
+      - Mongo Models:
+        User: { name, email, mobile, quotexId, gender, firstBalance, balance, totalProfit, blocked, passwordHash, createdBy, roles }
+        Signal: { asset, direction, entryTime, duration, payout, step, status: 'open'|'resolved', result, createdAt }
+        Trade: { userId, signalId, decision, result, payout, duration, tradeAmount, asset, entryTime, createdAt }
+      - Security: bcrypt hash, JWT (bearer), CORS restricted to frontend, rate limit, helmet, TLS.
+    -->
+    <div id="app" class="min-h-screen w-full">
+      <!-- Global Top Bar (visible on pages as needed) -->
+      <header id="topbar" class="sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-black/40 bg-black/30 border-b border-white/10 hidden">
+        <div class="mx-auto max-w-md px-4 h-14 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <div class="h-7 w-7 rounded-md bg-white/5 border border-white/10 grid place-items-center">
+              <span class="text-xs font-semibold tracking-tight">QS</span>
+            </div>
+            <div class="flex flex-col leading-tight">
+              <span class="text-[13px] text-white/80 font-medium tracking-tight">QX Signals</span>
+              <span id="roleBadge" class="text-[11px] text-white/50">User</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <div id="balancePill" class="hidden rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1">
+              <span class="text-[12px] text-emerald-300 font-medium tracking-tight">Bal: <span id="headerBalance">—</span></span>
+            </div>
+            <button id="refreshBtn" class="p-2 rounded-md border border-white/10 hover:border-white/20 hover:bg-white/[0.04] active:scale-[0.98] transition">
+              <i data-lucide="refresh-ccw" class="h-4 w-4 text-white/80"></i>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Views -->
+      <main class="mx-auto max-w-md px-4 pb-24 pt-6">
+        <!-- Welcome / Router Host -->
+        <div id="router"></div>
+      </main>
+
+      <!-- Bottom Nav for User -->
+      <nav id="userTabbar" class="fixed bottom-0 inset-x-0 mx-auto max-w-md border-t border-white/10 bg-black/30 backdrop-blur supports-[backdrop-filter]:bg-black/40 hidden">
+        <div class="grid grid-cols-3 h-14">
+          <button data-tab="main" class="tab-btn flex flex-col items-center justify-center gap-1 text-white/60 hover:text-white transition">
+            <i data-lucide="activity" class="h-5 w-5"></i>
+            <span class="text-[11px]">Signals</span>
+          </button>
+          <button data-tab="history" class="tab-btn flex flex-col items-center justify-center gap-1 text-white/60 hover:text-white transition">
+            <i data-lucide="list" class="h-5 w-5"></i>
+            <span class="text-[11px]">History</span>
+          </button>
+          <button data-tab="profile" class="tab-btn flex flex-col items-center justify-center gap-1 text-white/60 hover:text-white transition">
+            <i data-lucide="user" class="h-5 w-5"></i>
+            <span class="text-[11px]">Profile</span>
+          </button>
+        </div>
+      </nav>
+
+      <!-- Floating toast -->
+      <div id="toast" class="fixed bottom-16 left-1/2 -translate-x-1/2 z-50 hidden">
+        <div class="rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-[13px] text-white/90 shadow-lg"></div>
+      </div>
+
+      <!-- Modal (Trade details) -->
+      <div id="modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/60"></div>
+        <div class="absolute inset-x-0 bottom-0 mx-auto max-w-md rounded-t-2xl bg-[#0F1522] border border-white/10 p-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-[15px] font-semibold tracking-tight">Trade Details</h3>
+            <button id="modalClose" class="p-2 rounded-md border border-white/10 hover:bg-white/[0.03]"><i data-lucide="x" class="h-4 w-4"></i></button>
+          </div>
+          <div id="modalBody" class="mt-3 text-[13px] text-white/80 space-y-2"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Config
+      const baseURL = (new URLSearchParams(location.search).get('api')) || 'https://your-backend.example.com';
+      const mockMode = baseURL.includes('your-backend');
+      const pollIntervalMs = 6000; // user feed polling
+      const appName = 'QX Signals';
+      const TOKEN_KEY = 'qx_token';
+      const ROLE_KEY = 'qx_role';
+
+      // State
+      let state = {
+        token: localStorage.getItem(TOKEN_KEY) || '',
+        role: localStorage.getItem(ROLE_KEY) || 'user',
+        user: null,
+        feed: null,
+        currentView: '',
+        timerHandle: null,
+        modalOpen: false,
+        telegramUser: null,
+      };
+
+      // Telegram Mini App init
+      try {
+        const tg = window.Telegram?.WebApp;
+        if (tg) {
+          tg.ready();
+          state.telegramUser = tg.initDataUnsafe?.user || null;
+          tg.expand();
+          tg.setHeaderColor('#0b0f17');
+          tg.setBackgroundColor('#0b0f17');
+          // Optionally pass tg id to backend on login if needed
+        }
+      } catch(e){}
+
+      // Utils
+      const $ = (q, root=document) => root.querySelector(q);
+      const $$ = (q, root=document) => Array.from(root.querySelectorAll(q));
+
+      const toast = (msg) => {
+        const t = $('#toast');
+        t.querySelector('div').textContent = msg;
+        t.classList.remove('hidden');
+        setTimeout(()=> t.classList.add('hidden'), 2000);
+      };
+
+      const formatMoney = (n) => {
+        if (n == null || isNaN(n)) return '0.00';
+        return Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      };
+
+      const utcToLocalTime = (iso) => {
+        if (!iso) return '—';
+        try {
+          const d = new Date(iso);
+          return d.toLocaleString(undefined, { hour12: false });
+        } catch(e) { return iso; }
+      };
+
+      const nowISO = () => new Date().toISOString();
+
+      const tradeAmountByStep = (bal, step) => {
+        const steps = {
+          'step-0': 0.02314814815,
+          'step-1': 0.05213270142,
+          'step-2': 0.123,
+          'step-3': 0.3078677309,
+          'step-4': 1.0,
+        };
+        return Math.max(0, Math.round(bal * (steps[step] ?? 0.02314814815) * 100) / 100);
+      };
+
+      const stepLabel = (s) => {
+        const map = { 'step-0':'Step-0', 'step-1':'Step-1', 'step-2':'Step-2', 'step-3':'Step-3', 'step-4':'Step-4' };
+        return map[s] || 'Step-0';
+      };
+
+      const authHeaders = () => state.token ? { 'Authorization':'Bearer ' + state.token } : {};
+
+      const api = {
+        async userLogin(emailOrMobile, password){
+          if (mockMode) {
+            if (!password) throw new Error('Invalid credentials');
+            const blocked = false;
+            const firstBalance = 1000;
+            const balance = Number(localStorage.getItem('mock_balance') || firstBalance);
+            const user = {
+              id: 'u_mock_1',
+              name: 'Alex Morgan',
+              email: emailOrMobile.includes('@') ? emailOrMobile : 'alex@example.com',
+              mobile: emailOrMobile.includes('@') ? '+100000000' : emailOrMobile,
+              quotexId: 'QX-447711',
+              gender: 'Male',
+              firstBalance,
+              balance,
+              totalProfit: Math.round((balance - firstBalance) * 100) / 100,
+              blocked
+            };
+            return { token: 'mock-user-token', role:'user', user };
+          }
+          const r = await fetch(baseURL + '/api/auth/login', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ emailOrMobile, password })
+          });
+          if (!r.ok) throw new Error('Login failed');
+          return r.json();
+        },
+        async adminLogin(email, password){
+          if (mockMode) {
+            if (email === 'hassrb4@gmail.com' && password === 'Rakibul1199.') {
+              return { token:'mock-admin-token', role:'admin' };
+            }
+            throw new Error('Invalid admin credentials');
+          }
+          const r = await fetch(baseURL + '/api/admin/login', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email, password })
+          });
+          if (!r.ok) throw new Error('Login failed');
+          return r.json();
+        },
+        async me(){
+          if (mockMode) {
+            const firstBalance = 1000;
+            const balance = Number(localStorage.getItem('mock_balance') || firstBalance);
+            return {
+              user: {
+                id: 'u_mock_1',
+                name: 'Alex Morgan',
+                email: 'alex@example.com',
+                mobile: '+1 202-555-0192',
+                quotexId: 'QX-447711',
+                gender: 'Male',
+                firstBalance,
+                balance,
+                totalProfit: Math.round((balance - firstBalance)*100)/100,
+                blocked: localStorage.getItem('mock_blocked') === '1' ? true : false
+              }
+            };
+          }
+          const r = await fetch(baseURL + '/api/me', { headers: { ...authHeaders() }});
+          if (!r.ok) throw new Error('Unauthorized');
+          return r.json();
+        },
+        async userFeed(){
+          if (mockMode) {
+            // Simulated signal lifecycle
+            const seasonClosed = localStorage.getItem('mock_season_closed') === '1';
+            const waitingUntil = localStorage.getItem('mock_wait_until') || '';
+            const storedSignal = JSON.parse(localStorage.getItem('mock_signal') || 'null');
+            const result = localStorage.getItem('mock_signal_result') || ''; // 'win'|'loss'|'draw'
+            const resultTime = localStorage.getItem('mock_result_time') || '';
+            const firstBalance = 1000;
+            const balance = Number(localStorage.getItem('mock_balance') || firstBalance);
+            return {
+              currentSignal: storedSignal, // { id, asset, direction, entryTime, duration, payout, step }
+              season: seasonClosed ? 'closed' : 'running',
+              waitingUntil,
+              resultForLast: result ? { signalId: storedSignal?.id, result, at: resultTime } : null,
+              balance,
+              profit: Math.round((balance - firstBalance)*100)/100,
+            };
+          }
+          const r = await fetch(baseURL + '/api/user/feed', { headers: { ...authHeaders() }});
+          if (!r.ok) throw new Error('Feed error');
+          return r.json();
+        },
+        async respondToSignal(signalId, decision){
+          if (mockMode) {
+            localStorage.setItem('mock_user_decision_' + signalId, decision);
+            return { ok: true };
+          }
+          const r = await fetch(baseURL + '/api/user/respond', {
+            method:'POST', headers:{ 'Content-Type':'application/json', ...authHeaders() },
+            body: JSON.stringify({ signalId, decision })
+          });
+          if (!r.ok) throw new Error('Respond error');
+          return r.json();
+        },
+        async trades(){
+          if (mockMode) {
+            return [
+              { id:'t1', asset:'EUR/USD', entryTime: new Date(Date.now()-3600e3).toISOString(), result:'win', payout:0.85, duration:'5M', tradeAmount: 18.5 },
+              { id:'t2', asset:'GBP/JPY', entryTime: new Date(Date.now()-7200e3).toISOString(), result:'loss', payout:0.9, duration:'1M', tradeAmount: 12.3 },
+              { id:'t3', asset:'BTC/USD', entryTime: new Date(Date.now()-8600e3).toISOString(), result:'win', payout:1.0, duration:'15M', tradeAmount: 50 },
+            ];
+          }
+          const r = await fetch(baseURL + '/api/user/trades', { headers: { ...authHeaders() }});
+          if (!r.ok) throw new Error('Trades error');
+          return r.json();
+        },
+        async tradeById(id){
+          if (mockMode) {
+            return { id, asset:'EUR/USD', entryTime: new Date(Date.now()-3600e3).toISOString(), result:'win', payout:0.85, duration:'5M', tradeAmount: 18.5 };
+          }
+          const r = await fetch(baseURL + '/api/user/trades/' + id, { headers: { ...authHeaders() }});
+          if (!r.ok) throw new Error('Trade not found');
+          return r.json();
+        },
+
+        // Admin endpoints
+        async adminStats(){
+          if (mockMode) {
+            const uCount = Number(localStorage.getItem('mock_users_count') || 12);
+            const wins = Number(localStorage.getItem('mock_wins') || 27);
+            const losses = Number(localStorage.getItem('mock_losses') || 13);
+            return { totalUsers: uCount, totalWins: wins, totalLosses: losses };
+          }
+          const r = await fetch(baseURL + '/api/admin/stats', { headers: { ...authHeaders() }});
+          if (!r.ok) throw new Error('Stats error');
+          return r.json();
+        },
+        async adminInviteUser(){
+          if (mockMode) {
+            const otp = Math.floor(10000000 + Math.random()*89999999).toString();
+            const url = location.origin + location.pathname + '#/user/login?otp=' + otp;
+            return { inviteUrl: url, otp };
+          }
+          const r = await fetch(baseURL + '/api/admin/users/invite', { method:'POST', headers:{ ...authHeaders(), 'Content-Type':'application/json' }, body: JSON.stringify({}) });
+          if (!r.ok) throw new Error('Invite error');
+          return r.json();
+        },
+        async adminUsers(){
+          if (mockMode) {
+            return [
+              { id:'u1', name:'Alex Morgan', quotexId:'QX-447711', blocked:false },
+              { id:'u2', name:'Samaira Khan', quotexId:'QX-118822', blocked:false },
+              { id:'u3', name:'John Doe', quotexId:'QX-774455', blocked:true },
+            ];
+          }
+          const r = await fetch(baseURL + '/api/admin/users', { headers: { ...authHeaders() }});
+          if (!r.ok) throw new Error('Users error');
+          return r.json();
+        },
+        async adminUser(id){
+          if (mockMode) {
+            return { id, name:'Alex Morgan', email:'alex@example.com', mobile:'+1 202-555-0192', gender:'Male', quotexId:'QX-447711', firstBalance:1000, balance: Number(localStorage.getItem('mock_balance') || 1000), totalProfit: Number(localStorage.getItem('mock_balance') || 1000)-1000, blocked: localStorage.getItem('mock_blocked')==='1' };
+          }
+          const r = await fetch(baseURL + '/api/admin/users/' + id, { headers: { ...authHeaders() }});
+          if (!r.ok) throw new Error('User error');
+          return r.json();
+        },
+        async adminUpdateUser(id, patch){
+          if (mockMode) {
+            if (patch.blocked !== undefined) {
+              localStorage.setItem('mock_blocked', patch.blocked ? '1' : '0');
+            }
+            return { ok: true };
+          }
+          const r = await fetch(baseURL + '/api/admin/users/' + id, { method:'PATCH', headers: { ...authHeaders(), 'Content-Type':'application/json' }, body: JSON.stringify(patch) });
+          if (!r.ok) throw new Error('Update user error');
+          return r.json();
+        },
+        async adminCreateSignal(payload){
+          if (mockMode) {
+            const sig = { id: 'sig_' + Date.now(), ...payload, status: 'open' };
+            localStorage.setItem('mock_signal', JSON.stringify(sig));
+            localStorage.removeItem('mock_signal_result');
+            localStorage.removeItem('mock_result_time');
+            localStorage.setItem('mock_season_closed','0');
+            return { signal: sig };
+          }
+          const r = await fetch(baseURL + '/api/admin/signals', { method:'POST', headers:{ ...authHeaders(), 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
+          if (!r.ok) throw new Error('Create signal error');
+          return r.json();
+        },
+        async adminResolveSignal(signalId, result){
+          if (mockMode) {
+            localStorage.setItem('mock_signal_result', result);
+            localStorage.setItem('mock_result_time', nowISO());
+            // Auto-update wins/losses stats
+            const key = result === 'win' ? 'mock_wins' : result === 'loss' ? 'mock_losses' : null;
+            if (key) localStorage.setItem(key, Number(localStorage.getItem(key)||0) + 1);
+            return { ok: true };
+          }
+          const r = await fetch(baseURL + '/api/admin/signals/' + signalId, { method:'PATCH', headers:{ ...authHeaders(), 'Content-Type':'application/json' }, body: JSON.stringify({ result }) });
+          if (!r.ok) throw new Error('Resolve error');
+          return r.json();
+        },
+        async adminSeasonClose(){
+          if (mockMode) {
+            localStorage.setItem('mock_season_closed','1');
+            localStorage.removeItem('mock_signal');
+            return { ok: true };
+          }
+          const r = await fetch(baseURL + '/api/admin/season/close', { method:'POST', headers:{ ...authHeaders() }});
+          if (!r.ok) throw new Error('Season close error');
+          return r.json();
+        },
+        async adminSeasonRun(nextWindow){
+          if (mockMode) {
+            localStorage.setItem('mock_season_closed','0');
+            localStorage.setItem('mock_wait_until', nextWindow?.to || '');
+            return { ok: true };
+          }
+          const r = await fetch(baseURL + '/api/admin/season/run', { method:'POST', headers:{ ...authHeaders(), 'Content-Type':'application/json' }, body: JSON.stringify({ nextWindow }) });
+          if (!r.ok) throw new Error('Run error');
+          return r.json();
+        },
+      };
+
+      // Router
+      function routeTo(hash){
+        if (!hash) {
+          if (state.role === 'admin') location.hash = '#/admin/login';
+          else location.hash = '#/user/login';
+          return;
+        }
+        state.currentView = hash;
+        render();
+      }
+
+      window.addEventListener('hashchange', () => routeTo(location.hash));
+      document.addEventListener('DOMContentLoaded', () => {
+        routeTo(location.hash || '');
+      });
+
+      // Render
+      async function render(){
+        const r = $('#router');
+        const roleBadge = $('#roleBadge');
+        const topbar = $('#topbar');
+        const tabbar = $('#userTabbar');
+        // Clean any intervals
+        if (state.timerHandle) {
+          clearInterval(state.timerHandle);
+          state.timerHandle = null;
+        }
+        // Decide view
+        const h = state.currentView;
+        const [_, scope, page, sub] = h.split('/');
+        const isUser = scope === 'user';
+        const isAdmin = scope === 'admin';
+
+        // Layout toggles
+        topbar.classList.add('hidden');
+        tabbar.classList.add('hidden');
+        $('#balancePill').classList.add('hidden');
+        $('#refreshBtn').onclick = null;
+
+        if (isUser) {
+          roleBadge.textContent = 'User';
+          if (page === 'login') {
+            r.innerHTML = viewUserLogin();
+            bindUserLogin();
+            enhance();
+            return;
+          }
+
+          // Require auth
+          if (!state.token || state.role !== 'user') {
+            location.hash = '#/user/login';
+            return;
+          }
+
+          // Fetch me
+          try {
+            const me = await api.me();
+            state.user = me.user;
+            if (state.user.blocked) {
+              location.hash = '#/user/blocked';
+              return;
+            }
+          } catch(e){
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(ROLE_KEY);
+            location.hash = '#/user/login';
+            return;
+          }
+
+          topbar.classList.remove('hidden');
+          $('#balancePill').classList.remove('hidden');
+          $('#headerBalance').textContent = formatMoney(state.user.balance);
+
+          if (page === 'blocked') {
+            r.innerHTML = viewUserBlocked();
+            enhance();
+            return;
+          }
+
+          if (page === 'main' || !page) {
+            r.innerHTML = viewUserMain();
+            tabbar.classList.remove('hidden');
+            activateTab('main');
+            await bindUserMain();
+            $('#refreshBtn').onclick = async () => { await refreshFeed(true); };
+            enhance();
+            return;
+          }
+
+          if (page === 'history') {
+            r.innerHTML = viewUserHistory();
+            tabbar.classList.remove('hidden');
+            activateTab('history');
+            await bindUserHistory();
+            enhance();
+            return;
+          }
+
+          if (page === 'profile') {
+            r.innerHTML = viewUserProfile();
+            tabbar.classList.remove('hidden');
+            activateTab('profile');
+            bindUserProfile();
+            enhance();
+            return;
+          }
+
+          // default
+          location.hash = '#/user/main';
+          return;
+        }
+
+        if (isAdmin) {
+          roleBadge.textContent = 'Admin';
+          if (page === 'login') {
+            r.innerHTML = viewAdminLogin();
+            bindAdminLogin();
+            enhance();
+            return;
+          }
+
+          // Require admin auth
+          if (!state.token || state.role !== 'admin') {
+            location.hash = '#/admin/login';
+            return;
+          }
+
+          topbar.classList.remove('hidden');
+          $('#balancePill').classList.add('hidden');
+          $('#refreshBtn').onclick = null;
+
+          if (page === 'dashboard') {
+            r.innerHTML = await viewAdminDashboard();
+            bindAdminDashboard();
+            enhance();
+            return;
+          }
+
+          if (page === 'users') {
+            if (sub && sub.startsWith('?id=')) {
+              const id = new URLSearchParams(sub).get('id');
+              r.innerHTML = await viewAdminUserDetails(id);
+              bindAdminUserDetails(id);
+              enhance();
+              return;
+            } else {
+              r.innerHTML = await viewAdminUsers();
+              bindAdminUsers();
+              enhance();
+              return;
+            }
+          }
+
+          if (page === 'signals') {
+            r.innerHTML = viewAdminSignals();
+            bindAdminSignals();
+            enhance();
+            return;
+          }
+
+          location.hash = '#/admin/dashboard';
+          return;
+        }
+
+        // root redirect
+        location.hash = state.role === 'admin' ? '#/admin/login' : '#/user/login';
+      }
+
+      function enhance(){
+        lucide.createIcons({ attrs: { 'stroke-width': 1.5 }});
+      }
+
+      function activateTab(tab){
+        $$('.tab-btn').forEach(b=>{
+          if (b.dataset.tab === tab) {
+            b.classList.add('text-white');
+            b.classList.remove('text-white/60');
+          } else {
+            b.classList.remove('text-white');
+            b.classList.add('text-white/60');
+          }
+          b.onclick = () => location.hash = '#/user/' + b.dataset.tab;
+        });
+      }
+
+      // Views: User
+      function viewUserLogin(){
+        const otp = new URLSearchParams(location.hash.split('?')[1]).get('otp') || '';
+        return `
+          <section class="space-y-6">
+            <div class="flex items-center gap-3">
+              <div class="h-9 w-9 rounded-lg bg-white/5 border border-white/10 grid place-items-center">
+                <span class="text-sm font-semibold tracking-tight">QS</span>
+              </div>
+              <div class="flex flex-col">
+                <h1 class="text-[20px] md:text-[22px] font-semibold tracking-tight">Welcome back</h1>
+                <p class="text-[13px] text-white/60">Sign in to continue</p>
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+              <label class="block">
+                <span class="text-[12px] text-white/60">Mobile or Email</span>
+                <input id="userEmailOrMobile" type="text" inputmode="email" class="mt-1 w-full rounded-lg bg-[#0F1522] border border-white/10 focus:outline-none focus:ring-2 focus:ring-white/20 px-3 py-2 text-[14px]" placeholder="e.g. +12025550192 or user@example.com" />
+              </label>
+              <label class="block">
+                <span class="text-[12px] text-white/60">Password</span>
+                <div class="relative">
+                  <input id="userPassword" type="password" class="mt-1 w-full rounded-lg bg-[#0F1522] border border-white/10 focus:outline-none focus:ring-2 focus:ring-white/20 px-3 py-2 text-[14px]" placeholder="••••••••" />
+                  ${otp ? `<div class="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-emerald-300/90">OTP: ${otp}</div>` : ''}
+                </div>
+              </label>
+              <button id="userLoginBtn" class="w-full rounded-lg bg-white text-black/90 font-medium tracking-tight py-2.5 active:scale-[0.99] hover:bg-white/90 transition">Sign In</button>
+              <div class="text-[12px] text-white/50">
+                No registration. Admin creates accounts.
+              </div>
+            </div>
+
+            <div class="flex items-center justify-center">
+              <button id="gotoAdmin" class="text-[12px] text-white/50 hover:text-white/80 underline-offset-4 hover:underline">Admin Login</button>
+            </div>
+          </section>
+        `;
+      }
+
+      function viewUserBlocked(){
+        return `
+          <section class="space-y-6">
+            <div class="text-center space-y-2">
+              <div class="mx-auto h-12 w-12 rounded-xl border border-white/10 bg-white/[0.03] grid place-items-center">
+                <i data-lucide="shield-alert" class="h-6 w-6 text-amber-300"></i>
+              </div>
+              <h2 class="text-[20px] font-semibold tracking-tight">Access Blocked</h2>
+              <p class="text-[13px] text-white/60">Your account has been blocked by admin. Contact support.</p>
+            </div>
+          </section>
+        `;
+      }
+
+      function viewUserMain(){
+        const u = state.user;
+        return `
+          <section class="space-y-4">
+            <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="wallet" class="h-5 w-5 text-emerald-300"></i>
+                  <span class="text-[13px] text-white/70">Balance</span>
+                </div>
+                <div class="text-[15px] font-semibold tracking-tight text-white/90">$${formatMoney(u.balance)}</div>
+              </div>
+              <div class="mt-2 grid grid-cols-2 gap-2 text-[12px] text-white/60">
+                <div class="rounded-lg border border-white/10 p-2">
+                  <div class="flex items-center justify-between">
+                    <span>First Balance</span>
+                    <span class="text-white/80">$${formatMoney(u.firstBalance)}</span>
+                  </div>
+                </div>
+                <div class="rounded-lg border border-white/10 p-2">
+                  <div class="flex items-center justify-between">
+                    <span>Total Profit</span>
+                    <span class="text-white/80">$${formatMoney(u.totalProfit)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="signalArea" class="space-y-3">
+              ${skeletonSignal()}
+            </div>
+          </section>
+        `;
+      }
+
+      function skeletonSignal(){
+        return `
+          <div class="animate-pulse rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div class="h-4 w-24 bg-white/10 rounded"></div>
+            <div class="mt-3 h-8 w-full bg-white/10 rounded"></div>
+            <div class="mt-3 h-6 w-2/3 bg-white/10 rounded"></div>
+            <div class="mt-4 grid grid-cols-2 gap-2">
+              <div class="h-10 bg-white/10 rounded"></div>
+              <div class="h-10 bg-white/10 rounded"></div>
+            </div>
+          </div>
+        `;
+      }
+
+      function userSignalCard(signal, canRespond, decision){
+        const { asset, direction, entryTime, duration, payout, step } = signal;
+        const ta = tradeAmountByStep(state.user.balance, step);
+        const dirBadge = direction === 'Call' ? 'text-emerald-300 bg-emerald-500/10 border-emerald-400/30' : 'text-rose-300 bg-rose-500/10 border-rose-400/30';
+        const yesActive = decision === 'yes';
+        const notActive = decision === 'not';
+        return `
+          <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4 transition-all duration-300">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <div class="h-8 w-8 rounded-lg bg-white/[0.04] border border-white/10 grid place-items-center">
+                  <i data-lucide="candlestick-chart" class="h-4 w-4 text-white/80"></i>
+                </div>
+                <div>
+                  <div class="text-[14px] font-medium tracking-tight text-white/90">${asset}</div>
+                  <div class="text-[12px] text-white/60">Entry: ${utcToLocalTime(entryTime)} · Duration: ${duration}</div>
+                </div>
+              </div>
+              <span class="px-2 py-1 rounded-md text-[11px] border ${dirBadge}">${direction}</span>
+            </div>
+
+            <div class="mt-3 grid grid-cols-3 gap-2">
+              <div class="rounded-lg border border-white/10 p-2">
+                <div class="text-[11px] text-white/60">Payout</div>
+                <div class="text-[13px] text-white/90 font-medium">${Math.round(payout*100)}%</div>
+              </div>
+              <div class="rounded-lg border border-white/10 p-2">
+                <div class="text-[11px] text-white/60">Step</div>
+                <div class="text-[13px] text-white/90 font-medium">${stepLabel(step)}</div>
+              </div>
+              <div class="rounded-lg border border-white/10 p-2">
+                <div class="text-[11px] text-white/60">Trade</div>
+                <div class="text-[13px] text-white/90 font-medium">$${formatMoney(ta)}</div>
+              </div>
+            </div>
+
+            <div class="mt-4 grid grid-cols-2 gap-2">
+              <button id="btnYes" class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 font-medium py-2.5 hover:bg-emerald-500/20 ${yesActive ? 'ring-2 ring-emerald-500/40' : ''}" ${!canRespond ? 'disabled' : ''}>
+                Yes
+              </button>
+              <button id="btnNot" class="rounded-lg border border-white/10 bg-white/[0.06] text-white/80 font-medium py-2.5 hover:bg-white/[0.12] ${notActive ? 'ring-2 ring-white/20' : ''}" ${!canRespond ? 'disabled' : ''}>
+                Not
+              </button>
+            </div>
+            <div class="mt-2 text-[12px] text-white/50">Auto balance update applies only if you tap Yes.</div>
+          </div>
+        `;
+      }
+
+      function userResultCard(signal, res, secsLeft){
+        const color = res === 'win' ? 'text-emerald-300 border-emerald-400/30 bg-emerald-500/10' : res === 'loss' ? 'text-rose-300 border-rose-400/30 bg-rose-500/10' : 'text-amber-300 border-amber-400/30 bg-amber-500/10';
+        return `
+          <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <div class="h-8 w-8 rounded-lg bg-white/[0.04] border border-white/10 grid place-items-center">
+                  <i data-lucide="trophy" class="h-4 w-4 text-white/80"></i>
+                </div>
+                <div>
+                  <div class="text-[14px] font-medium tracking-tight text-white/90">${signal.asset}</div>
+                  <div class="text-[12px] text-white/60">Entry: ${utcToLocalTime(signal.entryTime)} · Duration: ${signal.duration}</div>
+                </div>
+              </div>
+              <span class="px-2 py-1 rounded-md text-[11px] border ${color} uppercase">${res}</span>
+            </div>
+            <div class="mt-3 text-[12px] text-white/60">Result visible for <span id="resultTimer">${secsLeft}</span>s</div>
+          </div>
+        `;
+      }
+
+      function userWaitingCard(waitingUntil, season){
+        const endMsg = `
+          <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div class="flex items-center gap-2">
+              <i data-lucide="moon" class="h-5 w-5 text-white/70"></i>
+              <h3 class="text-[15px] font-semibold tracking-tight">Season Ended</h3>
+            </div>
+            <p class="mt-2 text-[13px] text-white/70">Today Profitable Season is end. Please come back Tomorrow.</p>
+          </div>
+        `;
+        if (season === 'closed') return endMsg;
+        return `
+          <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div class="flex items-center gap-2">
+              <i data-lucide="radar" class="h-5 w-5 text-white/70"></i>
+              <h3 class="text-[15px] font-semibold tracking-tight">Analyzing</h3>
+            </div>
+            <p class="mt-2 text-[13px] text-white/70">
+              We are analyzing. Next signal is coming around ${waitingUntil ? utcToLocalTime(waitingUntil) : '—'}. Please check the app for signal.
+            </p>
+          </div>
+        `;
+      }
+
+      function viewUserHistory(){
+        return `
+          <section class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h2 class="text-[18px] font-semibold tracking-tight">Trade History</h2>
+              <button onclick="location.hash='#/user/main'" class="text-[12px] text-white/60 hover:text-white/80 underline-offset-4 hover:underline">Back</button>
+            </div>
+            <div id="historyList" class="space-y-2">
+              ${skeletonHistory()}
+            </div>
+          </section>
+        `;
+      }
+
+      function skeletonHistory(){
+        return `
+          <div class="animate-pulse rounded-lg border border-white/10 bg-white/[0.03] p-3 h-12"></div>
+          <div class="animate-pulse rounded-lg border border-white/10 bg-white/[0.03] p-3 h-12"></div>
+          <div class="animate-pulse rounded-lg border border-white/10 bg-white/[0.03] p-3 h-12"></div>
+        `;
+      }
+
+      function viewUserProfile(){
+        const u = state.user;
+        return `
+          <section class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h2 class="text-[18px] font-semibold tracking-tight">Profile</h2>
+              <button id="logoutUser" class="text-[12px] text-white/60 hover:text-white/80 underline-offset-4 hover:underline">Logout</button>
+            </div>
+            <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+              ${profileRow('Name', u.name)}
+              ${profileRow('Email', u.email)}
+              ${profileRow('Quotex ID', u.quotexId)}
+              ${profileRow('Mobile Number', u.mobile)}
+              ${profileRow('Gender', u.gender)}
+              ${profileRow('First Balance', '$' + formatMoney(u.firstBalance))}
+              ${profileRow('Balance', '$' + formatMoney(u.balance))}
+              ${profileRow('Total Profit', '$' + formatMoney(u.totalProfit))}
+            </div>
+          </section>
+        `;
+      }
+
+      function profileRow(label, value){
+        return `
+          <div class="flex items-center justify-between">
+            <span class="text-[12px] text-white/60">${label}</span>
+            <span class="text-[13px] text-white/90">${value ?? '—'}</span>
+          </div>
+        `;
+      }
+
+      // Views: Admin
+      function viewAdminLogin(){
+        return `
+          <section class="space-y-6">
+            <div class="flex items-center gap-3">
+              <div class="h-9 w-9 rounded-lg bg-white/5 border border-white/10 grid place-items-center">
+                <span class="text-sm font-semibold tracking-tight">QS</span>
+              </div>
+              <div class="flex flex-col">
+                <h1 class="text-[20px] md:text-[22px] font-semibold tracking-tight">Admin</h1>
+                <p class="text-[13px] text-white/60">Restricted access</p>
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+              <label class="block">
+                <span class="text-[12px] text-white/60">Email</span>
+                <input id="adminEmail" type="email" class="mt-1 w-full rounded-lg bg-[#0F1522] border border-white/10 focus:outline-none focus:ring-2 focus:ring-white/20 px-3 py-2 text-[14px]" placeholder="hassrb4@gmail.com" value="hassrb4@gmail.com" />
+              </label>
+              <label class="block">
+                <span class="text-[12px] text-white/60">Password</span>
+                <input id="adminPassword" type="password" class="mt-1 w-full rounded-lg bg-[#0F1522] border border-white/10 focus:outline-none focus:ring-2 focus:ring-white/20 px-3 py-2 text-[14px]" placeholder="••••••••" value="Rakibul1199." />
+              </label>
+              <button id="adminLoginBtn" class="w-full rounded-lg bg-white text-black/90 font-medium tracking-tight py-2.5 active:scale-[0.99] hover:bg-white/90 transition">Sign In</button>
+              <div class="text-[12px] text-white/50 text-center">
+                <button id="gotoUser" class="hover:underline underline-offset-4">Go to User Login</button>
+              </div>
+            </div>
+          </section>
+        `;
+      }
+
+      async function viewAdminDashboard(){
+        let stats = { totalUsers: 0, totalWins: 0, totalLosses: 0 };
+        try { stats = await api.adminStats(); } catch(e){}
+        return `
+          <section class="space-y-5">
+            <div class="flex items-center justify-between">
+              <h2 class="text-[18px] font-semibold tracking-tight">Dashboard</h2>
+              <button id="adminLogout" class="text-[12px] text-white/60 hover:text-white/80 underline-offset-4 hover:underline">Logout</button>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              ${metricCard('Users', stats.totalUsers, 'users')}
+              ${metricCard('Wins', stats.totalWins, 'trophy')}
+              ${metricCard('Losses', stats.totalLosses, 'skull')}
+            </div>
+
+            <div class="grid gap-3">
+              <a href="#/admin/users" class="rounded-xl border border-white/10 bg-white/[0.03] p-4 hover:bg-white/[0.05] transition">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <i data-lucide="id-card" class="h-5 w-5"></i>
+                    <div class="text-[14px] font-medium tracking-tight">User Management</div>
+                  </div>
+                  <i data-lucide="chevron-right" class="h-4 w-4"></i>
+                </div>
+                <p class="text-[12px] text-white/60 mt-1">Create users, block/unblock.</p>
+              </a>
+
+              <a href="#/admin/signals" class="rounded-xl border border-white/10 bg-white/[0.03] p-4 hover:bg-white/[0.05] transition">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <i data-lucide="broadcast" class="h-5 w-5"></i>
+                    <div class="text-[14px] font-medium tracking-tight">Signal Management</div>
+                  </div>
+                  <i data-lucide="chevron-right" class="h-4 w-4"></i>
+                </div>
+                <p class="text-[12px] text-white/60 mt-1">Publish signals, set results, control season.</p>
+              </a>
+            </div>
+          </section>
+        `;
+      }
+
+      function metricCard(label, value, icon){
+        return `
+        <div class="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+          <div class="flex items-center gap-2">
+            <i data-lucide="${icon}" class="h-5 w-5 text-white/80"></i>
+            <span class="text-[12px] text-white/60">${label}</span>
+          </div>
+          <div class="mt-1 text-[16px] font-semibold tracking-tight">${value}</div>
+        </div>
+        `;
+      }
+
+      async function viewAdminUsers(){
+        let invite = null, users = [];
+        // we won't generate invite here; handled by button
+        try { users = await api.adminUsers(); } catch(e){}
+        return `
+          <section class="space-y-5">
+            <div class="flex items-center justify-between">
+              <h2 class="text-[18px] font-semibold tracking-tight">Users</h2>
+              <a href="#/admin/dashboard" class="text-[12px] text-white/60 hover:text-white/80 underline-offset-4 hover:underline">Back</a>
+            </div>
+
+            <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="text-[14px] font-medium tracking-tight">Create User</div>
+                <button id="genInvite" class="rounded-md border border-white/10 px-3 py-1.5 text-[12px] hover:bg-white/[0.06]">
+                  Generate one-time link + 8-digit OTP
+                </button>
+              </div>
+              <div id="inviteBox" class="hidden rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
+                <div class="text-[12px] text-emerald-200">Share this link and OTP with the user. Expires after one use.</div>
+                <div class="mt-2">
+                  <div class="flex items-center gap-2">
+                    <input id="inviteUrl" class="flex-1 rounded-md bg-[#0F1522] border border-white/10 px-3 py-2 text-[12px]" readonly />
+                    <button id="copyInvite" class="rounded-md border border-white/10 px-3 py-2 text-[12px] hover:bg-white/[0.06]">Copy</button>
+                  </div>
+                  <div class="mt-2 text-[12px] text-white/80">OTP: <span id="inviteOtp" class="font-medium"></span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              ${users.map(u => `
+                <div class="rounded-lg border border-white/10 bg-white/[0.03] p-3 flex items-center justify-between">
+                  <div>
+                    <div class="text-[13px] font-medium tracking-tight">${u.name}</div>
+                    <div class="text-[12px] text-white/60">Quotex: ${u.quotexId}</div>
+                  </div>
+                  <a href="#/admin/users?${new URLSearchParams({ id: u.id }).toString()}" class="rounded-md border border-white/10 px-3 py-1.5 text-[12px] hover:bg-white/[0.06]">Action</a>
+                </div>
+              `).join('')}
+            </div>
+          </section>
+        `;
+      }
+
+      async function viewAdminUserDetails(id){
+        const u = await api.adminUser(id);
+        return `
+          <section class="space-y-5">
+            <div class="flex items-center justify-between">
+              <h2 class="text-[18px] font-semibold tracking-tight">User Details</h2>
+              <a href="#/admin/users" class="text-[12px] text-white/60 hover:text-white/80 underline-offset-4 hover:underline">Back</a>
+            </div>
+            <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+              ${profileRow('Name', u.name)}
+              ${profileRow('Email', u.email)}
+              ${profileRow('Quotex ID', u.quotexId)}
+              ${profileRow('Mobile Number', u.mobile)}
+              ${profileRow('Gender', u.gender)}
+              ${profileRow('First Balance', '$' + formatMoney(u.firstBalance))}
+              ${profileRow('Balance', '$' + formatMoney(u.balance))}
+              ${profileRow('Total Profit', '$' + formatMoney(u.totalProfit))}
+              <div class="pt-2 border-t border-white/10">
+                <label class="text-[12px] text-white/60">Status</label>
+                <div class="mt-1 relative">
+                  <select id="blockSelect" class="appearance-none w-full rounded-lg bg-[#0F1522] border border-white/10 px-3 py-2 text-[14px] pr-10 focus:outline-none focus:ring-2 focus:ring-white/20">
+                    <option value="unblock" ${u.blocked ? '' : 'selected'}>Unblock</option>
+                    <option value="block" ${u.blocked ? 'selected' : ''}>Block</option>
+                  </select>
+                  <i data-lucide="chevron-down" class="h-4 w-4 text-white/60 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                </div>
+                <button id="saveUserStatus" class="mt-3 w-full rounded-lg bg-white text-black/90 font-medium tracking-tight py-2.5 active:scale-[0.99] hover:bg-white/90 transition">Save</button>
+              </div>
+            </div>
+          </section>
+        `;
+      }
+
+      function viewAdminSignals(){
+        const stored = JSON.parse(localStorage.getItem('mock_signal') || 'null');
+        const result = localStorage.getItem('mock_signal_result') || '';
+        const seasonClosed = localStorage.getItem('mock_season_closed') === '1';
+        return `
+          <section class="space-y-5">
+            <div class="flex items-center justify-between">
+              <h2 class="text-[18px] font-semibold tracking-tight">Signal Management</h2>
+              <a href="#/admin/dashboard" class="text-[12px] text-white/60 hover:text-white/80 underline-offset-4 hover:underline">Back</a>
+            </div>
+
+            <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+              <div class="text-[14px] font-medium tracking-tight">Publish/Update Signal</div>
+              <div class="grid grid-cols-2 gap-2">
+                <label class="col-span-2">
+                  <span class="text-[12px] text-white/60">Asset</span>
+                  <input id="sigAsset" class="mt-1 w-full rounded-lg bg-[#0F1522] border border-white/10 px-3 py-2 text-[14px]" placeholder="EUR/USD" />
+                </label>
+                <div>
+                  <span class="text-[12px] text-white/60">Direction</span>
+                  <div class="mt-1 grid grid-cols-2 gap-2">
+                    <button data-dir="Call" class="dir-btn rounded-lg border border-white/10 px-3 py-2 text-[13px] hover:bg-white/[0.06]">Call</button>
+                    <button data-dir="Put" class="dir-btn rounded-lg border border-white/10 px-3 py-2 text-[13px] hover:bg-white/[0.06]">Put</button>
+                  </div>
+                </div>
+                <div>
+                  <span class="text-[12px] text-white/60">Duration</span>
+                  <div class="mt-1 grid grid-cols-3 gap-2">
+                    <button data-dur="1M" class="dur-btn rounded-lg border border-white/10 px-3 py-2 text-[13px] hover:bg-white/[0.06]">1M</button>
+                    <button data-dur="5M" class="dur-btn rounded-lg border border-white/10 px-3 py-2 text-[13px] hover:bg-white/[0.06]">5M</button>
+                    <button data-dur="15M" class="dur-btn rounded-lg border border-white/10 px-3 py-2 text-[13px] hover:bg-white/[0.06]">15M</button>
+                  </div>
+                </div>
+                <label>
+                  <span class="text-[12px] text-white/60">Entry Time</span>
+                  <input id="sigEntry" type="datetime-local" class="mt-1 w-full rounded-lg bg-[#0F1522] border border-white/10 px-3 py-2 text-[14px]" />
+                </label>
+                <label>
+                  <span class="text-[12px] text-white/60">Payout (%)</span>
+                  <input id="sigPayout" type="number" min="1" max="100" step="1" class="mt-1 w-full rounded-lg bg-[#0F1522] border border-white/10 px-3 py-2 text-[14px]" placeholder="85" />
+                </label>
+                <div class="col-span-2">
+                  <span class="text-[12px] text-white/60">Martingle Step</span>
+                  <div class="mt-1 grid grid-cols-5 gap-2">
+                    ${['step-0','step-1','step-2','step-3','step-4'].map(s=> `
+                      <button data-step="${s}" class="step-btn rounded-lg border border-white/10 px-3 py-2 text-[13px] hover:bg-white/[0.06]">${s.replace('step-','Step-')}</button>
+                    `).join('')}
+                  </div>
+                </div>
+              </div>
+              <button id="updateSignal" class="w-full rounded-lg bg-white text-black/90 font-medium tracking-tight py-2.5 active:scale-[0.99] hover:bg-white/90 transition">Update Signal</button>
+            </div>
+
+            <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+              <div class="text-[14px] font-medium tracking-tight">Result Control</div>
+              <div id="resultPanel" class="${stored ? '' : 'opacity-60 pointer-events-none'}">
+                <div class="text-[12px] text-white/60">Current Signal ID: <span class="text-white/80">${stored?.id || '—'}</span></div>
+                <div class="mt-2 grid grid-cols-3 gap-2">
+                  <button id="resWin" class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 py-2 hover:bg-emerald-500/20">Win</button>
+                  <button id="resLoss" class="rounded-lg border border-rose-500/40 bg-rose-500/10 text-rose-300 py-2 hover:bg-rose-500/20">Loss</button>
+                  <button id="resDraw" class="rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-300 py-2 hover:bg-amber-500/20">Draw</button>
+                </div>
+              </div>
+              <div id="seasonPanel" class="rounded-lg border border-white/10 bg-white/[0.02] p-3 ${result ? '' : 'hidden'}">
+                <div class="text-[12px] text-white/60">Season Control</div>
+                <div class="mt-2 grid grid-cols-2 gap-2">
+                  <button id="seasonClose" class="rounded-lg border border-white/10 bg-white/[0.06] text-white/90 py-2 hover:bg-white/[0.1]">Season Close</button>
+                  <button id="seasonRun" class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 py-2 hover:bg-emerald-500/20">Running</button>
+                </div>
+                <div id="nextWindowBox" class="hidden mt-3 space-y-2">
+                  <div class="grid grid-cols-2 gap-2">
+                    <label>
+                      <span class="text-[12px] text-white/60">From</span>
+                      <input id="winFrom" type="datetime-local" class="mt-1 w-full rounded-lg bg-[#0F1522] border border-white/10 px-3 py-2 text-[14px]" />
+                    </label>
+                    <label>
+                      <span class="text-[12px] text-white/60">To</span>
+                      <input id="winTo" type="datetime-local" class="mt-1 w-full rounded-lg bg-[#0F1522] border border-white/10 px-3 py-2 text-[14px]" />
+                    </label>
+                  </div>
+                  <button id="updateNextWindow" class="w-full rounded-lg bg-white text-black/90 font-medium tracking-tight py-2.5 active:scale-[0.99] hover:bg-white/90 transition">Update</button>
+                </div>
+                <div class="mt-2 text-[12px] text-white/50">Season is currently: <span class="text-white/80">${seasonClosed ? 'Closed' : 'Running'}</span></div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-center">
+              <button id="logoutAdmin" class="text-[12px] text-white/60 hover:text-white/80 underline-offset-4 hover:underline">Logout</button>
+            </div>
+          </section>
+        `;
+      }
+
+      // Bindings: User
+      function bindUserLogin(){
+        $('#gotoAdmin').onclick = () => location.hash = '#/admin/login';
+        $('#userLoginBtn').onclick = async () => {
+          const id = $('#userEmailOrMobile').value.trim();
+          const pw = $('#userPassword').value.trim();
+          if (!id || !pw) return toast('Enter credentials');
+          try {
+            const { token, role, user } = await api.userLogin(id, pw);
+            state.token = token; state.role = role; state.user = user;
+            localStorage.setItem(TOKEN_KEY, token);
+            localStorage.setItem(ROLE_KEY, role);
+            // Update mock balance store
+            if (mockMode) {
+              localStorage.setItem('mock_balance', String(user.balance));
+            }
+            location.hash = '#/user/main';
+          } catch(e){
+            toast('Login failed');
+          }
+        };
+      }
+
+      async function bindUserMain(){
+        // Initial feed
+        await refreshFeed(false);
+        // Poll
+        state.timerHandle = setInterval(refreshFeed, pollIntervalMs);
+      }
+
+      async function refreshFeed(showToast){
+        try {
+          const data = await api.userFeed();
+          state.feed = data;
+          $('#headerBalance').textContent = formatMoney(data.balance ?? state.user.balance);
+          if (state.user) {
+            state.user.balance = data.balance ?? state.user.balance;
+            state.user.totalProfit = data.profit ?? (state.user.balance - state.user.firstBalance);
+          }
+          const area = $('#signalArea');
+          // Determine UI state
+          const signal = data.currentSignal;
+          const result = data.resultForLast;
+          const season = data.season;
+          // Render state
+          // If there is a recent result, show for a short window
+          const visibleWindowSec = 20;
+          if (result && (signal || mockMode)) {
+            const lastSig = signal || JSON.parse(localStorage.getItem('mock_signal') || 'null') || { asset: '—', entryTime: nowISO(), duration: '—' };
+            const at = result.at ? new Date(result.at).getTime() : Date.now();
+            const secsLeft = Math.max(0, visibleWindowSec - Math.floor((Date.now() - at) / 1000));
+
+            // Auto-apply balance change in mock mode only once per signal if user tapped Yes
+            if (mockMode && secsLeft > 0 && lastSig?.id) {
+              const decision = localStorage.getItem('mock_user_decision_' + lastSig.id);
+              const appliedKey = 'mock_applied_' + lastSig.id;
+              if (decision === 'yes' && !localStorage.getItem(appliedKey)) {
+                const balKey = 'mock_balance';
+                const bal0 = Number(localStorage.getItem(balKey) || 1000);
+                const tradeAmt = tradeAmountByStep(bal0, lastSig.step);
+                let bal1 = bal0;
+                if (result.result === 'win') {
+                  // credit profit (stake returns assumed outside; we just credit profit part)
+                  bal1 = bal0 + tradeAmt * (Number(lastSig.payout) || 0.85);
+                } else if (result.result === 'loss') {
+                  // deduct the stake
+                  bal1 = bal0 - tradeAmt;
+                } // draw => no change
+                localStorage.setItem(balKey, String(Math.round(bal1 * 100) / 100));
+                localStorage.setItem(appliedKey, '1');
+              }
+            }
+
+            if (secsLeft <= 0) {
+              // Hide result after window; clear mock flags
+              if (mockMode) {
+                localStorage.removeItem('mock_signal_result');
+                localStorage.removeItem('mock_result_time');
+                localStorage.removeItem('mock_signal');
+                // keep decision flag for history simulation if needed
+              }
+            } else {
+              area.innerHTML = userResultCard(lastSig, result.result, secsLeft);
+              // countdown UI
+              let left = secsLeft;
+              const t = setInterval(() => {
+                left -= 1;
+                const el = $('#resultTimer');
+                if (el) el.textContent = left;
+                if (left <= 0) {
+                  clearInterval(t);
+                  refreshFeed();
+                }
+              }, 1000);
+              return; // stop here while showing result
+            }
+          }
+
+          if (signal) {
+            const decision = localStorage.getItem('mock_user_decision_' + signal.id) || '';
+            // Allow responses until entry time passes
+            let canRespond = true;
+            try {
+              const entryTs = new Date(signal.entryTime).getTime();
+              canRespond = Date.now() < entryTs;
+            } catch(e){}
+            area.innerHTML = userSignalCard(signal, canRespond, decision);
+            // Bind buttons
+            const yesBtn = $('#btnYes');
+            const notBtn = $('#btnNot');
+            if (yesBtn) {
+              yesBtn.onclick = async () => {
+                try {
+                  await api.respondToSignal(signal.id, 'yes');
+                  localStorage.setItem('mock_user_decision_' + signal.id, 'yes');
+                  toast('Marked Yes');
+                  await refreshFeed();
+                } catch(e){ toast('Failed to respond'); }
+              };
+            }
+            if (notBtn) {
+              notBtn.onclick = async () => {
+                try {
+                  await api.respondToSignal(signal.id, 'not');
+                  localStorage.setItem('mock_user_decision_' + signal.id, 'not');
+                  toast('Marked Not');
+                  await refreshFeed();
+                } catch(e){ toast('Failed to respond'); }
+              };
+            }
+            if (showToast) toast('Feed updated');
+            return;
+          }
+
+          // No signal: show waiting or season end
+          area.innerHTML = userWaitingCard(data.waitingUntil, season);
+          if (showToast) toast('Feed updated');
+        } catch(e){
+          console.error(e);
+          toast('Failed to refresh');
+        }
+      }
+
+      async function bindUserHistory(){
+        const list = $('#historyList');
+        try {
+          const items = await api.trades();
+          if (!items || !items.length) {
+            list.innerHTML = `<div class="text-[13px] text-white/60 text-center py-6">No trades yet.</div>`;
+            return;
+          }
+          list.innerHTML = items.map(t => {
+            const color =
+              t.result === 'win' ? 'text-emerald-300 bg-emerald-500/10 border-emerald-400/30' :
+              t.result === 'loss' ? 'text-rose-300 bg-rose-500/10 border-rose-400/30' :
+              'text-amber-300 bg-amber-500/10 border-amber-400/30';
+            return `
+              <button data-id="${t.id}" class="hist-row w-full rounded-lg border border-white/10 bg-white/[0.03] p-3 text-left hover:bg-white/[0.06] transition">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-[13px] font-medium tracking-tight">${t.asset}</div>
+                    <div class="text-[11px] text-white/60">${utcToLocalTime(t.entryTime)} · ${t.duration}</div>
+                  </div>
+                  <span class="px-2 py-0.5 rounded-md text-[11px] border ${color} uppercase">${t.result}</span>
+                </div>
+                <div class="mt-1 text-[12px] text-white/70">Trade: $${formatMoney(t.tradeAmount)} · Payout: ${Math.round((t.payout ?? 0)*100)}%</div>
+              </button>
+            `;
+          }).join('');
+          $$('.hist-row', list).forEach(btn => {
+            btn.onclick = async () => {
+              const id = btn.getAttribute('data-id');
+              const t = await api.tradeById(id);
+              openModal(`
+                <div class="grid gap-2">
+                  ${profileRow('Asset', t.asset)}
+                  ${profileRow('Entry Time', utcToLocalTime(t.entryTime))}
+                  ${profileRow('Duration', t.duration)}
+                  ${profileRow('Result', (t.result||'').toUpperCase())}
+                  ${profileRow('Trade Amount', '$' + formatMoney(t.tradeAmount))}
+                  ${profileRow('Payout', Math.round((t.payout??0)*100) + '%')}
+                  ${profileRow('ID', t.id)}
+                </div>
+              `);
+            };
+          });
+        } catch(e){
+          list.innerHTML = `<div class="text-[13px] text-rose-300/90 text-center py-6">Failed to load history</div>`;
+        }
+      }
+
+      function bindUserProfile(){
+        $('#logoutUser').onclick = () => {
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(ROLE_KEY);
+          state.token = '';
+          state.role = 'user';
+          location.hash = '#/user/login';
+        };
+      }
+
+      // Modal helpers
+      function openModal(html){
+        const m = $('#modal');
+        $('#modalBody').innerHTML = html;
+        m.classList.remove('hidden');
+        state.modalOpen = true;
+      }
+      function closeModal(){
+        const m = $('#modal');
+        m.classList.add('hidden');
+        state.modalOpen = false;
+      }
+      $('#modalClose').onclick = closeModal;
+      $('#modal').addEventListener('click', (e) => {
+        if (e.target.id === 'modal') closeModal();
+      });
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && state.modalOpen) closeModal();
+      });
+
+      // Bindings: Admin
+      function bindAdminLogin(){
+        $('#gotoUser').onclick = () => location.hash = '#/user/login';
+        $('#adminLoginBtn').onclick = async () => {
+          const email = $('#adminEmail').value.trim();
+          const pw = $('#adminPassword').value.trim();
+          if (!email || !pw) return toast('Enter credentials');
+          try {
+            const { token, role } = await api.adminLogin(email, pw);
+            state.token = token; state.role = role;
+            localStorage.setItem(TOKEN_KEY, token);
+            localStorage.setItem(ROLE_KEY, role);
+            location.hash = '#/admin/dashboard';
+          } catch(e){
+            toast('Login failed');
+          }
+        };
+      }
+
+      function bindAdminDashboard(){
+        $('#adminLogout').onclick = () => {
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(ROLE_KEY);
+          state.token = ''; state.role = 'user';
+          location.hash = '#/admin/login';
+        };
+      }
+
+      function bindAdminUsers(){
+        const box = $('#inviteBox');
+        const btn = $('#genInvite');
+        const copy = $('#copyInvite');
+        const urlEl = $('#inviteUrl');
+        const otpEl = $('#inviteOtp');
+        btn.onclick = async () => {
+          try {
+            const { inviteUrl, otp } = await api.adminInviteUser();
+            urlEl.value = inviteUrl;
+            otpEl.textContent = otp;
+            box.classList.remove('hidden');
+            toast('Invite generated');
+          } catch(e){
+            toast('Failed to generate');
+          }
+        };
+        copy.onclick = async () => {
+          try {
+            await navigator.clipboard.writeText(`${urlEl.value}  OTP: ${otpEl.textContent}`);
+            toast('Copied');
+          } catch(e){ toast('Copy failed'); }
+        };
+      }
+
+      function bindAdminUserDetails(id){
+        $('#saveUserStatus').onclick = async () => {
+          const v = $('#blockSelect').value;
+          try {
+            await api.adminUpdateUser(id, { blocked: v === 'block' });
+            toast('Saved');
+          } catch(e){
+            toast('Save failed');
+          }
+        };
+      }
+
+      function bindAdminSignals(){
+        // Toggle helpers
+        const setActive = (selector, el) => {
+          $$(selector).forEach(b => b.classList.remove('ring-2','ring-white/30','bg-white/[0.08]'));
+          if (el) el.classList.add('ring-2','ring-white/30','bg-white/[0.08]');
+        };
+
+        let sel = { dir: '', dur: '', step: '' };
+
+        $$('.dir-btn').forEach(b => b.onclick = () => { sel.dir = b.dataset.dir; setActive('.dir-btn', b); });
+        $$('.dur-btn').forEach(b => b.onclick = () => { sel.dur = b.dataset.dur; setActive('.dur-btn', b); });
+        $$('.step-btn').forEach(b => b.onclick = () => { sel.step = b.dataset.step; setActive('.step-btn', b); });
+
+        $('#updateSignal').onclick = async () => {
+          const asset = $('#sigAsset').value.trim();
+          const entry = $('#sigEntry').value ? new Date($('#sigEntry').value).toISOString() : '';
+          const payoutPct = Number($('#sigPayout').value || 85);
+          if (!asset || !sel.dir || !sel.dur || !entry) return toast('Fill all fields');
+          try {
+            const { signal } = await api.adminCreateSignal({
+              asset, direction: sel.dir, entryTime: entry, duration: sel.dur, payout: (payoutPct/100), step: sel.step || 'step-0'
+            });
+            toast('Signal updated');
+            // Refresh the page state
+            render();
+          } catch(e){ toast('Failed to update'); }
+        };
+
+        const stored = JSON.parse(localStorage.getItem('mock_signal') || 'null');
+        const haveSignal = !!stored;
+
+        if (haveSignal) {
+          $('#resWin').onclick = async () => { await resolve('win'); };
+          $('#resLoss').onclick = async () => { await resolve('loss'); };
+          $('#resDraw').onclick = async () => { await resolve('draw'); };
+        }
+
+        async function resolve(result){
+          try {
+            await api.adminResolveSignal(stored.id, result);
+            toast('Result set: ' + result.toUpperCase());
+            // Reveal season panel and refresh UI
+            render();
+          } catch(e){ toast('Failed to set result'); }
+        }
+
+        // Season controls
+        const spClose = $('#seasonClose');
+        const spRun = $('#seasonRun');
+        const winBox = $('#nextWindowBox');
+        if (spClose) spClose.onclick = async () => {
+          try { await api.adminSeasonClose(); toast('Season closed'); render(); } catch(e){ toast('Failed'); }
+        };
+        if (spRun) spRun.onclick = () => {
+          // Toggle new window inputs
+          winBox.classList.toggle('hidden');
+        };
+        const upd = $('#updateNextWindow');
+        if (upd) upd.onclick = async () => {
+          const f = $('#winFrom').value ? new Date($('#winFrom').value).toISOString() : null;
+          const t = $('#winTo').value ? new Date($('#winTo').value).toISOString() : null;
+          try {
+            await api.adminSeasonRun({ from: f, to: t });
+            toast('Season running');
+            render();
+          } catch(e){ toast('Failed'); }
+        };
+
+        // Logout in this view
+        const lo = $('#logoutAdmin');
+        if (lo) lo.onclick = () => {
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(ROLE_KEY);
+          state.token = ''; state.role = 'user';
+          location.hash = '#/admin/login';
+        };
+      }
+
+      // Global refresh button
+      $('#refreshBtn').addEventListener('click', async () => {
+        if (state.currentView.startsWith('#/user')) await refreshFeed(true);
+      });
+    </script>
+  </body>
+</html>

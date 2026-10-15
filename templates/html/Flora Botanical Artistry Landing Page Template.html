@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flora - Bespoke Botanical Arrangements</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<!-- GSAP for animations -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<!-- Three.js for 3D sunset/floral background -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+body {
+font-family: 'Inter', sans-serif;
+}
+#canvas-container {
+position: absolute;
+top: 0;
+left: 0;
+width: 100%;
+height: 100vh;
+z-index: 0;
+overflow: hidden;
+pointer-events: none;
+/* Subtle fade out at the bottom of the hero */
+mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+-webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+}
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="bg-[#FCFCFC] text-slate-800 antialiased selection:bg-rose-100 selection:text-rose-900 relative overflow-x-hidden">
+
+    <!-- Updated Ambient Background Gradients (Sunset Colors) -->
+    <div class="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+        <div class="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-orange-300/20 blur-[120px]"></div>
+        <div class="absolute top-[20%] -right-[10%] w-[40%] h-[60%] rounded-full bg-rose-400/20 blur-[120px]"></div>
+        <div class="absolute -bottom-[20%] left-[20%] w-[60%] h-[40%] rounded-full bg-yellow-200/20 blur-[100px]"></div>
+    </div>
+
+    <!-- ThreeJS Container -->
+    <div id="canvas-container"></div>
+
+    <!-- Navigation -->
+    <nav class="relative z-10 flex items-center justify-between px-6 py-6 md:px-12 max-w-7xl mx-auto hero-anim opacity-0">
+        <div class="flex items-center gap-8">
+            <a href="#" class="text-lg font-medium tracking-tighter text-slate-900 uppercase">
+                FLR
+            </a>
+            <div class="hidden md:flex items-center gap-6">
+                <a href="#" class="text-sm font-normal text-slate-700 hover:text-slate-900 transition-colors">Bespoke</a>
+                <a href="#" class="text-sm font-normal text-slate-700 hover:text-slate-900 transition-colors">Collections</a>
+                <a href="#" class="text-sm font-normal text-slate-700 hover:text-slate-900 transition-colors">Journal</a>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <a href="#" class="hidden md:block text-sm font-normal text-slate-700 hover:text-slate-900 transition-colors">Sign in</a>
+            <button class="flex items-center justify-center w-10 h-10 rounded-full border border-slate-200/60 bg-white/50 backdrop-blur-md hover:bg-slate-50 transition-colors text-slate-800">
+                <iconify-icon icon="solar:cart-large-minimalistic-linear" width="20" height="20" style="stroke-width: 1.5;"></iconify-icon>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="relative z-10 pt-24 pb-40 px-6 md:px-12 max-w-7xl mx-auto flex flex-col items-center text-center min-h-[80vh] justify-center">
+        <div class="hero-anim opacity-0 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/40 border border-white/50 backdrop-blur-md mb-8 shadow-sm shadow-orange-500/10">
+            <span class="w-2 h-2 rounded-full bg-orange-400"></span>
+            <span class="text-xs font-medium text-slate-800 tracking-wide uppercase">Now accepting custom orders</span>
+        </div>
+        
+        <h1 class="hero-anim opacity-0 text-5xl md:text-7xl lg:text-8xl font-normal tracking-tighter text-slate-900 leading-[1.1] max-w-4xl mix-blend-overlay">
+            Botanical artistry, <br class="hidden md:block">
+            <span class="text-slate-600">tailored for you.</span>
+        </h1>
+        
+        <p class="hero-anim opacity-0 mt-8 text-base md:text-lg font-normal text-slate-700 max-w-xl leading-relaxed mix-blend-overlay">
+            We move beyond standard catalogs. Every arrangement is a unique dialogue between nature's seasonal best and your personal aesthetic vision.
+        </p>
+        
+        <div class="hero-anim opacity-0 mt-12 flex flex-col sm:flex-row items-center gap-4">
+            <button class="w-full sm:w-auto px-8 py-3.5 rounded-full bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-all shadow-lg shadow-orange-900/20 flex items-center justify-center gap-2 group border border-slate-800">
+                Start your consultation
+                <iconify-icon icon="solar:arrow-right-linear" width="18" height="18" style="stroke-width: 1.5;" class="group-hover:translate-x-1 transition-transform"></iconify-icon>
+            </button>
+            <button class="w-full sm:w-auto px-8 py-3.5 rounded-full bg-white/60 backdrop-blur-md text-slate-900 border border-white/60 text-sm font-medium hover:bg-white/80 transition-all flex items-center justify-center gap-2 shadow-sm">
+                Explore gallery
+            </button>
+        </div>
+    </header>
+
+    <!-- Bespoke Process Section -->
+    <section class="relative z-10 py-24 bg-white/60 border-y border-slate-100/50 backdrop-blur-xl">
+        <div class="max-w-7xl mx-auto px-6 md:px-12">
+            <div class="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
+                <div>
+                    <h2 class="text-3xl md:text-4xl font-normal tracking-tight text-slate-900">The Bespoke Process</h2>
+                    <p class="mt-3 text-sm font-normal text-slate-500 max-w-md">A thoughtful approach to floral design, ensuring every stem speaks to your occasion.</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 lg:gap-16">
+                <!-- Step 1 -->
+                <div class="group">
+                    <div class="w-12 h-12 rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center mb-6 group-hover:scale-105 transition-transform duration-500">
+                        <iconify-icon icon="solar:chat-round-line-linear" width="24" height="24" style="stroke-width: 1.5;"></iconify-icon>
+                    </div>
+                    <h3 class="text-xl font-medium tracking-tight text-slate-900 mb-3">1. Consultation</h3>
+                    <p class="text-sm font-normal text-slate-500 leading-relaxed">
+                        We begin with your vision. Share your color palettes, mood boards, and the sentiment behind the arrangement.
+                    </p>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="group">
+                    <div class="w-12 h-12 rounded-2xl bg-rose-50 text-rose-400 flex items-center justify-center mb-6 group-hover:scale-105 transition-transform duration-500">
+                        <iconify-icon icon="solar:leaf-linear" width="24" height="24" style="stroke-width: 1.5;"></iconify-icon>
+                    </div>
+                    <h3 class="text-xl font-medium tracking-tight text-slate-900 mb-3">2. Curation</h3>
+                    <p class="text-sm font-normal text-slate-500 leading-relaxed">
+                        Our florists hand-select the finest seasonal blooms from local growers, focusing on unique textures and delicate hues.
+                    </p>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="group">
+                    <div class="w-12 h-12 rounded-2xl bg-yellow-50 text-yellow-500 flex items-center justify-center mb-6 group-hover:scale-105 transition-transform duration-500">
+                        <iconify-icon icon="solar:box-minimalistic-linear" width="24" height="24" style="stroke-width: 1.5;"></iconify-icon>
+                    </div>
+                    <h3 class="text-xl font-medium tracking-tight text-slate-900 mb-3">3. Composition</h3>
+                    <p class="text-sm font-normal text-slate-500 leading-relaxed">
+                        Crafted with intention and delivered in our signature sustainable packaging, ready to transform your space.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Curated Palettes (Gallery) -->
+    <section class="relative z-10 py-32 max-w-7xl mx-auto px-6 md:px-12">
+        <h2 class="text-3xl md:text-4xl font-normal tracking-tight text-slate-900 mb-12 text-center md:text-left">Aesthetic Inspirations</h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+            <!-- Palette 1: Blush & Breeze -->
+            <div class="md:col-span-7 group cursor-pointer relative overflow-hidden rounded-[2rem]">
+                <div class="absolute inset-0 bg-slate-900/10 group-hover:bg-transparent transition-colors duration-700 z-10"></div>
+                <img src="https://images.unsplash.com/photo-1563241527-3004b7be0ffd?q=80&w=2787&auto=format&fit=crop" alt="Soft pink and white flowers" class="w-full h-[500px] object-cover group-hover:scale-105 transition-transform duration-1000 ease-out">
+                <div class="absolute bottom-0 left-0 p-8 z-20">
+                    <div class="flex items-center gap-3 mb-2">
+                        <span class="w-3 h-3 rounded-full bg-rose-200"></span>
+                        <span class="w-3 h-3 rounded-full bg-sky-100"></span>
+                        <span class="text-xs font-medium text-white tracking-wide uppercase drop-shadow-md">Palette</span>
+                    </div>
+                    <h3 class="text-3xl font-medium tracking-tight text-white drop-shadow-md">Blush & Breeze</h3>
+                </div>
+            </div>
+
+            <!-- Palette 2: Golden Hour -->
+            <div class="md:col-span-5 group cursor-pointer relative overflow-hidden rounded-[2rem]">
+                <div class="absolute inset-0 bg-slate-900/10 group-hover:bg-transparent transition-colors duration-700 z-10"></div>
+                <img src="https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?q=80&w=2727&auto=format&fit=crop" alt="Orange and yellow flowers" class="w-full h-[500px] object-cover group-hover:scale-105 transition-transform duration-1000 ease-out">
+                <div class="absolute bottom-0 left-0 p-8 z-20">
+                    <div class="flex items-center gap-3 mb-2">
+                        <span class="w-3 h-3 rounded-full bg-orange-200"></span>
+                        <span class="w-3 h-3 rounded-full bg-yellow-100"></span>
+                        <span class="text-xs font-medium text-white tracking-wide uppercase drop-shadow-md">Palette</span>
+                    </div>
+                    <h3 class="text-3xl font-medium tracking-tight text-white drop-shadow-md">Golden Hour</h3>
+                </div>
+            </div>
+
+            <!-- Palette 3: Pure Canvas -->
+            <div class="md:col-span-12 group cursor-pointer relative overflow-hidden rounded-[2rem] mt-2">
+                <div class="absolute inset-0 bg-slate-900/10 group-hover:bg-transparent transition-colors duration-700 z-10"></div>
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg" alt="Minimalist white flowers" class="w-full h-[400px] object-cover object-center group-hover:scale-105 transition-transform duration-1000 ease-out">
+                <div class="absolute bottom-0 left-0 p-8 z-20">
+                    <div class="flex items-center gap-3 mb-2">
+                        <span class="w-3 h-3 rounded-full bg-white border border-slate-200"></span>
+                        <span class="w-3 h-3 rounded-full bg-slate-100 border border-slate-200"></span>
+                        <span class="text-xs font-medium text-white tracking-wide uppercase drop-shadow-md">Palette</span>
+                    </div>
+                    <h3 class="text-3xl font-medium tracking-tight text-white drop-shadow-md">Pure Canvas</h3>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonial -->
+    <section class="py-24 px-6 md:px-12 flex justify-center text-center relative z-10">
+        <div class="max-w-3xl">
+            <iconify-icon icon="solar:quote-left-linear" width="40" height="40" style="stroke-width: 1;" class="text-slate-200 mb-6 mx-auto"></iconify-icon>
+            <p class="text-2xl md:text-4xl font-normal tracking-tight text-slate-800 leading-snug">
+                "Flora didn't just deliver flowers; they translated my fragmented ideas into a sculptural arrangement that felt incredibly personal and profoundly beautiful."
+            </p>
+            <div class="mt-8 flex items-center justify-center gap-4">
+                <div class="w-10 h-10 rounded-full bg-slate-100 overflow-hidden">
+                    <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop" alt="Avatar" class="w-full h-full object-cover">
+                </div>
+                <div class="text-left">
+                    <p class="text-sm font-medium text-slate-900">Elara V.</p>
+                    <p class="text-xs font-normal text-slate-500">Custom Event Client</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Newsletter / Footer CTA -->
+    <footer class="relative z-10 bg-white border-t border-slate-100/60 pt-20 pb-10">
+        <div class="max-w-7xl mx-auto px-6 md:px-12">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-16 mb-20">
+                <div>
+                    <h4 class="text-2xl font-normal tracking-tight text-slate-900 mb-4">Join our inner circle</h4>
+                    <p class="text-sm font-normal text-slate-500 mb-6 max-w-sm">Receive notes on seasonality, editorial inspiration, and early access to limited collections.</p>
+                    
+                    <!-- Custom Input Design -->
+                    <form class="flex items-center w-full max-w-md relative">
+                        <input type="email" placeholder="Email address" class="w-full bg-slate-50 border border-slate-200/60 rounded-full py-3 pl-5 pr-12 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-slate-300 focus:bg-white transition-colors">
+                        <button type="submit" class="absolute right-1.5 p-2 bg-slate-900 text-white rounded-full hover:bg-slate-800 transition-colors flex items-center justify-center">
+                            <iconify-icon icon="solar:arrow-right-linear" width="16" height="16" style="stroke-width: 1.5;"></iconify-icon>
+                        </button>
+                    </form>
+                </div>
+
+                <div class="flex gap-16 md:justify-end">
+                    <div class="flex flex-col gap-4">
+                        <span class="text-xs font-medium tracking-wide text-slate-900 uppercase mb-2">Studio</span>
+                        <a href="#" class="text-sm font-normal text-slate-500 hover:text-slate-900 transition-colors">About us</a>
+                        <a href="#" class="text-sm font-normal text-slate-500 hover:text-slate-900 transition-colors">The Process</a>
+                        <a href="#" class="text-sm font-normal text-slate-500 hover:text-slate-900 transition-colors">Journal</a>
+                    </div>
+                    <div class="flex flex-col gap-4">
+                        <span class="text-xs font-medium tracking-wide text-slate-900 uppercase mb-2">Connect</span>
+                        <a href="#" class="text-sm font-normal text-slate-500 hover:text-slate-900 transition-colors">Instagram</a>
+                        <a href="#" class="text-sm font-normal text-slate-500 hover:text-slate-900 transition-colors">Pinterest</a>
+                        <a href="#" class="text-sm font-normal text-slate-500 hover:text-slate-900 transition-colors">Inquiries</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row items-center justify-between pt-8 border-t border-slate-100/60 text-xs font-normal text-slate-400">
+                <p>&copy; 2024 Flora Studio. All rights reserved.</p>
+                <div class="flex items-center gap-6 mt-4 md:mt-0">
+                    <a href="#" class="hover:text-slate-600 transition-colors">Privacy Policy</a>
+                    <a href="#" class="hover:text-slate-600 transition-colors">Terms of Service</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts for 3D Flowing Background & GSAP -->
+    <script>
+        // GSAP Animations
+        document.addEventListener("DOMContentLoaded", (event) => {
+            gsap.to(".hero-anim", {
+                y: 0,
+                opacity: 1,
+                duration: 1,
+                stagger: 0.15,
+                ease: "power3.out",
+                startAt: { y: 30, opacity: 0 },
+                delay: 0.2
+            });
+        });
+
+        // Three.js Setup (Sunset Floral Flow)
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 15;
+        camera.position.y = 2;
+
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        // Abstract organic shape (Plane manipulated in loop)
+        const geometry = new THREE.PlaneGeometry(40, 20, 64, 64);
+        
+        const material = new THREE.MeshStandardMaterial({
+            color: 0xff7a33,      // Vibrant Orange
+            emissive: 0xdb2b52,   // Pinkish/Magenta glow
+            emissiveIntensity: 0.6,
+            roughness: 0.3,
+            metalness: 0.1,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.85
+        });
+
+        const plane = new THREE.Mesh(geometry, material);
+        plane.rotation.x = -Math.PI * 0.3;
+        plane.position.y = -5;
+        scene.add(plane);
+
+        // Lighting to enhance sunset feel
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+
+        const pointLight1 = new THREE.PointLight(0xffd700, 1.5, 50); // Warm yellow
+        pointLight1.position.set(5, 5, 5);
+        scene.add(pointLight1);
+
+        const pointLight2 = new THREE.PointLight(0xff1493, 2, 50); // Deep pink
+        pointLight2.position.set(-10, 0, 10);
+        scene.add(pointLight2);
+
+        const clock = new THREE.Clock();
+        const initialPositions = geometry.attributes.position.clone();
+
+        // Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
+            const elapsedTime = clock.getElapsedTime();
+
+            // Create flowing/petal-like movement
+            const positions = geometry.attributes.position;
+            
+            for (let i = 0; i < positions.count; i++) {
+                const ix = initialPositions.getX(i);
+                const iy = initialPositions.getY(i);
+                
+                // Complex wave function for organic feel
+                const z = Math.sin(ix * 0.3 + elapsedTime * 0.8) * 1.5 + 
+                          Math.cos(iy * 0.3 + elapsedTime * 0.5) * 1.5 +
+                          Math.sin((ix + iy) * 0.1 + elapsedTime * 0.3) * 2;
+                          
+                positions.setZ(i, z);
+            }
+            
+            positions.needsUpdate = true;
+            
+            // Slow overall rotation
+            plane.rotation.z = Math.sin(elapsedTime * 0.1) * 0.05;
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

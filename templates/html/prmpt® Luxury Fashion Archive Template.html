@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>prmpt® — Archive Collection</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500&display=swap" rel="stylesheet" /><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="bg-white antialiased" style="font-family:'Inter Tight',sans-serif;font-weight:500;">
+
+  <!-- ROOT SCROLL SPACER -->
+  <div id="scroll-spacer" class="relative select-none bg-white lg:cursor-none" style="height:500vh;"></div>
+
+  <!-- 1G. VIDEO CONTAINER -->
+  <div id="main-canvas" class="pointer-events-none fixed left-0 top-[220px] z-0 h-[calc(100vh-220px)] w-screen overflow-hidden lg:inset-0 lg:top-0 lg:h-full lg:w-full" style="opacity:0;transition:opacity 0.3s ease;">
+    <video id="video-left" muted playsinline preload="auto" class="absolute inset-0 h-full w-full" style="object-fit:cover;display:none;" src="https://d8j0ntlcm91z4.cloudfront.net/user_39ca84eAE1ODL9hbR5VhoEj8tBf/hf_20260625_154433_532a85d3-dabf-4265-b8bd-19ac6af31842.mp4"></video>
+    <video id="video-right" muted playsinline preload="auto" class="absolute inset-0 h-full w-full" style="object-fit:cover;display:block;" src="https://d8j0ntlcm91z4.cloudfront.net/user_39ca84eAE1ODL9hbR5VhoEj8tBf/hf_20260625_154401_a664f076-b971-4557-8728-40ef9ea4c49b.mp4"></video>
+  </div>
+
+  <!-- SECTION 2: BLACK PANEL (GALLERY) -->
+  <div id="panel" class="fixed inset-0 z-10 overflow-hidden bg-black" style="transform:translateY(100vh);">
+    <div id="wrap" class="w-full" style="padding-top:min(400px,40vh);">
+      <div id="grid" class="grid w-full"></div>
+    </div>
+  </div>
+
+  <!-- 1I. WHITE OVERLAY -->
+  <div id="outro-overlay" class="pointer-events-none fixed inset-0 bg-white" style="z-index:12;opacity:0;"></div>
+
+  <!-- 1B. LOGO -->
+  <div id="logo" class="entry pointer-events-none fixed left-4 top-4 z-20 mix-blend-exclusion lg:left-8 lg:top-8" style="opacity:0;transform:translateY(12px);transition:opacity 0.6s cubic-bezier(0.25,0.1,0.25,1) 0s,transform 0.6s cubic-bezier(0.25,0.1,0.25,1) 0s;">
+    <div class="flex items-start gap-1 leading-none text-white sm:gap-2">
+      <span class="text-[2.75rem] leading-[0.85] tracking-tighter sm:text-[5.75rem] lg:text-[7.5rem]" style="letter-spacing:-0.06em;">prmpt</span>
+      <span class="mt-1 flex h-4 w-4 items-center justify-center rounded-full border border-white text-xs leading-none sm:h-6 sm:w-6 sm:border-2 lg:h-7 lg:w-7">R</span>
+    </div>
+  </div>
+
+  <!-- 1C. CAPTION -->
+  <p id="caption" class="pointer-events-none fixed left-4 top-[118px] z-20 w-[calc(100vw-32px)] uppercase mix-blend-exclusion sm:top-[180px] sm:w-[calc(50vw-48px)] lg:left-8 lg:top-[244px] lg:w-[692px]" style="opacity:0;transform:translateY(12px);transition:opacity 0.6s cubic-bezier(0.25,0.1,0.25,1) 0.3s,transform 0.6s cubic-bezier(0.25,0.1,0.25,1) 0.3s;font-size:0.75rem;line-height:140%;letter-spacing:-0.04em;color:#ffffff;">
+    When switching between videos near the center, do not reset currentTime to 0 abruptly. Add a small dead zone: if cursor is within +/-50px of center, keep both videos at currentTime = 0 and show whichever was last active.
+  </p>
+
+  <!-- 1D. HEADER NAVIGATION -->
+  <header id="nav" class="pointer-events-none fixed right-4 top-4 z-20 flex h-[30px] items-center justify-between mix-blend-exclusion lg:right-8 lg:top-8 lg:w-[330px]" style="opacity:0;transform:translateY(12px);transition:opacity 0.6s cubic-bezier(0.25,0.1,0.25,1) 0.15s,transform 0.6s cubic-bezier(0.25,0.1,0.25,1) 0.15s;">
+    <span class="hidden uppercase text-white sm:block" style="font-size:0.9375rem;">About</span>
+    <div class="flex items-center gap-5 lg:gap-[50px]">
+      <svg viewBox="0 0 40 40" class="h-6 w-6 lg:h-[30px] lg:w-[30px]" fill="none">
+        <path d="M0 14H40" stroke="white" stroke-width="2.5"/>
+        <path d="M0 26H40" stroke="white" stroke-width="2.5"/>
+      </svg>
+      <span class="text-white" style="font-size:0.8125rem;">[ CART ]</span>
+    </div>
+  </header>
+
+  <!-- 1E. PRODUCT INFO -->
+  <div id="outro-info" class="pointer-events-none fixed bottom-12 left-0 right-0 z-20 flex flex-col items-center mix-blend-exclusion lg:bottom-20 lg:left-auto lg:right-8 lg:w-[330px]" style="opacity:0;transition:opacity 0.6s cubic-bezier(0.25,0.1,0.25,1) 0.45s;">
+    <div class="mb-3 flex w-[252px] flex-col items-start lg:mb-8 lg:w-full">
+      <div class="relative mb-2 h-5 w-5 lg:h-[30px] lg:w-[30px]">
+        <svg viewBox="0 0 40 40" class="h-full w-full" fill="none">
+          <circle cx="20" cy="20" r="18.75" stroke="white" stroke-width="2.5"/>
+        </svg>
+        <span id="circle-symbol" class="absolute inset-0 flex items-center justify-center uppercase text-white" style="font-size:0.75rem;letter-spacing:-0.04em;">8</span>
+      </div>
+      <p class="text-center uppercase text-white" style="font-size:1.25rem;line-height:100%;letter-spacing:-0.04em;">Archive Collection<br/>&ldquo;Prompt&rdquo;</p>
+    </div>
+    <p class="text-center text-white" style="font-size:3.75rem;line-height:100%;letter-spacing:-0.04em;">$97,33</p>
+  </div>
+
+  <!-- 1F. VIEW BUTTON -->
+  <div id="outro-buy" class="pointer-events-none fixed bottom-[60px] left-4 right-4 z-20 flex h-[100px] items-center justify-center bg-white mix-blend-exclusion lg:bottom-8 lg:left-auto lg:right-8 lg:h-[174px] lg:w-[330px]" style="border-radius:1335px;transform-origin:right bottom;transform:scale(0);">
+    <span style="font-size:4.5rem;letter-spacing:-0.04em;color:#fff;mix-blend-mode:exclusion;">view</span>
+  </div>
+
+  <!-- 1J. FOOTER -->
+  <footer id="outro-footer" class="pointer-events-none fixed bottom-6 left-4 right-4 flex justify-between uppercase mix-blend-exclusion lg:bottom-8 lg:right-auto lg:justify-start lg:gap-20" style="opacity:0;">
+    <span class="text-white" style="font-size:0.75rem;letter-spacing:-0.02em;">PRMPT (R) 2026</span>
+    <span class="text-white" style="font-size:0.75rem;letter-spacing:-0.02em;">Privacy Policy</span>
+  </footer>
+
+  <!-- 1A. CUSTOM CURSOR -->
+  <div id="cursor" class="pointer-events-none fixed z-50 hidden mix-blend-exclusion lg:block" style="left:-100px;top:-100px;transform:translate(-50%,-50%);">
+    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+      <circle cx="24" cy="24" r="22.75" stroke="white" stroke-width="2.5"/>
+      <path d="M15 17.5H33" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M24 17.5V29" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M17 33C21.5 30.5 26.5 30.5 31 33" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+  </div>
+
+  <script>
+    gsap.registerPlugin(ScrollTrigger);
+
+    const IMAGES = [
+      "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_104530_521b2f85-c0f3-4d0e-9704-b578315b4cb9.png&w=1920&q=85",
+      "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103711_76ccdb8b-5043-4f47-9c54-4379713393ea.png&w=1920&q=85",
+      "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103728_394f6a1b-85e2-4386-a4f6-408472a0a5b7.png&w=1920&q=85",
+      "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103739_86743e0e-16a7-4bee-bf38-dd67985344dc.png&w=1920&q=85",
+      "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103748_b2215dc8-a3a7-470d-b19a-5b87fa7d0c37.png&w=1920&q=85",
+      "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103758_e919ce72-5c9d-4b87-9be6-d7647b34825c.png&w=1920&q=85",
+      "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103808_013583d0-3386-4547-9832-37c7d8edb3ac.png&w=1920&q=85",
+      "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103937_a0c49d0a-33eb-4ead-aea6-c1baf241acbc.png&w=1920&q=85",
+      "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_103956_d18ed8fd-7b6f-4b86-91f9-20010fe38670.png&w=1920&q=85",
+      "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260629_104034_ba5a9963-87ff-4008-a545-6bd686c088b5.png&w=1920&q=85"
+    ];
+
+    const spacer = document.getElementById('scroll-spacer');
+    const canvas = document.getElementById('main-canvas');
+    const vL = document.getElementById('video-left');
+    const vR = document.getElementById('video-right');
+    const panel = document.getElementById('panel');
+    const wrap = document.getElementById('wrap');
+    const grid = document.getElementById('grid');
+    const overlay = document.getElementById('outro-overlay');
+    const info = document.getElementById('outro-info');
+    const buy = document.getElementById('outro-buy');
+    const footer = document.getElementById('outro-footer');
+    const cursor = document.getElementById('cursor');
+    const symbol = document.getElementById('circle-symbol');
+
+    const isTouch = window.matchMedia('(hover: none)').matches;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const outroOffset = () => window.innerWidth >= 1024 ? 166 : 132;
+
+    /* ---------- Entry animations ---------- */
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      ['logo','nav','caption','outro-info'].forEach(id => {
+        const el = document.getElementById(id);
+        el.style.opacity = '1';
+        if (id !== 'outro-info') el.style.transform = 'translateY(0)';
+      });
+    }));
+
+    /* ---------- Grid build ---------- */
+    function getCols() {
+      const w = window.innerWidth;
+      return w < 640 ? 2 : w < 1024 ? 3 : 4;
+    }
+    function buildLayout(count, cols) {
+      const cellsArr = [];
+      let placed = 0, r = 0;
+      while (placed < count) {
+        const row = new Array(cols).fill(-1);
+        const a = (r * 2 + (r % 2)) % cols;
+        row[a] = placed++;
+        if (r % 3 === 0 && placed < count) {
+          let b = (a + 2) % cols;
+          if (b === a) b = (a + 1) % cols;
+          row[b] = placed++;
+        }
+        cellsArr.push(...row);
+        r++;
+      }
+      return cellsArr;
+    }
+
+    let cards = [];
+    let currentCols = 0;
+    let maxScroll = 0;
+
+    function buildGrid() {
+      const cols = getCols();
+      currentCols = cols;
+      grid.innerHTML = '';
+      grid.style.display = 'grid';
+      grid.style.gridTemplateColumns = `repeat(${cols},1fr)`;
+      cards = [];
+      const layout = buildLayout(IMAGES.length, cols);
+      layout.forEach((idx, i) => {
+        const cell = document.createElement('div');
+        cell.style.position = 'relative';
+        cell.style.aspectRatio = '2/3';
+        if (idx >= 0) {
+          const col = i % cols;
+          const card = document.createElement('div');
+          card.className = 'bp-card';
+          card.style.cssText = `position:absolute;inset:0;transform:scale(0);will-change:transform;transform-origin:${col < cols / 2 ? 'right bottom' : 'left bottom'};`;
+          const img = document.createElement('img');
+          img.src = IMAGES[idx];
+          img.alt = 'Archive piece ' + (idx + 1);
+          img.draggable = false;
+          img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+          card.appendChild(img);
+          cell.appendChild(card);
+          cards.push({ cell, card });
+        }
+        grid.appendChild(cell);
+      });
+      measure();
+    }
+
+    function measure() {
+      const H = window.innerHeight;
+      maxScroll = Math.max(0, wrap.scrollHeight - H);
+      spacer.style.height = (H + maxScroll + 2 * H) + 'px';
+      ScrollTrigger.refresh();
+    }
+
+    /* ---------- Panel slide (GSAP scrub) ---------- */
+    gsap.fromTo(panel,
+      { y: () => window.innerHeight },
+      { y: 0, ease: 'none',
+        scrollTrigger: { trigger: spacer, start: 'top top', end: () => '+=' + window.innerHeight, scrub: true, invalidateOnRefresh: true }
+      });
+
+    /* ---------- Custom cursor + mouse tracking ---------- */
+    let mouseX = window.innerWidth / 2;
+    if (!isTouch) {
+      window.addEventListener('mousemove', e => {
+        mouseX = e.clientX;
+        cursor.style.left = e.clientX + 'px';
+        cursor.style.top = e.clientY + 'px';
+      });
+    }
+
+    /* ---------- Video load / playback ---------- */
+    let loadedCount = 0;
+    function onLoaded() { if (++loadedCount >= 2) canvas.style.opacity = '1'; }
+    [vL, vR].forEach(v => {
+      if (v.readyState >= 2) onLoaded();
+      else v.addEventListener('loadeddata', onLoaded, { once: true });
+    });
+
+    let activeSide = 'left'; // right video visible initially
+
+    if (isTouch) {
+      vL.style.display = 'block';
+      vR.style.display = 'none';
+      if (!reducedMotion) {
+        vL.play().catch(() => {});
+        vL.addEventListener('ended', () => {
+          vL.style.display = 'none'; vR.style.display = 'block';
+          vR.currentTime = 0; vR.play().catch(() => {});
+        });
+        vR.addEventListener('ended', () => {
+          vR.style.display = 'none'; vL.style.display = 'block';
+          vL.currentTime = 0; vL.play().catch(() => {});
+        });
+      }
+    }
+
+    function showSide(side) {
+      vR.style.display = side === 'left' ? 'block' : 'none';
+      vL.style.display = side === 'right' ? 'block' : 'none';
+    }
+
+    function scrubVideos() {
+      if (isTouch) return;
+      const w = window.innerWidth, c = w / 2;
+      const dz = Math.max(30, w * 0.05);
+      if (Math.abs(mouseX - c) <= dz) {
+        if (!vL.seeking && vL.currentTime > 0.04) vL.currentTime = 0;
+        if (!vR.seeking && vR.currentTime > 0.04) vR.currentTime = 0;
+        showSide(activeSide);
+      } else if (mouseX < c - dz) {
+        activeSide = 'left';
+        const range = c - dz;
+        const prog = Math.min(1, Math.max(0, (c - dz - mouseX) / range));
+        if (vR.duration && !vR.seeking) vR.currentTime = prog * vR.duration;
+        showSide('left');
+      } else {
+        activeSide = 'right';
+        const start = c + dz;
+        const range = w - start;
+        const prog = Math.min(1, Math.max(0, (mouseX - start) / range));
+        if (vL.duration && !vL.seeking) vL.currentTime = prog * vL.duration;
+        showSide('right');
+      }
+    }
+
+    /* ---------- Circle symbol randomizer ---------- */
+    const SYMBOLS = ['8', '$', '^^', '%', '/'];
+    let lastSym = 0;
+    window.addEventListener('scroll', () => {
+      const now = Date.now();
+      if (now - lastSym > 80) {
+        lastSym = now;
+        symbol.textContent = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+      }
+    }, { passive: true });
+
+    /* ---------- Main RAF loop ---------- */
+    function tick() {
+      const H = window.innerHeight;
+      const y = window.scrollY;
+
+      // Phase 2: inner wrapper translates
+      const off = Math.max(0, Math.min(maxScroll, y - H));
+      wrap.style.transform = `translateY(${-off}px)`;
+
+      // Card scaling
+      for (const { cell, card } of cards) {
+        const r = cell.getBoundingClientRect();
+        let s;
+        if (r.bottom <= 0 || r.top >= H) s = 0;
+        else {
+          const enter = Math.min(1, (H - r.top) / (H * 0.6));
+          const exit = Math.min(1, r.bottom / (H * 0.4));
+          s = Math.max(0, Math.min(enter, exit));
+        }
+        card.style.transform = `scale(${s})`;
+      }
+
+      // Hide videos past first viewport
+      canvas.style.visibility = y > H ? 'hidden' : 'visible';
+
+      // Outro
+      const p = Math.max(0, Math.min(1, (y - H - maxScroll) / (H - 100)));
+      overlay.style.opacity = p;
+      info.style.transform = `translateY(${-p * outroOffset()}px)`;
+      buy.style.transform = `scale(${p})`;
+      footer.style.opacity = p;
+
+      scrubVideos();
+      requestAnimationFrame(tick);
+    }
+
+    /* ---------- Resize ---------- */
+    let resizeT;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeT);
+      resizeT = setTimeout(() => {
+        if (getCols() !== currentCols) buildGrid();
+        else measure();
+      }, 150);
+    });
+
+    buildGrid();
+    window.addEventListener('load', measure);
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>

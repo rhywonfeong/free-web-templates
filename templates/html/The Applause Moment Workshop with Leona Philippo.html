@@ -1,0 +1,1539 @@
+<!DOCTYPE html>
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Applause Moment</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+theme: {
+extend: {
+screens: {
+'tablet': {'min': '768px', 'max': '1023px'},
+}
+}
+}
+}
+</script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,200;0,9..40,300;0,9..40,400;1,9..40,200;1,9..40,300&family=Newsreader:ital,opsz,wght@0,6..72,200;0,6..72,300;0,6..72,400;1,6..72,200;1,6..72,300&display=swap" rel="stylesheet">
+<link rel="icon" href="The Applause Moment Favicon.ico">
+<style>
+html {
+scroll-behavior: smooth;
+}
+@keyframes scrollLeft {
+0% { transform: translateX(0); }
+100% { transform: translateX(-50%); }
+}
+@keyframes scrollRight {
+0% { transform: translateX(-50%); }
+100% { transform: translateX(0); }
+}
+.card-flashlight::before {
+content: "";
+position: absolute;
+inset: 0;
+border-radius: 1rem;
+background: radial-gradient(
+500px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+rgba(34, 211, 238, 0.08),
+transparent 40%
+);
+pointer-events: none;
+z-index: 0;
+opacity: 0;
+transition: opacity 0.3s ease;
+}
+.card-flashlight:hover::before {
+opacity: 1;
+}
+:root {
+--font-serif: 'Newsreader', serif;
+--font-display: 'Cormorant Garamond', 'Newsreader', serif;
+--font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+}
+@keyframes drift {
+0% { transform: translate(0, 0) scale(1); opacity: 0.06; }
+50% { transform: translate(3vw, -4vh) scale(1.05); opacity: 0.1; }
+100% { transform: translate(0, 0) scale(1); opacity: 0.06; }
+}
+.ambient-orb {
+position: absolute;
+border-radius: 50%;
+filter: blur(140px);
+animation: drift 25s infinite ease-in-out;
+pointer-events: none;
+}
+@keyframes marquee {
+0% { transform: translateX(0%); }
+100% { transform: translateX(-50%); }
+}
+.animate-marquee {
+animation: marquee 40s linear infinite;
+display: flex;
+width: max-content;
+}
+.mask-edges {
+-webkit-mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent);
+mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent);
+}
+.fade-in-section {
+opacity: 0;
+transform: translateY(40px) scale(0.98);
+filter: blur(4px);
+transition: all 1.8s cubic-bezier(0.16, 1, 0.3, 1);
+will-change: opacity, transform, filter;
+}
+.fade-in-section.is-visible {
+opacity: 1;
+transform: translateY(0) scale(1);
+filter: blur(0);
+}
+.shimmer-button::before {
+content: '';
+position: absolute;
+top: 0;
+left: -100%;
+width: 50%;
+height: 100%;
+background: linear-gradient(to right, transparent, rgba(255,255,255,0.08), transparent);
+transform: skewX(-20deg);
+transition: left 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.shimmer-button:hover::before {
+left: 150%;
+}
+.card-expanded {
+transform: scale(1.08) translateY(-12px) !important;
+z-index: 50;
+box-shadow: 0 30px 80px rgba(0,0,0,0.8), 0 0 40px rgba(227,176,74,0.15);
+transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.row-paused {
+animation-play-state: paused !important;
+}
+</style>
+<style>
+@keyframes flare-loop {
+0% { left: -150%; }
+150% { left: 250%; }
+100% { left: 250%; }
+}
+.flare-1 {
+animation: flare-loop 7s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+.flare-2 {
+animation: flare-loop 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+animation-delay: 5s;
+}
+.flare-3 {
+animation: flare-loop 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+animation-delay: 4s;
+}
+</style>
+<style>
+#testimonials .bg-slate-900 { background-color: rgba(255,255,255,0.02) !important; border-color: rgba(255,255,255,0.05) !important; }
+#testimonials .text-slate-400 { color: rgba(255,255,255,0.6) !important; font-family: var(--font-sans) !important; font-weight: 200 !important; }
+#testimonials .text-slate-200 { color: rgba(255,255,255,0.9) !important; font-family: var(--font-sans) !important; font-weight: 300 !important; }
+#testimonials .text-slate-500 { color: #E3B04A !important; opacity: 0.8 !important; font-family: var(--font-sans) !important; font-weight: 300 !important; }
+#testimonials .text-cyan-500 { color: #E3B04A !important; }
+#testimonials .font-geist { font-family: var(--font-sans) !important; }
+#testimonials .from-slate-950 { --tw-gradient-from: #0C0A09 !important; --tw-gradient-to: rgba(12, 10, 9, 0) !important; }
+</style>
+<link id="all-fonts-link-font-geist" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-geist">.font-geist { font-family: 'Geist', sans-serif !important; }</style>  <script>document.addEventListener('click', event => {
+const anchor = event.target.closest?.('a[href]');
+const href = anchor?.getAttribute('href');
+if (event.defaultPrevented || !href?.startsWith('#')) return;
+event.preventDefault();
+if (href === '#') { window.scrollTo({top: 0, behavior: 'smooth'}); return; }
+try {
+const id = decodeURIComponent(href.slice(1));
+const target = document.getElementById(id) || document.getElementsByName(id)[0];
+target?.scrollIntoView({behavior: 'smooth', block: 'start'});
+} catch { /* Invalid fragments remain in the saved document. */ }
+});</script>
+<script>document.addEventListener('click', event => {
+if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+const anchor = event.target.closest?.('a[href]');
+if (!anchor || anchor.hasAttribute('download')) return;
+const target = anchor.getAttribute('target')?.toLowerCase();
+if (target && target !== '_self' && target !== '_top') return;
+try {
+const destination = new URL(anchor.href, document.baseURI);
+const base = new URL(document.baseURI);
+if (!['http:', 'https:'].includes(destination.protocol) || destination.origin === base.origin) return;
+event.preventDefault();
+window.open(destination.href, '_blank', 'noopener,noreferrer');
+} catch { /* Leave invalid links to the browser. */ }
+}, true);</script></head>
+  <body class="bg-[#0C0A09] text-[#FAFAF9] overflow-x-hidden antialiased font-extralight selection:bg-[#E3B04A]/40 selection:text-white" style="font-family: var(--font-serif);">
+    <div class="fixed inset-0 z-[-1] bg-[#0C0A09] pointer-events-none">
+      <div class="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_80%_80%_at_50%_0%,#000_40%,transparent_100%)]"></div>
+      <div class="ambient-orb bg-[#E3B04A] w-[40vw] h-[40vw] top-[-15%] left-[5%] opacity-10"></div>
+      <div class="ambient-orb bg-[#234232] w-[45vw] h-[45vw] top-[20%] left-[30%] opacity-[0.08]" style="animation-delay: -7s;"></div>
+      <div class="ambient-orb bg-[#C05C3B] w-[50vw] h-[50vw] bottom-[-20%] right-[-10%] opacity-[0.07]" style="animation-delay: -12s;"></div>
+    </div>
+
+    <header id="header" class="fixed top-0 left-0 w-full z-50 transition-all duration-700 px-6 md:px-12 flex justify-between items-center bg-black/80 backdrop-blur-xl border-b border-white/[0.05] py-5">
+      <a href="#" class="tracking-tight uppercase text-lg md:text-xl font-light z-10 flex items-center gap-2 text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70 hover:to-white transition-all duration-500">Leona Philippo</a>
+
+      <nav class="hidden md:flex gap-12 text-xs tracking-widest uppercase items-center font-light" style="font-family: var(--font-sans);">
+        <a href="#transformation" class="text-white/50 hover:text-white transition-colors duration-300">
+          Transformation
+        </a>
+        <a href="#fit" class="text-white/50 hover:text-white transition-colors duration-300">
+          The Fit
+        </a>
+        <a href="#faq" class="text-white/50 hover:text-white transition-colors duration-300">
+          FAQ
+        </a>
+        <a href="#reserve" class="text-[#E3B04A]/80 hover:text-[#E3B04A] transition-colors duration-300">
+          Claim Seat
+        </a>
+      </nav>
+
+      <div class="flex items-center gap-6 z-10 md:hidden">
+        <button class="flex flex-col gap-1.5 z-50 opacity-60 hover:opacity-100 transition-opacity duration-300">
+          <span class="w-6 h-[1px] bg-white block"></span>
+          <span class="w-4 h-[1px] bg-white block ml-auto"></span>
+        </button>
+      </div>
+    </header>
+
+    <section class="min-h-screen flex overflow-hidden pt-10 pr-6 pb-12 pl-6 relative items-center justify-center">
+      <div class="flex flex-col fade-in-section is-visible z-10 text-center max-w-5xl mr-auto ml-auto relative gap-x-10 gap-y-6 md:gap-y-6 lg:gap-y-10 items-center">
+        <h1 class="text-6xl tablet:text-3xl lg:text-[10rem] tracking-tighter leading-[0.85] uppercase font-extralight text-transparent bg-clip-text bg-gradient-to-b from-white via-white/90 to-white/40 drop-shadow-sm" style="font-family: var(--font-display);">        
+          The Applause
+          <br>
+          <span class="italic lowercase text-[#E3B04A] opacity-90 block mt-4 font-light tracking-normal drop-shadow-[0_0_40px_rgba(227,176,74,0.25)]" style="font-family: var(--font-serif);">
+            moment
+          </span>
+        </h1>
+        <p class="uppercase flex items-center gap-4 text-xs font-light text-[#E3B04A] tracking-[0.25em] max-w-md mr-auto ml-auto" style="font-family: var(--font-sans)">
+          <span class="w-8 h-[1px] bg-[#E3B04A]/30"></span>
+          Saturday October 24th
+          <span class="w-8 h-[1px] bg-[#E3B04A]/30"></span>
+        </p>
+        <div class="text-base md:text-lg text-white/60 font-light flex flex-col gap-2 max-w-2xl mx-auto mt-4" style="font-family: var(--font-sans);">
+          <p class="">One online call to map your talk.</p>
+          <p class="">Three hours LIVE in the room to own it.</p>
+        </div>
+
+        <div class="flex flex-col items-center gap-6 mt-8">
+          <p class="uppercase text-xs font-light text-white/60 tracking-[0.2em]" style="font-family: var(--font-sans)">
+            11:00–14:00 CET | 15 Seats. That is it.
+          </p>
+          <a href="#pricing" class="group relative inline-flex overflow-hidden rounded-full p-[1px] transition-all duration-500 hover:shadow-[0_0_40px_rgba(227,176,74,0.6)]" style="font-family: var(--font-sans)">
+            <span class="absolute top-1/2 left-1/2 aspect-square w-[300%] -translate-x-1/2 -translate-y-1/2 animate-[spin_3s_linear_infinite] bg-[conic-gradient(from_90deg_at_50%_50%,transparent_0%,#E3B04A_33%,transparent_50%,#E3B04A_83%,transparent_100%)] opacity-100 transition-opacity duration-500"></span>
+            <span class="flex items-center justify-center uppercase group-hover:text-white transition-all duration-500 overflow-hidden text-xs font-light text-[#E3B04A] tracking-widest bg-[#0C0A09] w-full h-full rounded-full pt-5 pr-10 pb-5 pl-10 relative scale-100" style="mask-image: linear-gradient(180deg, transparent, black 60%, black 100%, transparent); -webkit-mask-image: linear-gradient(180deg, transparent, black 60%, black 100%, transparent);">
+              <span class="absolute inset-0 bg-[conic-gradient(from_180deg_at_50%_50%,#1e1405_0%,#E3B04A_50%,#1e1405_100%)] opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></span>
+              <span class="relative z-10 pointer-events-none">
+                Claim Your Priority Seat
+              </span>
+            </span>
+          </a>
+          
+        </div>
+      </div>
+    </section>
+
+    <div class="w-full overflow-hidden border-y border-[#234232]/30 py-8 flex items-center relative z-20 bg-[#0C0A09]/60 backdrop-blur-md mask-edges">
+      <div class="animate-marquee text-2xl md:text-4xl italic tracking-tight whitespace-nowrap text-white/50 font-extralight">
+        <span class="mx-12 hover:text-white/80 transition-colors duration-500 cursor-default">
+          Deliver with clarity.
+        </span>
+        <span class="mx-12 text-[#E3B04A] not-italic text-sm opacity-80">
+          ✦
+        </span>
+        <span class="mx-12 hover:text-white/80 transition-colors duration-500 cursor-default">
+          Own the room.
+        </span>
+        <span class="mx-12 text-[#E3B04A] not-italic text-sm opacity-80">
+          ✦
+        </span>
+        <span class="mx-12 hover:text-white/80 transition-colors duration-500 cursor-default">
+          Trust the silence.
+        </span>
+        <span class="mx-12 text-[#E3B04A] not-italic text-sm opacity-80">
+          ✦
+        </span>
+        <span class="mx-12 hover:text-white/80 transition-colors duration-500 cursor-default">
+          Deliver with clarity.
+        </span>
+        <span class="mx-12 text-[#E3B04A] not-italic text-sm opacity-80">
+          ✦
+        </span>
+        <span class="mx-12 hover:text-white/80 transition-colors duration-500 cursor-default">
+          Own the room.
+        </span>
+        <span class="mx-12 text-[#E3B04A] not-italic text-sm opacity-80">
+          ✦
+        </span>
+        <span class="mx-12 hover:text-white/80 transition-colors duration-500 cursor-default">
+          Trust the silence.
+        </span>
+        <span class="mx-12 text-[#E3B04A] not-italic text-sm opacity-80">
+          ✦
+        </span>
+      </div>
+    </div>
+
+    <section id="transformation" class="py-40 px-6 md:px-12 lg:px-24 max-w-[90rem] mx-auto relative z-20">
+      <div class="text-center mb-24 fade-in-section is-visible">
+        <h2 class="text-4xl md:text-6xl tracking-tight uppercase font-extralight text-transparent bg-clip-text bg-gradient-to-r from-white to-[#E3B04A]/60" style="font-family: var(--font-display);">
+          The Transformation
+        </h2>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-16 lg:gap-24 items-start fade-in-section is-visible">
+        <div class="flex flex-col gap-12 border-r-0 md:border-r border-white/5 pr-0 md:pr-12">
+          <h3 class="text-xs uppercase tracking-[0.25em] text-white/40 mb-4 font-light" style="font-family: var(--font-sans);">
+            Before working with Leona
+          </h3>
+
+          <div class="flex items-start gap-6">
+            <iconify-icon icon="solar:close-circle-linear" width="24" height="24" stroke-width="1.5" class="text-white/20 mt-1 shrink-0"></iconify-icon>
+            <p class="text-lg md:text-xl text-white/50 font-extralight leading-relaxed">
+              You know what you want to say but it does not land the way you
+              mean it.
+            </p>
+          </div>
+          <div class="flex items-start gap-6">
+            <iconify-icon icon="solar:close-circle-linear" width="24" height="24" stroke-width="1.5" class="text-white/20 mt-1 shrink-0"></iconify-icon>
+            <p class="text-lg md:text-xl text-white/50 font-extralight leading-relaxed">
+              You rush through the parts that matter most.
+            </p>
+          </div>
+          <div class="flex items-start gap-6">
+            <iconify-icon icon="solar:close-circle-linear" width="24" height="24" stroke-width="1.5" class="text-white/20 mt-1 shrink-0"></iconify-icon>
+            <p class="text-lg md:text-xl text-white/50 font-extralight leading-relaxed">
+              You over-explain, repeat yourself, and lose the room.
+            </p>
+          </div>
+          <div class="flex items-start gap-6">
+            <iconify-icon icon="solar:close-circle-linear" width="24" height="24" stroke-width="1.5" class="text-white/20 mt-1 shrink-0"></iconify-icon>
+            <p class="text-lg md:text-xl text-white/50 font-extralight leading-relaxed">
+              You rehearse alone and still feel unprepared.
+            </p>
+          </div>
+          <div class="flex items-start gap-6">
+            <iconify-icon icon="solar:close-circle-linear" width="24" height="24" stroke-width="1.5" class="text-white/20 mt-1 shrink-0"></iconify-icon>
+            <p class="text-lg md:text-xl text-white/50 font-extralight leading-relaxed">
+              You walk off stage wondering if they got it.
+            </p>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-12 pl-0 md:pl-12 relative">
+          <div class="absolute -top-10 -left-6 w-12 h-12 border-t border-l border-[#E3B04A]/40 rounded-tl-2xl hidden md:block"></div>
+          <h3 class="text-xs uppercase tracking-[0.25em] text-[#E3B04A] mb-4 font-light" style="font-family: var(--font-sans);">
+            After The Applause Moment
+          </h3>
+
+          <div class="flex items-start gap-6">
+            <iconify-icon icon="solar:check-circle-linear" width="24" height="24" stroke-width="1.5" class="text-[#E3B04A] mt-1 shrink-0 drop-shadow-[0_0_10px_rgba(227,176,74,0.4)]"></iconify-icon>
+            <p class="text-lg md:text-xl text-white/90 font-extralight leading-relaxed">
+              Your message lands exactly the way you intend it.
+            </p>
+          </div>
+          <div class="flex items-start gap-6">
+            <iconify-icon icon="solar:check-circle-linear" width="24" height="24" stroke-width="1.5" class="text-[#E3B04A] mt-1 shrink-0 drop-shadow-[0_0_10px_rgba(227,176,74,0.4)]"></iconify-icon>
+            <p class="text-lg md:text-xl text-white/90 font-extralight leading-relaxed">
+              You know exactly where to slow down and why.
+            </p>
+          </div>
+          <div class="flex items-start gap-6">
+            <iconify-icon icon="solar:check-circle-linear" width="24" height="24" stroke-width="1.5" class="text-[#E3B04A] mt-1 shrink-0 drop-shadow-[0_0_10px_rgba(227,176,74,0.4)]"></iconify-icon>
+            <p class="text-lg md:text-xl text-white/90 font-extralight leading-relaxed">
+              You trust your words and the silence between them.
+            </p>
+          </div>
+          <div class="flex items-start gap-6">
+            <iconify-icon icon="solar:check-circle-linear" width="24" height="24" stroke-width="1.5" class="text-[#E3B04A] mt-1 shrink-0 drop-shadow-[0_0_10px_rgba(227,176,74,0.4)]"></iconify-icon>
+            <p class="text-lg md:text-xl text-white/90 font-extralight leading-relaxed">
+              You have delivered it live, been corrected in real time, and know
+              you can do it again.
+            </p>
+          </div>
+          <div class="flex items-start gap-6">
+            <iconify-icon icon="solar:check-circle-linear" width="24" height="24" stroke-width="1.5" class="text-[#E3B04A] mt-1 shrink-0 drop-shadow-[0_0_10px_rgba(227,176,74,0.4)]"></iconify-icon>
+            <p class="text-lg md:text-xl text-white/90 font-extralight leading-relaxed">
+              You walk off knowing they did.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+<section id="venue" class="py-24 px-6 md:px-12 lg:px-24 max-w-[90rem] mx-auto relative z-20">
+  <div class="fade-in-section is-visible grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-24 items-center">
+    <div class="flex flex-col gap-10">
+      <div class="text-left">
+        <h2 class="text-4xl md:text-5xl tracking-tight uppercase font-extralight text-transparent bg-clip-text bg-gradient-to-r from-white to-[#E3B04A]/60 mb-8" style="font-family: var(--font-display);">
+          The Venue
+        </h2>
+        <div class="flex items-start gap-4">
+          <iconify-icon icon="solar:map-point-linear" width="28" height="28" stroke-width="1.5" class="text-[#E3B04A] mt-1 shrink-0 drop-shadow-[0_0_10px_rgba(227,176,74,0.4)]"></iconify-icon>
+          <p class="text-lg md:text-xl text-white/90 font-extralight leading-relaxed" style="font-family: var(--font-sans);">
+            Parnassos CultuurCentrum
+            <br>
+            <span class="text-white/50">
+              Kruisstraat 201
+              <br>
+              3581 GK Utrecht
+              <br>
+              Netherlands
+            </span>
+          </p>
+        </div>
+      </div>
+      <div class="w-full h-72 md:h-80 rounded-3xl overflow-hidden border border-white/10 opacity-80 hover:opacity-100 transition-opacity duration-500 shadow-lg">
+        <iframe src="https://maps.google.com/maps?q=Parnassos%20Cultuurcentrum,%20Kruisstraat%20201,%203581%20GK%20Utrecht,%20Netherlands&t=&z=15&ie=UTF8&iwloc=&output=embed" width="100%" height="100%" style="border:0; filter: invert(90%) hue-rotate(180deg) contrast(80%);" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" class=""></iframe>
+      </div>
+    </div>
+    <div class="relative w-full h-[400px] md:h-[600px] rounded-[2.5rem] overflow-hidden border border-white/[0.04] shadow-[0_30px_100px_-20px_rgba(0,0,0,0.8)] group">
+      <div class="absolute inset-0 bg-gradient-to-t from-[#0C0A09] via-[#0C0A09]/20 to-transparent z-10 opacity-80 pointer-events-none transition-opacity duration-700 group-hover:opacity-60">
+      </div>
+      <div class="absolute inset-0 bg-[#E3B04A]/5 z-10 mix-blend-overlay pointer-events-none group-hover:bg-[#E3B04A]/10 transition-colors duration-700">
+      </div>
+      <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/a002f228-7b07-4d78-a4ed-2d5003721fe0_1600w.png" alt="Parnassos CultuurCentrum Stage" class="w-full h-full object-cover scale-100 group-hover:scale-105 transition-transform duration-1000 grayscale-[20%] group-hover:grayscale-0">
+    </div>
+  </div>
+</section>
+
+<section class="py-24 px-6 md:px-12 lg:px-24 max-w-[90rem] mx-auto relative z-20" id="about">
+  <div class="fade-in-section is-visible grid grid-cols-1 lg:grid-cols-2 lg:gap-20 gap-x-12 gap-y-12 items-center">
+
+    <!-- Video — left -->
+    <div class="relative">
+      <div class="relative rounded-[2rem] overflow-hidden aspect-[4/5] border border-white/[0.04] shadow-[0_30px_100px_-20px_rgba(0,0,0,0.8)] card-flashlight" style="--mouse-x: 416px; --mouse-y: 716px;">
+       <iframe src="https://player.vimeo.com/video/1084034348?h=e4e10bb4bd&background=1&autoplay=1&loop=1&byline=0&title=0&muted=1" class="absolute inset-0 w-full h-full" style="pointer-events: none; border: none; transform: scale(1.7); transform-origin: center center;" allow="autoplay; fullscreen">
+</iframe>
+        <div class="absolute inset-0 bg-gradient-to-t from-[#0C0A09] via-transparent to-transparent"></div>
+        <div class="absolute bottom-8 left-8 right-8 bg-white/[0.04] backdrop-blur-xl border border-white/10 p-6 rounded-2xl">
+          <div class="flex items-center gap-4 mb-2">
+            <span class="w-2 h-2 rounded-full bg-[#E3B04A] animate-pulse"></span>
+            <span class="text-xs font-light tracking-widest text-[#E3B04A] uppercase" style="font-family: var(--font-sans);">
+              30+ years performing across 30+ countries
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Text — right -->
+    <div class="flex flex-col gap-6">
+      <h2 class="text-3xl md:text-5xl font-extralight tracking-tighter uppercase text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50" style="font-family: var(--font-display);">
+        Meet Your
+        <span class="italic font-light text-[#E3B04A]" style="font-family: var(--font-serif);">
+          Instructor
+        </span>
+      </h2>
+      <p class="text-base lg:text-lg text-white/70 font-extralight leading-relaxed" style="font-family: var(--font-sans);">
+        From 100-person rooms to 30,000-person arenas. Now transforming how
+        leaders command attention in every high-stakes moment that matters.
+      </p>
+      <p class="text-base lg:text-lg text-white/60 font-extralight leading-relaxed" style="font-family: var(--font-serif);">
+        "I've spent the last decade deconstructing why some people
+        effortlessly command rooms while others get talked over.
+      </p>
+      <p class="text-base lg:text-lg text-white/60 font-extralight leading-relaxed" style="font-family: var(--font-serif);">
+        The Diamond Diagram isn't just theory — it's the exact architecture
+        I've used to train executives, founders, and leaders to stop
+        shrinking, start owning their presence, and become Unmissable."
+      </p>
+      <div class="flex items-center gap-4 mt-2">
+        <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/19b0734a-907d-4409-9ce3-1bf9a9716f94_320w.png" alt="Leona Philippo" class="h-12 w-12 rounded-full object-cover border border-white/10">
+        <div>
+          <p class="text-white font-light" style="font-family: var(--font-sans);">Leona Philippo</p>
+          <p class="text-sm text-white/40 font-extralight" style="font-family: var(--font-sans);">
+            Presentation Delivery Expert.
+            <br>
+            Nationally Recognized Singer, Actress &amp; Speaker
+          </p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section class="overflow-hidden z-20 border-white/0 border-t mt-8 pt-18 pb-18 relative md:pb-18 md:pt-18" id="trusted-brands">
+  <div class="max-w-7xl mx-auto px-4">
+    <div class="text-center mb-12">
+      <h3 class="text-xs sm:text-sm font-light tracking-widest text-white/40 uppercase" style="font-family: var(--font-sans)">
+        Trusted by leaders from
+      </h3>
+    </div>
+  </div>
+  <div class="relative flex overflow-hidden group max-w-[90rem] mx-auto">
+    <div class="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-[#0C0A09] to-transparent z-10 pointer-events-none"></div>
+    <div class="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-[#0C0A09] to-transparent z-10 pointer-events-none"></div>
+    <div class="flex shrink-0 sm:gap-24 w-max my-1 pr-8 pl-8 space-y-1 gap-x-16 gap-y-16 items-center justify-around" style="animation: scrollLeft 30s linear infinite">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg" alt="Google" class="h-8 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all object-contain">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/9/96/Microsoft_logo_%282012%29.svg" alt="Microsoft" class="h-6 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all object-contain">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg" alt="Amazon" class="h-8 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all object-contain -mt-2">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/0/08/Netflix_2015_logo.svg" alt="Netflix" class="h-7 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all object-contain">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/5/51/IBM_logo.svg" alt="IBM" class="h-8 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all object-contain">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/0/08/Cisco_logo_blue_2016.svg" alt="Cisco" class="h-8 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all object-contain">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg" alt="Google" class="h-8 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all object-contain">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/9/96/Microsoft_logo_%282012%29.svg" alt="Microsoft" class="h-6 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all object-contain">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg" alt="Amazon" class="h-8 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all object-contain -mt-2">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/0/08/Netflix_2015_logo.svg" alt="Netflix" class="h-7 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all object-contain">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/5/51/IBM_logo.svg" alt="IBM" class="h-8 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all object-contain">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/0/08/Cisco_logo_blue_2016.svg" alt="Cisco" class="h-8 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all object-contain">
+    </div>
+  </div>
+</section>
+
+
+    <section class="py-40 bg-[#11130E]/60 px-6 md:px-12 lg:px-24 border-y border-[#234232]/0 relative z-20 backdrop-blur-sm" id="fit">
+      <div class="max-w-5xl mx-auto fade-in-section is-visible">
+        <div class="text-center mb-20 flex flex-col items-center gap-6">
+          <iconify-icon icon="solar:users-group-two-rounded-linear" width="32" height="32" stroke-width="1.5" class="text-[#234232]"></iconify-icon>
+          <h2 class="text-4xl md:text-6xl tracking-tight uppercase font-extralight text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50" style="font-family: var(--font-display);">
+            Who belongs in the room
+          </h2>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div class="bg-white/[0.02] border border-[#234232]/50 rounded-3xl p-10 md:p-14 relative overflow-hidden group">
+            <div class="group-hover:opacity-100 transition-opacity duration-700 bg-gradient-to-br from-blue-500/0 via-blue-500/10 to-blue-500/0 opacity-0 absolute top-0 right-0 bottom-0 left-0"></div>
+            <h3 class="text-2xl md:text-3xl italic text-[#E3B04A] mb-6 font-light">
+              This is for you if...
+            </h3>
+            <ul class="text-base md:text-lg leading-[2] text-white/70 font-extralight list-disc pl-6 space-y-2">
+              <li>
+                You have a talk, pitch, presentation, masterclass, or message
+                coming up and you want to deliver it with clarity, authority,
+                and presence.
+              </li>
+              <li>You are done with generic advice.</li>
+              <li>
+                You want a performer's eye on your delivery, not a coach's
+                questions about your feelings.
+              </li>
+            </ul>
+          </div>
+
+          <div class="bg-white/[0.01] border border-[#C05C3B]/20 rounded-3xl p-10 md:p-14 relative overflow-hidden group">
+            <div class="group-hover:opacity-100 transition-opacity duration-700 bg-gradient-to-bl from-[#C05C3B]/5 to-transparent opacity-0 absolute top-0 right-0 bottom-0 left-0"></div>
+            <h3 class="text-2xl md:text-3xl italic text-white/40 mb-6 font-light">
+              This is not for you if...
+            </h3>
+            <ul class="text-base md:text-lg leading-[2] text-white/50 font-extralight list-disc pl-6 space-y-2">
+              <li>
+                You do not have a specific talk or presentation coming up.
+              </li>
+              <li>
+                You want someone to write your content for you or are looking
+                for the cheapest option available.
+              </li>
+              <li>
+                You are not ready to be directed, challenged, and stretched.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TESTIMONIALS -->
+
+    <section class="flex flex-col z-10 overflow-hidden w-full pt-24 pb-12 relative items-center justify-center" id="testimonials">
+      <div class="max-w-[90rem] w-full mx-auto px-4 [animation:animationIn_0.8s_ease-out_0.2s_both] animate-on-scroll animate">
+        <div class="text-center mb-16">
+          <h2 class="text-4xl md:text-5xl lg:text-6xl tracking-tight uppercase font-extralight text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50 mb-4" style="font-family: var(--font-display);">
+            Command the
+            <span class="italic text-[#E3B04A] font-light lowercase" style="font-family: var(--font-serif); text-shadow: none;">
+              room
+            </span>
+          </h2>
+          <p class="text-base md:text-lg text-white/50 font-extralight max-w-2xl mx-auto leading-relaxed" style="font-family: var(--font-sans);">
+            Join leaders, founders, and professionals who have transformed their
+            presence with Leona Philippo.
+          </p>
+        </div>
+
+        <div class="relative overflow-hidden w-full">
+          <div class="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-slate-950 to-transparent z-10 pointer-events-none"></div>
+          <div class="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-slate-950 to-transparent z-10 pointer-events-none"></div>
+
+          <!-- Row 1 — Left -->
+          <div class="flex w-max gap-6 pr-6 mb-6" style="animation: scrollLeft 60s linear infinite;">
+            <!-- FIRST HALF -->
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight" style="--mouse-x: 7px; --mouse-y: 209.03125px">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/bacf2d7c-bec3-48ba-8b7c-d8d02672d209_320w.jpg)]"></div>
+                <div class="">
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Ann Buoy
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Family Education Coach for Homeschooling
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "Leona helped me shape my story into something that finally felt
+                like mine— and made it land with impact. It felt like music—
+                like my story had rhythm and flow."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight" style="--mouse-x: 277px; --mouse-y: 199px;">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/435e8ddd-46e5-4eae-83f6-7f08104d0019_320w.jpg)]"></div>
+                <div class="">
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Beth Römer
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Certified College &amp; Scholarship Strategist
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">"I closed a $7,500 client in the same week of working together. Whether you're preparing for a stage, a sales call, or a TED talk — just work with her. It's that simple."</p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight" style="--mouse-x: 20px; --mouse-y: 138.5px;">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/adb3973a-2de4-4c58-9def-b70b7ac455d1_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Alexandra Klein
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">Entrepreneur</p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "In just one session, Leona helped me find the clarity and
+                presence I'd been searching for for years."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/991fd1a8-948c-486c-90cd-a02416f6d9be_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Sandra St. Victor
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Grammy Award Nominated Singer, Songwriter, Artist
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "Leona creates the kind of clarity and confidence that even
+                seasoned professionals didn't realize they were missing."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b979ac16-5d99-426d-8432-e3d9a1a08f2a_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Marie Alessi
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Best Selling Author, TEDx Speaker
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "There's this clarity now, a sense of purpose that's just
+                infusing me and I can't wait to ooze that out into the world.
+                Leona is incredible."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b233df94-b1c4-4f70-929d-a096dfb3b658_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Joop van der Gaag
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Director of Sales
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "Leona's method didn't just improve how I speak— it changed what
+                I believe is possible when I do."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <!-- DUPLICATE -->
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/bacf2d7c-bec3-48ba-8b7c-d8d02672d209_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Ann Buoy
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Family Education Coach for Homeschooling
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "Leona helped me shape my story into something that finally felt
+                like mine— and made it land with impact. It felt like music—
+                like my story had rhythm and flow."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/435e8ddd-46e5-4eae-83f6-7f08104d0019_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Beth Römer
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Certified College &amp; Scholarship Strategist
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "After this 7-day challenge, I closed a $7,500 client. Whether
+                you're preparing for a stage, a sales call, or a TED talk — just
+                work with her. It's that simple."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/adb3973a-2de4-4c58-9def-b70b7ac455d1_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Alexandra Klein
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">Entrepreneur</p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "In just one session, Leona helped me find the clarity and
+                presence I'd been searching for for years."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/991fd1a8-948c-486c-90cd-a02416f6d9be_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Sandra St. Victor
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Grammy Award Nominated Singer, Songwriter, Artist
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "Leona creates the kind of clarity and confidence that even
+                seasoned professionals didn't realize they were missing."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b979ac16-5d99-426d-8432-e3d9a1a08f2a_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Marie Alessi
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Best Selling Author, TEDx Speaker
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "There's this clarity now, a sense of purpose that's just
+                infusing me and I can't wait to ooze that out into the world.
+                Leona is incredible."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b233df94-b1c4-4f70-929d-a096dfb3b658_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Joop van der Gaag
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Director of Sales
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "Leona's method didn't just improve how I speak— it changed what
+                I believe is possible when I do."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 2 — Right -->
+          <div class="flex w-max gap-6 pr-6" style="animation: scrollRight 60s linear infinite;">
+            <!-- FIRST HALF -->
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight" style="--mouse-x: -1px; --mouse-y: 119.78125px;">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/d5b41b39-e638-4d20-91a5-c5f8ab929984_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Neli Ndlovu
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Marketing Exec
+                  </p>
+                </div>
+              </div>
+              <p class="leading-relaxed text-sm text-slate-400 font-geist z-10 mb-4 relative">
+                "The Message Merkaba structure makes storytelling effortless.
+                Now I can make any concept I have engaging for my team."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight" style="--mouse-x: 360px; --mouse-y: 147px;">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/a66c5eb6-4db2-43fa-9618-990ba8f5ad5d_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Josty Kistemaker
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">NLP Trainer</p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "Now I can speak on stage for 30 minutes or hit the bullseye in
+                5. Leona's energy is powerful, her knowledge is deep, and her
+                process is transformational."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight" style="--mouse-x: 13px; --mouse-y: 138px;">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/19b30519-4e19-478d-a4a2-cf12e65f7d24_320w.jpg)]"></div>
+                <div class="">
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Seva Ismajlova
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    NLP Master Practitioner
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "Leona helped me cut through mental noise and gave me the
+                clarity I needed to lead. The process felt grounded, strategic,
+                and yet very deep."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight" style="--mouse-x: 20px; --mouse-y: 178px;">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/81731dde-cc5e-4efc-84f0-ac328f8db3af_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Lenna van Tilburg
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Mindset Coach Young Adults
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "Leona helped me go from unclear and reactive talks to
+                intentional, powerfully aligned leadership presence."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/23925c26-06d4-4c83-b64b-29ce78ea518f_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Annick Verboven
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Trauma &amp; Narcissism Coach
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "Leona taught me how to go beyond telling a story — Now I can
+                truly connect with my audience when I speak."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/59bf995f-80e8-423e-b479-51a0017bb680_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Eugenie Heijnen
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Senior Consultant
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "I've taken months-long communication courses that didn't do
+                half of what my sessions with Leona achieved. Transformation is
+                real."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <!-- DUPLICATE -->
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight" style="--mouse-x: 297px; --mouse-y: 16.25px;">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/d5b41b39-e638-4d20-91a5-c5f8ab929984_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Neli Ndlovu
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Marketing Exec
+                  </p>
+                </div>
+              </div>
+              <p class="leading-relaxed text-sm text-slate-400 font-geist z-10 mb-4 relative">
+                "The Message Merkaba structure makes storytelling effortless.
+                Now I can make any concept I have engaging for my team."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight" style="--mouse-x: 14px; --mouse-y: 97.25px;">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/a66c5eb6-4db2-43fa-9618-990ba8f5ad5d_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Josty Kistemaker
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">NLP Trainer</p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "Now I can speak on stage for 30 minutes or hit the bullseye in
+                5. Leona's energy is powerful, her knowledge is deep, and her
+                process is transformational."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight" style="--mouse-x: 178px; --mouse-y: 213px;">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/19b30519-4e19-478d-a4a2-cf12e65f7d24_320w.jpg)]"></div>
+                <div class="">
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Seva Ismajlova
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    NLP Master Practitioner
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "Leona helped me cut through mental noise and gave me the
+                clarity I needed to lead. The process felt grounded, strategic,
+                and yet very deep."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight" style="--mouse-x: 20px; --mouse-y: 178px;">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/81731dde-cc5e-4efc-84f0-ac328f8db3af_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Lenna van Tilburg
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Mindset Coach Young Adults
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "Leona helped me go from unclear and reactive talks to
+                intentional, powerfully aligned leadership presence."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/23925c26-06d4-4c83-b64b-29ce78ea518f_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Annick Verboven
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Trauma &amp; Narcissism Coach
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "Leona taught me how to go beyond telling a story — Now I can
+                truly connect with my audience when I speak."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+
+            <div class="w-[300px] md:w-[380px] shrink-0 p-6 rounded-2xl bg-slate-900 border border-white/[0.05] shadow-sm relative transition-transform hover:-translate-y-1 duration-300 card-flashlight">
+              <div class="flex items-center gap-3 mb-4 relative z-10">
+                <div class="h-10 w-10 rounded-full border border-slate-700 bg-cover bg-center bg-[url(https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/59bf995f-80e8-423e-b479-51a0017bb680_320w.jpg)]"></div>
+                <div>
+                  <p class="font-medium font-geist text-slate-200 text-sm">
+                    Eugenie Heijnen
+                  </p>
+                  <p class="text-xs font-geist text-slate-500">
+                    Senior Consultant
+                  </p>
+                </div>
+              </div>
+              <p class="text-slate-400 font-geist leading-relaxed mb-4 text-sm relative z-10">
+                "I've taken months-long communication courses that didn't do
+                half of what my sessions with Leona achieved. Transformation is
+                real."
+              </p>
+              <div class="flex text-cyan-500 gap-1 relative z-10">
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+                <iconify-icon icon="solar:star-linear" class="text-sm"></iconify-icon>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq" class="py-40 px-6 md:px-12 lg:px-24 max-w-4xl mx-auto relative z-20">
+      <div class="text-center mb-20 fade-in-section is-visible">
+        <h2 class="text-4xl md:text-5xl tracking-tight uppercase font-extralight" style="font-family: var(--font-display);">
+          Questions &amp; Clarity
+        </h2>
+      </div>
+
+      <div class="flex flex-col gap-0 fade-in-section is-visible" style="font-family: var(--font-sans);">
+        <div class="rounded-3xl border border-white/10 overflow-hidden bg-white/[0.02] hover:bg-white/[0.04] transition-all duration-300 mb-4" data-open="false">
+          <button type="button" class="w-full text-left px-6 py-6 md:px-8 md:py-8 flex items-center justify-between gap-6 transition-colors" onclick="const c=this.parentElement,p=c.querySelector('.acc-panel'),m=c.querySelector('.minus-icon'),pl=c.querySelector('.plus-icon'),o=c.dataset.open==='true';if(o){c.dataset.open='false';p.style.maxHeight='0px';p.style.opacity='0';m.style.opacity='0';m.style.transform='rotate(90deg)';pl.style.opacity='1';pl.style.transform='rotate(0deg)';c.classList.remove('bg-gradient-to-b','from-[#E3B04A]/10','to-transparent','border-[#E3B04A]/30');c.classList.add('bg-white/[0.02]','border-white/10');}else{c.dataset.open='true';p.style.maxHeight=p.scrollHeight+'px';p.style.opacity='1';m.style.opacity='1';m.style.transform='rotate(0deg)';pl.style.opacity='0';pl.style.transform='rotate(90deg)';c.classList.add('bg-gradient-to-b','from-[#E3B04A]/10','to-transparent','border-[#E3B04A]/30');c.classList.remove('bg-white/[0.02]','border-white/10');}">
+            <h4 class="text-sm uppercase tracking-widest text-white/90 font-light leading-relaxed pr-4">
+              What happens on the online call before the day?
+            </h4>
+            <span class="inline-flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-white h-10 w-10 shrink-0 transition-transform duration-200">
+              <div class="relative w-4 h-4 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="absolute transition-all duration-300 opacity-0 rotate-90 minus-icon text-[#E3B04A]">
+                  <path d="M5 12h14"></path>
+                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="transition-all duration-300 plus-icon opacity-100 w-[16px] h-[16px] absolute rotate-0" data-icon-replaced="true" style="color: rgb(255, 255, 255); width: 16px; height: 16px">
+                  <path d="M5 12h14"></path>
+                  <path d="M12 5v14" class=""></path>
+                </svg>
+              </div>
+            </span>
+          </button>
+          <div class="acc-panel transition-all duration-300 ease-in-out overflow-hidden" style="max-height: 0px;">
+            <div class="px-6 md:px-8 pb-6 md:pb-8 pt-0">
+              <p class="text-sm md:text-base text-white/50 font-light leading-[1.8]" style="font-family: var(--font-serif);">
+                We map the structure of your talk together. We look at your
+                opening, your core message, and your ending. You come to October 24
+                with a clear framework so we can spend the live session purely
+                on delivery.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="rounded-3xl border border-white/10 overflow-hidden bg-white/[0.02] hover:bg-white/[0.04] transition-all duration-300 mb-4" data-open="false">
+          <button type="button" class="w-full text-left px-6 py-6 md:px-8 md:py-8 flex items-center justify-between gap-6 transition-colors" onclick="const c=this.parentElement,p=c.querySelector('.acc-panel'),m=c.querySelector('.minus-icon'),pl=c.querySelector('.plus-icon'),o=c.dataset.open==='true';if(o){c.dataset.open='false';p.style.maxHeight='0px';p.style.opacity='0';m.style.opacity='0';m.style.transform='rotate(90deg)';pl.style.opacity='1';pl.style.transform='rotate(0deg)';c.classList.remove('bg-gradient-to-b','from-[#E3B04A]/10','to-transparent','border-[#E3B04A]/30');c.classList.add('bg-white/[0.02]','border-white/10');}else{c.dataset.open='true';p.style.maxHeight=p.scrollHeight+'px';p.style.opacity='1';m.style.opacity='1';m.style.transform='rotate(0deg)';pl.style.opacity='0';pl.style.transform='rotate(90deg)';c.classList.add('bg-gradient-to-b','from-[#E3B04A]/10','to-transparent','border-[#E3B04A]/30');c.classList.remove('bg-white/[0.02]','border-white/10');}">
+            <h4 class="text-sm uppercase tracking-widest text-white/90 font-light leading-relaxed pr-4">
+              Do I need to have my talk fully written?
+            </h4>
+            <span class="inline-flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-white h-10 w-10 shrink-0 transition-transform duration-200">
+              <div class="relative w-4 h-4 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="absolute transition-all duration-300 opacity-0 rotate-90 minus-icon text-[#E3B04A]">
+                  <path d="M5 12h14"></path>
+                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="transition-all duration-300 plus-icon opacity-100 w-[16px] h-[16px] absolute rotate-0">
+                  <path d="M5 12h14"></path>
+                  <path d="M12 5v14"></path>
+                </svg>
+              </div>
+            </span>
+          </button>
+          <div class="acc-panel transition-all duration-300 ease-in-out overflow-hidden" style="max-height: 0px;">
+            <div class="px-6 md:px-8 pb-6 md:pb-8 pt-0">
+              <p class="text-sm md:text-base text-white/50 font-light leading-[1.8]" style="font-family: var(--font-serif);">
+                No. You need to know what your talk is about and roughly what
+                you want to say. We build from what you have.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="rounded-3xl border border-white/10 overflow-hidden bg-white/[0.02] hover:bg-white/[0.04] transition-all duration-300 mb-4" data-open="false">
+          <button type="button" class="w-full text-left px-6 py-6 md:px-8 md:py-8 flex items-center justify-between gap-6 transition-colors" onclick="const c=this.parentElement,p=c.querySelector('.acc-panel'),m=c.querySelector('.minus-icon'),pl=c.querySelector('.plus-icon'),o=c.dataset.open==='true';if(o){c.dataset.open='false';p.style.maxHeight='0px';p.style.opacity='0';m.style.opacity='0';m.style.transform='rotate(90deg)';pl.style.opacity='1';pl.style.transform='rotate(0deg)';c.classList.remove('bg-gradient-to-b','from-[#E3B04A]/10','to-transparent','border-[#E3B04A]/30');c.classList.add('bg-white/[0.02]','border-white/10');}else{c.dataset.open='true';p.style.maxHeight=p.scrollHeight+'px';p.style.opacity='1';m.style.opacity='1';m.style.transform='rotate(0deg)';pl.style.opacity='0';pl.style.transform='rotate(90deg)';c.classList.add('bg-gradient-to-b','from-[#E3B04A]/10','to-transparent','border-[#E3B04A]/30');c.classList.remove('bg-white/[0.02]','border-white/10');}">
+            <h4 class="text-sm uppercase tracking-widest text-white/90 font-light leading-relaxed pr-4">
+              Is this online or in person?
+            </h4>
+            <span class="inline-flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-white h-10 w-10 shrink-0 transition-transform duration-200">
+              <div class="relative w-4 h-4 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="absolute transition-all duration-300 opacity-0 rotate-90 minus-icon text-[#E3B04A]">
+                  <path d="M5 12h14"></path>
+                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="transition-all duration-300 plus-icon opacity-100 w-[16px] h-[16px] absolute rotate-0">
+                  <path d="M5 12h14"></path>
+                  <path d="M12 5v14"></path>
+                </svg>
+              </div>
+            </span>
+          </button>
+          <div class="acc-panel transition-all duration-300 ease-in-out overflow-hidden" style="max-height: 0px;">
+            <div class="px-6 md:px-8 pb-6 md:pb-8 pt-0">
+              <p class="text-sm md:text-base text-white/50 font-light leading-[1.8]" style="font-family: var(--font-serif);">
+                The prep call is online. The October 24 session is live in the
+                theatre room. Location details are sent upon booking.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="rounded-3xl border border-white/10 overflow-hidden bg-white/[0.02] hover:bg-white/[0.04] transition-all duration-300 mb-4" data-open="false">
+          <button type="button" class="w-full text-left px-6 py-6 md:px-8 md:py-8 flex items-center justify-between gap-6 transition-colors" onclick="const c=this.parentElement,p=c.querySelector('.acc-panel'),m=c.querySelector('.minus-icon'),pl=c.querySelector('.plus-icon'),o=c.dataset.open==='true';if(o){c.dataset.open='false';p.style.maxHeight='0px';p.style.opacity='0';m.style.opacity='0';m.style.transform='rotate(90deg)';pl.style.opacity='1';pl.style.transform='rotate(0deg)';c.classList.remove('bg-gradient-to-b','from-[#E3B04A]/10','to-transparent','border-[#E3B04A]/30');c.classList.add('bg-white/[0.02]','border-white/10');}else{c.dataset.open='true';p.style.maxHeight=p.scrollHeight+'px';p.style.opacity='1';m.style.opacity='1';m.style.transform='rotate(0deg)';pl.style.opacity='0';pl.style.transform='rotate(90deg)';c.classList.add('bg-gradient-to-b','from-[#E3B04A]/10','to-transparent','border-[#E3B04A]/30');c.classList.remove('bg-white/[0.02]','border-white/10');}">
+            <h4 class="text-sm uppercase tracking-widest text-white/90 font-light leading-relaxed pr-4">
+              What if my presentation is in less than two weeks?
+            </h4>
+            <span class="inline-flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-white h-10 w-10 shrink-0 transition-transform duration-200">
+              <div class="relative w-4 h-4 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="absolute transition-all duration-300 opacity-0 rotate-90 minus-icon text-[#E3B04A]">
+                  <path d="M5 12h14"></path>
+                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="transition-all duration-300 plus-icon opacity-100 w-[16px] h-[16px] absolute rotate-0">
+                  <path d="M5 12h14"></path>
+                  <path d="M12 5v14"></path>
+                </svg>
+              </div>
+            </span>
+          </button>
+          <div class="acc-panel transition-all duration-300 ease-in-out overflow-hidden" style="max-height: 0px;">
+            <div class="px-6 md:px-8 pb-6 md:pb-8 pt-0">
+              <p class="text-sm md:text-base text-white/50 font-light leading-[1.8]" style="font-family: var(--font-serif);">
+                Even better. The proximity creates focus. We work with exactly
+                what you have and make it land.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="rounded-3xl border border-white/10 overflow-hidden bg-white/[0.02] hover:bg-white/[0.04] transition-all duration-300" data-open="false">
+          <button type="button" class="w-full text-left px-6 py-6 md:px-8 md:py-8 flex items-center justify-between gap-6 transition-colors" onclick="const c=this.parentElement,p=c.querySelector('.acc-panel'),m=c.querySelector('.minus-icon'),pl=c.querySelector('.plus-icon'),o=c.dataset.open==='true';if(o){c.dataset.open='false';p.style.maxHeight='0px';p.style.opacity='0';m.style.opacity='0';m.style.transform='rotate(90deg)';pl.style.opacity='1';pl.style.transform='rotate(0deg)';c.classList.remove('bg-gradient-to-b','from-[#E3B04A]/10','to-transparent','border-[#E3B04A]/30');c.classList.add('bg-white/[0.02]','border-white/10');}else{c.dataset.open='true';p.style.maxHeight=p.scrollHeight+'px';p.style.opacity='1';m.style.opacity='1';m.style.transform='rotate(0deg)';pl.style.opacity='0';pl.style.transform='rotate(90deg)';c.classList.add('bg-gradient-to-b','from-[#E3B04A]/10','to-transparent','border-[#E3B04A]/30');c.classList.remove('bg-white/[0.02]','border-white/10');}">
+            <h4 class="text-sm uppercase tracking-widest text-white/90 font-light leading-relaxed pr-4">
+              Will I receive a recording or materials after?
+            </h4>
+            <span class="inline-flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-white h-10 w-10 shrink-0 transition-transform duration-200">
+              <div class="relative w-4 h-4 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="absolute transition-all duration-300 opacity-0 rotate-90 minus-icon text-[#E3B04A]">
+                  <path d="M5 12h14"></path>
+                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="transition-all duration-300 plus-icon opacity-100 w-[16px] h-[16px] absolute rotate-0">
+                  <path d="M5 12h14"></path>
+                  <path d="M12 5v14"></path>
+                </svg>
+              </div>
+            </span>
+          </button>
+          <div class="acc-panel transition-all duration-300 ease-in-out overflow-hidden" style="max-height: 0px;">
+            <div class="px-6 md:px-8 pb-6 md:pb-8 pt-0">
+              <p class="text-sm md:text-base text-white/50 font-light leading-[1.8]" style="font-family: var(--font-serif);">
+                You will receive a personal debrief with specific notes on your
+                delivery after the session. The transformation happens live.
+                That is the point.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="reserve" class="py-24 md:py-40 md:px-12 lg:px-24 max-w-5xl mx-auto fade-in-section is-visible relative z-20 px-4 sm:px-6">
+      <div class="md:p-16 lg:p-20 border-white/[0.04] overflow-hidden group border rounded-[2.5rem] relative shadow-[0_30px_100px_-20px_rgba(0,0,0,1),inset_0_1px_1px_rgba(255,255,255,0.05)] backdrop-blur-xl px-3 py-8 sm:p-8">
+        <div class="absolute inset-0 bg-gradient-to-br from-[#E3B04A]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-1000 pointer-events-none"></div>
+        <div class="absolute top-0 right-0 w-[30rem] h-[30rem] bg-[#C05C3B]/10 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
+
+        <div class="text-center mb-16 relative z-10 flex flex-col items-center">
+          <p class="text-[10px] uppercase tracking-[0.3em] text-[#E3B04A] mb-6 font-light" style="font-family: var(--font-sans);">
+            Saturday October 24 | 11:00 - 14:00 CET
+          </p>
+          <h2 class="text-4xl md:text-5xl lg:text-7xl tracking-tight uppercase mb-6 font-extralight" style="font-family: var(--font-display);">
+            The Applause Moment
+          </h2>
+          <div class="w-px h-12 bg-gradient-to-b from-[#E3B04A]/40 to-transparent mt-6"></div>
+        </div>
+
+        <div id="pricing" class="relative z-10 max-w-2xl mx-auto flex flex-col gap-12">
+          <div class="text-center">
+            <h3 class="uppercase text-sm font-light text-white/40 tracking-widest mt-6 mb-6" style="font-family: var(--font-sans)">
+              What is included
+            </h3>
+            <p class="md:text-lg leading-[2] text-base text-white/80 font-extralight">
+              <span class="text-[#E3B04A]">One online group call</span>
+              with Leona before the workshop day to map the structure of your
+              talk.
+              <span class="text-[#E3B04A]">Three hours live</span>
+              in the theatre room working on your opening, your key points, your
+              timing, your delivery, and the exact places where you lose the
+              room.
+            </p>
+            <p class="text-lg md:text-xl italic text-white mt-8 font-light">By the end you will not just have a better talk. You will know how to transform all future presentations into applause moments.</p>
+          </div>
+
+          <div class="flex flex-col gap-6 bg-black/40 border-white/5 border rounded-3xl items-center px-4 py-6 sm:p-8">
+            <p class="uppercase font-light text-amber-500 text-[11px] sm:text-xs tracking-wider sm:tracking-[0.2em] text-center whitespace-nowrap" style="font-family: var(--font-sans)">
+              15 seats. No exceptions.
+            </p>
+
+            <div class="w-full flex flex-col gap-4 mt-2">
+              <div class="relative w-full rounded-full p-[6px] bg-gradient-to-b from-[#4A443A] to-[#25221D] shadow-[inset_0_4px_10px_rgba(0,0,0,0.8),0_10px_30px_rgba(0,0,0,0.5)]">
+                <a href="https://buy.stripe.com/8x23cvdRe1OF8GC82wbEA0h" class="block group relative w-full rounded-full p-[2px] bg-gradient-to-b from-[#FFF5D1] via-[#E8A528] to-[#734407] overflow-hidden transform active:scale-[0.98] transition-transform duration-300 shadow-[0_0_15px_rgba(232,165,40,0.5)]" style="font-family: var(--font-sans)">
+                  <div class="flex overflow-hidden bg-gradient-to-b from-[#F2A924] via-[#D48112] to-[#EDA022] w-full h-full rounded-full relative shadow-[inset_0_4px_6px_rgba(255,255,255,0.7),inset_0_-4px_6px_rgba(255,255,255,0.6)] items-center justify-center py-3 sm:py-4 px-2 sm:px-0">
+                    <span class="md:text-sm uppercase z-10 font-light text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)] text-[10px] sm:text-xs tracking-wider sm:tracking-[0.2em] whitespace-nowrap">
+                      Yes, I want this seat — €127
+                    </span>
+                    <div class="absolute inset-0 pointer-events-none rounded-full overflow-hidden z-0">
+                      <div class="absolute top-0 w-[50%] h-full bg-gradient-to-r from-transparent via-[rgba(255,255,255,0.8)] to-transparent skew-x-[-20deg] flare-1 blur-[2px]"></div>
+                      <div class="absolute top-0 w-[20%] h-full bg-gradient-to-r from-transparent via-white to-transparent skew-x-[-20deg] flare-2 mix-blend-overlay"></div>
+                      <div class="absolute top-0 w-[80%] h-full bg-gradient-to-r from-transparent via-[rgba(255,255,255,0.3)] to-transparent skew-x-[-20deg] flare-3"></div>
+                    </div>
+                  </div>
+                </a>
+              </div>
+              
+            </div>
+
+           
+    </div></div></div></section>
+    <section class="py-24 md:py-32 px-6 md:px-12 relative z-20 text-center max-w-4xl mx-auto fade-in-section is-visible">
+      <h2 class="text-3xl md:text-4xl lg:text-5xl leading-tight font-extralight text-white/90 tracking-tight" style="font-family: var(--font-display);">
+        If you want 1-1 help with your delivery &amp; presence, come join
+        <span class="italic text-[#E3B04A]">The Applause Moment</span>
+        workshop.
+     
+    </h2></section>
+
+    <footer class="bg-black/80 backdrop-blur-lg pt-24 pb-12 px-6 md:px-12 border-t border-[#234232]/30 text-center relative z-20">
+      <div class="max-w-[90rem] mx-auto flex flex-col items-center gap-8">
+        <a href="#" class="tracking-tight uppercase text-2xl font-light text-transparent bg-clip-text bg-gradient-to-r from-white to-[#E3B04A]">Leona Philippo</a>
+
+        <div class="flex gap-10 text-xs tracking-widest uppercase font-light text-white/50" style="font-family: var(--font-sans);">
+          <a href="/terms.html" class="hover:text-[#E3B04A] transition-colors duration-300">
+            Terms
+          </a>
+          <a href="/privacy-policy.html" class="hover:text-[#E3B04A] transition-colors duration-300">
+            Privacy
+          </a>
+        </div>
+
+        <div class="w-full border-t border-white/[0.04] mt-8 pt-8 text-[10px] text-white/30 uppercase tracking-[0.2em] font-light" style="font-family: var(--font-sans);">
+          <p class="">© 2026 Leona Philippo | All rights reserved.</p>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const header = document.getElementById('header');
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 50) {
+        header.classList.add('bg-black/80', 'backdrop-blur-xl', 'border-b', 'border-white/[0.05]', 'py-5');
+        header.classList.remove('bg-transparent', 'py-8', 'border-transparent');
+      } else {
+        header.classList.remove('bg-black/80', 'backdrop-blur-xl', 'border-b', 'border-white/[0.05]', 'py-5');
+        header.classList.add('bg-transparent', 'py-8', 'border-transparent');
+      }
+    });
+
+    document.querySelectorAll('.card-flashlight').forEach(function(card) {
+      card.addEventListener('mousemove', function(e) {
+        var rect = card.getBoundingClientRect();
+        card.style.setProperty('--mouse-x', (e.clientX - rect.left) + 'px');
+        card.style.setProperty('--mouse-y', (e.clientY - rect.top) + 'px');
+      });
+
+      card.addEventListener('click', function() {
+        const isExpanded = card.classList.contains('card-expanded');
+        const parentRow = card.closest('.flex.w-max');
+
+        // collapse any currently expanded card and resume its row
+        document.querySelectorAll('.card-expanded').forEach(function(open) {
+          open.classList.remove('card-expanded');
+          const openRow = open.closest('.flex.w-max');
+          if (openRow) openRow.classList.remove('row-paused');
+        });
+
+        // if this card wasn't already expanded, expand it and pause its row
+        if (!isExpanded) {
+          card.classList.add('card-expanded');
+          if (parentRow) parentRow.classList.add('row-paused');
+        }
+      });
+    });
+  });
+</script>
+
+
+
+
+</body></html>

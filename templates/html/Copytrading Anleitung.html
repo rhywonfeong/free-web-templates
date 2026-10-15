@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="de"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VT Markets Copytrading Guide</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Inter', sans-serif; }
+html[lang="de"] .en { display: none !important; }
+html[lang="en"] .de { display: none !important; }
+/* Smooth fade for language switch */
+.de, .en { animation: fadeIn 0.3s ease-in-out; }
+@keyframes fadeIn {
+from { opacity: 0; transform: translateY(2px); }
+to { opacity: 1; transform: translateY(0); }
+}
+iconify-icon { stroke-width: 1.5; }
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="bg-[#0A0A0A] text-slate-400 selection:bg-white/10 selection:text-white min-h-screen relative overflow-x-hidden antialiased">
+
+    <!-- Language Toggle -->
+    <div class="absolute top-4 right-4 sm:top-6 sm:right-6 md:top-8 md:right-8 flex items-center bg-white/[0.03] p-1 rounded-full border border-white/10 backdrop-blur-md z-50">
+        <button onclick="setLang('de')" id="btn-de" class="px-3 sm:px-4 py-1.5 text-xs font-medium rounded-full transition-all duration-300 bg-white/10 text-white shadow-sm ring-1 ring-white/5">DE</button>
+        <button onclick="setLang('en')" id="btn-en" class="px-3 sm:px-4 py-1.5 text-xs font-medium rounded-full transition-all duration-300 text-slate-500 hover:text-slate-300">EN</button>
+    </div>
+
+    <div class="relative w-full max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16 md:py-24 pt-20 sm:pt-24 md:pt-32">
+        
+        <!-- Background Ambient Glow -->
+        <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] md:w-[800px] h-[300px] md:h-[400px] bg-indigo-500/10 blur-[100px] md:blur-[120px] rounded-full pointer-events-none -z-10 opacity-50"></div>
+
+        <!-- Main Title -->
+        <div class="text-center mb-16 md:mb-24 opacity-0 translate-y-6 transition-all duration-[700ms] ease-out scroll-reveal">
+            <h1 class="text-2xl sm:text-3xl md:text-5xl font-medium text-white tracking-tight mb-4 sm:mb-5 leading-tight">
+                <span class="de">VT Markets Copytrading<br>Anleitung</span>
+                <span class="en">VT Markets Copytrading<br>Guide</span>
+            </h1>
+            <p class="text-sm sm:text-base md:text-lg text-slate-400 max-w-xl mx-auto font-light px-2">
+                <span class="de">Schritt-für-Schritt zur Einrichtung deiner automatisierten Handelsstrategie.</span>
+                <span class="en">Step-by-step to setting up your automated trading strategy.</span>
+            </p>
+        </div>
+
+        <!-- Steps Timeline -->
+        <div class="relative border-l border-white/10 ml-2 sm:ml-4 md:ml-6 space-y-16 sm:space-y-24 pb-8 sm:pb-12">
+
+            <!-- Schritt 1 -->
+            <div class="relative pl-6 sm:pl-10 md:pl-16 opacity-0 translate-y-6 transition-all duration-[700ms] ease-out scroll-reveal">
+                <!-- Timeline Dot -->
+                <div class="absolute -left-[5.5px] top-2 sm:top-3 w-2.5 h-2.5 rounded-full bg-[#0A0A0A] border-[1.5px] border-white/30 ring-4 ring-[#0A0A0A]"></div>
+                
+                <div class="space-y-4 sm:space-y-6">
+                    <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                        <span class="text-xs font-medium text-indigo-400 tracking-widest uppercase bg-indigo-400/10 px-2.5 py-1 rounded-full border border-indigo-400/20">
+                            <span class="de">Schritt 1</span><span class="en">Step 1</span>
+                        </span>
+                        <h2 class="text-lg sm:text-xl md:text-2xl font-medium text-white tracking-tight">
+                            <span class="de">Konto eröffnen</span>
+                            <span class="en">Open an Account</span>
+                        </h2>
+                    </div>
+                    
+                    <div class="bg-white/[0.02] hover:bg-white/[0.03] transition-colors border border-white/5 rounded-2xl p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
+                        <div>
+                            <h3 class="text-sm md:text-base font-medium text-white mb-2 sm:mb-3 flex items-center gap-2">
+                                <span class="w-1.5 h-1.5 rounded-full bg-white/20 flex-shrink-0"></span>
+                                <span class="de">Registrierungslink öffnen</span>
+                                <span class="en">Open registration link</span>
+                            </h3>
+                            <a href="https://go.vtaffiliates.com/visit/?bta=42170&brand=vt&campaign=22200682" target="_blank" class="group flex items-center justify-between gap-3 sm:gap-4 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-xl p-3 sm:p-4 transition-all duration-300">
+                                <div class="flex items-center gap-2 sm:gap-3 overflow-hidden min-w-0">
+                                    <iconify-icon icon="solar:link-circle-linear" class="text-indigo-400 text-lg sm:text-xl flex-shrink-0"></iconify-icon>
+                                    <span class="text-indigo-300 text-xs sm:text-sm md:text-base truncate font-medium">go.vtaffiliates.com/visit/?bta=42170...</span>
+                                </div>
+                                <iconify-icon icon="solar:arrow-right-up-linear" class="text-indigo-400 text-base sm:text-lg opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all flex-shrink-0"></iconify-icon>
+                            </a>
+                        </div>
+                        
+                        <div>
+                            <h3 class="text-sm md:text-base font-medium text-white mb-2 sm:mb-3 flex items-center gap-2">
+                                <span class="w-1.5 h-1.5 rounded-full bg-white/20 flex-shrink-0"></span>
+                                <span class="de">Daten eingeben</span>
+                                <span class="en">Enter details</span>
+                            </h3>
+                            <p class="text-sm md:text-base text-slate-400 font-light leading-relaxed pl-3.5 border-l border-white/10">
+                                <span class="de">Alle Felder vollständig ausfüllen und auf „Eröffnen Sie ein Live-Konto“ klicken.</span>
+                                <span class="en">Fill out all fields completely and click on "Open a Live Account".</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Schritt 2 -->
+            <div class="relative pl-6 sm:pl-10 md:pl-16 opacity-0 translate-y-6 transition-all duration-[700ms] ease-out scroll-reveal">
+                <div class="absolute -left-[5.5px] top-2 sm:top-3 w-2.5 h-2.5 rounded-full bg-[#0A0A0A] border-[1.5px] border-white/30 ring-4 ring-[#0A0A0A]"></div>
+                
+                <div class="space-y-4 sm:space-y-6">
+                    <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                        <span class="text-xs font-medium text-indigo-400 tracking-widest uppercase bg-indigo-400/10 px-2.5 py-1 rounded-full border border-indigo-400/20">
+                            <span class="de">Schritt 2</span><span class="en">Step 2</span>
+                        </span>
+                        <h2 class="text-lg sm:text-xl md:text-2xl font-medium text-white tracking-tight">
+                            <span class="de">Daten &amp; Copy Trading Konto</span>
+                            <span class="en">Details &amp; Copy Trading Account</span>
+                        </h2>
+                    </div>
+                    
+                    <div class="space-y-6 sm:space-y-8">
+                        <div>
+                            <h3 class="text-sm md:text-base font-medium text-white mb-2 sm:mb-3 flex items-center gap-2">
+                                <span class="w-1.5 h-1.5 rounded-full bg-white/20 flex-shrink-0"></span>
+                                <span class="de">Persönliche Daten vervollständigen</span>
+                                <span class="en">Complete personal details</span>
+                            </h3>
+                            <p class="text-sm md:text-base text-slate-400 font-light pl-3.5 border-l border-white/10">
+                                <span class="de">Alle abgefragten Informationen korrekt eingeben.</span>
+                                <span class="en">Enter all requested information correctly.</span>
+                            </p>
+                        </div>
+
+                        <div class="space-y-4 sm:space-y-5">
+                            <h3 class="text-sm md:text-base font-medium text-white flex items-center gap-2">
+                                <span class="w-1.5 h-1.5 rounded-full bg-white/20 flex-shrink-0"></span>
+                                <span class="de">Copy Trading Konto erstellen</span>
+                                <span class="en">Create Copy Trading account</span>
+                            </h3>
+                            <p class="text-sm md:text-base text-slate-400 font-light pl-3.5">
+                                <span class="de">Bitte exakt folgende Einstellungen wählen:</span>
+                                <span class="en">Please select exactly the following settings:</span>
+                            </p>
+                            
+                            <div class="bg-white/[0.02] border border-white/5 rounded-2xl overflow-hidden ml-0 sm:ml-3.5">
+                                <div class="divide-y divide-white/5">
+                                    <div class="flex justify-between items-center p-3 sm:p-4 md:p-5 hover:bg-white/[0.01] transition-colors">
+                                        <span class="text-sm md:text-base text-slate-500 font-light">
+                                            <span class="de">Kontotyp</span><span class="en">Account Type</span>
+                                        </span>
+                                        <span class="text-sm md:text-base font-medium text-white text-right">Copy Trading</span>
+                                    </div>
+                                    <div class="flex justify-between items-center p-3 sm:p-4 md:p-5 hover:bg-white/[0.01] transition-colors">
+                                        <span class="text-sm md:text-base text-slate-500 font-light">
+                                            <span class="de">Kontoart</span><span class="en">Account Category</span>
+                                        </span>
+                                        <span class="text-sm md:text-base font-medium text-white text-right">Standard STP</span>
+                                    </div>
+                                    <div class="flex justify-between items-center p-3 sm:p-4 md:p-5 hover:bg-white/[0.01] transition-colors">
+                                        <span class="text-sm md:text-base text-slate-500 font-light">
+                                            <span class="de">Währung</span><span class="en">Currency</span>
+                                        </span>
+                                        <span class="text-sm md:text-base font-medium text-white text-right">USD</span>
+                                    </div>
+                                </div>
+                                <div class="bg-black/20 p-4 md:p-5 text-xs sm:text-sm md:text-base text-slate-400 border-t border-white/5 flex flex-col sm:flex-row gap-3 sm:gap-4 md:gap-8">
+                                    <div class="flex items-center gap-2 sm:gap-2.5">
+                                        <iconify-icon icon="solar:password-linear" class="text-slate-500 text-base sm:text-lg flex-shrink-0"></iconify-icon>
+                                        <span class="font-light"><span class="de">Passwort festlegen</span><span class="en">Set password</span></span>
+                                    </div>
+                                    <div class="flex items-center gap-2 sm:gap-2.5">
+                                        <iconify-icon icon="solar:check-square-linear" class="text-slate-500 text-base sm:text-lg flex-shrink-0"></iconify-icon>
+                                        <span class="font-light"><span class="de">Kästchen bestätigen</span><span class="en">Check the box</span></span>
+                                    </div>
+                                    <div class="flex items-center gap-2 sm:gap-2.5">
+                                        <iconify-icon icon="solar:plain-linear" class="text-slate-500 text-base sm:text-lg flex-shrink-0"></iconify-icon>
+                                        <span class="font-light"><span class="de">Auf Einreichen klicken</span><span class="en">Click Submit</span></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Schritt 3 -->
+            <div class="relative pl-6 sm:pl-10 md:pl-16 opacity-0 translate-y-6 transition-all duration-[700ms] ease-out scroll-reveal">
+                <div class="absolute -left-[5.5px] top-2 sm:top-3 w-2.5 h-2.5 rounded-full bg-[#0A0A0A] border-[1.5px] border-white/30 ring-4 ring-[#0A0A0A]"></div>
+                
+                <div class="space-y-4 sm:space-y-6">
+                    <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                        <span class="text-xs font-medium text-indigo-400 tracking-widest uppercase bg-indigo-400/10 px-2.5 py-1 rounded-full border border-indigo-400/20">
+                            <span class="de">Schritt 3</span><span class="en">Step 3</span>
+                        </span>
+                        <h2 class="text-lg sm:text-xl md:text-2xl font-medium text-white tracking-tight">
+                            <span class="de">Konto verifizieren</span>
+                            <span class="en">Verify Account</span>
+                        </h2>
+                    </div>
+                    
+                    <div class="bg-white/[0.02] hover:bg-white/[0.03] transition-colors border border-white/5 rounded-2xl p-4 sm:p-6 md:p-8 flex gap-4 sm:gap-5 items-start">
+                        <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center flex-shrink-0 mt-0.5 sm:mt-1">
+                            <iconify-icon icon="solar:shield-check-linear" class="text-slate-300 text-lg sm:text-xl"></iconify-icon>
+                        </div>
+                        <div class="space-y-1.5 sm:space-y-2">
+                            <p class="text-sm md:text-base text-slate-400 font-light">
+                                <span class="de">Identitätsnachweis und Adressnachweis hochladen.</span>
+                                <span class="en">Upload proof of identity and proof of address.</span>
+                            </p>
+                            <p class="text-sm md:text-base font-medium text-slate-200">
+                                <span class="de">Die Verifizierung dauert in der Regel nur kurze Zeit.</span>
+                                <span class="en">Verification usually takes only a short time.</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Schritt 4 -->
+            <div class="relative pl-6 sm:pl-10 md:pl-16 opacity-0 translate-y-6 transition-all duration-[700ms] ease-out scroll-reveal">
+                <div class="absolute -left-[5.5px] top-2 sm:top-3 w-2.5 h-2.5 rounded-full bg-[#0A0A0A] border-[1.5px] border-white/30 ring-4 ring-[#0A0A0A]"></div>
+                
+                <div class="space-y-4 sm:space-y-6">
+                    <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                        <span class="text-xs font-medium text-indigo-400 tracking-widest uppercase bg-indigo-400/10 px-2.5 py-1 rounded-full border border-indigo-400/20">
+                            <span class="de">Schritt 4</span><span class="en">Step 4</span>
+                        </span>
+                        <h2 class="text-lg sm:text-xl md:text-2xl font-medium text-white tracking-tight">
+                            <span class="de">Einzahlung vornehmen</span>
+                            <span class="en">Make a Deposit</span>
+                        </h2>
+                    </div>
+                    
+                    <div class="grid gap-5 sm:gap-8">
+                        <!-- Wichtig Box -->
+                        <div class="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-5">
+                            <h3 class="text-sm md:text-base font-medium text-amber-500/90 flex items-center gap-2">
+                                <iconify-icon icon="solar:info-circle-linear" class="text-lg flex-shrink-0"></iconify-icon>
+                                <span class="de">Wichtig vorab</span><span class="en">Important context</span>
+                            </h3>
+                            <ul class="space-y-3 sm:space-y-4 text-sm md:text-base text-amber-200/70 font-light">
+                                <li class="flex items-start sm:items-center gap-2 sm:gap-3">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500/50 flex-shrink-0 mt-2 sm:mt-0"></span>
+                                    <span class="de">Mindesteinzahlung: <span class="font-medium text-amber-200/90">500$</span></span>
+                                    <span class="en">Minimum deposit: <span class="font-medium text-amber-200/90">500$</span></span>
+                                </li>
+                                <li class="flex items-start sm:items-center gap-2 sm:gap-3">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500/50 flex-shrink-0 mt-2 sm:mt-0"></span>
+                                    <span class="de">Empfehlung für System 2: <span class="font-medium text-amber-200/90">1.000$</span></span>
+                                    <span class="en">Recommendation for System 2: <span class="font-medium text-amber-200/90">1.000$</span></span>
+                                </li>
+                                <li class="flex items-start gap-2 sm:gap-3 mt-2">
+                                    <iconify-icon icon="solar:gift-linear" class="text-amber-500/70 text-base sm:text-lg mt-0.5 flex-shrink-0"></iconify-icon>
+                                    <span class="font-medium text-amber-200/90 leading-relaxed de">Bei der ersten Einzahlung gibt es je nach Aktion einen 50–100% Bonus vom Broker.</span>
+                                    <span class="font-medium text-amber-200/90 leading-relaxed en">On the first deposit, there is a 50–100% bonus from the broker depending on the promotion.</span>
+                                </li>
+                            </ul>
+                        </div>
+                        
+                        <!-- Einzahlung durchführen -->
+                        <div class="space-y-4 sm:space-y-5 bg-white/[0.02] border border-white/5 rounded-2xl p-4 sm:p-6 md:p-8">
+                            <h3 class="text-sm md:text-base font-medium text-white mb-2">
+                                <span class="de">Einzahlung durchführen</span><span class="en">Making the deposit</span>
+                            </h3>
+                            <ul class="space-y-3 sm:space-y-4 text-sm md:text-base text-slate-400 font-light">
+                                <li class="flex items-start gap-3">
+                                    <span class="text-slate-600 text-xs mt-1 flex-shrink-0">01</span>
+                                    <span class="de">In der Menüleiste auf <span class="text-white font-medium">„Mittel“</span> klicken</span>
+                                    <span class="en">Click on <span class="text-white font-medium">"Funds"</span> in the menu bar</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <span class="text-slate-600 text-xs mt-1 flex-shrink-0">02</span>
+                                    <span class="de"><span class="text-white font-medium">„Geld einzahlen“</span> auswählen</span>
+                                    <span class="en">Select <span class="text-white font-medium">"Deposit funds"</span></span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <span class="text-slate-600 text-xs mt-1 flex-shrink-0">03</span>
+                                    <span class="de">Dein zuvor erstelltes Copy Trading Konto auswählen</span>
+                                    <span class="en">Select your previously created Copy Trading account</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <span class="text-slate-600 text-xs mt-1 flex-shrink-0">04</span>
+                                    <span class="de">Betrag eingeben</span>
+                                    <span class="en">Enter amount</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <span class="text-slate-600 text-xs mt-1 flex-shrink-0">05</span>
+                                    <span class="de">Einzahlungsmethode wählen (Empfehlung: Kreditkarte)</span>
+                                    <span class="en">Choose deposit method (Recommended: Credit Card)</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <span class="text-slate-600 text-xs mt-1 flex-shrink-0">06</span>
+                                    <span class="de">Einzahlung bestätigen</span>
+                                    <span class="en">Confirm deposit</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Divider -->
+            <div class="relative pl-6 sm:pl-10 md:pl-16 py-4 sm:py-6">
+                <div class="h-px bg-white/5 w-full"></div>
+            </div>
+
+            <!-- Copy Trading verbinden -->
+            <div class="relative pl-6 sm:pl-10 md:pl-16 opacity-0 translate-y-6 transition-all duration-[700ms] ease-out scroll-reveal">
+                <div class="absolute -left-[5.5px] top-2 sm:top-3 w-2.5 h-2.5 rounded-full bg-[#0A0A0A] border-[1.5px] border-white/30 ring-4 ring-[#0A0A0A]"></div>
+                
+                <div class="space-y-6 sm:space-y-8">
+                    <h2 class="text-lg sm:text-xl md:text-2xl font-medium text-white tracking-tight">
+                        <span class="de">Copy Trading verbinden</span>
+                        <span class="en">Connect Copy Trading</span>
+                    </h2>
+                    
+                    <ul class="space-y-5 sm:space-y-6 text-sm md:text-base text-slate-400 font-light">
+                        <li class="flex items-start gap-3">
+                            <div class="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/5 flex items-center justify-center text-[10px] sm:text-xs text-slate-500 border border-white/10 flex-shrink-0 mt-0.5">1</div>
+                            <span class="de">Im Menü auf <span class="text-white font-medium">„Kopierhandel“</span> <span class="text-slate-600 mx-1">→</span> <span class="text-white font-medium">„Kopierer“</span></span>
+                            <span class="en">In the menu, go to <span class="text-white font-medium">"Copytrading"</span> <span class="text-slate-600 mx-1">→</span> <span class="text-white font-medium">"Copier"</span></span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <div class="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/5 flex items-center justify-center text-[10px] sm:text-xs text-slate-500 border border-white/10 flex-shrink-0 mt-0.5">2</div>
+                            <span class="de">Auf <span class="text-white font-medium">„Strategien entdecken“</span> klicken</span>
+                            <span class="en">Click on <span class="text-white font-medium">"Discover Strategies"</span></span>
+                        </li>
+                        <li class="flex items-start gap-3 pt-1 sm:pt-2">
+                            <div class="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/5 flex items-center justify-center text-[10px] sm:text-xs text-slate-500 border border-white/10 flex-shrink-0 mt-0.5">3</div>
+                            <div class="w-full max-w-sm">
+                                <div class="mb-3 sm:mb-4">
+                                    <span class="de">Suche nach einer dieser Strategien:</span><span class="en">Search for one of these strategies:</span>
+                                </div>
+                                <div class="flex flex-col gap-2 sm:gap-2.5">
+                                    <div class="flex items-center gap-2 sm:gap-3 bg-white/[0.02] border border-white/5 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-white text-xs sm:text-sm md:text-base hover:bg-white/[0.04] transition-colors cursor-default">
+                                        <div class="w-2 h-2 rounded-full bg-indigo-400 shadow-[0_0_12px_rgba(129,140,248,0.6)] flex-shrink-0"></div>
+                                        <span class="font-medium tracking-wide">SENTIQ S1</span> <span class="text-slate-500 ml-auto text-[10px] sm:text-xs font-normal">(System 1)</span>
+                                    </div>
+                                    <div class="flex items-center gap-2 sm:gap-3 bg-white/[0.02] border border-white/5 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-white text-xs sm:text-sm md:text-base hover:bg-white/[0.04] transition-colors cursor-default">
+                                        <div class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.6)] flex-shrink-0"></div>
+                                        <span class="font-medium tracking-wide">SENTIQ S2</span> <span class="text-slate-500 ml-auto text-[10px] sm:text-xs font-normal">(System 2)</span>
+                                    </div>
+                                    <div class="flex items-center gap-2 sm:gap-3 bg-white/[0.02] border border-white/5 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-white text-xs sm:text-sm md:text-base hover:bg-white/[0.04] transition-colors cursor-default">
+                                        <div class="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.6)] flex-shrink-0"></div>
+                                        <span class="font-medium tracking-wide">SENTIQ S3</span> <span class="text-slate-500 ml-auto text-[10px] sm:text-xs font-normal">(System 3)</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </li>
+                        <li class="flex items-start gap-3 pt-1 sm:pt-2">
+                            <div class="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/5 flex items-center justify-center text-[10px] sm:text-xs text-slate-500 border border-white/10 flex-shrink-0 mt-0.5">4</div>
+                            <span class="de">Gewünschte Strategie auswählen</span>
+                            <span class="en">Select desired strategy</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <div class="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/5 flex items-center justify-center text-[10px] sm:text-xs text-slate-500 border border-white/10 flex-shrink-0 mt-0.5">5</div>
+                            <span class="de">Auf <span class="text-white font-medium">„Kopieren“</span> klicken</span>
+                            <span class="en">Click on <span class="text-white font-medium">"Copy"</span></span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Kopiereinstellungen -->
+            <div class="relative pl-6 sm:pl-10 md:pl-16 opacity-0 translate-y-6 transition-all duration-[700ms] ease-out scroll-reveal">
+                <div class="absolute -left-[5.5px] top-2 sm:top-3 w-2.5 h-2.5 rounded-full bg-indigo-500 border-[1.5px] border-indigo-200 ring-4 ring-indigo-500/20 shadow-[0_0_12px_rgba(99,102,241,0.6)]"></div>
+                
+                <div class="space-y-6 sm:space-y-8">
+                    <h2 class="text-lg sm:text-xl md:text-2xl font-medium text-white tracking-tight">
+                        <span class="de">Kopiereinstellungen</span>
+                        <span class="en">Copy Settings</span>
+                    </h2>
+                    
+                    <!-- System 1 -->
+                    <div class="bg-gradient-to-b from-white/[0.03] to-transparent border border-white/5 rounded-2xl overflow-hidden relative group">
+                        <div class="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent opacity-50"></div>
+                        <div class="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
+                            
+                            <div class="flex items-start sm:items-center gap-2 sm:gap-3">
+                                <div class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.6)] mt-2 sm:mt-0 flex-shrink-0"></div>
+                                <h3 class="text-base sm:text-lg md:text-xl font-medium text-white tracking-tight">
+                                    <span class="de">System 1 – Einstellungen</span>
+                                    <span class="en">System 1 – Settings</span>
+                                </h3>
+                            </div>
+
+                            <ul class="space-y-3 sm:space-y-4 text-sm md:text-base text-slate-300 font-light">
+                                <li class="flex items-start gap-2 sm:gap-3">
+                                    <iconify-icon icon="solar:tuning-square-2-linear" class="text-slate-500 mt-0.5 flex-shrink-0 text-base sm:text-lg"></iconify-icon>
+                                    <span class="de"><span class="text-slate-500">Kopiermodus:</span> <span class="font-medium text-white">Äquivalent verwendete Marge</span></span>
+                                    <span class="en"><span class="text-slate-500">Copy Mode:</span> <span class="font-medium text-white">Equivalent Used Margin</span></span>
+                                </li>
+                                <li class="flex items-start gap-2 sm:gap-3">
+                                    <iconify-icon icon="solar:wallet-money-linear" class="text-slate-500 mt-0.5 flex-shrink-0 text-base sm:text-lg"></iconify-icon>
+                                    <span class="de"><span class="text-slate-500">Investition:</span> mindestens 500$</span>
+                                    <span class="en"><span class="text-slate-500">Investment:</span> minimum 500$</span>
+                                </li>
+                                <li class="flex items-start gap-2 sm:gap-3">
+                                    <iconify-icon icon="solar:calculator-linear" class="text-slate-500 mt-0.5 flex-shrink-0 text-base sm:text-lg"></iconify-icon>
+                                    <span class="de"><span class="text-slate-500">Verwendeter Margin Multiplikator:</span> 1.0</span>
+                                    <span class="en"><span class="text-slate-500">Used Margin Multiplier:</span> 1.0</span>
+                                </li>
+                                <li class="flex items-start gap-2 sm:gap-3">
+                                    <iconify-icon icon="solar:graph-down-linear" class="text-slate-500 mt-0.5 flex-shrink-0 text-base sm:text-lg"></iconify-icon>
+                                    <span class="leading-relaxed de"><span class="text-slate-500">Stop Loss:</span> individuell einstellbar <span class="text-slate-500 text-[10px] sm:text-xs md:text-sm ml-0 sm:ml-1 block mt-0.5 sm:mt-1">(Empfehlung: so hoch wie möglich)</span></span>
+                                    <span class="leading-relaxed en"><span class="text-slate-500">Stop Loss:</span> individually adjustable <span class="text-slate-500 text-[10px] sm:text-xs md:text-sm ml-0 sm:ml-1 block mt-0.5 sm:mt-1">(Recommendation: as high as possible)</span></span>
+                                </li>
+                                <li class="flex items-start gap-2 sm:gap-3">
+                                    <iconify-icon icon="solar:graph-up-linear" class="text-slate-500 mt-0.5 flex-shrink-0 text-base sm:text-lg"></iconify-icon>
+                                    <span class="de"><span class="text-slate-500">Take Profit:</span> deaktiviert</span>
+                                    <span class="en"><span class="text-slate-500">Take Profit:</span> deactivated</span>
+                                </li>
+                                <li class="flex items-start gap-2 sm:gap-3">
+                                    <iconify-icon icon="solar:round-transfer-horizontal-linear" class="text-slate-500 mt-0.5 flex-shrink-0 text-base sm:text-lg"></iconify-icon>
+                                    <span class="de"><span class="text-slate-500">Lot Round Up:</span> aktiviert</span>
+                                    <span class="en"><span class="text-slate-500">Lot Round Up:</span> enabled</span>
+                                </li>
+                                <li class="flex items-start gap-2 sm:gap-3">
+                                    <iconify-icon icon="solar:copy-linear" class="text-slate-500 mt-0.5 flex-shrink-0 text-base sm:text-lg"></iconify-icon>
+                                    <span class="de"><span class="text-slate-500">Eröffnete Trades kopieren:</span> aktiviert</span>
+                                    <span class="en"><span class="text-slate-500">Copy opened trades:</span> enabled</span>
+                                </li>
+                            </ul>
+
+                            <div class="pt-5 sm:pt-6 border-t border-white/5 flex items-center gap-2 sm:gap-3">
+                                <iconify-icon icon="solar:mouse-circle-linear" class="text-white text-lg sm:text-xl flex-shrink-0"></iconify-icon>
+                                <p class="text-white font-medium text-sm md:text-base">
+                                    <span class="de">Danach auf Absenden klicken.</span>
+                                    <span class="en">Then click Submit.</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System 2 -->
+                    <div class="bg-gradient-to-b from-white/[0.03] to-transparent border border-white/5 rounded-2xl overflow-hidden relative mt-4 sm:mt-6 opacity-0 translate-y-6 transition-all duration-[700ms] ease-out scroll-reveal">
+                        <div class="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-500/50 to-transparent opacity-50"></div>
+                        <div class="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
+                            
+                            <div class="flex items-start sm:items-center gap-2 sm:gap-3">
+                                <div class="w-2 h-2 rounded-full bg-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.6)] mt-2 sm:mt-0 flex-shrink-0"></div>
+                                <h3 class="text-base sm:text-lg md:text-xl font-medium text-white tracking-tight leading-snug">
+                                    <span class="de">System 2 – WICHTIG: Andere Einstellung beim Kopiermodus</span>
+                                    <span class="en">System 2 – IMPORTANT: Different setting for Copy Mode</span>
+                                </h3>
+                            </div>
+
+                            <div class="space-y-5 sm:space-y-6">
+                                <p class="text-sm md:text-base text-slate-400 font-light">
+                                    <span class="de">Alle Einstellungen bleiben gleich außer dem Kopiermodus:</span>
+                                    <span class="en">All settings remain the same except the copy mode:</span>
+                                </p>
+
+                                <ul class="space-y-4 sm:space-y-5 text-sm md:text-base text-slate-300 font-light">
+                                    <li class="flex items-center gap-2 sm:gap-3 bg-blue-500/5 border border-blue-500/10 p-3 sm:p-4 rounded-xl">
+                                        <iconify-icon icon="solar:tuning-square-2-linear" class="text-blue-400 flex-shrink-0 text-base sm:text-lg"></iconify-icon>
+                                        <span class="de"><span class="text-blue-200">Kopiermodus:</span> <span class="font-medium text-white">Fixe Lot</span></span>
+                                        <span class="en"><span class="text-blue-200">Copy Mode:</span> <span class="font-medium text-white">Fixed Lot</span></span>
+                                    </li>
+                                    <li class="flex items-start gap-2 sm:gap-3 mt-4 sm:mt-6">
+                                        <iconify-icon icon="solar:calculator-minimalistic-linear" class="text-slate-500 mt-0.5 flex-shrink-0 text-base sm:text-lg"></iconify-icon>
+                                        <div class="space-y-3 sm:space-y-4 w-full">
+                                            <span class="de text-white font-medium block">Lotgröße berechnen nach folgender Regel:</span>
+                                            <span class="en text-white font-medium block">Calculate lot size according to the following rule:</span>
+                                            
+                                            <div class="bg-[#0A0A0A] border border-white/5 rounded-xl p-4 sm:p-5 space-y-2.5 sm:space-y-3 font-mono text-xs sm:text-sm">
+                                                <div class="flex items-center justify-between border-b border-white/5 pb-2">
+                                                    <span class="text-slate-400">Bis 1.000$</span>
+                                                    <span class="text-white">0.01 Lot</span>
+                                                </div>
+                                                <div class="flex items-center justify-between border-b border-white/5 pb-2">
+                                                    <span class="text-slate-400">2.000$</span>
+                                                    <span class="text-white">0.02 Lot</span>
+                                                </div>
+                                                <div class="flex items-center justify-between pb-1">
+                                                    <span class="text-slate-400">3.000$</span>
+                                                    <span class="text-white">0.03 Lot</span>
+                                                </div>
+                                            </div>
+                                            <p class="text-[10px] sm:text-xs md:text-sm text-slate-500 italic mt-2 leading-relaxed">
+                                                <span class="de">* Pro 1.000$ Kontogröße immer 0.01 Lot einstellen.</span>
+                                                <span class="en">* Always set 0.01 Lot per 1,000$ account size.</span>
+                                            </p>
+                                        </div>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <div class="pt-5 sm:pt-6 border-t border-white/5 flex items-center gap-2 sm:gap-3">
+                                <iconify-icon icon="solar:mouse-circle-linear" class="text-white text-lg sm:text-xl flex-shrink-0"></iconify-icon>
+                                <p class="text-white font-medium text-sm md:text-base">
+                                    <span class="de">Danach auf Absenden klicken.</span>
+                                    <span class="en">Then click Submit.</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Fertig Section -->
+            <div class="relative pl-6 sm:pl-10 md:pl-16 opacity-0 translate-y-6 transition-all duration-[700ms] ease-out scroll-reveal">
+                <div class="absolute -left-[5.5px] top-2 sm:top-3 w-2.5 h-2.5 rounded-full bg-[#0A0A0A] border-[1.5px] border-emerald-400 ring-4 ring-[#0A0A0A] shadow-[0_0_12px_rgba(52,211,153,0.4)]"></div>
+                
+                <div class="space-y-4 sm:space-y-6">
+                    <h2 class="text-lg sm:text-xl md:text-2xl font-medium text-white tracking-tight">
+                        <span class="de">Abschluss</span>
+                        <span class="en">Conclusion</span>
+                    </h2>
+                    
+                    <div class="bg-white/[0.02] border border-white/5 rounded-2xl p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6">
+                        
+                        <div class="flex flex-col sm:flex-row gap-4 sm:gap-5 sm:items-center">
+                            <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                                <iconify-icon icon="solar:check-circle-linear" class="text-emerald-400 text-xl sm:text-2xl"></iconify-icon>
+                            </div>
+                            <div>
+                                <h3 class="text-base sm:text-lg font-medium text-white tracking-tight mb-1">
+                                    <span class="de">Fertig eingerichtet</span>
+                                    <span class="en">Setup complete</span>
+                                </h3>
+                                <p class="text-sm md:text-base text-slate-400 font-light">
+                                    <span class="de">Dein Konto ist jetzt vollständig eingerichtet und mit dem gewünschten System verbunden.</span>
+                                    <span class="en">Your account is now fully set up and connected to the desired system.</span>
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-amber-500/5 border border-amber-500/10 rounded-xl p-4 sm:p-5 md:p-6 flex gap-3 sm:gap-4 items-start">
+                            <div class="flex-shrink-0 mt-0.5">
+                                <iconify-icon icon="solar:danger-circle-linear" class="text-amber-500/80 text-lg sm:text-xl"></iconify-icon>
+                            </div>
+                            <div>
+                                <h4 class="text-sm md:text-base font-medium text-amber-500/90 mb-1">
+                                    <span class="de">Wichtig:</span><span class="en">Important:</span>
+                                </h4>
+                                <p class="text-xs sm:text-sm md:text-base text-amber-200/70 font-light leading-relaxed">
+                                    <span class="de">Bitte alle Einstellungen exakt wie oben beschrieben übernehmen, damit die Strategie korrekt umgesetzt wird.</span>
+                                    <span class="en">Please apply all settings exactly as described above so that the strategy is implemented correctly.</span>
+                                </p>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+
+        <footer class="mt-16 sm:mt-24 border-t border-white/10 pt-8 text-center pb-8 flex items-center justify-center gap-2 text-slate-600 text-xs opacity-0 translate-y-6 transition-all duration-[700ms] ease-out scroll-reveal">
+            <iconify-icon icon="solar:shield-keyhole-linear" class="text-sm"></iconify-icon>
+            <p>Finance Strategy Guide © 2024</p>
+        </footer>
+
+    </div>
+
+    <script>
+        // Language Toggle
+        function setLang(lang) {
+            document.documentElement.lang = lang;
+            const btnDe = document.getElementById('btn-de');
+            const btnEn = document.getElementById('btn-en');
+            
+            const activeClass = 'px-3 sm:px-4 py-1.5 text-xs font-medium rounded-full transition-all duration-300 bg-white/10 text-white shadow-sm ring-1 ring-white/5';
+            const inactiveClass = 'px-3 sm:px-4 py-1.5 text-xs font-medium rounded-full transition-all duration-300 text-slate-500 hover:text-slate-300';
+
+            if (lang === 'de') {
+                btnDe.className = activeClass;
+                btnEn.className = inactiveClass;
+            } else {
+                btnEn.className = activeClass;
+                btnDe.className = inactiveClass;
+            }
+        }
+
+        // Intersection Observer for Scroll Animations
+        document.addEventListener("DOMContentLoaded", () => {
+            const observerOptions = {
+                root: null,
+                rootMargin: '0px',
+                threshold: 0.1
+            };
+
+            const observer = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        // Remove initial state classes and add final state classes
+                        entry.target.classList.remove('opacity-0', 'translate-y-6');
+                        entry.target.classList.add('opacity-100', 'translate-y-0');
+                        // Stop observing once animated
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, observerOptions);
+
+            // Select all elements to be animated
+            document.querySelectorAll('.scroll-reveal').forEach(el => {
+                observer.observe(el);
+            });
+        });
+    </script>
+
+
+</body></html>

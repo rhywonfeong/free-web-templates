@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+@keyframes shine-sweep {
+0% { transform: translateX(-150%) skewX(-15deg); }
+40%, 100% { transform: translateX(300%) skewX(-15deg); }
+}
+</style></head>
+<body class="bg-neutral-700 flex items-center justify-center min-h-screen p-6 antialiased font-sans text-neutral-50 selection:bg-orange-500/30">
+    
+    <!-- Main Card Container -->
+    <div class="relative w-full max-w-[380px] rounded-[2rem] shadow-2xl bg-[#0a0a0a] ring-1 ring-white/5 overflow-hidden group">
+        
+        <!-- Ambient Glow Background -->
+        <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center_45%,_#7a3d00_0%,_#0a0a0a_70%)] pointer-events-none"></div>
+
+        <!-- Sweeping Light Animation Overlay -->
+        <div class="absolute inset-0 z-50 pointer-events-none overflow-hidden rounded-[2rem]">
+            <div class="absolute top-0 bottom-0 left-0 w-1/2 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-[shine-sweep_3.5s_ease-in-out_infinite]"></div>
+        </div>
+
+        <!-- Content Wrapper -->
+        <div class="relative z-10 flex flex-col h-full">
+            
+            <!-- Top / Center Section -->
+            <div class="flex flex-col items-center pt-10 pb-14 px-6">
+                
+                <!-- Status Pill -->
+                <div class="flex items-center gap-2 bg-white/10 backdrop-blur-md px-4 py-1.5 rounded-full ring-1 ring-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                    <i data-lucide="lock" stroke-width="1.5" class="w-3.5 h-3.5 text-neutral-300"></i>
+                    <span class="text-sm font-medium text-neutral-200 tracking-wide">Locked</span>
+                </div>
+                
+                <!-- Expiry Date -->
+                <p class="mt-5 text-base font-medium text-neutral-200">Expires in 23:59:59</p>
+                
+                <!-- Main Value -->
+                <div class="mt-12 flex items-baseline justify-center">
+                    <span class="text-8xl font-semibold tracking-tight text-[#f98b10] drop-shadow-[0_0_24px_rgba(249,139,16,0.25)]">100</span>
+                    <span class="text-3xl font-semibold tracking-tight text-[#f98b10] ml-3">USDT</span>
+                </div>
+                
+                <!-- Subtitle -->
+                <p class="mt-10 text-xl font-medium text-white tracking-tight">Futures Grid Voucher</p>
+            </div>
+
+            <!-- Bottom Action Panel -->
+            <div class="bg-[#262628] p-5 sm:p-6 border-t border-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] relative z-20">
+                <button class="w-full relative overflow-hidden rounded-2xl bg-gradient-to-b from-[#5c5c5e] to-[#3a3a3c] py-4 text-lg font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),_0_2px_8px_rgba(0,0,0,0.3)] hover:opacity-90 active:scale-[0.98] transition-all duration-200 ease-out group/btn">
+                    <!-- Button inner shine on hover -->
+                    <div class="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent group-hover/btn:animate-[shine-sweep_1.5s_ease-in-out]"></div>
+                    Claim Now
+                </button>
+            </div>
+            
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

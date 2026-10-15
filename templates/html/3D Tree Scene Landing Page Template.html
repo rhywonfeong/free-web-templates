@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Realistic 3D Tree</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.tailwindcss.com"></script></head>
+<body class="bg-slate-900 text-white font-inter overflow-hidden">
+    <div class="relative w-full h-screen">
+        <!-- Header -->
+        <div class="absolute top-0 left-0 right-0 z-10 p-6 bg-gradient-to-b from-slate-900/80 to-transparent">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl font-semibold tracking-tight text-white">Realistic Tree Generator</h1>
+                    <p class="text-slate-400 text-sm mt-1">Interactive 3D GLB model with dynamic materials</p>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button id="cloneBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors">
+                        Clone Tree
+                    </button>
+                    <button id="seasonBtn" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-sm font-medium transition-colors">
+                        Change Season
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading indicator -->
+        <div id="loading" class="absolute inset-0 flex items-center justify-center bg-slate-900">
+            <div class="text-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p class="text-slate-400">Loading tree model...</p>
+            </div>
+        </div>
+
+        <!-- Canvas Container -->
+        <div id="canvas-container" class="w-full h-full"></div>
+
+        <!-- Controls Panel -->
+        <div class="absolute bottom-6 left-6 bg-slate-800/90 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
+            <h3 class="text-sm font-semibold text-white mb-4">Tree Parameters</h3>
+            <div class="space-y-4 min-w-64">
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-2">Position X</label>
+                    <input id="positionX" type="range" min="-10" max="10" value="0" class="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer slider">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-2">Position Z</label>
+                    <input id="positionZ" type="range" min="-10" max="10" value="0" class="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer slider">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-2">Rotation Y</label>
+                    <input id="rotationY" type="range" min="0" max="6.28" step="0.1" value="0" class="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer slider">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-2">Wind Strength</label>
+                    <input id="windStrength" type="range" min="0" max="2" step="0.1" value="0.5" class="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer slider">
+                </div>
+            </div>
+        </div>
+
+        <!-- Info Panel -->
+        <div class="absolute bottom-6 right-6 bg-slate-800/90 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
+            <h3 class="text-sm font-semibold text-white mb-4">Model Info</h3>
+            <div class="space-y-2 text-xs text-slate-300 mb-4">
+                <div class="flex justify-between">
+                    <span>Trees:</span>
+                    <span id="treeCount">1</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Season:</span>
+                    <span id="currentSeason">Summer</span>
+                </div>
+            </div>
+            <div class="border-t border-slate-600 pt-4">
+                <h4 class="text-xs font-medium text-white mb-2">Controls</h4>
+                <div class="space-y-1 text-xs text-slate-300">
+                    <div class="flex justify-between">
+                        <span>Rotate:</span>
+                        <span>Left Click + Drag</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Zoom:</span>
+                        <span>Mouse Wheel</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .slider::-webkit-slider-thumb {
+            appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+        }
+        .slider::-moz-range-thumb {
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            border: none;
+        }
+    </style>
+
+    <script>
+        let scene, camera, renderer, controls;
+        let trees = [];
+        let treeModel = null;
+        let currentSeason = 'summer';
+        let windTime = 0;
+        let windStrength = 0.5;
+
+        // Season colors and foliage materials
+        const seasonColors = {
+            spring: { foliage: 0x90EE90, trunk: 0x4a3728, ambient: 0x87CEEB },
+            summer: { foliage: 0x228B22, trunk: 0x3a2818, ambient: 0x87CEEB },
+            autumn: { foliage: 0xFF6347, trunk: 0x4a3728, ambient: 0xFFA500 },
+            winter: { foliage: 0x8B7355, trunk: 0x2a1810, ambient: 0xB0C4DE }
+        };
+
+        // Foliage Material class (equivalent to FoliageMaterial)
+        class FoliageMaterial extends THREE.MeshLambertMaterial {
+            constructor(season = 'summer') {
+                super({
+                    color: seasonColors[season].foliage,
+                    transparent: true,
+                    opacity: 0.9,
+                    side: THREE.DoubleSide
+                });
+                this.season = season;
+            }
+
+            updateSeason(newSeason) {
+                this.season = newSeason;
+                this.color.setHex(seasonColors[newSeason].foliage);
+                if (newSeason === 'winter') {
+                    this.opacity = 0.6;
+                } else {
+                    this.opacity = 0.9;
+                }
+            }
+        }
+
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+            scene.fog = new THREE.Fog(0x87CEEB, 20, 100);
+
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(10, 8, 10);
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.gammaOutput = true;
+            renderer.gammaFactor = 2.2;
+
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Lighting
+            setupLighting();
+
+            // Ground
+            createGround();
+
+            // Load tree model
+            loadTreeModel();
+
+            // Event listeners
+            setupEventListeners();
+
+            // Start animation loop
+            animate();
+        }
+
+        function setupLighting() {
+            // Directional light (sun)
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(20, 20, 20);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.camera.near = 0.5;
+            directionalLight.shadow.camera.far = 50;
+            directionalLight.shadow.camera.left = -20;
+            directionalLight.shadow.camera.right = 20;
+            directionalLight.shadow.camera.top = 20;
+            directionalLight.shadow.camera.bottom = -20;
+            scene.add(directionalLight);
+
+            // Ambient light
+            const ambientLight = new THREE.AmbientLight(seasonColors[currentSeason].ambient, 0.3);
+            scene.add(ambientLight);
+
+            // Hemisphere light
+            const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x362d1d, 0.4);
+            scene.add(hemisphereLight);
+        }
+
+        function createGround() {
+            const groundGeometry = new THREE.PlaneGeometry(100, 100);
+            const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x3a5f3a });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+        }
+
+        function loadTreeModel() {
+            const loader = new THREE.GLTFLoader();
+            
+            // Using the tree model URL from your code
+            loader.load(
+                'https://douges.dev/static/tree.glb',
+                function(gltf) {
+                    treeModel = gltf;
+                    document.getElementById('loading').style.display = 'none';
+                    
+                    // Create initial tree
+                    createTree([0, 0, 0], [0, 0, 0]);
+                },
+                function(progress) {
+                    console.log('Loading progress: ', (progress.loaded / progress.total * 100) + '%');
+                },
+                function(error) {
+                    console.error('Error loading tree model:', error);
+                    document.getElementById('loading').innerHTML = '<div class="text-center"><p class="text-red-400">Failed to load tree model</p></div>';
+                }
+            );
+        }
+
+        // Tree function equivalent to your React component
+        function createTree(position, rotation) {
+            if (!treeModel) return null;
+
+            const treeGroup = new THREE.Group();
+            treeGroup.name = 'tree';
+            treeGroup.position.set(...position);
+            treeGroup.rotation.set(...rotation);
+
+            // Clone trunk with black material (as in your code)
+            if (treeModel.scene.getObjectByName('trunk') || treeModel.nodes?.trunk) {
+                const trunkNode = treeModel.scene.getObjectByName('trunk') || treeModel.nodes.trunk;
+                const trunkClone = trunkNode.clone();
+                trunkClone.material = new THREE.MeshBasicMaterial({ color: seasonColors[currentSeason].trunk });
+                trunkClone.receiveShadow = true;
+                trunkClone.castShadow = true;
+                treeGroup.add(trunkClone);
+            }
+
+            // Clone foliage with custom material
+            if (treeModel.scene.getObjectByName('foliage') || treeModel.nodes?.foliage) {
+                const foliageNode = treeModel.scene.getObjectByName('foliage') || treeModel.nodes.foliage;
+                const foliageClone = foliageNode.clone();
+                foliageClone.material = new FoliageMaterial(currentSeason);
+                foliageClone.receiveShadow = true;
+                foliageClone.castShadow = true;
+                foliageClone.userData.originalPosition = foliageClone.position.clone();
+                treeGroup.add(foliageClone);
+            }
+
+            scene.add(treeGroup);
+            trees.push(treeGroup);
+            updateTreeCount();
+
+            return treeGroup;
+        }
+
+        function cloneTree() {
+            if (!treeModel) return;
+
+            // Create new tree at random position
+            const x = (Math.random() - 0.5) * 20;
+            const z = (Math.random() - 0.5) * 20;
+            const rotY = Math.random() * Math.PI * 2;
+
+            createTree([x, 0, z], [0, rotY, 0]);
+        }
+
+        function changeSeason() {
+            const seasons = ['spring', 'summer', 'autumn', 'winter'];
+            const currentIndex = seasons.indexOf(currentSeason);
+            currentSeason = seasons[(currentIndex + 1) % seasons.length];
+
+            // Update all trees
+            trees.forEach(tree => {
+                tree.children.forEach(child => {
+                    if (child.material instanceof FoliageMaterial) {
+                        child.material.updateSeason(currentSeason);
+                    } else if (child.name === 'trunk' || child.material instanceof THREE.MeshBasicMaterial) {
+                        child.material.color.setHex(seasonColors[currentSeason].trunk);
+                    }
+                });
+            });
+
+            // Update ambient lighting
+            scene.children.forEach(child => {
+                if (child instanceof THREE.AmbientLight) {
+                    child.color.setHex(seasonColors[currentSeason].ambient);
+                }
+            });
+
+            document.getElementById('currentSeason').textContent = currentSeason.charAt(0).toUpperCase() + currentSeason.slice(1);
+        }
+
+        function updateTreeCount() {
+            document.getElementById('treeCount').textContent = trees.length;
+        }
+
+        function setupEventListeners() {
+            // Position and rotation controls for first tree
+            document.getElementById('positionX').addEventListener('input', (e) => {
+                if (trees.length > 0) {
+                    trees[0].position.x = parseFloat(e.target.value);
+                }
+            });
+
+            document.getElementById('positionZ').addEventListener('input', (e) => {
+                if (trees.length > 0) {
+                    trees[0].position.z = parseFloat(e.target.value);
+                }
+            });
+
+            document.getElementById('rotationY').addEventListener('input', (e) => {
+                if (trees.length > 0) {
+                    trees[0].rotation.y = parseFloat(e.target.value);
+                }
+            });
+
+            document.getElementById('windStrength').addEventListener('input', (e) => {
+                windStrength = parseFloat(e.target.value);
+            });
+
+            // Buttons
+            document.getElementById('cloneBtn').addEventListener('click', cloneTree);
+            document.getElementById('seasonBtn').addEventListener('click', changeSeason);
+
+            // Window resize
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            windTime += 0.016;
+
+            // Wind animation for foliage
+            trees.forEach(tree => {
+                tree.children.forEach(child => {
+                    if (child.material instanceof FoliageMaterial) {
+                        const wind = Math.sin(windTime * 2) * windStrength * 0.02;
+                        child.position.x = child.userData.originalPosition.x + wind;
+                        child.rotation.z = wind * 0.5;
+                    }
+                });
+            });
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Initialize the scene
+        init();
+    </script>
+</body>
+</html>

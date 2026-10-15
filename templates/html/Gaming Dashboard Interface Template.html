@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PHANTOM - Rust External</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+width: 4px;
+}
+::-webkit-scrollbar-track {
+background: #1E1E1E;
+}
+::-webkit-scrollbar-thumb {
+background: #333;
+border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+background: #4ade80;
+}
+/* Custom Range Slider */
+input[type=range] {
+-webkit-appearance: none;
+width: 100%;
+background: transparent;
+}
+input[type=range]::-webkit-slider-thumb {
+-webkit-appearance: none;
+height: 12px;
+width: 12px;
+border-radius: 50%;
+background: #00FF00;
+cursor: pointer;
+margin-top: -5px;
+box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+input[type=range]::-webkit-slider-runnable-track {
+width: 100%;
+height: 2px;
+cursor: pointer;
+background: #333;
+border-radius: 2px;
+}
+input[type=range]:focus {
+outline: none;
+}
+/* CRT/Grid Background Pattern */
+.bg-grid {
+background-size: 40px 40px;
+background-image:
+linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+}
+.glow-text {
+text-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+}
+.phantom-gradient {
+background: radial-gradient(circle at top right, rgba(0, 255, 0, 0.05), transparent 60%);
+}
+body {
+font-family: 'Inter', sans-serif;
+}
+.font-mono {
+font-family: 'JetBrains Mono', monospace;
+}
+</style>
+<link id="all-fonts-link-font-geist" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-geist">.font-geist { font-family: 'Geist', sans-serif !important; }</style><link id="all-fonts-link-font-roboto" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-roboto">.font-roboto { font-family: 'Roboto', sans-serif !important; }</style><link id="all-fonts-link-font-montserrat" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-montserrat">.font-montserrat { font-family: 'Montserrat', sans-serif !important; }</style><link id="all-fonts-link-font-poppins" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-poppins">.font-poppins { font-family: 'Poppins', sans-serif !important; }</style><link id="all-fonts-link-font-playfair" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;900&display=swap"><style id="all-fonts-style-font-playfair">.font-playfair { font-family: 'Playfair Display', serif !important; }</style><link id="all-fonts-link-font-instrument-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:wght@400;500;600;700&display=swap"><style id="all-fonts-style-font-instrument-serif">.font-instrument-serif { font-family: 'Instrument Serif', serif !important; }</style><link id="all-fonts-link-font-merriweather" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700;900&display=swap"><style id="all-fonts-style-font-merriweather">.font-merriweather { font-family: 'Merriweather', serif !important; }</style><link id="all-fonts-link-font-bricolage" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-bricolage">.font-bricolage { font-family: 'Bricolage Grotesque', sans-serif !important; }</style><link id="all-fonts-link-font-jakarta" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-jakarta">.font-jakarta { font-family: 'Plus Jakarta Sans', sans-serif !important; }</style><link id="all-fonts-link-font-manrope" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-manrope">.font-manrope { font-family: 'Manrope', sans-serif !important; }</style><link id="all-fonts-link-font-space-grotesk" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-space-grotesk">.font-space-grotesk { font-family: 'Space Grotesk', sans-serif !important; }</style><link id="all-fonts-link-font-work-sans" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-work-sans">.font-work-sans { font-family: 'Work Sans', sans-serif !important; }</style><link id="all-fonts-link-font-pt-serif" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Serif:wght@400;700&display=swap"><style id="all-fonts-style-font-pt-serif">.font-pt-serif { font-family: 'PT Serif', serif !important; }</style><link id="all-fonts-link-font-geist-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-geist-mono">.font-geist-mono { font-family: 'Geist Mono', monospace !important; }</style><link id="all-fonts-link-font-space-mono" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap"><style id="all-fonts-style-font-space-mono">.font-space-mono { font-family: 'Space Mono', monospace !important; }</style><link id="all-fonts-link-font-quicksand" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap"><style id="all-fonts-style-font-quicksand">.font-quicksand { font-family: 'Quicksand', sans-serif !important; }</style><link id="all-fonts-link-font-nunito" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&display=swap"><style id="all-fonts-style-font-nunito">.font-nunito { font-family: 'Nunito', sans-serif !important; }</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="bg-[#0a0a0a] text-gray-300 min-h-screen flex items-center justify-center overflow-hidden selection:bg-[#00FF00] selection:text-black">
+
+    <!-- Background Effects -->
+    <div class="fixed inset-0 bg-[#0a0a0a] z-0">
+        <div class="absolute inset-0 bg-grid opacity-50"></div>
+        <div class="absolute top-0 left-1/4 w-96 h-96 bg-[#00FF00]/5 rounded-full blur-[120px]"></div>
+        <div class="absolute bottom-0 right-1/4 w-96 h-96 bg-[#00FF00]/5 rounded-full blur-[120px]"></div>
+    </div>
+
+    <!-- Main UI Container -->
+    <div class="relative z-10 w-full max-w-5xl h-[85vh] bg-[#2A2A2A]/95 backdrop-blur-xl border border-white/5 rounded-xl shadow-2xl shadow-black/50 flex overflow-hidden ring-1 ring-white/5">
+        
+        <!-- Sidebar -->
+        <div class="w-20 bg-[#1E1E1E] border-r border-white/5 flex flex-col items-center py-6 gap-8">
+            <!-- Logo Icon -->
+            <div class="text-[#00FF00] mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="ghost" class="lucide lucide-ghost w-8 h-8 drop-shadow-[0_0_8px_rgba(0,255,0,0.6)]"><path d="M9 10h.01"></path><path d="M15 10h.01"></path><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"></path></svg>
+            </div>
+
+            <!-- Navigation -->
+            <nav class="flex flex-col gap-6 w-full">
+                <button class="group flex text-[#00FF00] w-full pt-2 pb-2 relative justify-center">
+                    <div class="absolute left-0 top-0 bottom-0 w-0.5 bg-[#00FF00] shadow-[0_0_10px_#00FF00]"></div>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="crosshair" class="lucide lucide-crosshair w-6 h-6 stroke-[1.5]"><circle cx="12" cy="12" r="10"></circle><line x1="22" x2="18" y1="12" y2="12"></line><line x1="6" x2="2" y1="12" y2="12"></line><line x1="12" x2="12" y1="6" y2="2"></line><line x1="12" x2="12" y1="22" y2="18"></line></svg>
+                </button>
+                <button class="group flex hover:text-gray-300 transition-colors text-gray-500 w-full pt-2 pb-2 relative justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="eye" class="lucide lucide-eye w-6 h-6 stroke-[1.5]"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                </button>
+                <button class="group flex hover:text-gray-300 transition-colors text-gray-500 w-full pt-2 pb-2 relative justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="shield" class="lucide lucide-shield w-6 h-6 stroke-[1.5]"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg>
+                </button>
+                <button class="group relative w-full flex justify-center py-2 text-gray-500 hover:text-gray-300 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="box" class="lucide lucide-box w-6 h-6 stroke-[1.5]"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg>
+                </button>
+                <button class="group relative w-full flex justify-center py-2 text-gray-500 hover:text-gray-300 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="settings-2" class="lucide lucide-settings-2 w-6 h-6 stroke-[1.5]"><path d="M14 17H5"></path><path d="M19 7h-9"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>
+                </button>
+            </nav>
+
+            <div class="mt-auto pb-4">
+                <div class="w-2 h-2 rounded-full bg-[#00FF00] shadow-[0_0_8px_#00FF00]"></div>
+            </div>
+        </div>
+
+        <!-- Content Area -->
+        <div class="flex-1 flex flex-col phantom-gradient">
+            
+            <!-- Header -->
+            <header class="h-16 border-b border-white/5 flex items-center justify-between px-8 bg-[#2A2A2A]/50">
+                <div class="flex flex-col">
+                    <h1 class="text-xl tracking-tighter text-white font-medium glow-text">PHANTOM <span class="text-[#00FF00] text-xs align-top opacity-80">v2.4</span></h1>
+                    <span class="text-xs text-gray-500 tracking-tight">RUST EXTERNAL CLIENT</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2 px-3 py-1 rounded bg-[#1E1E1E] border border-white/5">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="user" class="lucide lucide-user w-3 h-3 text-[#00FF00]"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        <span class="text-xs text-gray-300 font-mono">User: Admin</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Main Scrollable Area -->
+            <main class="flex-1 overflow-y-auto p-8">
+                <div class="grid grid-cols-2 gap-6">
+                    
+                    <!-- Panel: Aimbot -->
+                    <div class="col-span-1 bg-[#1E1E1E] rounded-lg border border-white/5 p-5 relative overflow-hidden group hover:border-white/10 transition-colors">
+                        <div class="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="crosshair" class="lucide lucide-crosshair w-16 h-16 text-[#00FF00]"><circle cx="12" cy="12" r="10"></circle><line x1="22" x2="18" y1="12" y2="12"></line><line x1="6" x2="2" y1="12" y2="12"></line><line x1="12" x2="12" y1="6" y2="2"></line><line x1="12" x2="12" y1="22" y2="18"></line></svg>
+                        </div>
+                        <h2 class="text-sm text-white font-medium tracking-wide uppercase mb-6 flex items-center gap-2">
+                            <span class="w-1 h-4 bg-[#00FF00] rounded-sm"></span>
+                            Rage Aimbot
+                        </h2>
+
+                        <div class="space-y-5">
+                            <!-- Toggle Item -->
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-400">Enable Aimbot</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" checked="" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-[#2A2A2A] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#00FF00] peer-checked:shadow-[0_0_10px_rgba(0,255,0,0.4)]"></div>
+                                </label>
+                            </div>
+
+                            <!-- Toggle Item -->
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-400">Silent Aim</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-[#2A2A2A] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-400 after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#00FF00]"></div>
+                                </label>
+                            </div>
+
+                            <!-- Slider Item -->
+                            <div class="pt-2">
+                                <div class="flex justify-between mb-2">
+                                    <span class="text-sm text-gray-400">FOV Radius</span>
+                                    <span class="text-xs text-[#00FF00] font-mono">180.0</span>
+                                </div>
+                                <input type="range" min="0" max="360" value="180" class="w-full">
+                            </div>
+
+                            <!-- Dropdown -->
+                            <div class="pt-1">
+                                <span class="text-sm text-gray-400 block mb-2">Hitbox Priority</span>
+                                <div class="relative">
+                                    <select class="appearance-none focus:outline-none focus:border-[#00FF00]/50 transition-colors text-sm text-gray-300 bg-[#2A2A2A] w-full border-white/10 border rounded pt-2 pr-3 pb-2 pl-3">
+                                        <option>Head</option>
+                                        <option>Chest</option>
+                                        <option>Nearest</option>
+                                    </select>
+                                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="chevron-down" class="lucide lucide-chevron-down w-4 h-4"><path d="m6 9 6 6 6-6"></path></svg>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panel: Weapon Config -->
+                    <div class="col-span-1 overflow-hidden group hover:border-white/10 transition-colors bg-[#1E1E1E] border-white/5 border rounded-lg pt-5 pr-5 pb-5 pl-5 relative">
+                        <div class="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="zap" class="lucide lucide-zap w-16 h-16 text-[#00FF00]"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"></path></svg>
+                        </div>
+                        <h2 class="text-sm text-white font-medium tracking-wide uppercase mb-6 flex items-center gap-2">
+                            <span class="w-1 h-4 bg-[#00FF00] rounded-sm"></span>
+                            Weapon Config
+                        </h2>
+
+                        <div class="space-y-5">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-400">No Recoil</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" checked="" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-[#2A2A2A] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#00FF00] peer-checked:shadow-[0_0_10px_rgba(0,255,0,0.4)]"></div>
+                                </label>
+                            </div>
+
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-400">No Spread</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" checked="" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-[#2A2A2A] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#00FF00] peer-checked:shadow-[0_0_10px_rgba(0,255,0,0.4)]"></div>
+                                </label>
+                            </div>
+
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-400">Rapid Fire</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-[#2A2A2A] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-400 after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#00FF00]"></div>
+                                </label>
+                            </div>
+                            
+                            <!-- Slider Item -->
+                            <div class="pt-2">
+                                <div class="flex justify-between mb-2">
+                                    <span class="text-sm text-gray-400" style="">Recoil %</span>
+                                    <span class="text-xs text-[#00FF00] font-mono">0%</span>
+                                </div>
+                                <input type="range" min="0" max="100" value="0" class="w-full">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panel: Visuals -->
+                    <div class="col-span-1 bg-[#1E1E1E] rounded-lg border border-white/5 p-5 relative overflow-hidden group hover:border-white/10 transition-colors">
+                        <div class="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="eye" class="lucide lucide-eye w-16 h-16 text-[#00FF00]"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        </div>
+                        <h2 class="text-sm text-white font-medium tracking-wide uppercase mb-6 flex items-center gap-2">
+                            <span class="w-1 h-4 bg-[#00FF00] rounded-sm"></span>
+                            Visuals
+                        </h2>
+
+                        <div class="space-y-5">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-400">Player ESP</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" checked="" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-[#2A2A2A] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#00FF00] peer-checked:shadow-[0_0_10px_rgba(0,255,0,0.4)]"></div>
+                                </label>
+                            </div>
+
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-400">Box</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" checked="" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-[#2A2A2A] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#00FF00] peer-checked:shadow-[0_0_10px_rgba(0,255,0,0.4)]"></div>
+                                </label>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-3 mt-2">
+                                <button class="text-xs bg-[#2A2A2A] border border-white/10 hover:border-[#00FF00] text-gray-400 hover:text-white py-2 rounded transition-all">Skeleton</button>
+                                <button class="text-xs bg-[#2A2A2A] border border-[#00FF00] text-[#00FF00] py-2 rounded transition-all shadow-[0_0_10px_rgba(0,255,0,0.1)]">Health</button>
+                                <button class="text-xs bg-[#2A2A2A] border border-white/10 hover:border-[#00FF00] text-gray-400 hover:text-white py-2 rounded transition-all">Name</button>
+                                <button class="text-xs bg-[#2A2A2A] border border-white/10 hover:border-[#00FF00] text-gray-400 hover:text-white py-2 rounded transition-all">Weapon</button>
+                            </div>
+
+                            <!-- Slider Item -->
+                            <div class="pt-2">
+                                <div class="flex justify-between mb-2">
+                                    <span class="text-sm text-gray-400">Max Distance</span>
+                                    <span class="text-xs text-[#00FF00] font-mono">400m</span>
+                                </div>
+                                <input type="range" min="0" max="1000" value="400" class="w-full">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panel: Misc -->
+                    <div class="col-span-1 bg-[#1E1E1E] rounded-lg border border-white/5 p-5 relative overflow-hidden group hover:border-white/10 transition-colors">
+                        <div class="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="layers" class="lucide lucide-layers w-16 h-16 text-[#00FF00]"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"></path><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"></path><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"></path></svg>
+                        </div>
+                        <h2 class="text-sm text-white font-medium tracking-wide uppercase mb-6 flex items-center gap-2">
+                            <span class="w-1 h-4 bg-[#00FF00] rounded-sm"></span>
+                            Miscellaneous
+                        </h2>
+
+                        <div class="space-y-5">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-400">Spider Climb</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-[#2A2A2A] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-400 after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#00FF00]"></div>
+                                </label>
+                            </div>
+
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-400">Admin Mode</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-[#2A2A2A] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-400 after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#00FF00]"></div>
+                                </label>
+                            </div>
+
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-400">Auto Farm</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-[#2A2A2A] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-400 after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#00FF00]"></div>
+                                </label>
+                            </div>
+                            
+                            <div class="pt-2">
+                                <div class="flex justify-between mb-2">
+                                    <span class="text-sm text-gray-400">Time of Day</span>
+                                    <span class="text-xs text-[#00FF00] font-mono">12:00</span>
+                                </div>
+                                <input type="range" min="0" max="24" value="12" class="w-full">
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </main>
+
+            <!-- Status Bar -->
+            <footer class="h-10 bg-[#1E1E1E] border-t border-white/5 flex items-center justify-between px-6 text-xs text-gray-500 font-mono">
+                <div class="flex items-center gap-4">
+                    <span class="flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 rounded-full bg-[#00FF00] animate-pulse"></span>
+                        <span class="text-[#00FF00] tracking-wide">UNDETECTED</span>
+                    </span>
+                    <span class="border-l border-white/10 pl-4">Build: 2409.11</span>
+                </div>
+                <div class="flex items-center gap-6">
+                    <span>Ping: 24ms</span>
+                    <span>FPS: 144</span>
+                    <span class="text-gray-400">INSERT to hide</span>
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+
+</body></html>

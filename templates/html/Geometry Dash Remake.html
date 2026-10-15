@@ -1,0 +1,1517 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta
+name="viewport"
+content="width=device-width, initial-scale=1.0, user-scalable=no"
+/>
+<title>Neon Dash</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.cdnfonts.com/css/pusab" rel="stylesheet" /><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body
+    class="bg-[#05030f] text-white overflow-hidden select-none"
+    style="font-family:'Pusab', sans-serif; -webkit-user-select:none; touch-action:none"
+  >
+    <!-- ============ GAME CANVAS ============ -->
+    <canvas id="game" class="absolute inset-0 w-full h-full block"></canvas>
+
+    <!-- Death flash + vignette -->
+    <div
+      id="flash"
+      class="absolute inset-0 bg-white pointer-events-none opacity-0"
+      style="transition:opacity .35s ease"
+    ></div>
+    <div
+      class="absolute inset-0 pointer-events-none"
+      style="background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,10,.55) 100%)"
+    ></div>
+
+    <!-- ============ HUD ============ -->
+    <div id="hud" class="absolute inset-x-0 top-0 p-3 sm:p-4 hidden z-10">
+      <div class="flex items-center gap-3 max-w-5xl mx-auto">
+        <div
+          class="flex items-center gap-2 rounded-lg bg-white/5 backdrop-blur px-3 py-1.5 border border-white/10 shrink-0"
+        >
+          <iconify-icon
+            icon="lucide:refresh-cw"
+            class="text-cyan-300 text-sm"
+            stroke-width="1.5"
+          ></iconify-icon>
+          <span id="hudAttempt" class="text-sm tracking-widest text-white/80">
+            ATTEMPT 1
+          </span>
+        </div>
+        <div class="flex-1">
+          <div
+            class="h-2.5 rounded-full bg-white/10 border border-white/10 overflow-hidden"
+          >
+            <div
+              id="hudBar"
+              class="h-full rounded-full"
+              style="width:0%; background:linear-gradient(90deg,#22d3ee,#a78bfa,#f472b6); box-shadow:0 0 12px rgba(34,211,238,.8); transition:width .1s linear"
+            ></div>
+          </div>
+          <div id="hudPct" class="text-center text-sm mt-1 text-white/60">
+            0%
+          </div>
+        </div>
+        <div
+          id="hudFps"
+          class="hidden sm:flex items-center rounded-lg bg-white/5 backdrop-blur px-3 py-1.5 border border-white/10 text-sm text-white/60 shrink-0"
+        >
+          60 FPS
+        </div>
+        <button
+          id="btnPause"
+          class="w-10 h-10 rounded-lg bg-white/5 backdrop-blur border border-white/10 flex items-center justify-center hover:bg-white/10 transition shrink-0"
+        >
+          <iconify-icon
+            icon="lucide:pause"
+            class="text-xl text-white/80"
+            stroke-width="1.5"
+          ></iconify-icon>
+        </button>
+      </div>
+      <div
+        id="hudPractice"
+        class="hidden max-w-5xl mx-auto mt-2 text-center text-sm text-emerald-300/90 tracking-widest"
+      >
+        PRACTICE MODE · Z = CHECKPOINT · X = REMOVE
+      </div>
+    </div>
+
+    <!-- ============ MAIN MENU ============ -->
+    <div
+      id="menu"
+      class="absolute inset-0 flex items-center justify-center p-4 z-30"
+      style="background:radial-gradient(ellipse at 50% 30%, rgba(88,28,135,.35), transparent 60%), rgba(5,3,15,.72); backdrop-filter:blur(8px)"
+    >
+      <div class="text-center w-full max-w-3xl">
+        <img
+          src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/659bd05b-e428-431f-b6ff-f7821f3acdc5_800w.png"
+          alt="Geometry Dash"
+          class="mx-auto w-full max-w-[500px] sm:max-w-[800px] mb-12 sm:mb-16 object-contain drop-shadow-[0_0_30px_rgba(167,139,250,0.6)]"
+        />
+
+        <div
+          class="flex flex-row items-center justify-center gap-6 sm:gap-14 mb-12"
+        >
+          <button id="btnPractice" class="hidden"></button>
+          <button
+            id="btnAvatar"
+            class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-black/20 backdrop-blur-sm border-2 border-white/10 hover:border-white/40 hover:bg-white/10 transition hover:scale-110 active:scale-95 flex items-center justify-center p-3 group shadow-[0_0_20px_rgba(0,0,0,0.5)]"
+          >
+            <img
+              src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/5747650c-dbd6-4ade-a1c5-2e031ff19a3e_320w.png"
+              alt="Avatar"
+              class="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.2)] group-hover:drop-shadow-[0_0_12px_rgba(255,255,255,0.6)] transition-all"
+            />
+          </button>
+
+          <button
+            id="btnPlay"
+            class="w-32 h-32 sm:w-44 sm:h-44 rounded-full flex items-center justify-center transition hover:scale-110 active:scale-95"
+          >
+            <img
+              src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/f17e6891-4fc4-470d-aab4-3b3c712f7dde_800w.png"
+              alt="Play"
+              class="w-full h-full object-contain drop-shadow-[0_0_40px_rgba(34,211,238,0.6)]"
+            />
+          </button>
+
+          <button
+            id="btnFull"
+            class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-black/20 backdrop-blur-sm border-2 border-white/10 hover:border-white/40 hover:bg-white/10 transition hover:scale-110 active:scale-95 flex items-center justify-center text-white/80 group shadow-[0_0_20px_rgba(0,0,0,0.5)]"
+          >
+            <iconify-icon
+              icon="lucide:maximize"
+              class="text-3xl sm:text-4xl group-hover:drop-shadow-[0_0_12px_rgba(255,255,255,0.6)] transition-all"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </button>
+        </div>
+
+        <div id="colorRow" class="hidden"></div>
+
+        <div
+          class="flex items-center justify-center gap-10 text-base text-white/50"
+        >
+          <div
+            class="flex flex-col items-center bg-black/20 backdrop-blur-sm px-6 py-3 rounded-xl border border-white/5"
+          >
+            <span class="text-xs mb-1.5 opacity-60 tracking-[0.2em]">BEST</span>
+            <span
+              id="menuBest"
+              class="text-cyan-300 text-2xl drop-shadow-[0_0_10px_rgba(34,211,238,0.4)]"
+            >
+              0%
+            </span>
+          </div>
+          <div
+            class="flex flex-col items-center bg-black/20 backdrop-blur-sm px-6 py-3 rounded-xl border border-white/5"
+          >
+            <span class="text-xs mb-1.5 opacity-60 tracking-[0.2em]">
+              ATTEMPTS
+            </span>
+            <span
+              id="menuAttempts"
+              class="text-pink-300 text-2xl drop-shadow-[0_0_10px_rgba(244,114,182,0.4)]"
+            >
+              0
+            </span>
+          </div>
+        </div>
+
+        <div class="mt-10 text-xs text-white/30 uppercase tracking-[0.2em]">
+          Space / Click / Tap to jump · R restart · Esc pause · Z checkpoint · X
+          remove (Practice)
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ LEVEL SELECT MENU ============ -->
+    <div
+      id="levelSelectMenu"
+      class="absolute inset-0 hidden flex-col items-center justify-center p-4 z-40"
+      style="background:radial-gradient(ellipse at 50% 50%, rgba(15,23,42,.8), rgba(5,3,15,.95)); backdrop-filter:blur(12px)"
+    >
+      <!-- Top Nav -->
+      <div
+        class="absolute top-0 inset-x-0 p-4 sm:p-6 flex justify-between items-start w-full max-w-7xl mx-auto"
+      >
+        <button
+          id="btnBackToMenu"
+          class="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition hover:-translate-x-1"
+        >
+          <iconify-icon
+            icon="lucide:chevron-left"
+            stroke-width="1.5"
+            class="text-2xl text-white/80"
+          ></iconify-icon>
+        </button>
+        <button
+          class="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition"
+        >
+          <iconify-icon
+            icon="lucide:info"
+            stroke-width="1.5"
+            class="text-xl text-white/80"
+          ></iconify-icon>
+        </button>
+      </div>
+
+      <!-- Main Slider Area -->
+      <div
+        class="flex items-center justify-center w-full max-w-5xl gap-4 sm:gap-12 mt-8 sm:mt-0"
+      >
+        <button
+          id="btnPrevDesk"
+          class="hidden sm:flex w-14 h-14 rounded-full bg-white/5 border border-white/10 items-center justify-center hover:bg-white/10 active:scale-95 transition hover:-translate-x-1 shrink-0"
+        >
+          <iconify-icon
+            icon="lucide:chevron-left"
+            stroke-width="1.5"
+            class="text-3xl text-white/50"
+          ></iconify-icon>
+        </button>
+
+        <div class="flex flex-col items-center w-full max-w-md">
+          <!-- Play Button float -->
+          <button
+            id="btnStartLevel"
+            class="w-24 h-24 sm:w-28 sm:h-28 rounded-full mb-6 relative group flex items-center justify-center transition-all hover:scale-[1.03] active:scale-95"
+          >
+            <div
+              class="absolute inset-0 rounded-full bg-gradient-to-b from-emerald-400 to-cyan-500 opacity-50 blur-xl group-hover:opacity-70 transition-opacity"
+            ></div>
+            <div
+              class="relative w-full h-full rounded-full border-2 border-white/20 flex items-center justify-center overflow-hidden shadow-[0_0_30px_rgba(52,211,153,0.3)]"
+            >
+              <div
+                class="absolute inset-0 bg-gradient-to-b from-emerald-400 to-cyan-500"
+              ></div>
+              <iconify-icon
+                icon="lucide:play"
+                stroke-width="1.5"
+                class="text-4xl sm:text-5xl text-white relative z-10 ml-2 drop-shadow-md"
+              ></iconify-icon>
+            </div>
+          </button>
+
+          <!-- Card Info -->
+          <div
+            class="w-full bg-black/40 backdrop-blur-md border border-white/10 rounded-3xl p-6 sm:p-8 mb-8 relative shadow-2xl"
+          >
+            <!-- Top Right Stars -->
+            <div
+              id="levelStars"
+              class="absolute top-5 right-6 flex items-center gap-1.5 text-amber-300 text-sm"
+            >
+              1
+              <iconify-icon
+                icon="lucide:star"
+                stroke-width="1.5"
+                class="text-base fill-amber-300"
+              ></iconify-icon>
+            </div>
+
+            <!-- Identity -->
+            <div class="flex flex-col items-center mt-2 mb-8 text-center">
+              <div
+                id="levelIconContainer"
+                class="w-14 h-14 rounded-full bg-fuchsia-500/20 border border-fuchsia-500/40 flex items-center justify-center mb-4 shadow-[0_0_20px_rgba(217,70,239,0.3)] text-fuchsia-400 transition-all duration-300"
+              >
+                <iconify-icon
+                  id="levelIcon"
+                  icon="lucide:bot"
+                  stroke-width="1.5"
+                  class="text-2xl"
+                ></iconify-icon>
+              </div>
+              <h2
+                id="levelName"
+                class="text-2xl sm:text-3xl tracking-tight text-white drop-shadow-md uppercase"
+              >
+                Stereo Circuit
+              </h2>
+            </div>
+
+            <!-- Collectibles -->
+            <div class="flex items-end justify-between w-full">
+              <div
+                id="levelOrbs"
+                class="flex items-center gap-1.5 text-cyan-300 text-sm"
+              >
+                325/325
+                <iconify-icon
+                  icon="lucide:hexagon"
+                  stroke-width="1.5"
+                  class="text-base fill-cyan-400/20"
+                ></iconify-icon>
+              </div>
+              <div class="flex gap-2">
+                <div
+                  class="w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 border-white/20 bg-black/50 flex items-center justify-center"
+                ></div>
+                <div
+                  class="w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 border-white/20 bg-black/50 flex items-center justify-center"
+                ></div>
+                <div
+                  class="w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 border-white/20 bg-black/50 flex items-center justify-center"
+                ></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Progress -->
+          <div class="w-full space-y-6">
+            <div>
+              <div
+                class="flex justify-between text-sm text-white/70 mb-2.5 tracking-widest uppercase"
+              >
+                <span>Normal Mode</span>
+                <span id="selectNormalPct">0%</span>
+              </div>
+              <div
+                class="h-3 rounded-full bg-black/50 border border-white/10 overflow-hidden p-[1px]"
+              >
+                <div
+                  id="selectNormalBar"
+                  class="h-full rounded-full transition-all duration-700 ease-out shadow-[0_0_10px_rgba(74,222,128,0.5)]"
+                  style="width:0%; background:linear-gradient(90deg, #22c55e, #4ade80)"
+                ></div>
+              </div>
+            </div>
+            <div>
+              <div
+                class="flex justify-between text-sm text-white/70 mb-2.5 tracking-widest uppercase"
+              >
+                <span>Practice Mode</span>
+                <span id="selectPracticePct">0%</span>
+              </div>
+              <div
+                class="h-3 rounded-full bg-black/50 border border-white/10 overflow-hidden p-[1px]"
+              >
+                <div
+                  id="selectPracticeBar"
+                  class="h-full rounded-full transition-all duration-700 ease-out shadow-[0_0_10px_rgba(34,211,238,0.5)]"
+                  style="width:0%; background:linear-gradient(90deg, #06b6d4, #22d3ee)"
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button
+          id="btnNextDesk"
+          class="hidden sm:flex w-14 h-14 rounded-full bg-white/5 border border-white/10 items-center justify-center hover:bg-white/10 active:scale-95 transition hover:translate-x-1 shrink-0"
+        >
+          <iconify-icon
+            icon="lucide:chevron-right"
+            stroke-width="1.5"
+            class="text-3xl text-white/50"
+          ></iconify-icon>
+        </button>
+      </div>
+
+      <!-- Footer Nav -->
+      <div
+        class="absolute bottom-8 sm:bottom-12 inset-x-0 flex flex-col items-center gap-5"
+      >
+        <button
+          class="text-sm text-white/50 hover:text-white/80 transition tracking-widest uppercase"
+        >
+          Download Soundtrack
+        </button>
+        <div id="levelDots" class="flex items-center gap-2.5">
+          <!-- Dynamically populated -->
+        </div>
+        <div class="flex sm:hidden gap-16 mt-4">
+          <button
+            id="btnPrevMob"
+            class="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 active:scale-95 transition"
+          >
+            <iconify-icon
+              icon="lucide:chevron-left"
+              stroke-width="1.5"
+              class="text-3xl text-white/70"
+            ></iconify-icon>
+          </button>
+          <button
+            id="btnNextMob"
+            class="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 active:scale-95 transition"
+          >
+            <iconify-icon
+              icon="lucide:chevron-right"
+              stroke-width="1.5"
+              class="text-3xl text-white/70"
+            ></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ PAUSE MENU ============ -->
+    <div
+      id="pauseMenu"
+      class="absolute inset-0 hidden items-center justify-center p-4 z-50"
+      style="background:rgba(5,3,15,.7); backdrop-filter:blur(8px)"
+    >
+      <div
+        class="w-full max-w-xs rounded-2xl border border-white/10 bg-white/5 p-6 text-center"
+      >
+        <div class="text-3xl tracking-tight mb-6">PAUSED</div>
+        <div class="space-y-2.5">
+          <button
+            id="btnResume"
+            class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-base text-white transition hover:scale-[1.02]"
+            style="background:linear-gradient(135deg,#22d3ee,#6366f1); box-shadow:0 0 20px rgba(34,211,238,.35)"
+          >
+            <iconify-icon icon="lucide:play" stroke-width="1.5"></iconify-icon>
+            Resume
+          </button>
+          <button
+            id="btnRestartP"
+            class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition text-base"
+          >
+            <iconify-icon
+              icon="lucide:refresh-cw"
+              stroke-width="1.5"
+            ></iconify-icon>
+            Restart
+          </button>
+          <button
+            id="btnPracticeP"
+            class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition text-base text-emerald-300"
+          >
+            <iconify-icon icon="lucide:flag" stroke-width="1.5"></iconify-icon>
+            <span id="practiceLabel">Practice: Off</span>
+          </button>
+          <button
+            id="btnMenuP"
+            class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition text-base text-white/70"
+          >
+            <iconify-icon icon="lucide:home" stroke-width="1.5"></iconify-icon>
+            Main Menu
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ COMPLETE SCREEN ============ -->
+    <div
+      id="winMenu"
+      class="absolute inset-0 hidden items-center justify-center p-4 z-50"
+      style="background:rgba(5,3,15,.7); backdrop-filter:blur(8px)"
+    >
+      <div
+        class="w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 p-8 text-center"
+      >
+        <div
+          class="text-3xl sm:text-4xl tracking-tight mb-2"
+          style="background:linear-gradient(90deg,#4ade80,#22d3ee); -webkit-background-clip:text; background-clip:text; color:transparent; filter:drop-shadow(0 0 20px rgba(74,222,128,.5))"
+        >
+          LEVEL COMPLETE!
+        </div>
+        <div
+          id="winLevelName"
+          class="text-sm tracking-[.3em] text-white/40 mb-6 uppercase"
+        >
+          STEREO CIRCUIT
+        </div>
+        <div class="grid grid-cols-3 gap-2 mb-6 text-center">
+          <div class="rounded-xl bg-white/5 border border-white/10 p-3">
+            <div id="winAttempts" class="text-xl text-cyan-300">1</div>
+            <div class="text-sm text-white/40 mt-0.5">Attempts</div>
+          </div>
+          <div class="rounded-xl bg-white/5 border border-white/10 p-3">
+            <div id="winJumps" class="text-xl text-violet-300">0</div>
+            <div class="text-sm text-white/40 mt-0.5">Jumps</div>
+          </div>
+          <div class="rounded-xl bg-white/5 border border-white/10 p-3">
+            <div id="winCoins" class="text-xl text-amber-300">0/3</div>
+            <div class="text-sm text-white/40 mt-0.5">Coins</div>
+          </div>
+        </div>
+        <div class="flex gap-2.5">
+          <button
+            id="btnRestartW"
+            class="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-base transition hover:scale-[1.02]"
+            style="background:linear-gradient(135deg,#22d3ee,#6366f1); box-shadow:0 0 20px rgba(34,211,238,.35)"
+          >
+            <iconify-icon
+              icon="lucide:refresh-cw"
+              stroke-width="1.5"
+            ></iconify-icon>
+            Replay
+          </button>
+          <button
+            id="btnMenuW"
+            class="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition text-base text-white/70"
+          >
+            <iconify-icon icon="lucide:home" stroke-width="1.5"></iconify-icon>
+            Menu
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ AVATAR SCREEN ============ -->
+    <div
+      id="avatarMenu"
+      class="absolute inset-0 hidden items-center justify-center p-4 z-50"
+      style="background:rgba(5,3,15,.7); backdrop-filter:blur(8px)"
+    >
+      <div
+        class="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-8 text-center shadow-2xl"
+      >
+        <div class="text-3xl tracking-tight mb-6">SELECT AVATAR</div>
+        <div class="flex flex-wrap justify-center gap-4 mb-8">
+          <button
+            id="btnAvatar0"
+            class="w-16 h-16 sm:w-20 sm:h-20 shrink-0 rounded-2xl bg-black/40 backdrop-blur-sm border-2 border-transparent flex items-center justify-center p-3 hover:scale-110 transition hover:bg-white/10"
+          >
+            <img
+              src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/5747650c-dbd6-4ade-a1c5-2e031ff19a3e_320w.png"
+              class="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+            />
+          </button>
+          <button
+            id="btnAvatar1"
+            class="w-16 h-16 sm:w-20 sm:h-20 shrink-0 rounded-2xl bg-black/40 backdrop-blur-sm border-2 border-transparent flex items-center justify-center p-3 hover:scale-110 transition hover:bg-white/10"
+          >
+            <img
+              src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/09d634fa-22a3-4f4c-8c67-9f9b5ecc3a7e_320w.png"
+              class="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+            />
+          </button>
+          <button
+            id="btnAvatar2"
+            class="w-16 h-16 sm:w-20 sm:h-20 shrink-0 rounded-2xl bg-black/40 backdrop-blur-sm border-2 border-transparent flex items-center justify-center p-3 hover:scale-110 transition hover:bg-white/10"
+          >
+            <img
+              src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/a1681aae-6f7e-452a-9881-493c10213bc5_320w.png"
+              class="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+            />
+          </button>
+          <button
+            id="btnAvatar3"
+            class="w-16 h-16 sm:w-20 sm:h-20 shrink-0 rounded-2xl bg-black/40 backdrop-blur-sm border-2 border-transparent flex items-center justify-center p-3 hover:scale-110 transition hover:bg-white/10"
+          >
+            <img
+              src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/1e02c972-55b5-41c6-b43d-3ee078493201_320w.png"
+              class="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+            />
+          </button>
+          <!-- Added Geometric Monsters -->
+          <button
+            id="btnAvatar4"
+            class="w-16 h-16 sm:w-20 sm:h-20 shrink-0 rounded-2xl bg-black/40 backdrop-blur-sm border-2 border-transparent flex items-center justify-center p-3 hover:scale-110 transition hover:bg-white/10"
+          >
+            <img
+              src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/ed778e0e-60f5-4e63-8a17-6717815e1819_320w.png"
+              class="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+            />
+          </button>
+          <button
+            id="btnAvatar5"
+            class="w-16 h-16 sm:w-20 sm:h-20 shrink-0 rounded-2xl bg-black/40 backdrop-blur-sm border-2 border-transparent flex items-center justify-center p-3 hover:scale-110 transition hover:bg-white/10"
+          >
+            <img
+              src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/6a0637ed-0253-4d86-b933-c0f8731e734a_320w.png"
+              class="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+            />
+          </button>
+          <button
+            id="btnAvatar6"
+            class="w-16 h-16 sm:w-20 sm:h-20 shrink-0 rounded-2xl bg-black/40 backdrop-blur-sm border-2 border-transparent flex items-center justify-center p-3 hover:scale-110 transition hover:bg-white/10"
+          >
+            <img
+              src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/5a0e27d9-2872-46be-8a94-407dc8eae8ae_320w.png"
+              class="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+            />
+          </button>
+          <button
+            id="btnAvatar7"
+            class="w-16 h-16 sm:w-20 sm:h-20 shrink-0 rounded-2xl bg-black/40 backdrop-blur-sm border-2 border-transparent flex items-center justify-center p-3 hover:scale-110 transition hover:bg-white/10"
+          >
+            <img
+              src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/1a6976e5-af46-44be-b7cc-9c2eaa358662_320w.png"
+              class="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+            />
+          </button>
+        </div>
+        <button
+          id="btnAvatarClose"
+          class="w-full flex items-center justify-center py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition text-base text-white/80"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+
+    <script>
+      "use strict";
+      /* ================================================================
+         CONSTANTS
+      ================================================================ */
+      const GRID = 48;
+      const SPEED = 384;
+      const GRAVITY = 3800;
+      const JUMP_V = 870;
+      const ORB_V = 900;
+      const PAD_V = 1180;
+      const ROT_SPEED = 420;
+      const SIZE = GRID;
+      const COLORS = ["#22d3ee","#4ade80","#f472b6","#fb923c","#a78bfa"];
+
+      /* ================================================================
+         LEVEL DATA & MANAGEMENT
+      ================================================================ */
+      const levelsData = [
+          { name: "STEREO CIRCUIT", stars: 1, orbs: 325, icon: "lucide:bot", colorCls: "text-fuchsia-400 bg-fuchsia-500/20 border-fuchsia-500/40 shadow-[0_0_20px_rgba(217,70,239,0.3)]" },
+          { name: "NEON NIGHTS", stars: 2, orbs: 450, icon: "lucide:zap", colorCls: "text-cyan-400 bg-cyan-500/20 border-cyan-500/40 shadow-[0_0_20px_rgba(34,211,238,0.3)]" },
+          { name: "QUANTUM DASH", stars: 3, orbs: 600, icon: "lucide:skull", colorCls: "text-rose-400 bg-rose-500/20 border-rose-500/40 shadow-[0_0_20px_rgba(244,63,94,0.3)]" }
+      ];
+      let currentLevelIdx = 0;
+      const level = { blocks:[], spikes:[], pads:[], orbs:[], coins:[], endX:0 };
+
+      function buildLevel(idx) {
+        level.blocks.length=0; level.spikes.length=0; level.pads.length=0; level.orbs.length=0; level.coins.length=0; level.endX=0;
+        const B=(gx,gy)=>level.blocks.push({x:gx*GRID, y:gy*GRID, gx, gy});
+        const S=(gx,gy=0)=>level.spikes.push({x:gx*GRID, y:gy*GRID});
+        const P=(gx)=>level.pads.push({x:gx*GRID, y:0, used:false});
+        const O=(gx,wy)=>level.orbs.push({x:(gx+.5)*GRID, y:wy*GRID, used:false});
+        const C=(gx,wy)=>level.coins.push({x:(gx+.5)*GRID, y:wy*GRID, got:false});
+
+        if (idx === 1) {
+          S(12); O(16,1.8); S(16); S(17); B(22,0); B(23,0); B(24,0); S(23,1); C(23,3.5);
+          P(30); S(32); S(33); O(38, 2.2); S(38); P(44); S(45); S(46); C(45, 4);
+          S(52); S(53); B(57,0); B(58,1); B(59,2); S(62); S(63); S(64); O(63,1.8);
+          level.endX = 72*GRID;
+        } else if (idx === 2) {
+          S(12); S(18); S(19); S(24); for(let i=25;i<=30;i++)B(i,0); S(28,1);
+          P(35); S(36); S(37); S(38); C(38,3.4); S(45); B(50,0); B(51,0); B(52,0); B(52,1); B(53,0); B(53,1);
+          C(52.5,3.2); S(58); S(59); S(66); S(70); S(71); S(72); O(71,1.7); S(78); S(81);
+          B(86,0); B(87,0); S(86,1); P(94); C(96,4.2); S(95); S(96); S(97); S(103); S(104);
+          for(let i=108;i<=112;i++)B(i,0); S(110,1); S(118); S(119); O(119,1.8); S(120); S(125);
+          level.endX = 132*GRID;
+        } else {
+          S(10); S(14); S(15); P(20); S(21); S(22); C(21,4); B(28,0); B(29,0); B(30,0); S(29,1);
+          S(35); O(40,1.8); S(40); S(45); S(46); B(52,0); B(53,1); B(54,2); C(54,4);
+          S(60); S(61); P(67); S(68); S(69); S(70); S(75); O(78, 1.5); S(78);
+          level.endX = 85*GRID;
+        }
+      }
+
+      /* ================================================================
+         AUDIO
+      ================================================================ */
+      const AudioSys = {
+        sources: { music:"", jump:"", death:"", click:"", coin:"", win:"" },
+        ctx:null, els:{},
+        init(){ if(!this.ctx){ try{ this.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } },
+        play(name){
+          const src = this.sources[name];
+          if(src){
+            if(!this.els[name]) { this.els[name] = new Audio(src); if(name==="music"){ this.els[name].loop = true; } }
+            this.els[name].currentTime = 0; this.els[name].play().catch(()=>{});
+            return;
+          }
+          if(name==="music" || !this.ctx) return;
+          const c=this.ctx, o=c.createOscillator(), g=c.createGain(), t=c.currentTime;
+          const cfg={ jump:[520,880,.09,"square",.05], death:[300,60,.4,"sawtooth",.09], click:[700,700,.05,"sine",.05], coin:[900,1400,.12,"sine",.06], win:[440,1200,.5,"triangle",.07] }[name]||[440,440,.1,"sine",.04];
+          o.type=cfg[3]; o.frequency.setValueAtTime(cfg[0],t); o.frequency.exponentialRampToValueAtTime(cfg[1],t+cfg[2]);
+          g.gain.setValueAtTime(cfg[4],t); g.gain.exponentialRampToValueAtTime(.0001,t+cfg[2]);
+          o.connect(g); g.connect(c.destination); o.start(t); o.stop(t+cfg[2]);
+        },
+        stopMusic(){ if(this.els.music) this.els.music.pause(); }
+      };
+
+      /* ================================================================
+         STATE / SAVE
+      ================================================================ */
+      const save = {
+        get best(){ return +(localStorage.getItem("nd_best_"+currentLevelIdx)||0); },
+        set best(v){ localStorage.setItem("nd_best_"+currentLevelIdx, v); },
+        get attempts(){ return +(localStorage.getItem("nd_attempts_"+currentLevelIdx)||0); },
+        set attempts(v){ localStorage.setItem("nd_attempts_"+currentLevelIdx, v); },
+        get color(){ return +(localStorage.getItem("nd_color")||0); },
+        set color(v){ localStorage.setItem("nd_color", v); }
+      };
+      let state = "menu";
+      let practice = false, checkpoints = [];
+      let attempt = 1, jumps = 0, colorIdx = save.color;
+      let camX = 0, camY = 0, shake = 0, deadTimer = 0, spawnTimer = 0, winTimer = 0;
+      let pressBuffer = 0, held = false, time = 0;
+
+      const player = { x:0, y:0, vy:0, onGround:true, rot:0, rotTarget:0, prevY:0 };
+      const trail = [], particles = [];
+
+      /* ================================================================
+         RENDERING SETUP
+      ================================================================ */
+      const cvs = document.getElementById("game"), ctx = cvs.getContext("2d");
+      let W=0, H=0, DPR=1;
+      function resize(){ DPR=Math.min(2,devicePixelRatio||1); W=innerWidth; H=innerHeight; cvs.width=W*DPR; cvs.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+      addEventListener("resize", resize); resize();
+      const groundScreen = ()=> H*0.78;
+      const sx = wx => wx - camX;
+      const sy = wy => groundScreen() - wy + camY;
+
+      /* ================================================================
+         PARTICLES
+      ================================================================ */
+      function spawn(n, x, y, opt){
+        for(let i=0;i<n;i++){
+          if(particles.length>400) particles.shift();
+          const a = opt.spread? (Math.random()*Math.PI*2) : (Math.PI*(.9+Math.random()*.2));
+          const sp = opt.speed*(0.4+Math.random()*0.8);
+          particles.push({ x, y, vx:Math.cos(a)*sp+(opt.vx||0), vy:Math.sin(a)*sp+(opt.vy||0),
+            life:1, decay:opt.decay||2.2, size:opt.size*(0.5+Math.random()), color:opt.color, grav:opt.grav||0 });
+        }
+      }
+      const dustJump = ()=> spawn(6, player.x+SIZE*.5, player.y, {speed:140, color:"#ffffff", size:5, decay:3});
+      const dustLand = ()=> spawn(8, player.x+SIZE*.5, player.y, {speed:180, color:COLORS[colorIdx], size:5, decay:3});
+      const deathBoom = ()=> spawn(46, player.x+SIZE*.5, player.y+SIZE*.5, {spread:true, speed:520, color:COLORS[colorIdx], size:8, decay:1.4, grav:900});
+      const winBoom = (x,y)=> spawn(30, x, y, {spread:true, speed:420, color:["#4ade80","#22d3ee","#f472b6","#fbbf24"][Math.floor(Math.random()*4)], size:7, decay:1.2, grav:500});
+
+      /* ================================================================
+         PHYSICS + COLLISION
+      ================================================================ */
+      function doJump(v){
+        player.vy = v; player.onGround = false; jumps++;
+        AudioSys.play("jump"); dustJump();
+      }
+
+      function respawnPoint(){
+        if(practice && checkpoints.length){ const c=checkpoints[checkpoints.length-1]; return {x:c.x, y:c.y}; }
+        return {x:0, y:0};
+      }
+
+      function resetAttempt(newAttempt){
+        const p = respawnPoint();
+        player.x=p.x; player.y=p.y; player.vy=0; player.onGround=true; player.rot=0; player.rotTarget=0;
+        level.pads.forEach(o=>o.used=false); level.orbs.forEach(o=>o.used=false);
+        if(!(practice&&checkpoints.length)) level.coins.forEach(c=>c.got=false);
+        trail.length=0; camX = player.x - W*0.32; camY=0;
+        spawnTimer = .4; state="playing";
+        if(newAttempt){ attempt++; save.attempts=save.attempts+1; updateAttemptHUD(); }
+      }
+
+      function die(){
+        if(state!=="playing") return;
+        state="dead"; deadTimer=1;
+        AudioSys.play("death"); deathBoom(); shake=18;
+        const f=document.getElementById("flash"); f.style.opacity=.75; setTimeout(()=>f.style.opacity=0, 60);
+        const pct = Math.min(100, Math.floor(player.x/level.endX*100));
+        if(!practice && pct>save.best) save.best=pct;
+      }
+
+      function update(dt){
+        time += dt;
+        if(state==="dead"){ deadTimer-=dt; if(deadTimer<=0) resetAttempt(true); return; }
+        if(state==="win"){ winTimer-=dt; if(Math.random()<.25) winBoom(camX+W*(.2+Math.random()*.6), Math.random()*H*.5);
+          if(winTimer<=0 && document.getElementById("winMenu").classList.contains("hidden")) showWin(); return; }
+        if(state!=="playing") return;
+
+        spawnTimer=Math.max(0,spawnTimer-dt);
+        pressBuffer=Math.max(0,pressBuffer-dt);
+        player.prevY = player.y;
+
+        player.x += SPEED*dt;
+
+        if(player.onGround && (held||pressBuffer>0)){ pressBuffer=0; doJump(JUMP_V); }
+
+        player.vy -= GRAVITY*dt;
+        player.y += player.vy*dt;
+
+        const wasAir = !player.onGround;
+        player.onGround = false;
+
+        if(player.y<=0 && player.vy<=0){ player.y=0; player.vy=0; player.onGround=true; }
+
+        const px1=player.x+2, px2=player.x+SIZE-2, py1=player.y, py2=player.y+SIZE;
+        for(const b of level.blocks){
+          if(b.x>player.x+SIZE+GRID || b.x+GRID<player.x-GRID) continue;
+          const bx1=b.x, bx2=b.x+GRID, by1=b.y, by2=b.y+GRID;
+          if(px2>bx1 && px1<bx2 && py2>by1 && py1<by2){
+            if(player.vy<=0 && player.prevY >= by2-14){ player.y=by2; player.vy=0; player.onGround=true; }
+            else { die(); return; }
+          }
+        }
+
+        if(player.onGround && wasAir){ player.rotTarget=Math.round(player.rot/90)*90; dustLand(); shake=Math.min(shake+2,4); }
+
+        if(!player.onGround) player.rot += ROT_SPEED*dt;
+        else player.rot += (player.rotTarget-player.rot)*Math.min(1,dt*22);
+
+        const hx1=player.x+8, hx2=player.x+SIZE-8, hy1=player.y+4, hy2=player.y+SIZE-4;
+        for(const s of level.spikes){
+          const cx=s.x+GRID*.5, sx1=cx-GRID*.16, sx2=cx+GRID*.16, sy1=s.y, sy2=s.y+GRID*.46;
+          if(hx2>sx1 && hx1<sx2 && hy2>sy1 && hy1<sy2){ die(); return; }
+        }
+
+        for(const p of level.pads){
+          if(!p.used && px2>p.x && px1<p.x+GRID && py1<p.y+16 && py2>p.y){
+            p.used=true; doJump(PAD_V); spawn(10,p.x+GRID*.5,p.y,{speed:240,color:"#fbbf24",size:6,decay:2.5});
+          }
+        }
+        for(const o of level.orbs){
+          if(!o.used && Math.abs(player.x+SIZE*.5-o.x)<44 && Math.abs(player.y+SIZE*.5-o.y)<48 && (pressBuffer>0||held) && !player.onGround){
+            o.used=true; pressBuffer=0; held=false; doJump(ORB_V);
+            spawn(12,o.x,o.y,{spread:true,speed:260,color:"#fbbf24",size:5,decay:2.5});
+          }
+        }
+        for(const c of level.coins){
+          if(!c.got && Math.abs(player.x+SIZE*.5-c.x)<40 && Math.abs(player.y+SIZE*.5-c.y)<40){
+            c.got=true; AudioSys.play("coin"); spawn(14,c.x,c.y,{spread:true,speed:220,color:"#fbbf24",size:5,decay:2});
+          }
+        }
+
+        trail.push({x:player.x,y:player.y,rot:player.rot}); if(trail.length>16) trail.shift();
+
+        if(player.x+SIZE > level.endX){
+          state="win"; winTimer=1.4; AudioSys.play("win");
+          if(!practice) save.best=100;
+          winBoom(player.x+SIZE*.5 - camX + camX, player.y+SIZE*.5); shake=10;
+        }
+
+        const camTX = player.x - W*0.32;
+        camX += (camTX-camX)*Math.min(1,dt*8);
+        const camTY = Math.max(0, player.y - H*0.30);
+        camY += (camTY-camY)*Math.min(1,dt*6);
+        shake = Math.max(0, shake - dt*40);
+      }
+
+      /* ================================================================
+         RENDER
+      ================================================================ */
+      function render(){
+        const g = groundScreen();
+        const prog = Math.min(1, player.x/level.endX);
+        const grd = ctx.createLinearGradient(0,0,0,H);
+        grd.addColorStop(0, `hsl(${255-prog*90} 70% 10%)`);
+        grd.addColorStop(.6, `hsl(${275-prog*90} 65% 16%)`);
+        grd.addColorStop(1, `hsl(${290-prog*90} 70% 8%)`);
+        ctx.fillStyle=grd; ctx.fillRect(0,0,W,H);
+
+        const ox = shake?(Math.random()-.5)*shake:0, oy = shake?(Math.random()-.5)*shake:0;
+        ctx.save(); ctx.translate(ox,oy);
+
+        ctx.save(); ctx.globalAlpha=.08; ctx.strokeStyle="#a5b4fc"; ctx.lineWidth=2;
+        for(let i=0;i<10;i++){
+          const px = ((i*340 - camX*0.25) % (W+400) + W+400) % (W+400) - 200;
+          const py = H*0.15 + (i%3)*H*0.2 + Math.sin(time*.6+i)*18;
+          const s = 34+(i%4)*18;
+          ctx.save(); ctx.translate(px,py); ctx.rotate(Math.PI/4 + time*.15*(i%2?1:-1)); ctx.strokeRect(-s/2,-s/2,s,s); ctx.restore();
+        }
+        ctx.restore();
+
+        const gy = g + camY;
+        ctx.fillStyle="rgba(10,6,30,.92)"; ctx.fillRect(0,gy,W,H-gy+40);
+        ctx.strokeStyle="rgba(139,92,246,.15)"; ctx.lineWidth=1; ctx.beginPath();
+        for(let x=-(camX%GRID); x<W; x+=GRID){ ctx.moveTo(x,gy); ctx.lineTo(x,H); }
+        ctx.stroke();
+        ctx.shadowColor="#a78bfa"; ctx.shadowBlur=14; ctx.strokeStyle="#a78bfa"; ctx.lineWidth=2.5;
+        ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(W,gy); ctx.stroke(); ctx.shadowBlur=0;
+
+        const pulse = 1 + Math.sin(time*4)*0.04;
+
+        for(const b of level.blocks){
+          const x=sx(b.x); if(x<-GRID||x>W+GRID) continue;
+          const y=sy(b.y)-GRID;
+          ctx.fillStyle="rgba(0,0,0,.35)"; ctx.fillRect(x+4,y+6,GRID,GRID);
+          const bg=ctx.createLinearGradient(x,y,x,y+GRID);
+          bg.addColorStop(0,"#1e1b4b"); bg.addColorStop(1,"#0f0c2e");
+          ctx.fillStyle=bg; ctx.fillRect(x,y,GRID,GRID);
+          ctx.shadowColor="#22d3ee"; ctx.shadowBlur=10*pulse; ctx.strokeStyle="#22d3ee"; ctx.lineWidth=2;
+          ctx.strokeRect(x+1.5,y+1.5,GRID-3,GRID-3); ctx.shadowBlur=0;
+          ctx.strokeStyle="rgba(255,255,255,.15)"; ctx.strokeRect(x+7,y+7,GRID-14,GRID-14);
+        }
+        for(const s of level.spikes){
+          const x=sx(s.x); if(x<-GRID||x>W+GRID) continue;
+          const base=sy(s.y);
+          ctx.shadowColor="#f472b6"; ctx.shadowBlur=12*pulse;
+          ctx.fillStyle="#2a0a2e"; ctx.strokeStyle="#f472b6"; ctx.lineWidth=2;
+          ctx.beginPath(); ctx.moveTo(x+2,base); ctx.lineTo(x+GRID*.5,base-GRID+3); ctx.lineTo(x+GRID-2,base); ctx.closePath();
+          ctx.fill(); ctx.stroke(); ctx.shadowBlur=0;
+        }
+        for(const p of level.pads){
+          const x=sx(p.x); if(x<-GRID||x>W+GRID) continue;
+          const y=sy(p.y);
+          ctx.shadowColor="#fbbf24"; ctx.shadowBlur=14; ctx.fillStyle="#fbbf24";
+          ctx.beginPath(); ctx.ellipse(x+GRID*.5,y-3,GRID*.38,7+Math.sin(time*8)*1.5,0,0,Math.PI,true); ctx.fill(); ctx.shadowBlur=0;
+        }
+        for(const o of level.orbs){
+          const x=sx(o.x); if(x<-GRID||x>W+GRID) continue;
+          const y=sy(o.y), r=16+Math.sin(time*5)*2;
+          ctx.shadowColor="#fbbf24"; ctx.shadowBlur=16;
+          ctx.strokeStyle=o.used?"rgba(251,191,36,.25)":"#fbbf24"; ctx.lineWidth=3;
+          ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.stroke();
+          ctx.fillStyle=o.used?"rgba(251,191,36,.15)":"rgba(251,191,36,.5)";
+          ctx.beginPath(); ctx.arc(x,y,r*.45,0,7); ctx.fill(); ctx.shadowBlur=0;
+        }
+        for(const c of level.coins){ if(c.got) continue;
+          const x=sx(c.x); if(x<-GRID||x>W+GRID) continue;
+          const y=sy(c.y)+Math.sin(time*3+c.x)*4;
+          ctx.shadowColor="#fde047"; ctx.shadowBlur=14; ctx.strokeStyle="#fde047"; ctx.lineWidth=3;
+          ctx.beginPath(); ctx.ellipse(x,y,12*Math.abs(Math.cos(time*2)),13,0,0,7); ctx.stroke(); ctx.shadowBlur=0;
+        }
+        {
+          const x=sx(level.endX);
+          if(x>-60 && x<W+60){
+            ctx.shadowColor="#4ade80"; ctx.shadowBlur=20;
+            for(let i=0;i<12;i++){ ctx.fillStyle=i%2?"#4ade80":"#052e16"; ctx.fillRect(x,gy-GRID*6+i*GRID*.5,10,GRID*.5); }
+            ctx.shadowBlur=0;
+          }
+        }
+        for(const c of checkpoints){
+          const x=sx(c.x)+SIZE*.5, y=sy(c.y)-14;
+          ctx.shadowColor="#4ade80"; ctx.shadowBlur=10; ctx.fillStyle="#4ade80";
+          ctx.save(); ctx.translate(x,y); ctx.rotate(Math.PI/4); ctx.fillRect(-6,-6,12,12); ctx.restore(); ctx.shadowBlur=0;
+        }
+
+        const col = COLORS[colorIdx];
+        for(let i=0;i<trail.length;i++){
+          const t=trail[i], a=(i/trail.length)*.28;
+          ctx.globalAlpha=a; ctx.fillStyle=col;
+          ctx.save(); ctx.translate(sx(t.x)+SIZE/2, sy(t.y)-SIZE/2); ctx.rotate(t.rot*Math.PI/180);
+          ctx.fillRect(-SIZE/2+6,-SIZE/2+6,SIZE-12,SIZE-12); ctx.restore();
+        }
+        ctx.globalAlpha=1;
+
+        if(state!=="dead" && state!=="win"){
+          const scale = spawnTimer>0 ? 1-(spawnTimer/.4)*.7 : 1;
+          ctx.save();
+          ctx.translate(sx(player.x)+SIZE/2, sy(player.y)-SIZE/2);
+          ctx.rotate(player.rot*Math.PI/180); ctx.scale(scale,scale);
+          ctx.shadowColor=col; ctx.shadowBlur=22;
+          const cg=ctx.createLinearGradient(-SIZE/2,-SIZE/2,SIZE/2,SIZE/2);
+          cg.addColorStop(0,col); cg.addColorStop(1,"#312e81");
+          ctx.fillStyle=cg; ctx.fillRect(-SIZE/2,-SIZE/2,SIZE,SIZE);
+          ctx.shadowBlur=0;
+          ctx.strokeStyle="rgba(255,255,255,.85)"; ctx.lineWidth=3; ctx.strokeRect(-SIZE/2+2,-SIZE/2+2,SIZE-4,SIZE-4);
+          ctx.fillStyle="rgba(255,255,255,.9)"; ctx.fillRect(-SIZE/2+12,-SIZE/2+12,SIZE-24,SIZE-24);
+          ctx.fillStyle="rgba(20,10,50,.9)"; ctx.fillRect(-SIZE/2+17,-SIZE/2+17,SIZE-34,SIZE-34);
+          ctx.restore();
+        }
+
+        for(const p of particles){
+          ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.color;
+          ctx.shadowColor=p.color; ctx.shadowBlur=8;
+          ctx.fillRect(sx(p.x)-p.size/2, sy(p.y)-p.size/2, p.size, p.size);
+        }
+        ctx.globalAlpha=1; ctx.shadowBlur=0;
+
+        if(state==="playing"||state==="dead"){
+          const rp = respawnPoint();
+          ctx.font="18px Pusab, sans-serif"; ctx.textAlign="center";
+          ctx.fillStyle="rgba(255,255,255,.85)"; ctx.shadowColor="#a78bfa"; ctx.shadowBlur=12;
+          ctx.fillText("Attempt "+attempt, sx(rp.x)+SIZE/2, sy(rp.y)-SIZE*2.6);
+          ctx.shadowBlur=0;
+        }
+
+        ctx.save(); ctx.globalAlpha=.12; ctx.fillStyle="#818cf8";
+        for(let i=0;i<5;i++){
+          const px=((i*560-camX*1.35)%(W+300)+W+300)%(W+300)-150;
+          const py=H*.1+(i%3)*H*.28+Math.sin(time+i*2)*24;
+          ctx.save(); ctx.translate(px,py); ctx.rotate(time*.4+i); ctx.fillRect(-8,-8,16,16); ctx.restore();
+        }
+        ctx.restore();
+        ctx.restore();
+      }
+
+      /* ================================================================
+         INPUT
+      ================================================================ */
+      function press(){ AudioSys.init(); held=true; pressBuffer=.12; }
+      cvs.addEventListener("pointerdown", e=>{ if(state==="playing") press(); });
+      addEventListener("pointerup", ()=> held=false);
+      addEventListener("keydown", e=>{
+        if(e.repeat) return;
+        if(e.code==="Space"||e.code==="ArrowUp"||e.code==="KeyW"){ e.preventDefault(); if(state==="playing") press(); }
+        if(e.code==="KeyR" && (state==="playing"||state==="paused"||state==="dead")) fullRestart();
+        if(e.code==="Escape"){ if(state==="playing") pauseGame(); else if(state==="paused") resumeGame(); }
+        if(e.code==="KeyZ" && practice && state==="playing" && spawnTimer<=0){ checkpoints.push({x:player.x, y:player.onGround?player.y:0}); AudioSys.play("click"); }
+        if(e.code==="KeyX" && practice){ checkpoints.pop(); AudioSys.play("click"); }
+      });
+      addEventListener("keyup", e=>{ if(e.code==="Space"||e.code==="ArrowUp"||e.code==="KeyW") held=false; });
+
+      /* ================================================================
+         UI
+      ================================================================ */
+      const $=id=>document.getElementById(id);
+      function show(id,flex){ $(id).classList.remove("hidden"); if(flex)$(id).classList.add("flex"); }
+      function hide(id){ $(id).classList.add("hidden"); $(id).classList.remove("flex"); }
+      function updateAttemptHUD(){ $("hudAttempt").textContent="ATTEMPT "+attempt; }
+      function updatePracticeUI(){
+        $("practiceLabel").textContent="Practice: "+(practice?"On":"Off");
+        $("hudPractice").classList.toggle("hidden",!practice);
+        $("btnPractice").classList.toggle("ring-2",practice);
+        $("btnPractice").classList.toggle("ring-emerald-400/60",practice);
+      }
+      function startGame(){
+        AudioSys.init(); AudioSys.play("click"); AudioSys.play("music");
+        attempt=1; jumps=0; checkpoints=[];
+        buildLevel(currentLevelIdx);
+        hide("menu"); hide("winMenu"); hide("pauseMenu"); hide("levelSelectMenu"); show("hud");
+        updateAttemptHUD(); resetAttempt(false); save.attempts=save.attempts+1;
+      }
+      function fullRestart(){
+        AudioSys.play("click"); checkpoints=[]; level.coins.forEach(c=>c.got=false);
+        attempt++; save.attempts=save.attempts+1; updateAttemptHUD();
+        hide("pauseMenu"); hide("winMenu"); resetAttempt(false);
+      }
+      function pauseGame(){ state="paused"; show("pauseMenu",true); AudioSys.play("click"); }
+      function resumeGame(){ state="playing"; hide("pauseMenu"); AudioSys.play("click"); }
+      function toMenu(){
+        state="menu"; hide("pauseMenu"); hide("winMenu"); hide("hud"); hide("levelSelectMenu"); show("menu",true);
+        AudioSys.stopMusic(); refreshMenuStats();
+      }
+      function showWin(){
+        $("winAttempts").textContent=attempt;
+        $("winJumps").textContent=jumps;
+        $("winCoins").textContent=level.coins.filter(c=>c.got).length+"/3";
+        $("winLevelName").textContent=levelsData[currentLevelIdx].name;
+        show("winMenu",true); refreshMenuStats();
+      }
+      function refreshMenuStats(){ $("menuBest").textContent=save.best+"%"; $("menuAttempts").textContent=save.attempts; }
+      function updateLevelUI(){
+        const lvl = levelsData[currentLevelIdx];
+        $("levelName").textContent = lvl.name;
+        $("levelStars").innerHTML = `${lvl.stars} <iconify-icon icon="lucide:star" stroke-width="1.5" class="text-base fill-amber-300"></iconify-icon>`;
+        $("levelOrbs").innerHTML = `${lvl.orbs}/${lvl.orbs} <iconify-icon icon="lucide:hexagon" stroke-width="1.5" class="text-base fill-cyan-400/20"></iconify-icon>`;
+        $("levelIcon").setAttribute("icon", lvl.icon);
+        $("levelIconContainer").className = "w-14 h-14 rounded-full flex items-center justify-center mb-4 transition-all duration-300 " + lvl.colorCls;
+
+        let dotsHTML = "";
+        for(let i=0; i<levelsData.length; i++) {
+          dotsHTML += i === currentLevelIdx
+            ? `<div class="w-2 h-2 rounded-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.8)]"></div>`
+            : `<div class="w-2 h-2 rounded-full bg-white/20"></div>`;
+        }
+        $("levelDots").innerHTML = dotsHTML;
+
+        $("selectNormalPct").textContent = save.best + "%";
+        setTimeout(() => { $("selectNormalBar").style.width = save.best + "%"; }, 50);
+        $("selectPracticePct").textContent = "0%";
+        $("selectPracticeBar").style.width = "0%";
+      }
+      function changeLevel(dir) {
+        currentLevelIdx = (currentLevelIdx + dir + levelsData.length) % levelsData.length;
+        AudioSys.play("click");
+        updateLevelUI();
+      }
+
+      COLORS.forEach((c,i)=>{
+        const b=document.createElement("button");
+        b.className="w-8 h-8 rounded-lg border-2 transition hover:scale-110";
+        b.style.background=c; b.style.boxShadow=`0 0 12px ${c}80`;
+        const sync=()=>{ document.querySelectorAll("#colorRow button").forEach((el,j)=>el.style.borderColor=j===colorIdx?"#fff":"transparent"); };
+        b.onclick=()=>{ colorIdx=i; save.color=i; AudioSys.play("click"); sync(); };
+        $("colorRow").appendChild(b); setTimeout(sync,0);
+      });
+
+      // Bind Flow Handlers
+      $("btnPlay").onclick = () => {
+        AudioSys.play("click");
+        hide("menu");
+        show("levelSelectMenu", true);
+        updateLevelUI();
+      };
+
+      $("btnBackToMenu").onclick = () => {
+        AudioSys.play("click");
+        hide("levelSelectMenu");
+        show("menu", true);
+        $("selectNormalBar").style.width = "0%";
+      };
+
+      $("btnPrevDesk").onclick = () => changeLevel(-1);
+      $("btnNextDesk").onclick = () => changeLevel(1);
+      $("btnPrevMob").onclick = () => changeLevel(-1);
+      $("btnNextMob").onclick = () => changeLevel(1);
+
+      $("btnStartLevel").onclick = startGame;
+
+      $("btnPause").onclick=()=>{ if(state==="playing") pauseGame(); };
+      $("btnResume").onclick=resumeGame;
+      $("btnRestartP").onclick=fullRestart;
+      $("btnRestartW").onclick=fullRestart;
+      $("btnMenuP").onclick=toMenu; $("btnMenuW").onclick=toMenu;
+      $("btnPractice").onclick=()=>{ practice=!practice; AudioSys.play("click"); updatePracticeUI(); };
+      $("btnPracticeP").onclick=()=>{ practice=!practice; if(!practice)checkpoints=[]; AudioSys.play("click"); updatePracticeUI(); };
+      $("btnFull").onclick=()=>{ AudioSys.play("click"); document.documentElement.requestFullscreen?.().catch(()=>{}); };
+
+      refreshMenuStats(); updatePracticeUI(); buildLevel(0);
+
+      /* ================================================================
+         GAME LOOP
+      ================================================================ */
+      let last=performance.now(), fpsFrames=0, fpsTime=0, lastPct=-1;
+      function loop(now){
+        const dt=Math.min(0.033,(now-last)/1000); last=now;
+        fpsFrames++; fpsTime+=dt;
+        if(fpsTime>=.5){ $("hudFps").textContent=Math.round(fpsFrames/fpsTime)+" FPS"; fpsFrames=0; fpsTime=0; }
+
+        if(state!=="paused") update(dt);
+
+        for(let i=particles.length-1;i>=0;i--){
+          const p=particles[i];
+          p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy-=p.grav*dt; p.life-=p.decay*dt;
+          if(p.life<=0) particles.splice(i,1);
+        }
+        render();
+
+        if(state==="playing"||state==="dead"||state==="win"){
+          const pct=Math.min(100,Math.floor(player.x/level.endX*100));
+          if(pct!==lastPct){ lastPct=pct; $("hudBar").style.width=pct+"%"; $("hudPct").textContent=pct+"%"; }
+        }
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+    </script>
+    <script>
+      (() => {
+        const bgTexture = new Image();
+        bgTexture.src = "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/0400cdd2-8c47-4563-9cca-3f6300fbacd1_1600w.png";
+
+        const groundTexture = new Image();
+        groundTexture.src = "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/6b20f8c1-2a34-4453-962e-2fa1f2626642_1600w.png";
+
+        const playerTexture = new Image();
+        playerTexture.src = "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/08f9546c-a930-4f92-90af-1e3dff38f73a_320w.png";
+
+        window.setPlayerTexture = function(src) {
+          playerTexture.src = src;
+        };
+
+        const spikeTexture = new Image();
+        spikeTexture.src = "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b0be56a6-d55c-4f05-8222-e0eb874f832e_320w.webp";
+
+        const blockTexture = new Image();
+        blockTexture.src = "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/a6915809-476b-49b5-8146-edb1a967abe1_320w.webp";
+
+        const orbTexture = new Image();
+        orbTexture.src = "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/c7d009ec-c194-467d-a6c1-7d551a92193a_320w.png";
+
+        const nativeFillRect = ctx.fillRect.bind(ctx);
+        ctx.fillRect = function(x, y, w, h) {
+          const bgReady = bgTexture.complete && bgTexture.naturalWidth;
+          if (bgReady && x === 0 && y === 0 && w === W && h === H) {
+            const scale = Math.max((W * 1.28) / bgTexture.naturalWidth, H / bgTexture.naturalHeight);
+            const iw = bgTexture.naturalWidth * scale;
+            const ih = bgTexture.naturalHeight * scale;
+            const offset = (camX * 0.09) % (iw - W + 1);
+            ctx.drawImage(bgTexture, -offset, (H - ih) * 0.5, iw, ih);
+            return;
+          }
+
+          const playerReady = playerTexture.complete && playerTexture.naturalWidth;
+          if (playerReady) {
+            if (w === SIZE && h === SIZE && x === -SIZE/2 && y === -SIZE/2) {
+              nativeFillRect(x, y, w, h);
+              ctx.drawImage(playerTexture, x, y, w, h);
+              return;
+            }
+            if (w === SIZE-12 && h === SIZE-12 && x === -SIZE/2+6 && y === -SIZE/2+6) {
+              nativeFillRect(x-6, y-6, SIZE, SIZE);
+              ctx.drawImage(playerTexture, x-6, y-6, SIZE, SIZE);
+              return;
+            }
+            if (w === SIZE-24 && h === SIZE-24 && x === -SIZE/2+12 && y === -SIZE/2+12) return;
+            if (w === SIZE-34 && h === SIZE-34 && x === -SIZE/2+17 && y === -SIZE/2+17) return;
+          }
+
+          const blockReady = blockTexture.complete && blockTexture.naturalWidth;
+          if (blockReady && w === 48 && h === 48) {
+            const fs = String(ctx.fillStyle);
+            if (fs.includes('CanvasGradient')) {
+              ctx.drawImage(blockTexture, x, y, w, h);
+              return;
+            }
+          }
+
+          nativeFillRect(x, y, w, h);
+
+          const groundReady = groundTexture.complete && groundTexture.naturalWidth;
+          if (groundReady && x === 0 && w === W && h < H && h > 0) {
+            const previousAlpha = ctx.globalAlpha;
+            const scale = Math.max((W * 1.45) / groundTexture.naturalWidth, h / groundTexture.naturalHeight);
+            const iw = groundTexture.naturalWidth * scale;
+            const ih = groundTexture.naturalHeight * scale;
+            const offset = (camX * 0.55) % (iw - W + 1);
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, y, w, h);
+            ctx.clip();
+            ctx.globalAlpha = 0.28;
+            ctx.drawImage(groundTexture, -offset, y + (h - ih) * 0.5, iw, ih);
+            ctx.restore();
+            ctx.globalAlpha = previousAlpha;
+          }
+        };
+
+        const nativeStrokeRect = ctx.strokeRect.bind(ctx);
+        ctx.strokeRect = function(x, y, w, h) {
+          const playerReady = playerTexture.complete && playerTexture.naturalWidth;
+          if (playerReady && w === SIZE-4 && h === SIZE-4 && x === -SIZE/2+2 && y === -SIZE/2+2) {
+            return;
+          }
+
+          const blockReady = blockTexture.complete && blockTexture.naturalWidth;
+          if (blockReady && ((w === 45 && h === 45) || (w === 34 && h === 34))) {
+            return;
+          }
+
+          nativeStrokeRect(x, y, w, h);
+        };
+
+        let pathMinX = Infinity, pathMinY = Infinity, isSpike = false;
+        let isArc = false, orbX = 0, orbY = 0, orbR = 0;
+
+        const nativeBeginPath = ctx.beginPath.bind(ctx);
+        ctx.beginPath = function() {
+          pathMinX = Infinity; pathMinY = Infinity;
+          isArc = false;
+          const fs = String(ctx.fillStyle);
+          const ss = String(ctx.strokeStyle);
+          const isSpikeFill = fs === '#2a0a2e' || fs === 'rgb(42, 10, 46)' || fs === 'rgba(42, 10, 46, 1)';
+          const isSpikeStroke = ss === '#f472b6' || ss === 'rgb(244, 114, 182)' || ss === 'rgba(244, 114, 182, 1)';
+          isSpike = isSpikeFill && isSpikeStroke;
+          nativeBeginPath();
+        };
+
+        const nativeMoveTo = ctx.moveTo.bind(ctx);
+        ctx.moveTo = function(x, y) {
+          pathMinX = Math.min(pathMinX, x);
+          pathMinY = Math.min(pathMinY, y);
+          nativeMoveTo(x, y);
+        };
+
+        const nativeLineTo = ctx.lineTo.bind(ctx);
+        ctx.lineTo = function(x, y) {
+          pathMinX = Math.min(pathMinX, x);
+          pathMinY = Math.min(pathMinY, y);
+          nativeLineTo(x, y);
+        };
+
+        const nativeArc = ctx.arc.bind(ctx);
+        ctx.arc = function(x, y, radius, startAngle, endAngle, counterclockwise) {
+          isArc = true;
+          orbX = x; orbY = y; orbR = radius;
+          nativeArc(x, y, radius, startAngle, endAngle, counterclockwise);
+        };
+
+        const nativeFill = ctx.fill.bind(ctx);
+        ctx.fill = function(...args) {
+          if (isSpike && spikeTexture.complete && spikeTexture.naturalWidth) {
+            return;
+          }
+          const fs = String(ctx.fillStyle);
+          const isOrbFillColor = fs.includes('251') && fs.includes('191') && fs.includes('36');
+          if (isArc && isOrbFillColor && orbTexture.complete && orbTexture.naturalWidth) {
+            return;
+          }
+          nativeFill(...args);
+        };
+
+        const nativeStroke = ctx.stroke.bind(ctx);
+        ctx.stroke = function(...args) {
+          if (isSpike && spikeTexture.complete && spikeTexture.naturalWidth) {
+            ctx.save();
+            ctx.drawImage(spikeTexture, pathMinX - 2, pathMinY - 3, 48, 48);
+            ctx.restore();
+            return;
+          }
+          const ss = String(ctx.strokeStyle);
+          const isOrbStrokeColor = ss === '#fbbf24' || (ss.includes('251') && ss.includes('191') && ss.includes('36'));
+          if (isArc && isOrbStrokeColor && orbTexture.complete && orbTexture.naturalWidth) {
+            ctx.save();
+            let size = 48;
+            if (ss.includes('0.25')) ctx.globalAlpha = 0.3;
+            ctx.drawImage(orbTexture, orbX - size/2, orbY - size/2, size, size);
+            ctx.restore();
+            return;
+          }
+          nativeStroke(...args);
+        };
+      })();
+    </script>
+
+    <script>
+      (function(){
+        let avatarIdx = +(localStorage.getItem("nd_avatar")||0);
+        const AVATARS = [
+          {
+            icon: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/5747650c-dbd6-4ade-a1c5-2e031ff19a3e_320w.png",
+            texture: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/08f9546c-a930-4f92-90af-1e3dff38f73a_320w.png"
+          },
+          {
+            icon: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/09d634fa-22a3-4f4c-8c67-9f9b5ecc3a7e_320w.png",
+            texture: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/09d634fa-22a3-4f4c-8c67-9f9b5ecc3a7e_320w.png"
+          },
+          {
+            icon: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/a1681aae-6f7e-452a-9881-493c10213bc5_320w.png",
+            texture: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/a1681aae-6f7e-452a-9881-493c10213bc5_320w.png"
+          },
+          {
+            icon: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/1e02c972-55b5-41c6-b43d-3ee078493201_320w.png",
+            texture: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/1e02c972-55b5-41c6-b43d-3ee078493201_320w.png"
+          },
+          {
+            icon: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/ed778e0e-60f5-4e63-8a17-6717815e1819_320w.png",
+            texture: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/ed778e0e-60f5-4e63-8a17-6717815e1819_320w.png"
+          },
+          {
+            icon: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/6a0637ed-0253-4d86-b933-c0f8731e734a_320w.png",
+            texture: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/6a0637ed-0253-4d86-b933-c0f8731e734a_320w.png"
+          },
+          {
+            icon: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/5a0e27d9-2872-46be-8a94-407dc8eae8ae_320w.png",
+            texture: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/5a0e27d9-2872-46be-8a94-407dc8eae8ae_320w.png"
+          },
+          {
+            icon: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/1a6976e5-af46-44be-b7cc-9c2eaa358662_320w.png",
+            texture: "https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/1a6976e5-af46-44be-b7cc-9c2eaa358662_320w.png"
+          }
+        ];
+        if (avatarIdx >= AVATARS.length) avatarIdx = 0;
+
+        function applyAvatar(idx) {
+          avatarIdx = idx;
+          localStorage.setItem("nd_avatar", idx);
+
+          const btnIcon = document.querySelector("#btnAvatar img");
+          if(btnIcon) btnIcon.src = AVATARS[idx].icon;
+
+          for(let i=0; i<AVATARS.length; i++) {
+            const b = document.getElementById("btnAvatar" + i);
+            if(b) {
+              b.style.borderColor = idx === i ? "rgba(255,255,255,0.4)" : "transparent";
+              b.style.boxShadow = idx === i ? "0 0 15px rgba(255,255,255,0.2)" : "none";
+            }
+          }
+
+          if(window.setPlayerTexture) {
+            window.setPlayerTexture(AVATARS[idx].texture);
+          }
+        }
+
+        const btnAvatar = document.getElementById("btnAvatar");
+        const avatarMenu = document.getElementById("avatarMenu");
+        const btnClose = document.getElementById("btnAvatarClose");
+
+        if(btnAvatar) {
+          btnAvatar.onclick = (e) => {
+            e.preventDefault();
+            if(window.AudioSys) window.AudioSys.play("click");
+            avatarMenu.classList.remove("hidden");
+            avatarMenu.classList.add("flex");
+          };
+        }
+
+        if(btnClose) {
+          btnClose.onclick = () => {
+            if(window.AudioSys) window.AudioSys.play("click");
+            avatarMenu.classList.add("hidden");
+            avatarMenu.classList.remove("flex");
+          };
+        }
+
+        for(let i=0; i<AVATARS.length; i++) {
+          document.getElementById("btnAvatar" + i)?.addEventListener("click", () => {
+            if(window.AudioSys) window.AudioSys.play("click");
+            applyAvatar(i);
+          });
+        }
+
+        applyAvatar(avatarIdx);
+      })();
+    </script>
+
+    <script>
+      (function(){
+        levelsData.push({
+          name: "COSMIC JOURNEY",
+          stars: 4,
+          orbs: 850,
+          icon: "lucide:rocket",
+          colorCls: "text-amber-400 bg-amber-500/20 border-amber-500/40 shadow-[0_0_20px_rgba(251,191,36,0.3)]"
+        });
+
+        const _oldBuildLevel = window.buildLevel || buildLevel;
+        window.buildLevel = function(idx) {
+          if (idx === 3) {
+            level.blocks.length=0; level.spikes.length=0; level.pads.length=0; level.orbs.length=0; level.coins.length=0; level.endX=0;
+            const B=(gx,gy)=>level.blocks.push({x:gx*GRID, y:gy*GRID, gx, gy});
+            const S=(gx,gy=0)=>level.spikes.push({x:gx*GRID, y:gy*GRID});
+            const P=(gx)=>level.pads.push({x:gx*GRID, y:0, used:false});
+            const O=(gx,wy)=>level.orbs.push({x:(gx+.5)*GRID, y:wy*GRID, used:false});
+            const C=(gx,wy)=>level.coins.push({x:(gx+.5)*GRID, y:wy*GRID, got:false});
+
+            S(12); S(14); P(18); S(19); S(20); S(21); C(21, 4);
+            B(28,0); B(29,0); B(30,0); S(29,1);
+            O(36, 1.8); S(36); S(37);
+            P(43); S(44); S(45); S(46);
+            B(53,0); B(54,1); B(55,2); B(56,2); B(57,2); S(55,3); C(56, 5);
+            S(63); S(64); O(69, 2); S(69); S(70);
+            P(77); S(78); S(79); S(80); B(86,0); B(87,0); B(88,0); S(87,1);
+            O(94, 2.5); S(94); P(100); S(101); S(102); S(103); C(103, 4.5);
+            B(112,0); B(113,1); B(114,2); B(115,3);
+            S(122); S(123); O(128, 2.2); S(128); S(129);
+            P(136); S(137); S(138); S(139);
+            S(147); S(148); O(153,1.5); S(153);
+            B(160,0); B(161,0); B(162,0); S(161,1);
+            S(169); S(170); P(176); S(177); S(178);
+            level.endX = 186*GRID;
+          } else {
+            _oldBuildLevel(idx);
+          }
+        };
+      })();
+    </script>
+  </body>
+</html>

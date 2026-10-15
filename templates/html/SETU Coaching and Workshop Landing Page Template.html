@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="pl" class="scroll-smooth"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SETU — Coaching i warsztaty</title>
+<meta name="description" content="Coaching jako narzędzie do rozwiązywania problemów, podejmowania decyzji i poszerzania perspektyw. Gosia i Michał Głowaccy.">
+<!-- Google Fonts: DM Sans -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+theme: {
+extend: {
+fontFamily: {
+sans: ['"DM Sans"', 'sans-serif'],
+},
+colors: {
+violet: { 50: '#f5f3ff', 100: '#ede9fe', 700: '#6d28d9', 900: '#4c1d95' },
+sky: { 50: '#f0f9ff', 100: '#e0f2fe', 700: '#0369a1', 900: '#0c4a6e' },
+amber: { 50: '#fffbeb', 100: '#fef3c7', 700: '#b45309', 900: '#78350f' },
+}
+}
+}
+}
+</script>
+<!-- Iconify Solar Linear Icons -->
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<style>
+body {
+-webkit-font-smoothing: antialiased;
+-moz-osx-font-smoothing: grayscale;
+}
+/* Subtelne ukrywanie widoków dla SPA */
+.page-view {
+display: none;
+opacity: 0;
+transition: opacity 0.3s ease-in-out;
+}
+.page-view.active {
+display: block;
+opacity: 1;
+}
+/* Custom Inputs */
+input[type="text"], input[type="email"], textarea, select {
+appearance: none;
+-webkit-appearance: none;
+}
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body class="bg-white text-slate-800 font-sans min-h-screen flex flex-col">
+    <!-- Pinned / Sticky Navigation -->
+    <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
+      <div class="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
+        <a href="#home" data-route="home" class="text-2xl font-semibold tracking-tighter text-slate-900">
+          SETU
+        </a>
+        <div class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
+          <a href="#home" data-route="home" class="hover:text-slate-900 transition-colors">
+            Start
+          </a>
+          <a href="#gosia" data-route="gosia" class="hover:text-amber-700 transition-colors">
+            Gosia
+          </a>
+          <a href="#michal" data-route="michal" class="hover:text-sky-700 transition-colors">
+            Michał
+          </a>
+          <a href="#warsztaty" data-route="warsztaty" class="hover:text-violet-700 transition-colors">
+            Warsztaty
+          </a>
+        </div>
+        <div class="flex items-center gap-4">
+          <button onclick="scrollToContact()" class="hidden md:inline-flex items-center justify-center px-5 py-2.5 text-sm font-medium bg-slate-900 text-white rounded-full hover:bg-slate-800 transition-colors">
+            Umów sesję
+          </button>
+          <!-- Mobile menu button -->
+          <button class="md:hidden text-slate-600 p-2" onclick="document.getElementById('mobile-menu').classList.toggle('hidden')">
+            <iconify-icon icon="solar:hamburger-menu-linear" width="24" stroke-width="1.5"></iconify-icon>
+          </button>
+        </div>
+      </div>
+      <!-- Mobile menu -->
+      <div id="mobile-menu" class="hidden md:hidden bg-white border-t border-slate-100 p-6 flex flex-col gap-4 text-base font-medium">
+        <a href="#home" data-route="home" class="text-slate-600">Start</a>
+        <a href="#gosia" data-route="gosia" class="text-slate-600">Gosia</a>
+        <a href="#michal" data-route="michal" class="text-slate-600">Michał</a>
+        <a href="#warsztaty" data-route="warsztaty" class="text-slate-600">
+          Warsztaty
+        </a>
+        <button onclick="scrollToContact()" class="mt-4 w-full text-center px-5 py-3 text-sm font-medium bg-slate-900 text-white rounded-xl">
+          Umów sesję
+        </button>
+      </div>
+    </nav>
+
+    <main class="flex-grow">
+      <!-- ============================================== -->
+      <!-- HOME PAGE -->
+      <!-- ============================================== -->
+      <div id="page-home" class="page-view active">
+        <!-- Hero -->
+        <section class="max-w-6xl mx-auto px-6 pt-24 pb-16 md:pt-32 md:pb-24 text-center">
+          <h1 class="text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tight text-slate-900 max-w-4xl mx-auto mb-6">
+            Więcej zrozumienia. Więcej wpływu.
+          </h1>
+          <p class="text-lg md:text-xl text-slate-600 max-w-2xl mx-auto mb-10 tracking-tight">
+            Coaching i warsztaty, które pomagają odkryć Twoje możliwości.
+          </p>
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <button onclick="scrollToContact()" class="w-full sm:w-auto px-6 py-3 text-base font-medium bg-slate-900 text-white rounded-full hover:bg-slate-800 transition-colors shadow-sm">
+              Umów sesję
+            </button>
+            <button onclick="scrollToNewsletter()" class="w-full sm:w-auto px-6 py-3 text-base font-medium bg-white text-slate-700 border border-slate-200 rounded-full hover:bg-slate-50 transition-colors shadow-sm">
+              Zapisz się do newslettera
+            </button>
+          </div>
+          <!-- Duo Image Placeholder -->
+          <div class="mt-16 w-full h-[400px] md:h-[600px] rounded-3xl overflow-hidden bg-slate-100 border border-slate-100">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/5a1b13e6-291c-46ca-bff6-dce4d439f96b_1600w.jpg" alt="Gosia i Michał Głowaccy" class="w-full h-full object-cover object-top">
+          </div>
+        </section>
+
+        <!-- Czym jest SETU -->
+        <section class="bg-violet-50/50 py-24 border-y border-violet-100/50">
+          <div class="max-w-6xl mx-auto px-6">
+            <div class="grid md:grid-cols-3 gap-12 md:gap-8">
+              <div>
+                <div class="w-10 h-10 bg-violet-100 text-violet-700 rounded-xl flex items-center justify-center mb-6">
+                  <iconify-icon icon="solar:leaf-linear" width="24" stroke-width="1.5"></iconify-icon>
+                </div>
+                <h3 class="text-xl font-semibold tracking-tight text-slate-900 mb-3">
+                  Wierzymy w Twoje zasoby
+                </h3>
+                <p class="text-sm text-slate-600 leading-relaxed">
+                  Nasi klienci mają więcej zasobów i sprawczości, niż im się
+                  wydaje. Praca polega na wyciągnięciu ich na światło dzienne.
+                </p>
+              </div>
+              <div>
+                <div class="w-10 h-10 bg-violet-100 text-violet-700 rounded-xl flex items-center justify-center mb-6">
+                  <iconify-icon icon="solar:eye-linear" width="24" stroke-width="1.5"></iconify-icon>
+                </div>
+                <h3 class="text-xl font-semibold tracking-tight text-slate-900 mb-3">
+                  Wspieramy w odkrywaniu
+                </h3>
+                <p class="text-sm text-slate-600 leading-relaxed">
+                  Pomagamy poszerzać strefę wpływu i zyskiwać nowe perspektywy,
+                  budując most między tym, co jest, a tym, co ma być.
+                </p>
+              </div>
+              <div class="">
+                <div class="w-10 h-10 bg-violet-100 text-violet-700 rounded-xl flex items-center justify-center mb-6">
+                  <iconify-icon icon="solar:users-group-two-rounded-linear" width="24" stroke-width="1.5"></iconify-icon>
+                </div>
+                <h3 class="text-xl font-semibold tracking-tight text-slate-900 mb-3">
+                  Jak to robimy
+                </h3>
+                <p class="text-sm text-slate-600 leading-relaxed">
+                  Wykorzystujemy coaching 1:1, coaching zespołowy oraz warsztaty
+                  ze skutecznej, empatycznej komunikacji.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Wybierz z kim chcesz pracować -->
+        <section class="py-24 max-w-6xl mx-auto px-6">
+          <div class="text-center mb-16">
+            <h2 class="text-3xl md:text-4xl font-semibold tracking-tight text-slate-900 mb-4">
+              Wybierz, z kim chcesz pracować
+            </h2>
+            <p class="text-base text-slate-600 max-w-2xl mx-auto">
+              Dwie różne energie, jeden cel — Twoja sprawczość. Wybierz osobę,
+              której sposób pracy bardziej Ci odpowiada.
+            </p>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-8 mb-8">
+            <!-- Gosia Card -->
+            <div class="group relative bg-amber-50/50 rounded-3xl p-8 border border-amber-100/50 flex flex-col items-start transition-all hover:shadow-sm hover:bg-amber-50">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2cf86af8-fbf5-4613-9788-ea68f205cb48_320w.jpg" alt="Gosia Głowacka" class="w-20 h-20 rounded-full object-cover mb-6 border-2 border-white shadow-sm object-top">
+              <h3 class="text-2xl font-semibold tracking-tight text-amber-900 mb-3">
+                Masz pomysł na siebie — pomogę Ci po niego sięgnąć.
+              </h3>
+              <p class="text-sm text-amber-900/70 mb-8 flex-grow">
+                Dla kobiet na życiowym rozdrożu — zwłaszcza wokół macierzyństwa
+                — które mają pomysł na nową działalność lub kierunek, ale strach
+                nie pozwala im zrobić pierwszego kroku.
+              </p>
+              <a href="#gosia" data-route="gosia" class="inline-flex items-center gap-2 text-sm font-medium text-amber-800 hover:text-amber-600 transition-colors">
+                Poznaj Gosię
+                <iconify-icon icon="solar:arrow-right-linear" width="18" stroke-width="1.5"></iconify-icon>
+              </a>
+            </div>
+
+            <!-- Michał Card -->
+            <div class="group relative bg-sky-50/50 rounded-3xl p-8 border border-sky-100/50 flex flex-col items-start transition-all hover:shadow-sm hover:bg-sky-50">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/891b61e1-3149-4b29-b473-1c07c8e5b451_800w.jpg" alt="Michał Głowacki" class="w-20 h-20 rounded-full object-cover mb-6 border-2 border-white shadow-sm object-top">
+              <h3 class="text-2xl font-semibold tracking-tight text-sky-900 mb-3">
+                Z zewnątrz wszystko gra. W środku czujesz, że utknąłeś.
+              </h3>
+              <p class="text-sm text-sky-900/70 mb-8 flex-grow">
+                Dla ekspertów, przedsiębiorców i sportowców, którzy wiedzą, że
+                coś musi się zmienić, ale nie wiedzą co. Odzyskaj energię i
+                sprawdź, gdzie naprawdę leży problem.
+              </p>
+              <a href="#michal" data-route="michal" class="inline-flex items-center gap-2 text-sm font-medium text-sky-800 hover:text-sky-600 transition-colors">
+                Poznaj Michała
+                <iconify-icon icon="solar:arrow-right-linear" width="18" stroke-width="1.5"></iconify-icon>
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <!-- Oferta -->
+        <section class="bg-slate-50 py-24 border-y border-slate-100">
+          <div class="max-w-6xl mx-auto px-6">
+            <h2 class="text-3xl font-semibold tracking-tight text-slate-900 mb-12">
+              W czym pomagamy
+            </h2>
+            <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <a href="#gosia" data-route="gosia" class="block p-6 bg-white rounded-2xl border border-slate-200 hover:border-slate-300 transition-colors">
+                <h4 class="text-base font-semibold tracking-tight text-slate-900 mb-2">
+                  Coaching 1:1
+                </h4>
+                <p class="text-xs text-slate-500">
+                  Indywidualna praca nad Twoimi celami i blokadami.
+                </p>
+              </a>
+              <a href="#warsztaty" data-route="warsztaty" class="block p-6 bg-white rounded-2xl border border-slate-200 hover:border-slate-300 transition-colors">
+                <h4 class="text-base font-semibold tracking-tight text-slate-900 mb-2">
+                  Warsztaty komunikacji
+                </h4>
+                <p class="text-xs text-slate-500">
+                  Empatyczna komunikacja, feedback i aktywne słuchanie.
+                </p>
+              </a>
+              <a href="#warsztaty" data-route="warsztaty" class="block p-6 bg-white rounded-2xl border border-slate-200 hover:border-slate-300 transition-colors">
+                <h4 class="text-base font-semibold tracking-tight text-slate-900 mb-2">
+                  Coaching zespołowy
+                </h4>
+                <p class="text-xs text-slate-500">
+                  Dla grup szukających lepszej współpracy i kierunku.
+                </p>
+              </a>
+              <a href="#warsztaty" data-route="warsztaty" class="block p-6 bg-white rounded-2xl border border-slate-200 hover:border-slate-300 transition-colors">
+                <h4 class="text-base font-semibold tracking-tight text-slate-900 mb-2">
+                  Szkolenia dla firm
+                </h4>
+                <p class="text-xs text-slate-500">
+                  Rozwiązywanie konfliktów i budowanie zaufania w organizacji.
+                </p>
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <!-- O nas (short) -->
+        <section class="py-24 max-w-6xl mx-auto px-6">
+          <div class="flex flex-col md:flex-row gap-12 items-center">
+            <div class="w-full md:w-1/2 rounded-3xl overflow-hidden bg-slate-100 aspect-[4/3]">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/9a549638-94e5-4dcb-98f1-5d2e21fdc467_1600w.jpg" alt="Gosia i Michał" class="w-full h-full object-cover object-top">
+            </div>
+            <div class="w-full md:w-1/2">
+              <h2 class="text-3xl font-semibold tracking-tight text-slate-900 mb-6">
+                Doświadczenie z poprzedniego życia
+              </h2>
+              <p class="text-base text-slate-600 mb-4 leading-relaxed">
+                Mamy za sobą ponad 15 lat prowadzenia własnej firmy i agencji
+                tłumaczeń. Znamy biznes, wiemy co znaczy praca na wysokich
+                obrotach i wiemy też, kiedy trzeba się zatrzymać.
+              </p>
+              <p class="text-base text-slate-600 mb-8 leading-relaxed">
+                Łączymy twarde doświadczenie życiowe z nowoczesnymi narzędziami
+                coachingowymi (NVC, SPC/IPRI). Nie teoretyzujemy, bazujemy na
+                tym, co sprawdza się w praktyce.
+              </p>
+              <div class="flex flex-wrap gap-4">
+                <a href="#gosia" data-route="gosia" class="text-sm font-medium text-slate-900 border-b border-slate-900 pb-0.5 hover:text-slate-600 hover:border-slate-600 transition-colors">
+                  Poznaj Gosię
+                </a>
+                <span class="text-slate-300">|</span>
+                <a href="#michal" data-route="michal" class="text-sm font-medium text-slate-900 border-b border-slate-900 pb-0.5 hover:text-slate-600 hover:border-slate-600 transition-colors">
+                  Poznaj Michała
+                </a>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ============================================== -->
+      <!-- GOSIA PAGE -->
+      <!-- ============================================== -->
+      <div id="page-gosia" class="page-view">
+        <section class="max-w-6xl mx-auto px-6 pt-24 pb-16 md:pt-32 md:pb-24">
+          <div class="flex flex-col-reverse md:flex-row gap-12 lg:gap-20 items-center">
+            <div class="w-full md:w-1/2">
+              <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 text-amber-800 text-xs font-medium mb-6">
+                <div class="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
+                Coaching dla kobiet
+              </div>
+              <h1 class="text-4xl md:text-5xl font-semibold tracking-tight text-slate-900 mb-6">
+                Od strachu do pierwszego kroku.
+              </h1>
+              <p class="text-lg text-slate-600 mb-10 leading-relaxed">
+                Pomagam nazwać obawy i przejść przez nie, żeby Twoje zasoby
+                stały się widoczne. Zamieniamy chaos myśli w konkretny,
+                wykonalny plan działania.
+              </p>
+              <button onclick="preselectCoachAndContact('Gosia')" class="px-6 py-3 text-sm font-medium bg-amber-600 text-white rounded-full hover:bg-amber-700 transition-colors shadow-sm">
+                Umów sesję z Gosią
+              </button>
+            </div>
+            <div class="w-full md:w-1/2">
+              <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" alt="Gosia Głowacka" class="w-full aspect-[4/5] object-cover rounded-3xl bg-slate-100 object-top">
+            </div>
+          </div>
+        </section>
+
+        <section class="bg-amber-50/30 py-24 border-y border-amber-100/50">
+          <div class="max-w-4xl mx-auto px-6">
+            <h2 class="text-3xl font-semibold tracking-tight text-slate-900 mb-8">
+              Moja historia
+            </h2>
+            <div class="prose prose-slate max-w-none text-base text-slate-600 leading-relaxed space-y-6">
+              <p>
+                Gdy zostałam mamą, znalazłam się na rozdrożu. To, co znałam do
+                tej pory i co działało przez lata, nagle przestało wystarczać.
+                Czułam, że stoję w miejscu, zablokowana przez presję i własne
+                obawy.
+              </p>
+              <p>
+                Dzięki Porozumieniu Bez Przemocy (NVC) i coachingowi wyszłam z
+                mgły. Znalazłam własną ścieżkę, nie rezygnując z siebie ani ze
+                swoich bliskich. Od ponad 15 lat współprowadzę firmę — w mojej
+                pracy z klientkami łączę pracę z emocjami i trudnościami z
+                bardzo praktyczną wiedzą na temat tego, jak buduje się
+                działalność od zera.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="py-24 max-w-6xl mx-auto px-6">
+          <div class="grid md:grid-cols-2 gap-16">
+            <div>
+              <h2 class="text-3xl font-semibold tracking-tight text-slate-900 mb-6">
+                Poznajesz siebie?
+              </h2>
+              <p class="text-base text-slate-600 mb-6">
+                Pracuję z kobietami, które mają pomysł na nową działalność,
+                karierę lub zupełnie nowy kierunek — najczęściej w kontekście
+                macierzyństwa lub głębokiego przebranżowienia.
+              </p>
+              <ul class="space-y-4 text-sm text-slate-700">
+                <li class="flex items-start gap-3">
+                  <iconify-icon icon="solar:check-circle-linear" width="20" class="text-amber-600 shrink-0 mt-0.5"></iconify-icon>
+                  <span>
+                    Nie blokuje Cię brak pomysłu, blokuje Cię strach przed
+                    startem.
+                  </span>
+                </li>
+                <li class="flex items-start gap-3">
+                  <iconify-icon icon="solar:check-circle-linear" width="20" class="text-amber-600 shrink-0 mt-0.5"></iconify-icon>
+                  <span>
+                    Twój strach maskuje się jako "brak czasu", "brak
+                    odpowiedniego sprzętu" czy "brak pewności siebie".
+                  </span>
+                </li>
+                <li class="flex items-start gap-3">
+                  <iconify-icon icon="solar:check-circle-linear" width="20" class="text-amber-600 shrink-0 mt-0.5"></iconify-icon>
+                  <span>
+                    Potrzebujesz kogoś, kto pomoże Ci ustrukturyzować myśli.
+                  </span>
+                </li>
+              </ul>
+            </div>
+            <div class="bg-slate-50 rounded-3xl p-8 md:p-10 border border-slate-100">
+              <h3 class="text-2xl font-semibold tracking-tight text-slate-900 mb-6">
+                Formy pracy
+              </h3>
+              <div class="space-y-6">
+                <div>
+                  <h4 class="text-base font-semibold text-slate-900 mb-1">
+                    Coaching 1:1
+                  </h4>
+                  <p class="text-xs text-slate-600">
+                    Główna forma współpracy. Spotykamy się regularnie, aby
+                    pracować nad Twoim celem w bezpiecznej i wspierającej
+                    przestrzeni.
+                  </p>
+                </div>
+                <div>
+                  <h4 class="text-base font-semibold text-slate-900 mb-1">
+                    Warsztaty coachingowe
+                  </h4>
+                  <p class="text-xs text-slate-600">
+                    Praca w małych grupach nad konkretnymi wyzwaniami życiowymi
+                    i zawodowymi.
+                  </p>
+                </div>
+                <div>
+                  <h4 class="text-base font-semibold text-slate-900 mb-1">
+                    Warsztaty NVC
+                  </h4>
+                  <p class="text-xs text-slate-600">
+                    Nauka komunikacji, która buduje kontakt z samą sobą i
+                    pozwala stawiać zdrowe granice.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ============================================== -->
+      <!-- MICHAŁ PAGE -->
+      <!-- ============================================== -->
+      <div id="page-michal" class="page-view">
+        <section class="max-w-6xl mx-auto px-6 pt-24 pb-16 md:pt-32 md:pb-24">
+          <div class="flex flex-col-reverse md:flex-row gap-12 lg:gap-20 items-center">
+            <div class="w-full md:w-1/2">
+              <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 text-sky-800 text-xs font-medium mb-6">
+                <div class="w-1.5 h-1.5 rounded-full bg-sky-500"></div>
+                Coaching dla ekspertów
+              </div>
+              <h1 class="text-4xl md:text-5xl font-semibold tracking-tight text-slate-900 mb-6">
+                Prawdziwy problem często leży gdzie indziej, niż go szukasz.
+              </h1>
+              <p class="text-lg text-slate-600 mb-10 leading-relaxed">
+                Nie przychodzę z gotową diagnozą ani złotą metodą. Szukamy
+                razem. Rozwiązujemy to, co faktycznie Cię blokuje.
+              </p>
+              <button onclick="preselectCoachAndContact('Michał')" class="px-6 py-3 text-sm font-medium bg-sky-700 text-white rounded-full hover:bg-sky-800 transition-colors shadow-sm">
+                Umów sesję z Michałem
+              </button>
+            </div>
+            <div class="w-full md:w-1/2">
+              <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" alt="Michał Głowacki" class="w-full aspect-[4/5] object-cover rounded-3xl bg-slate-100 object-top">
+            </div>
+          </div>
+        </section>
+
+        <section class="bg-sky-50/30 py-24 border-y border-sky-100/50">
+          <div class="max-w-4xl mx-auto px-6">
+            <h2 class="text-3xl font-semibold tracking-tight text-slate-900 mb-8">
+              Moja historia
+            </h2>
+            <div class="prose prose-slate max-w-none text-base text-slate-600 leading-relaxed space-y-6">
+              <p>
+                Jestem coachem, przedsiębiorcą z 20-letnim stażem, tłumaczem i
+                triathlonistą. Dwukrotnie ukończyłem zawody Ironman. Pierwszego
+                ukończyłem mimo kontuzji i 8–10 tygodni braku biegania tuż przed
+                startem. Wiem, czym jest dyscyplina i pokonywanie własnych
+                granic.
+              </p>
+              <p>
+                Przed czterdziestką, mimo że z zewnątrz miałem wszystko
+                "ogarnięte", poczułem marazm. Szukałem odpowiedzi na
+                warsztatach, w męskich kręgach, w sporcie. Dopiero studia NVC i
+                kurs coachingu pokazały mi, co tak naprawdę daje mi energię do
+                działania: praca z drugim człowiekiem. Wnoszę do spotkań postawę
+                ciekawości i "niewiedzenia" — bo tylko tak możemy odkryć prawdę.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="py-24 max-w-6xl mx-auto px-6">
+          <div class="grid md:grid-cols-2 gap-16">
+            <div>
+              <h2 class="text-3xl font-semibold tracking-tight text-slate-900 mb-6">
+                Dla kogo pracuję?
+              </h2>
+              <p class="text-base text-slate-600 mb-6">
+                Moimi klientami są doświadczeni eksperci, przedsiębiorcy i
+                sportowcy w wieku 30–50 lat, którzy z zewnątrz są postrzegani
+                jako ludzie sukcesu, a w środku czują, że utknęli w martwym
+                punkcie.
+              </p>
+              <ul class="space-y-4 text-sm text-slate-700">
+                <li class="flex items-start gap-3">
+                  <iconify-icon icon="solar:check-circle-linear" width="20" class="text-sky-700 shrink-0 mt-0.5"></iconify-icon>
+                  <span>
+                    Mierzysz się ze spadkiem motywacji lub słomianym zapałem.
+                  </span>
+                </li>
+                <li class="flex items-start gap-3">
+                  <iconify-icon icon="solar:check-circle-linear" width="20" class="text-sky-700 shrink-0 mt-0.5"></iconify-icon>
+                  <span>
+                    Doświadczasz kontuzji, która nagle odbiera Ci tożsamość
+                    sportowca.
+                  </span>
+                </li>
+                <li class="flex items-start gap-3">
+                  <iconify-icon icon="solar:check-circle-linear" width="20" class="text-sky-700 shrink-0 mt-0.5"></iconify-icon>
+                  <span>
+                    Stoisz przed trudnymi, fundamentalnymi decyzjami życiowymi
+                    lub zawodowymi.
+                  </span>
+                </li>
+              </ul>
+            </div>
+            <div class="bg-slate-50 rounded-3xl p-8 md:p-10 border border-slate-100">
+              <h3 class="text-2xl font-semibold tracking-tight text-slate-900 mb-6">
+                Formy pracy
+              </h3>
+              <div class="space-y-6">
+                <div>
+                  <h4 class="text-base font-semibold text-slate-900 mb-1">
+                    Coaching 1:1
+                  </h4>
+                  <p class="text-xs text-slate-600">
+                    Indywidualne sesje, podczas których schodzimy pod
+                    powierzchnię problemu.
+                  </p>
+                </div>
+                <div>
+                  <h4 class="text-base font-semibold text-slate-900 mb-1">
+                    Coaching grupowy
+                  </h4>
+                  <p class="text-xs text-slate-600">
+                    Praca z menedżerami i liderami, dzielenie się perspektywami
+                    i budowanie kompetencji przywódczych.
+                  </p>
+                </div>
+                <div>
+                  <h4 class="text-base font-semibold text-slate-900 mb-1">
+                    Warsztaty dla organizacji
+                  </h4>
+                  <p class="text-xs text-slate-600">
+                    Rozwiązywanie problemów wewnątrz struktury poprzez poprawę
+                    komunikacji i zrozumienia.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ============================================== -->
+      <!-- WARSZTATY PAGE -->
+      <!-- ============================================== -->
+      <div id="page-warsztaty" class="page-view">
+        <section class="max-w-4xl mx-auto px-6 pt-24 pb-16 md:pt-32 text-center">
+          <h1 class="text-4xl md:text-5xl font-semibold tracking-tight text-slate-900 mb-6">
+            Warsztaty i praca z zespołami.
+          </h1>
+          <p class="text-lg text-slate-600 mb-10 leading-relaxed">
+            Rozwijamy kompetencje komunikacyjne, uczymy udzielania feedbacku i
+            budowania zaufania. Pracujemy na autentycznych zasobach zespołu.
+          </p>
+          <button onclick="scrollToContact()" class="px-6 py-3 text-sm font-medium bg-slate-900 text-white rounded-full hover:bg-slate-800 transition-colors shadow-sm">
+            Zapytaj o warsztat dla Twojej firmy
+          </button>
+        </section>
+
+        <section class="py-16 md:py-24 max-w-6xl mx-auto px-6">
+          <div class="grid md:grid-cols-2 gap-12">
+            <div class="p-8 rounded-3xl border border-violet-100 bg-white shadow-sm">
+              <div class="w-12 h-12 bg-violet-50 text-violet-700 rounded-xl flex items-center justify-center mb-6">
+                <iconify-icon icon="solar:users-group-rounded-linear" width="28" stroke-width="1.5"></iconify-icon>
+              </div>
+              <h2 class="text-2xl font-semibold tracking-tight text-slate-900 mb-4">
+                Warsztaty otwarte i zamknięte
+              </h2>
+              <p class="text-sm text-slate-600 mb-6">
+                Prowadzimy spotkania ukierunkowane na praktyczne umiejętności,
+                które zmieniają jakość codziennej pracy i relacji.
+              </p>
+              <ul class="space-y-3 text-sm text-slate-700">
+                <li class="flex items-center gap-3">
+                  <iconify-icon icon="solar:check-circle-linear" class="text-violet-600"></iconify-icon>
+                  Komunikacja empatyczna (NVC)
+                </li>
+                <li class="flex items-center gap-3">
+                  <iconify-icon icon="solar:check-circle-linear" class="text-violet-600"></iconify-icon>
+                  Trudna sztuka feedbacku
+                </li>
+                <li class="flex items-center gap-3">
+                  <iconify-icon icon="solar:check-circle-linear" class="text-violet-600"></iconify-icon>
+                  Aktywne słuchanie
+                </li>
+                <li class="flex items-center gap-3">
+                  <iconify-icon icon="solar:check-circle-linear" class="text-violet-600"></iconify-icon>
+                  Tematy szyte na miarę na zamówienie
+                </li>
+              </ul>
+            </div>
+
+            <div class="p-8 rounded-3xl border border-slate-100 bg-slate-50 shadow-sm">
+              <div class="w-12 h-12 bg-white text-slate-700 rounded-xl flex items-center justify-center mb-6 shadow-sm border border-slate-100">
+                <iconify-icon icon="solar:buildings-linear" width="28" stroke-width="1.5"></iconify-icon>
+              </div>
+              <h2 class="text-2xl font-semibold tracking-tight text-slate-900 mb-4">
+                Dla firm i organizacji
+              </h2>
+              <p class="text-sm text-slate-600 mb-6 leading-relaxed">
+                Oferujemy coaching grupowy i zespołowy dla struktur, które chcą
+                lepiej się komunikować i rozwiązywać wewnętrzne konflikty.
+              </p>
+              <p class="text-sm text-slate-600 leading-relaxed">
+                Uczymy zespoły rozpoznawać, co tak naprawdę stoi za codziennymi
+                trudnościami, zamiast zatrzymywać się na pierwszej,
+                powierzchownej wersji problemu. Skutkiem jest większe zaufanie i
+                realna efektywność pracy.
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ============================================== -->
+      <!-- SHARED SECTIONS (Newsletter & Contact) -->
+      <!-- ============================================== -->
+
+      <!-- Newsletter Section -->
+      <section id="newsletter-section" class="py-24 bg-white border-t border-slate-100">
+        <div class="max-w-xl mx-auto px-6 text-center">
+          <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-50 text-slate-600 mb-6 border border-slate-100">
+            <iconify-icon icon="solar:letter-linear" width="24" stroke-width="1.5"></iconify-icon>
+          </div>
+          <h2 class="text-2xl font-semibold tracking-tight text-slate-900 mb-3">
+            Newsletter SETU
+          </h2>
+          <p class="text-sm text-slate-600 mb-8">
+            Piszemy o komunikacji, sprawczości i zmianie. Bez spamu.
+          </p>
+
+          <form onsubmit="event.preventDefault(); alert('Dziękujemy za zapis! Wkrótce otrzymasz potwierdzenie na maila.');" class="flex flex-col sm:flex-row gap-3">
+            <input type="email" placeholder="Twój adres e-mail" required="" class="flex-grow px-4 py-3 text-sm text-slate-900 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-100 focus:border-slate-400 transition-all placeholder:text-slate-400 shadow-sm">
+            <button type="submit" class="px-6 py-3 text-sm font-medium bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors whitespace-nowrap shadow-sm">
+              Zapisz mnie
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- Kontakt Section -->
+      <section id="kontakt" class="py-24 bg-slate-50">
+        <div class="max-w-2xl mx-auto px-6">
+          <div class="text-center mb-12">
+            <h2 class="text-3xl font-semibold tracking-tight text-slate-900 mb-4">
+              Porozmawiajmy o współpracy
+            </h2>
+            <p class="text-sm text-slate-600">
+              Napisz do nas, używając poniższego formularza.
+            </p>
+          </div>
+
+          <div id="contact-form-container" class="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+            <form onsubmit="handleContactSubmit(event)" class="space-y-6">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label for="name" class="block text-xs font-medium text-slate-700 mb-2">
+                    Imię
+                  </label>
+                  <input type="text" id="name" required="" class="w-full px-4 py-3 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-100 focus:bg-white focus:border-slate-400 transition-all placeholder:text-slate-400">
+                </div>
+                <div>
+                  <label for="email" class="block text-xs font-medium text-slate-700 mb-2">
+                    E-mail
+                  </label>
+                  <input type="email" id="email" required="" class="w-full px-4 py-3 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-100 focus:bg-white focus:border-slate-400 transition-all placeholder:text-slate-400">
+                </div>
+              </div>
+
+              <div>
+                <label for="contact-coach" class="block text-xs font-medium text-slate-700 mb-2">
+                  Z kim chcesz pracować?
+                </label>
+                <div class="relative">
+                  <select id="contact-coach" required="" class="w-full px-4 py-3 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-100 focus:bg-white focus:border-slate-400 transition-all cursor-pointer">
+                    <option value="" disabled="" selected="">
+                      Wybierz z listy...
+                    </option>
+                    <option value="Gosia">Z Gosią</option>
+                    <option value="Michał">Z Michałem</option>
+                    <option value="Nie wiem">
+                      Nie wiem — pomóżcie mi wybrać
+                    </option>
+                  </select>
+                  <div class="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                    <iconify-icon icon="solar:alt-arrow-down-linear" width="20"></iconify-icon>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label for="message" class="block text-xs font-medium text-slate-700 mb-2">
+                  Wiadomość (opcjonalnie)
+                </label>
+                <textarea id="message" rows="4" class="w-full px-4 py-3 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-100 focus:bg-white focus:border-slate-400 transition-all placeholder:text-slate-400 resize-none"></textarea>
+              </div>
+
+              <button type="submit" class="w-full px-6 py-3 text-sm font-medium bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors shadow-sm">
+                Wyślij wiadomość
+              </button>
+            </form>
+          </div>
+
+          <!-- Success Message (Hidden default) -->
+          <div id="contact-success" class="hidden bg-white p-12 rounded-3xl shadow-sm border border-green-100 text-center">
+            <div class="w-16 h-16 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+              <iconify-icon icon="solar:check-read-linear" width="32" stroke-width="1.5"></iconify-icon>
+            </div>
+            <h3 class="text-2xl font-semibold tracking-tight text-slate-900 mb-2">
+              Wiadomość wysłana
+            </h3>
+            <p class="text-sm text-slate-600">
+              Dziękujemy — odezwiemy się w ciągu 2 dni roboczych.
+            </p>
+            <button onclick="resetContactForm()" class="mt-8 px-6 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
+              Wróć do formularza
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="bg-white border-t border-slate-100 pt-16 pb-8">
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="flex flex-col md:flex-row justify-between items-center gap-6 mb-12">
+          <div class="text-2xl font-semibold tracking-tighter text-slate-900">
+            SETU
+          </div>
+          <div class="flex flex-wrap justify-center gap-6 text-sm text-slate-500">
+            <a href="#home" data-route="home" class="hover:text-slate-900 transition-colors">
+              Start
+            </a>
+            <a href="#gosia" data-route="gosia" class="hover:text-amber-700 transition-colors">
+              Gosia
+            </a>
+            <a href="#michal" data-route="michal" class="hover:text-sky-700 transition-colors">
+              Michał
+            </a>
+            <a href="#warsztaty" data-route="warsztaty" class="hover:text-violet-700 transition-colors">
+              Warsztaty
+            </a>
+          </div>
+          <div class="text-sm text-slate-500">
+            <a href="mailto:kontakt@setu.pl" class="hover:text-slate-900 transition-colors">
+              kontakt@setu.pl
+            </a>
+          </div>
+        </div>
+        <div class="flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-slate-400 border-t border-slate-50 pt-8">
+          <p>
+            ©
+            <script>
+              document.write(new Date().getFullYear())
+            </script>
+            202620262026 SETU. Wszelkie prawa zastrzeżone.
+          </p>
+          <a href="#" class="hover:text-slate-600 transition-colors">
+            Polityka prywatności
+          </a>
+        </div>
+      </div>
+    </footer>
+
+    <!-- JavaScript for Routing and Interactions -->
+    <script>
+      // SPA Navigation Logic
+      function navigateTo(pageId) {
+          // Hide all pages
+          document.querySelectorAll('.page-view').forEach(el => {
+              el.classList.remove('active');
+              setTimeout(() => el.style.display = 'none', 300); // Wait for fade out
+          });
+
+          // Show selected page
+          const targetPage = document.getElementById('page-' + pageId);
+          if(targetPage) {
+              setTimeout(() => {
+                  targetPage.style.display = 'block';
+                  // Trigger reflow
+                  void targetPage.offsetWidth;
+                  targetPage.classList.add('active');
+              }, 300);
+          }
+
+          // Close mobile menu if open
+          document.getElementById('mobile-menu').classList.add('hidden');
+
+          // Scroll to top
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+
+          // Update URL without jump
+          history.pushState(null, null, '#' + pageId);
+      }
+
+      // Handle initial load based on hash
+      window.addEventListener('DOMContentLoaded', () => {
+          const hash = window.location.hash.substring(1);
+          const validRoutes = ['home', 'gosia', 'michal', 'warsztaty'];
+          if(hash && validRoutes.includes(hash)) {
+              // Instantly show without animation on first load
+              document.querySelectorAll('.page-view').forEach(el => {
+                  el.classList.remove('active');
+                  el.style.display = 'none';
+              });
+              const target = document.getElementById('page-' + hash);
+              target.style.display = 'block';
+              target.classList.add('active');
+          }
+      });
+
+      // Add click listeners to all routing links
+      document.querySelectorAll('a[data-route]').forEach(link => {
+          link.addEventListener('click', (e) => {
+              e.preventDefault();
+              navigateTo(link.getAttribute('data-route'));
+          });
+      });
+
+      // Global scroll functions
+      function scrollToContact() {
+          const contactSection = document.getElementById('kontakt');
+          if(contactSection) {
+              contactSection.scrollIntoView({ behavior: 'smooth' });
+          }
+          document.getElementById('mobile-menu').classList.add('hidden');
+      }
+
+      function scrollToNewsletter() {
+          const newsSection = document.getElementById('newsletter-section');
+          if(newsSection) {
+              newsSection.scrollIntoView({ behavior: 'smooth' });
+          }
+      }
+
+      function preselectCoachAndContact(coachName) {
+          const select = document.getElementById('contact-coach');
+          if(select) {
+              select.value = coachName;
+          }
+          scrollToContact();
+      }
+
+      // Contact Form Handling
+      function handleContactSubmit(e) {
+          e.preventDefault();
+          document.getElementById('contact-form-container').classList.add('hidden');
+          document.getElementById('contact-success').classList.remove('hidden');
+      }
+
+      function resetContactForm() {
+          document.getElementById('contact-form-container').querySelector('form').reset();
+          document.getElementById('contact-success').classList.add('hidden');
+          document.getElementById('contact-form-container').classList.remove('hidden');
+      }
+    </script>
+  
+</body></html>

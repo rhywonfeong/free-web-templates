@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Coinbase — Send crypto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+--bg: #050507;
+--card: rgba(19, 19, 22, 0.72);
+--card-solid: #131316;
+--border: rgba(255, 255, 255, 0.06);
+--border-strong: rgba(255, 255, 255, 0.12);
+--text: #f2f3f5;
+--muted: #7a7d85;
+--muted-2: #a0a3ab;
+--blue: #1652f0;
+--blue-hover: #2d67ff;
+--blue-glow: rgba(22, 82, 240, 0.4);
+--green: #00d084;
+--green-glow: rgba(0, 208, 132, 0.3);
+--danger: #ff4d5e;
+}
+html, body {
+background: var(--bg);
+color: var(--text);
+font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+min-height: 100vh;
+overflow-x: hidden;
+-webkit-font-smoothing: antialiased;
+-moz-osx-font-smoothing: grayscale;
+}
+body {
+display: flex;
+flex-direction: column;
+min-height: 100vh;
+position: relative;
+}
+/* -------- ANIMATED BG -------- */
+body::before {
+content: '';
+position: fixed;
+inset: 0;
+background:
+radial-gradient(circle at 20% 30%, rgba(22, 82, 240, 0.15), transparent 40%),
+radial-gradient(circle at 80% 70%, rgba(0, 208, 132, 0.08), transparent 40%),
+radial-gradient(circle at 60% 20%, rgba(151, 71, 255, 0.06), transparent 45%);
+animation: bgDrift 20s ease-in-out infinite alternate;
+z-index: -2;
+pointer-events: none;
+}
+body::after {
+content: '';
+position: fixed;
+inset: 0;
+background-image:
+linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+background-size: 40px 40px;
+z-index: -1;
+pointer-events: none;
+mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+}
+@keyframes bgDrift {
+0%   { transform: translate(0, 0) scale(1); }
+50%  { transform: translate(30px, -20px) scale(1.05); }
+100% { transform: translate(-20px, 30px) scale(1); }
+}
+/* -------- NAV -------- */
+.nav {
+display: flex;
+align-items: center;
+justify-content: space-between;
+padding: 18px 32px;
+border-bottom: 1px solid var(--border);
+backdrop-filter: blur(20px);
+background: rgba(5, 5, 7, 0.5);
+position: sticky;
+top: 0;
+z-index: 10;
+}
+.brand {
+display: flex;
+align-items: center;
+gap: 12px;
+font-weight: 700;
+font-size: 18px;
+color: var(--text);
+text-decoration: none;
+letter-spacing: -0.02em;
+}
+.brand-mark {
+width: 34px;
+height: 34px;
+background: linear-gradient(135deg, #1652f0 0%, #4785ff 100%);
+border-radius: 9px;
+display: flex;
+align-items: center;
+justify-content: center;
+color: white;
+font-weight: 800;
+font-size: 17px;
+box-shadow: 0 4px 16px var(--blue-glow), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.brand:hover .brand-mark { transform: rotate(-8deg) scale(1.08); }
+.brand-name {
+color: var(--blue);
+font-weight: 700;
+background: linear-gradient(135deg, #1652f0 0%, #4785ff 100%);
+-webkit-background-clip: text;
+-webkit-text-fill-color: transparent;
+background-clip: text;
+}
+.nav-right {
+display: flex;
+align-items: center;
+gap: 24px;
+}
+.nav-link {
+color: var(--muted-2);
+font-size: 14px;
+text-decoration: none;
+transition: color 0.2s;
+font-weight: 500;
+}
+.nav-link:hover { color: var(--text); }
+.avatar {
+width: 34px;
+height: 34px;
+border-radius: 50%;
+background: linear-gradient(135deg, #2a2a30, #1a1a1e);
+display: flex;
+align-items: center;
+justify-content: center;
+color: var(--muted-2);
+border: 1px solid var(--border);
+transition: transform 0.2s;
+cursor: pointer;
+}
+.avatar:hover { transform: scale(1.05); }
+/* -------- MAIN -------- */
+main {
+flex: 1;
+display: flex;
+align-items: center;
+justify-content: center;
+padding: 50px 20px;
+}
+.view { display: none; width: 100%; }
+.view.active {
+display: flex;
+justify-content: center;
+animation: viewFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes viewFadeIn {
+from { opacity: 0; transform: translateY(20px); }
+to   { opacity: 1; transform: translateY(0); }
+}
+/* -------- SEND CARD (glass) -------- */
+.send-card {
+background: var(--card);
+border: 1px solid var(--border);
+border-radius: 20px;
+padding: 36px 34px;
+width: 100%;
+max-width: 460px;
+backdrop-filter: blur(24px);
+box-shadow:
+0 24px 60px rgba(0, 0, 0, 0.4),
+inset 0 1px 0 rgba(255, 255, 255, 0.05);
+position: relative;
+overflow: hidden;
+}
+.send-card::before {
+content: '';
+position: absolute;
+top: 0;
+left: -50%;
+width: 200%;
+height: 1px;
+background: linear-gradient(90deg, transparent, rgba(22, 82, 240, 0.6), transparent);
+animation: cardShimmer 4s ease-in-out infinite;
+}
+@keyframes cardShimmer {
+0%, 100% { left: -50%; }
+50%      { left:  50%; }
+}
+.send-card h1 {
+font-size: 24px;
+font-weight: 700;
+margin-bottom: 6px;
+letter-spacing: -0.02em;
+}
+.send-card .sub {
+color: var(--muted);
+font-size: 13px;
+margin-bottom: 26px;
+}
+.field { margin-bottom: 22px; }
+.field-label {
+display: block;
+font-size: 11px;
+color: var(--muted-2);
+margin-bottom: 10px;
+font-weight: 600;
+letter-spacing: 0.04em;
+text-transform: uppercase;
+}
+.field-input, .field-amount {
+width: 100%;
+background: rgba(13, 13, 16, 0.8);
+border: 1px solid var(--border);
+border-radius: 12px;
+padding: 15px 16px;
+color: var(--text);
+font-size: 15px;
+font-family: inherit;
+outline: none;
+transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+.field-input:focus, .field-amount:focus {
+border-color: var(--blue);
+box-shadow: 0 0 0 4px var(--blue-glow);
+background: rgba(13, 13, 16, 1);
+}
+/* -------- ASSET GRID -------- */
+.asset-grid {
+display: grid;
+grid-template-columns: repeat(4, 1fr);
+gap: 10px;
+}
+.asset-tile {
+background: rgba(13, 13, 16, 0.8);
+border: 1px solid var(--border);
+border-radius: 12px;
+padding: 14px 8px 12px;
+text-align: center;
+cursor: pointer;
+transition: background 0.2s, border-color 0.2s, transform 0.15s;
+position: relative;
+overflow: hidden;
+}
+.asset-tile::before {
+content: '';
+position: absolute;
+inset: 0;
+background: radial-gradient(circle at 50% 0%, var(--tile-glow, transparent), transparent 60%);
+opacity: 0;
+transition: opacity 0.3s;
+pointer-events: none;
+}
+.asset-tile:hover { background: rgba(22, 22, 26, 0.9); transform: translateY(-2px); }
+.asset-tile:hover::before { opacity: 0.4; }
+.asset-tile.selected {
+border-color: var(--blue);
+background: rgba(22, 82, 240, 0.08);
+box-shadow: 0 0 0 1px var(--blue), 0 8px 24px var(--blue-glow);
+}
+.asset-tile.selected::before { opacity: 0.7; }
+.asset-tile.selected .asset-ico { animation: pulse 2s ease-in-out infinite; }
+.asset-ico {
+width: 40px;
+height: 40px;
+margin: 0 auto 8px;
+display: flex;
+align-items: center;
+justify-content: center;
+position: relative;
+transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.asset-tile:hover .asset-ico { transform: rotate(-6deg) scale(1.08); }
+.asset-ico svg { width: 100%; height: 100%; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.3)); }
+@keyframes pulse {
+0%, 100% { transform: scale(1); }
+50%      { transform: scale(1.06); }
+}
+.asset-tile[data-symbol="BTC"]  { --tile-glow: rgba(247, 147, 26, 0.4); }
+.asset-tile[data-symbol="ETH"]  { --tile-glow: rgba(98, 126, 234, 0.4); }
+.asset-tile[data-symbol="DOGE"] { --tile-glow: rgba(194, 166, 51, 0.4); }
+.asset-tile[data-symbol="LTC"]  { --tile-glow: rgba(166, 169, 176, 0.4); }
+.asset-name {
+font-size: 12px;
+font-weight: 600;
+color: var(--text);
+letter-spacing: -0.01em;
+}
+.asset-bal {
+font-size: 10px;
+color: var(--muted);
+margin-top: 3px;
+font-family: 'JetBrains Mono', monospace;
+}
+/* -------- AMOUNT -------- */
+.amount-row {
+display: flex;
+justify-content: space-between;
+align-items: baseline;
+margin-bottom: 8px;
+}
+.amount-row .field-label { margin: 0; }
+.amount-row .bal {
+font-size: 11px;
+color: var(--muted-2);
+font-family: 'JetBrains Mono', monospace;
+}
+.amount-wrap { position: relative; }
+.amount-wrap .prefix {
+position: absolute;
+left: 16px;
+top: 50%;
+transform: translateY(-50%);
+color: var(--muted-2);
+font-weight: 600;
+font-size: 15px;
+}
+.field-amount {
+padding-left: 32px;
+padding-right: 60px;
+font-weight: 700;
+font-size: 16px;
+letter-spacing: -0.01em;
+}
+.max-btn {
+position: absolute;
+right: 14px;
+top: 50%;
+transform: translateY(-50%);
+background: rgba(22, 82, 240, 0.12);
+border: none;
+color: var(--blue);
+font-size: 11px;
+font-weight: 700;
+cursor: pointer;
+padding: 5px 10px;
+border-radius: 6px;
+letter-spacing: 0.05em;
+transition: background 0.2s, transform 0.1s;
+}
+.max-btn:hover { background: rgba(22, 82, 240, 0.24); }
+.max-btn:active { transform: translateY(-50%) scale(0.95); }
+.fee-est {
+font-size: 11px;
+color: var(--muted);
+text-align: right;
+margin-top: 8px;
+font-family: 'JetBrains Mono', monospace;
+}
+/* -------- SEND BUTTON -------- */
+.send-btn {
+width: 100%;
+background: linear-gradient(135deg, #1652f0 0%, #2d67ff 100%);
+color: white;
+border: none;
+border-radius: 12px;
+padding: 17px;
+font-size: 15px;
+font-weight: 700;
+cursor: pointer;
+margin-top: 14px;
+font-family: inherit;
+transition: transform 0.05s, box-shadow 0.2s;
+position: relative;
+overflow: hidden;
+box-shadow: 0 8px 24px var(--blue-glow), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+letter-spacing: -0.01em;
+}
+.send-btn::before {
+content: '';
+position: absolute;
+top: 0;
+left: -100%;
+width: 100%;
+height: 100%;
+background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+transition: left 0.6s;
+}
+.send-btn:hover::before { left: 100%; }
+.send-btn:hover { box-shadow: 0 12px 36px var(--blue-glow); }
+.send-btn:active { transform: scale(0.98); }
+.send-btn.processing { background: #0c2f8a; cursor: wait; }
+/* -------- SUCCESS CARD -------- */
+.success-card {
+background: var(--card);
+border: 1px solid var(--border);
+border-radius: 20px;
+padding: 36px 30px;
+width: 100%;
+max-width: 420px;
+text-align: center;
+backdrop-filter: blur(24px);
+box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+position: relative;
+overflow: hidden;
+}
+.success-card::before {
+content: '';
+position: absolute;
+top: 0;
+left: -50%;
+width: 200%;
+height: 1px;
+background: linear-gradient(90deg, transparent, var(--green), transparent);
+animation: cardShimmer 4s ease-in-out infinite;
+}
+.check-wrap {
+width: 76px;
+height: 76px;
+margin: 0 auto 20px;
+border-radius: 50%;
+background: radial-gradient(circle, rgba(0, 208, 132, 0.15) 0%, rgba(0, 208, 132, 0.05) 70%);
+display: flex;
+align-items: center;
+justify-content: center;
+border: 2px solid rgba(0, 208, 132, 0.3);
+position: relative;
+animation: popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.check-wrap::before,
+.check-wrap::after {
+content: '';
+position: absolute;
+inset: -8px;
+border-radius: 50%;
+border: 2px solid var(--green);
+opacity: 0;
+animation: ringPulse 2s ease-out infinite;
+}
+.check-wrap::after { animation-delay: 1s; }
+@keyframes ringPulse {
+0%   { transform: scale(0.9); opacity: 0.6; }
+100% { transform: scale(1.4); opacity: 0; }
+}
+.check {
+width: 38px;
+height: 38px;
+stroke: var(--green);
+stroke-width: 3.5;
+fill: none;
+stroke-linecap: round;
+stroke-linejoin: round;
+filter: drop-shadow(0 0 8px var(--green-glow));
+}
+.check path { stroke-dasharray: 60; stroke-dashoffset: 60; animation: draw 0.6s 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes popIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.success-title {
+font-size: 24px;
+font-weight: 700;
+margin-bottom: 4px;
+letter-spacing: -0.02em;
+}
+.success-sub {
+font-size: 13px;
+color: var(--muted);
+margin-bottom: 6px;
+}
+.tx-hash {
+font-family: 'JetBrains Mono', monospace;
+font-size: 11px;
+color: var(--muted);
+letter-spacing: 0.3px;
+margin-bottom: 26px;
+word-break: break-all;
+padding: 0 20px;
+}
+.detail-row {
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding: 13px 0;
+border-top: 1px solid var(--border);
+font-size: 14px;
+animation: rowFadeIn 0.4s ease-out backwards;
+}
+.detail-row:nth-child(1) { animation-delay: 0.4s; }
+.detail-row:nth-child(2) { animation-delay: 0.5s; }
+.detail-row:nth-child(3) { animation-delay: 0.6s; }
+.detail-row:nth-child(4) { animation-delay: 0.7s; }
+.detail-row:nth-child(5) { animation-delay: 0.8s; }
+.detail-row:nth-child(6) { animation-delay: 0.9s; }
+.detail-row:nth-child(7) { animation-delay: 1.0s; }
+@keyframes rowFadeIn {
+from { opacity: 0; transform: translateX(-10px); }
+to   { opacity: 1; transform: translateX(0); }
+}
+.detail-row:last-of-type { border-bottom: 1px solid var(--border); margin-bottom: 22px; }
+.detail-key { color: var(--muted-2); font-size: 13px; }
+.detail-val { color: var(--text); font-weight: 500; }
+.detail-val.completed {
+color: var(--green);
+font-weight: 700;
+display: inline-flex;
+align-items: center;
+gap: 6px;
+}
+.detail-val.completed::before {
+content: '';
+width: 6px;
+height: 6px;
+background: var(--green);
+border-radius: 50%;
+box-shadow: 0 0 8px var(--green);
+animation: dotPulse 2s ease-in-out infinite;
+}
+@keyframes dotPulse {
+0%, 100% { opacity: 1; transform: scale(1); }
+50%      { opacity: 0.6; transform: scale(0.85); }
+}
+.detail-val.total { font-weight: 800; font-size: 17px; letter-spacing: -0.02em; }
+.actions {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 10px;
+}
+.btn {
+padding: 14px;
+border-radius: 11px;
+font-size: 14px;
+font-weight: 700;
+cursor: pointer;
+border: none;
+font-family: inherit;
+transition: transform 0.05s, background 0.2s, box-shadow 0.2s;
+letter-spacing: -0.01em;
+}
+.btn:active { transform: scale(0.98); }
+.btn-secondary {
+background: rgba(35, 35, 42, 0.6);
+color: var(--text);
+border: 1px solid var(--border);
+}
+.btn-secondary:hover { background: rgba(45, 45, 53, 0.8); }
+.btn-primary {
+background: linear-gradient(135deg, #1652f0 0%, #2d67ff 100%);
+color: white;
+display: flex;
+align-items: center;
+justify-content: center;
+gap: 6px;
+box-shadow: 0 6px 20px var(--blue-glow);
+}
+.btn-primary:hover { box-shadow: 0 8px 28px var(--blue-glow); }
+.btn-primary svg { width: 14px; height: 14px; }
+/* -------- FOOTER -------- */
+footer {
+text-align: center;
+padding: 22px;
+font-size: 12px;
+color: var(--muted);
+border-top: 1px solid var(--border);
+backdrop-filter: blur(20px);
+}
+/* -------- OVERLAY -------- */
+.overlay {
+position: fixed;
+inset: 0;
+background: rgba(0, 0, 0, 0.75);
+backdrop-filter: blur(8px);
+display: none;
+align-items: center;
+justify-content: center;
+z-index: 100;
+animation: overlayFade 0.3s ease-out;
+}
+@keyframes overlayFade { from { opacity: 0; } to { opacity: 1; } }
+.overlay.active { display: flex; }
+.spinner {
+width: 56px;
+height: 56px;
+border: 3px solid var(--border-strong);
+border-top-color: var(--blue);
+border-right-color: var(--blue);
+border-radius: 50%;
+animation: spin 0.9s linear infinite;
+box-shadow: 0 0 20px var(--blue-glow);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.overlay-text {
+color: var(--text);
+font-size: 15px;
+font-weight: 500;
+margin-top: 22px;
+text-align: center;
+animation: textPulse 1.5s ease-in-out infinite;
+}
+@keyframes textPulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+.overlay-inner { text-align: center; }
+/* -------- MOBILE -------- */
+@media (max-width: 500px) {
+.send-card, .success-card { padding: 28px 22px; }
+.asset-grid { gap: 8px; }
+.asset-tile { padding: 12px 4px 10px; }
+.asset-ico { width: 34px; height: 34px; }
+.nav { padding: 14px 20px; }
+}
+</style>
+<script src="https://cdn.tailwindcss.com"></script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body>
+
+<nav class="nav">
+  <a href="#" class="brand">
+    <span class="brand-mark">C</span>
+    <span class="brand-name">Coinbase</span>
+  </a>
+  <div class="nav-right">
+    <a href="#" class="nav-link">Dashboard</a>
+    <div class="avatar">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-3.87 0-7 2.24-7 5v1h14v-1c0-2.76-3.13-5-7-5z"/></svg>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <!-- SEND VIEW -->
+  <section id="view-send" class="view active">
+    <div class="send-card">
+      <h1>Send crypto</h1>
+      <div class="sub">Transfer funds to any wallet or email address</div>
+
+      <div class="field">
+        <label class="field-label">Recipient</label>
+        <input id="recipient" class="field-input" type="text" value="GifterScripts" />
+      </div>
+
+      <div class="field">
+        <label class="field-label">Asset</label>
+        <div class="asset-grid" id="assetGrid">
+
+          <div class="asset-tile selected" data-asset="Bitcoin" data-symbol="BTC" data-balance="65,432.10">
+            <div class="asset-ico">
+              <svg viewBox="0 0 64 64">
+                <defs>
+                  <linearGradient id="btcGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#f7931a"/>
+                    <stop offset="100%" stop-color="#e07800"/>
+                  </linearGradient>
+                </defs>
+                <circle cx="32" cy="32" r="30" fill="url(#btcGrad)"/>
+                <path fill="#fff" d="M43.4 27.1c.6-4-2.5-6.2-6.7-7.7l1.4-5.5-3.4-.8-1.3 5.3c-.9-.2-1.8-.4-2.7-.6l1.4-5.4-3.3-.8-1.4 5.5-6.9-1.7-.9 3.6s2.5.6 2.4.6c1.4.3 1.6 1.2 1.6 2l-1.6 6.3c.1 0 .2.1.3.1h-.3l-2.2 8.8c-.2.4-.6 1-1.6.8l-2.4-.6-1.7 3.8 4.4 1.1c.8.2 1.6.4 2.4.6l-1.4 5.6 3.3.8 1.4-5.5 2.7.7-1.4 5.5 3.4.8 1.4-5.6c5.7 1.1 10 .7 11.8-4.5 1.5-4.2-.1-6.6-3.1-8.2 2.2-.5 3.9-2 4.3-4.9zm-7.7 10.8c-1 4.2-8.1 1.9-10.3 1.4L27.3 32c2.3.6 9.6 1.7 8.5 6zm1.1-10.9c-.9 3.8-6.8 1.9-8.7 1.4l1.7-6.7c1.9.5 8 1.4 7 5.3z"/>
+              </svg>
+            </div>
+            <div class="asset-name">Bitcoin</div>
+            <div class="asset-bal">65,432.10</div>
+          </div>
+
+          <div class="asset-tile" data-asset="Ethereum" data-symbol="ETH" data-balance="43,210.55">
+            <div class="asset-ico">
+              <svg viewBox="0 0 64 64">
+                <defs>
+                  <linearGradient id="ethGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#627eea"/>
+                    <stop offset="100%" stop-color="#4053c9"/>
+                  </linearGradient>
+                </defs>
+                <circle cx="32" cy="32" r="30" fill="url(#ethGrad)"/>
+                <g>
+                  <path fill="#fff" fill-opacity="0.6" d="M32 8v17.5l14.5 6.5z"/>
+                  <path fill="#fff" d="M32 8L17.5 32 32 25.5z"/>
+                  <path fill="#fff" fill-opacity="0.6" d="M32 42.7v13.3l14.5-20z"/>
+                  <path fill="#fff" d="M32 56V42.7L17.5 36z"/>
+                  <path fill="#fff" fill-opacity="0.2" d="M32 40l14.5-8L32 25.5z"/>
+                  <path fill="#fff" fill-opacity="0.6" d="M17.5 32L32 40V25.5z"/>
+                </g>
+              </svg>
+            </div>
+            <div class="asset-name">Ethereum</div>
+            <div class="asset-bal">43,210.55</div>
+          </div>
+
+          <div class="asset-tile" data-asset="Dogecoin" data-symbol="DOGE" data-balance="123,456.78">
+            <div class="asset-ico">
+              <svg viewBox="0 0 64 64">
+                <defs>
+                  <linearGradient id="dogeGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#e0b53a"/>
+                    <stop offset="100%" stop-color="#a58720"/>
+                  </linearGradient>
+                </defs>
+                <circle cx="32" cy="32" r="30" fill="url(#dogeGrad)"/>
+                <path fill="#fff" d="M27 17h9c8 0 12 5.5 12 14.5S43.5 47 35.5 47H27V34h-5v-4h5V17zm5.4 4.4v8.6h6.2v4h-6.2v8.7h3.3c4.9 0 8.4-2.7 8.4-10.5s-3.5-10.8-8.4-10.8h-3.3z"/>
+              </svg>
+            </div>
+            <div class="asset-name">Dogecoin</div>
+            <div class="asset-bal">123,456.78</div>
+          </div>
+
+          <div class="asset-tile" data-asset="Litecoin" data-symbol="LTC" data-balance="79,000.00">
+            <div class="asset-ico">
+              <svg viewBox="0 0 64 64">
+                <defs>
+                  <linearGradient id="ltcGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#b8bcc4"/>
+                    <stop offset="100%" stop-color="#7a7d85"/>
+                  </linearGradient>
+                </defs>
+                <circle cx="32" cy="32" r="30" fill="url(#ltcGrad)"/>
+                <path fill="#fff" d="M22 34.8l3.3-1.3 2.7-11.4h6.3l-2 8.7 4.4-1.8-1 4.2-4.4 1.7-1.6 6.7h13.6l-1.1 4.7H18.5l3-12.7L18 34.8z"/>
+              </svg>
+            </div>
+            <div class="asset-name">Litecoin</div>
+            <div class="asset-bal">79,000.00</div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="amount-row">
+          <label class="field-label">Amount</label>
+          <span class="bal">Balance: <span id="balDisplay">65,432.10 BTC</span></span>
+        </div>
+        <div class="amount-wrap">
+          <span class="prefix">$</span>
+          <input id="amount" class="field-amount" type="text" value="69" />
+          <button type="button" class="max-btn" id="maxBtn">MAX</button>
+        </div>
+        <div class="fee-est">Network fee estimate: ~$0.13</div>
+      </div>
+
+      <button id="sendBtn" class="send-btn" type="button">Send now →</button>
+    </div>
+  </section>
+
+  <!-- SUCCESS VIEW -->
+  <section id="view-success" class="view">
+    <div class="success-card">
+      <div class="check-wrap">
+        <svg class="check" viewBox="0 0 32 32"><path d="M6 17 L13 24 L26 9"/></svg>
+      </div>
+      <div class="success-title">Transaction complete</div>
+      <div class="success-sub">Your transfer was successful</div>
+      <div class="tx-hash">TX: <span id="txHash">0x0x5087m1neb1</span></div>
+
+      <div class="detail-row">
+        <span class="detail-key">Status</span>
+        <span class="detail-val completed">Completed</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-key">Date</span>
+        <span class="detail-val" id="dateVal">—</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-key">To</span>
+        <span class="detail-val" id="toVal">—</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-key">Asset</span>
+        <span class="detail-val" id="assetVal">—</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-key">Amount</span>
+        <span class="detail-val" id="amountVal">—</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-key">Network fee</span>
+        <span class="detail-val" id="feeVal">—</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-key">Total</span>
+        <span class="detail-val total" id="totalVal">—</span>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-secondary" id="againBtn">Send again</button>
+        <button class="btn btn-primary" id="viewBtn">
+          View
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="overlay" class="overlay">
+  <div class="overlay-inner">
+    <div class="spinner"></div>
+    <div class="overlay-text">Broadcasting to network…</div>
+  </div>
+</div>
+
+<footer>
+  &copy; 2026 Coinbase. All rights reserved.
+</footer>
+
+<script>
+(() => {
+  const viewSend    = document.getElementById('view-send');
+  const viewSuccess = document.getElementById('view-success');
+  const overlay     = document.getElementById('overlay');
+  const sendBtn     = document.getElementById('sendBtn');
+  const againBtn    = document.getElementById('againBtn');
+  const viewBtn     = document.getElementById('viewBtn');
+  const maxBtn      = document.getElementById('maxBtn');
+  const amountInput = document.getElementById('amount');
+  const recipInput  = document.getElementById('recipient');
+  const assetGrid   = document.getElementById('assetGrid');
+  const balDisplay  = document.getElementById('balDisplay');
+
+  let selectedAsset = {
+    name: 'Bitcoin',
+    symbol: 'BTC',
+    balance: '65,432.10'
+  };
+
+  assetGrid.addEventListener('click', (e) => {
+    const tile = e.target.closest('.asset-tile');
+    if (!tile) return;
+    for (const t of assetGrid.querySelectorAll('.asset-tile')) t.classList.remove('selected');
+    tile.classList.add('selected');
+    selectedAsset = {
+      name:   tile.dataset.asset,
+      symbol: tile.dataset.symbol,
+      balance: tile.dataset.balance
+    };
+    balDisplay.textContent = `${selectedAsset.balance} ${selectedAsset.symbol}`;
+  });
+
+  maxBtn.addEventListener('click', () => {
+    amountInput.value = selectedAsset.balance.replace(/,/g, '');
+  });
+
+  amountInput.addEventListener('input', (e) => {
+    e.target.value = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+  });
+
+  function randomTxHash() {
+    const chars = '0123456789abcdef';
+    let s = '0x';
+    for (let i = 0; i < 40; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return s;
+  }
+
+  function fmtDate(d) {
+    const m = d.getMonth() + 1;
+    const day = d.getDate();
+    const y = d.getFullYear();
+    let h = d.getHours();
+    const min = String(d.getMinutes()).padStart(2, '0');
+    const sec = String(d.getSeconds()).padStart(2, '0');
+    const suffix = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${m}/${day}/${y}, ${h}:${min}:${sec} ${suffix}`;
+  }
+
+  function switchView(next) {
+    viewSend.classList.remove('active');
+    viewSuccess.classList.remove('active');
+    next.classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  sendBtn.addEventListener('click', () => {
+    const amount = parseFloat(amountInput.value) || 0;
+    if (amount <= 0) { amountInput.focus(); return; }
+    const recipient = recipInput.value.trim() || 'GifterScripts';
+
+    sendBtn.classList.add('processing');
+    sendBtn.textContent = 'Broadcasting…';
+    overlay.classList.add('active');
+
+    setTimeout(() => {
+      overlay.classList.remove('active');
+      sendBtn.classList.remove('processing');
+      sendBtn.textContent = 'Send now →';
+
+      const fee = +(amount * 0.003 + 0.01).toFixed(2);
+      const total = +(amount + fee).toFixed(2);
+      document.getElementById('txHash').textContent   = randomTxHash();
+      document.getElementById('dateVal').textContent  = fmtDate(new Date());
+      document.getElementById('toVal').textContent    = recipient;
+      document.getElementById('assetVal').textContent = selectedAsset.name;
+      document.getElementById('amountVal').textContent = '$' + amount.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2});
+      document.getElementById('feeVal').textContent   = '$' + fee.toFixed(2);
+      document.getElementById('totalVal').textContent = '$' + total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+      switchView(viewSuccess);
+    }, 1600);
+  });
+
+  againBtn.addEventListener('click', () => {
+    switchView(viewSend);
+  });
+
+  viewBtn.addEventListener('click', () => {
+    const hash = document.getElementById('txHash').textContent;
+    alert('Transaction ' + hash + '\nStatus: Confirmed (12 confirmations)');
+  });
+})();
+</script>
+</body>
+</html>

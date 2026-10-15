@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pin API — Deploy</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script></head>
+  <body class="min-h-screen bg-[#fafafa] font-sans text-slate-900 antialiased">
+    <main
+      class="mx-auto flex min-h-screen max-w-6xl flex-col px-5 py-6 sm:px-8 lg:px-10"
+    >
+      <header
+        class="flex items-center justify-between border-b border-slate-200 pb-5"
+      >
+        <a href="#" class="flex items-center gap-3">
+          <div
+            class="flex size-9 items-center justify-center rounded-xl bg-slate-950 text-sm font-semibold tracking-tight text-white"
+          >
+            P
+          </div>
+          <div>
+            <p class="text-sm font-semibold tracking-tight text-slate-950">
+              pin/api
+            </p>
+            <p class="mt-0.5 text-xs text-slate-500">Secure PIN generator</p>
+          </div>
+        </a>
+
+        <div class="flex items-center gap-3">
+          <span
+            class="hidden items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 sm:flex"
+          >
+            <span class="size-1.5 rounded-full bg-emerald-500"></span>
+            Production ready
+          </span>
+          <button
+            class="flex size-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+            aria-label="More options"
+          >
+            <iconify-icon
+              icon="solar:menu-dots-linear"
+              width="19"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </button>
+        </div>
+      </header>
+
+      <section
+        class="grid flex-1 gap-7 py-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:py-12"
+      >
+        <div class="max-w-xl">
+          <div
+            class="mb-5 inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-700"
+          >
+            <iconify-icon
+              icon="solar:shield-check-linear"
+              width="15"
+              stroke-width="1.5"
+            ></iconify-icon>
+            Randomized server-side generation
+          </div>
+
+          <h1
+            class="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl"
+          >
+            Generate a secure
+            <br />
+            four-digit PIN.
+          </h1>
+          <p class="mt-4 max-w-lg text-sm leading-6 text-slate-500">
+            Your deployment is configured to return a fresh numerical PIN with
+            every request. Preview the active response below before publishing.
+          </p>
+
+          <div
+            class="mt-7 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
+          >
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p
+                  class="text-xs font-medium uppercase tracking-wider text-slate-400"
+                >
+                  Generated PIN
+                </p>
+                <output
+                  id="pinOutput"
+                  class="mt-2 block font-mono text-5xl font-semibold tracking-[0.22em] text-slate-950 sm:text-6xl"
+                >
+                  5902
+                </output>
+              </div>
+              <span
+                class="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700"
+              >
+                <span class="size-1.5 rounded-full bg-emerald-500"></span>
+                Valid
+              </span>
+            </div>
+
+            <div
+              class="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row"
+            >
+              <button
+                id="generateButton"
+                class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 active:scale-[0.99]"
+              >
+                <iconify-icon
+                  icon="solar:refresh-linear"
+                  width="18"
+                  stroke-width="1.5"
+                ></iconify-icon>
+                Generate new PIN
+              </button>
+              <button
+                id="copyButton"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                <iconify-icon
+                  icon="solar:copy-linear"
+                  width="18"
+                  stroke-width="1.5"
+                ></iconify-icon>
+                <span id="copyLabel">Copy PIN</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <aside
+          class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+        >
+          <div
+            class="flex items-center justify-between border-b border-slate-100 px-5 py-4"
+          >
+            <div class="flex items-center gap-2">
+              <div
+                class="flex size-7 items-center justify-center rounded-md bg-slate-100 text-slate-600"
+              >
+                <iconify-icon
+                  icon="solar:code-square-linear"
+                  width="16"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </div>
+              <div>
+                <p class="text-sm font-medium text-slate-800">
+                  Deployment config
+                </p>
+                <p class="text-xs text-slate-400">React + Vite API route</p>
+              </div>
+            </div>
+            <button
+              id="statusButton"
+              class="flex items-center gap-1.5 text-xs font-medium text-emerald-700"
+            >
+              <span class="size-1.5 rounded-full bg-emerald-500"></span>
+              Live
+            </button>
+          </div>
+
+          <div class="space-y-5 p-5">
+            <div>
+              <p
+                class="mb-2 text-xs font-medium uppercase tracking-wider text-slate-400"
+              >
+                Endpoint
+              </p>
+              <div
+                class="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2.5"
+              >
+                <code class="min-w-0 truncate font-mono text-xs text-slate-700">
+                  POST /api/generate
+                </code>
+                <button
+                  id="copyEndpoint"
+                  class="shrink-0 text-slate-400 transition hover:text-slate-800"
+                  aria-label="Copy endpoint"
+                >
+                  <iconify-icon
+                    icon="solar:copy-linear"
+                    width="17"
+                    stroke-width="1.5"
+                  ></iconify-icon>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <p
+                class="mb-2 text-xs font-medium uppercase tracking-wider text-slate-400"
+              >
+                Response preview
+              </p>
+              <pre
+                class="overflow-x-auto rounded-lg bg-[#111827] p-4 font-mono text-xs leading-6 text-slate-200"
+              ><span class="text-violet-300">{</span>
+  <span class="text-sky-300">"pin"</span>: <span id="codePin" class="text-emerald-300">"5902"</span>,
+  <span class="text-sky-300">"digits"</span>: <span class="text-amber-300">4</span>
+<span class="text-violet-300">}</span></pre>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div class="rounded-lg border border-slate-100 p-3">
+                <p class="text-xs text-slate-400">Runtime</p>
+                <p class="mt-1 text-sm font-medium text-slate-700">Node 20</p>
+              </div>
+              <div class="rounded-lg border border-slate-100 p-3">
+                <p class="text-xs text-slate-400">Region</p>
+                <p class="mt-1 text-sm font-medium text-slate-700">iad1</p>
+              </div>
+            </div>
+
+            <button
+              id="deployButton"
+              class="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 transition hover:border-slate-300 hover:bg-slate-50"
+            >
+              <iconify-icon
+                icon="solar:upload-linear"
+                width="18"
+                stroke-width="1.5"
+              ></iconify-icon>
+              Deploy latest
+            </button>
+            <p
+              id="deployMessage"
+              class="hidden text-center text-xs font-medium text-emerald-700"
+            >
+              Deployment queued successfully.
+            </p>
+          </div>
+        </aside>
+      </section>
+
+      <footer
+        class="flex flex-col gap-2 border-t border-slate-200 pt-5 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <p>PIN generation uses cryptographically secure randomness.</p>
+        <p class="flex items-center gap-1.5">
+          <iconify-icon
+            icon="solar:clock-circle-linear"
+            width="14"
+            stroke-width="1.5"
+          ></iconify-icon>
+          Last generated just now
+        </p>
+      </footer>
+    </main>
+
+    <script>
+      const pinOutput = document.getElementById('pinOutput');
+      const codePin = document.getElementById('codePin');
+      const generateButton = document.getElementById('generateButton');
+      const copyButton = document.getElementById('copyButton');
+      const copyLabel = document.getElementById('copyLabel');
+      const copyEndpoint = document.getElementById('copyEndpoint');
+      const deployButton = document.getElementById('deployButton');
+      const deployMessage = document.getElementById('deployMessage');
+
+      function generatePin() {
+        const values = new Uint32Array(1);
+        crypto.getRandomValues(values);
+        const pin = String(values[0] % 10000).padStart(4, '0');
+        pinOutput.textContent = pin;
+        codePin.textContent = `"${pin}"`;
+        generateButton.innerHTML = '<iconify-icon icon="solar:check-circle-linear" width="18" stroke-width="1.5"></iconify-icon> PIN generated';
+        setTimeout(() => {
+          generateButton.innerHTML = '<iconify-icon icon="solar:refresh-linear" width="18" stroke-width="1.5"></iconify-icon> Generate new PIN';
+        }, 1000);
+      }
+
+      generateButton.addEventListener('click', generatePin);
+
+      copyButton.addEventListener('click', async () => {
+        await navigator.clipboard.writeText(pinOutput.textContent);
+        copyLabel.textContent = 'Copied';
+        setTimeout(() => copyLabel.textContent = 'Copy PIN', 1400);
+      });
+
+      copyEndpoint.addEventListener('click', async () => {
+        await navigator.clipboard.writeText('POST /api/generate');
+        copyEndpoint.innerHTML = '<iconify-icon icon="solar:check-circle-linear" width="17" stroke-width="1.5"></iconify-icon>';
+        setTimeout(() => {
+          copyEndpoint.innerHTML = '<iconify-icon icon="solar:copy-linear" width="17" stroke-width="1.5"></iconify-icon>';
+        }, 1400);
+      });
+
+      deployButton.addEventListener('click', () => {
+        deployButton.innerHTML = '<iconify-icon icon="solar:refresh-linear" width="18" stroke-width="1.5"></iconify-icon> Deploying…';
+        deployButton.disabled = true;
+        setTimeout(() => {
+          deployButton.innerHTML = '<iconify-icon icon="solar:check-circle-linear" width="18" stroke-width="1.5"></iconify-icon> Deployed';
+          deployMessage.classList.remove('hidden');
+        }, 1100);
+      });
+    </script>
+  </body>
+</html>

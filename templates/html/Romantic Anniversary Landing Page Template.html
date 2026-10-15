@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Forever — A Love Story</title>
+<meta name="description" content="A magical interactive love story experience." />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Dancing+Script:wght@500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
+<style>
+html { scroll-behavior: smooth; }
+body { font-family: 'Inter', sans-serif; }
+.font-script { font-family: 'Dancing Script', cursive; }
+.font-serif-display { font-family: 'Playfair Display', serif; }
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(244,114,182,0.4); border-radius: 9999px; }
+@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-18px)} }
+@keyframes floatUp { 0%{transform:translateY(110vh) scale(.6);opacity:0} 10%{opacity:.9} 90%{opacity:.9} 100%{transform:translateY(-10vh) scale(1.1);opacity:0} }
+@keyframes spinGrad { 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
+@keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+@keyframes pulseHeart { 0%,100%{transform:scale(1)} 50%{transform:scale(1.18)} }
+@keyframes fadeUp { from{opacity:0;transform:translateY(40px)} to{opacity:1;transform:translateY(0)} }
+@keyframes blink { 50%{opacity:0} }
+@keyframes confettiFall { 0%{transform:translateY(-10vh) rotate(0);opacity:1} 100%{transform:translateY(110vh) rotate(720deg);opacity:0} }
+.animate-float { animation: float 6s ease-in-out infinite; }
+.reveal { opacity:0; }
+.reveal.in { animation: fadeUp .9s cubic-bezier(.22,1,.36,1) forwards; }
+.glass { background: rgba(255,255,255,0.08); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border:1px solid rgba(255,255,255,0.12); }
+.grad-text { background: linear-gradient(120deg,#f9a8d4,#c084fc,#f0abfc,#f9a8d4); background-size:200% auto; -webkit-background-clip:text; background-clip:text; color:transparent; animation: shimmer 5s linear infinite; }
+.tilt-card { transition: transform .4s cubic-bezier(.22,1,.36,1), box-shadow .4s; }
+.cursor-blink::after { content:'|'; animation: blink 1s step-end infinite; color:#f9a8d4; }
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="bg-[#0c0a14] text-white overflow-x-hidden selection:bg-pink-400/40">
+
+<!-- ===== Animated background ===== -->
+<div class="fixed inset-0 -z-10 overflow-hidden">
+  <div class="absolute -top-40 -left-40 w-[40rem] h-[40rem] rounded-full bg-pink-500/20 blur-[120px]"></div>
+  <div class="absolute top-1/3 -right-40 w-[36rem] h-[36rem] rounded-full bg-purple-500/20 blur-[120px]"></div>
+  <div class="absolute bottom-0 left-1/4 w-[34rem] h-[34rem] rounded-full bg-fuchsia-500/15 blur-[120px]"></div>
+  <div id="bgHearts" class="absolute inset-0"></div>
+</div>
+
+<!-- ===== Loading Screen ===== -->
+<div id="loader" class="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#0c0a14] transition-opacity duration-700">
+  <div class="relative animate-float">
+    <div class="absolute inset-0 blur-2xl bg-pink-500/40 rounded-full"></div>
+    <iconify-icon icon="solar:heart-bold" class="relative text-pink-400" style="font-size:5rem; animation:pulseHeart 1.4s ease-in-out infinite;"></iconify-icon>
+  </div>
+  <p id="loaderName" class="mt-8 font-script text-3xl grad-text"></p>
+  <div class="mt-6 w-56 h-1.5 rounded-full bg-white/10 overflow-hidden">
+    <div id="loadBar" class="h-full w-0 bg-gradient-to-r from-pink-400 to-purple-400 transition-all duration-200"></div>
+  </div>
+  <p class="mt-3 text-xs text-white/40 tracking-wide">Loading our story...</p>
+</div>
+
+<!-- ===== NAV ===== -->
+<nav class="fixed top-0 inset-x-0 z-50 glass">
+  <div class="max-w-6xl mx-auto px-5 h-14 flex items-center justify-between">
+    <a href="#hero" class="font-semibold tracking-tight text-sm flex items-center gap-2">
+      <iconify-icon icon="solar:heart-bold" class="text-pink-400"></iconify-icon>
+      <span id="navLogo"></span>
+    </a>
+    <div class="hidden md:flex items-center gap-7 text-xs text-white/60">
+      <a href="#story" class="hover:text-white transition">Story</a>
+      <a href="#gallery" class="hover:text-white transition">Gallery</a>
+      <a href="#letter" class="hover:text-white transition">Letter</a>
+      <a href="#game" class="hover:text-white transition">Play</a>
+      <a href="#timeline" class="hover:text-white transition">Memories</a>
+    </div>
+    <button onclick="document.getElementById('finale').scrollIntoView()" class="text-xs px-4 py-2 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 hover:scale-105 transition font-medium">Surprise</button>
+  </div>
+</nav>
+
+<!-- ===== HERO ===== -->
+<section id="hero" class="relative min-h-screen flex flex-col items-center justify-center text-center px-6 pt-20">
+  <div class="reveal in">
+    <p class="font-script text-2xl text-pink-300/90 mb-4">A little story about us</p>
+    <h1 class="font-serif-display text-5xl sm:text-7xl md:text-8xl tracking-tight leading-[0.95]">
+      <span id="heroP1" class="grad-text"></span>
+      <span class="block text-white/30 text-3xl md:text-5xl my-3 italic">&</span>
+      <span id="heroP2" class="grad-text"></span>
+    </h1>
+    <p id="heroTag" class="mt-8 max-w-md mx-auto text-white/50 text-sm md:text-base"></p>
+    <div class="mt-10 flex items-center justify-center gap-4">
+      <a href="#story" class="group px-7 py-3.5 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 text-sm font-medium hover:scale-105 transition flex items-center gap-2 shadow-lg shadow-pink-500/30">
+        Begin our journey
+        <iconify-icon icon="solar:arrow-right-linear" class="group-hover:translate-x-1 transition"></iconify-icon>
+      </a>
+    </div>
+  </div>
+  <div class="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/30 animate-float">
+    <iconify-icon icon="solar:double-alt-arrow-down-linear" style="font-size:1.6rem;"></iconify-icon>
+  </div>
+</section>
+
+<!-- ===== STORY ===== -->
+<section id="story" class="relative py-28 px-6 max-w-4xl mx-auto text-center">
+  <span class="reveal text-xs uppercase tracking-[0.3em] text-pink-300/70">How it began</span>
+  <h2 class="reveal font-serif-display text-4xl md:text-5xl tracking-tight mt-4">Our Story</h2>
+  <p id="storyText" class="reveal mt-8 text-lg md:text-xl leading-relaxed text-white/60 font-light"></p>
+  <div class="reveal mt-10 inline-flex items-center gap-3 glass px-6 py-3 rounded-full">
+    <iconify-icon icon="solar:calendar-mark-linear" class="text-pink-300"></iconify-icon>
+    <span id="storyDate" class="text-sm text-white/70"></span>
+  </div>
+</section>
+
+<!-- ===== GALLERY ===== -->
+<section id="gallery" class="relative py-20 px-6 max-w-6xl mx-auto">
+  <div class="text-center mb-14">
+    <span class="reveal text-xs uppercase tracking-[0.3em] text-pink-300/70">Captured moments</span>
+    <h2 class="reveal font-serif-display text-4xl md:text-5xl tracking-tight mt-4">Photo Gallery</h2>
+  </div>
+  <div id="galleryGrid" class="grid grid-cols-2 md:grid-cols-3 gap-4"></div>
+</section>
+
+<!-- Lightbox -->
+<div id="lightbox" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/80 backdrop-blur-md p-6" onclick="closeLightbox()">
+  <button class="absolute top-6 right-6 text-white/70 hover:text-white"><iconify-icon icon="solar:close-circle-linear" style="font-size:2rem;"></iconify-icon></button>
+  <img id="lightboxImg" class="max-h-[80vh] max-w-full rounded-2xl shadow-2xl" />
+</div>
+
+<!-- ===== LOVE LETTER ===== -->
+<section id="letter" class="relative py-28 px-6 max-w-2xl mx-auto text-center">
+  <span class="reveal text-xs uppercase tracking-[0.3em] text-pink-300/70">For your eyes only</span>
+  <h2 class="reveal font-serif-display text-4xl md:text-5xl tracking-tight mt-4 mb-12">A Love Letter</h2>
+
+  <div id="envelope" class="reveal cursor-pointer mx-auto w-72 h-48 relative group" onclick="openLetter()">
+    <div class="absolute inset-0 glass rounded-2xl flex items-center justify-center group-hover:scale-105 transition">
+      <iconify-icon icon="solar:letter-bold" class="text-pink-300" style="font-size:4rem; animation:pulseHeart 2s ease-in-out infinite;"></iconify-icon>
+    </div>
+    <p class="absolute -bottom-9 inset-x-0 text-sm text-white/50">Tap to open</p>
+  </div>
+
+  <div id="letterPaper" class="hidden glass rounded-3xl p-8 md:p-12 text-left mt-2 shadow-2xl">
+    <p class="font-script text-2xl text-pink-300 mb-6" id="letterGreeting"></p>
+    <p id="letterBody" class="font-script text-2xl md:text-3xl leading-relaxed text-white/85 min-h-[8rem]"></p>
+    <p class="font-script text-2xl text-pink-300 mt-8 text-right" id="letterSign"></p>
+  </div>
+</section>
+
+<!-- ===== MUSIC PLAYER ===== -->
+<section class="relative py-16 px-6 max-w-md mx-auto">
+  <div class="reveal glass rounded-3xl p-6 shadow-2xl">
+    <div class="flex items-center gap-5">
+      <div class="relative">
+        <img id="albumArt" class="w-20 h-20 rounded-2xl object-cover" />
+        <div class="absolute inset-0 rounded-2xl ring-1 ring-white/10"></div>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p id="songTitle" class="font-medium text-sm truncate"></p>
+        <p id="songArtist" class="text-xs text-white/40 truncate"></p>
+      </div>
+      <button id="playBtn" onclick="toggleMusic()" class="w-12 h-12 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center hover:scale-105 transition shrink-0">
+        <iconify-icon id="playIcon" icon="solar:play-bold" style="font-size:1.4rem;"></iconify-icon>
+      </button>
+    </div>
+    <div class="mt-5">
+      <div onclick="seekMusic(event)" class="h-1.5 rounded-full bg-white/10 cursor-pointer overflow-hidden">
+        <div id="musicProgress" class="h-full w-0 bg-gradient-to-r from-pink-400 to-purple-400"></div>
+      </div>
+      <div class="flex justify-between mt-2 text-[0.65rem] text-white/40">
+        <span id="curTime">0:00</span><span id="durTime">0:00</span>
+      </div>
+    </div>
+    <div class="mt-4 flex items-center gap-3">
+      <iconify-icon icon="solar:volume-loud-linear" class="text-white/50"></iconify-icon>
+      <div onclick="setVolume(event)" class="flex-1 h-1.5 rounded-full bg-white/10 cursor-pointer overflow-hidden">
+        <div id="volBar" class="h-full w-3/4 bg-white/40"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== MINI GAME ===== -->
+<section id="game" class="relative py-28 px-6 max-w-3xl mx-auto text-center">
+  <span class="reveal text-xs uppercase tracking-[0.3em] text-pink-300/70">Just for fun</span>
+  <h2 class="reveal font-serif-display text-4xl md:text-5xl tracking-tight mt-4">Catch the Hearts</h2>
+  <p class="reveal text-white/50 text-sm mt-3">Tap as many hearts as you can in 15 seconds 💕</p>
+
+  <div class="reveal mt-8 flex items-center justify-center gap-6">
+    <div class="glass px-5 py-2.5 rounded-full text-sm">Score: <span id="score" class="font-semibold text-pink-300">0</span></div>
+    <div class="glass px-5 py-2.5 rounded-full text-sm">Time: <span id="timer" class="font-semibold text-purple-300">15</span>s</div>
+  </div>
+
+  <div id="gameArea" class="reveal relative mt-8 h-80 glass rounded-3xl overflow-hidden">
+    <div id="gameStart" class="absolute inset-0 flex items-center justify-center">
+      <button onclick="startGame()" class="px-8 py-3.5 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 font-medium hover:scale-105 transition flex items-center gap-2">
+        <iconify-icon icon="solar:gamepad-bold"></iconify-icon> Start Game
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ===== TIMELINE ===== -->
+<section id="timeline" class="relative py-28 px-6 max-w-3xl mx-auto">
+  <div class="text-center mb-16">
+    <span class="reveal text-xs uppercase tracking-[0.3em] text-pink-300/70">Through time</span>
+    <h2 class="reveal font-serif-display text-4xl md:text-5xl tracking-tight mt-4">Our Memories</h2>
+  </div>
+  <div id="timelineList" class="relative space-y-10 before:absolute before:left-4 md:before:left-1/2 before:top-0 before:bottom-0 before:w-px before:bg-gradient-to-b before:from-pink-500/50 before:to-purple-500/50"></div>
+</section>
+
+<!-- ===== FINALE ===== -->
+<section id="finale" class="relative py-32 px-6 text-center overflow-hidden">
+  <div id="confettiBox" class="absolute inset-0 pointer-events-none"></div>
+  <div class="reveal relative">
+    <iconify-icon icon="solar:hearts-bold" class="text-pink-400 mb-6" style="font-size:3.5rem; animation:pulseHeart 1.6s ease-in-out infinite;"></iconify-icon>
+    <h2 class="font-serif-display text-4xl md:text-6xl tracking-tight grad-text">Thank you for being mine</h2>
+    <p id="finaleMsg" class="mt-6 max-w-lg mx-auto text-white/60 text-lg font-light"></p>
+    <button onclick="celebrate()" class="mt-10 px-8 py-4 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 font-medium hover:scale-105 transition flex items-center gap-2 mx-auto shadow-lg shadow-pink-500/30">
+      <iconify-icon icon="solar:magic-stick-3-bold"></iconify-icon> Make it rain hearts
+    </button>
+  </div>
+</section>
+
+<!-- ===== FOOTER ===== -->
+<footer class="relative py-10 px-6 text-center border-t border-white/5">
+  <p class="font-script text-2xl grad-text" id="footerNames"></p>
+  <p class="text-xs text-white/30 mt-2">Made with <iconify-icon icon="solar:heart-bold" class="text-pink-400"></iconify-icon> just for you</p>
+</footer>
+
+<script>
+/* ======================= CONFIG — edit this only ======================= */
+const config = {
+  personName: "Alex",
+  partnerName: "Sam",
+  logo: "A & S",
+  heroTagline: "Two hearts, one beautiful story — written one moment at a time.",
+  story: "It started with a simple hello, a nervous smile, and a moment neither of us expected. From strangers to soulmates, every laugh and every quiet night brought us closer. This is the story of us — still being written, more beautiful each day.",
+  specialDate: "June 12, 2021 — The day everything changed",
+  theme: { c1: "#f472b6", c2: "#c084fc" },
+  photos: [
+    "https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=600&q=80",
+    "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=600&q=80",
+    "https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=600&q=80",
+    "https://images.unsplash.com/photo-1494774157365-9e04c6720e47?w=600&q=80",
+    "https://images.unsplash.com/photo-1520854221256-17451cc331bf?w=600&q=80",
+    "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=600&q=80"
+  ],
+  letter: {
+    greeting: "My dearest love,",
+    body: "Every morning I wake up grateful that you're mine. You are my favorite hello and my hardest goodbye. With you, ordinary days feel like magic, and I can't wait to spend forever finding new ways to love you.",
+    sign: "Forever yours,"
+  },
+  music: {
+    title: "Perfect",
+    artist: "Our Song",
+    art: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&q=80",
+    src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3"
+  },
+  timeline: [
+    { date: "2021", title: "First Meeting", text: "The day our paths crossed and the universe smiled.", img: "https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=400&q=80" },
+    { date: "2022", title: "First Trip", text: "Getting lost together in a new city, finding ourselves.", img: "https://images.unsplash.com/photo-1530653333484-8e3c9c2c1c11?w=400&q=80" },
+    { date: "2023", title: "Moving In", text: "Our first home, our first plants, our first forever.", img: "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?w=400&q=80" },
+    { date: "2024", title: "And Beyond", text: "Every day choosing you, again and again.", img: "https://images.unsplash.com/photo-1494774157365-9e04c6720e47?w=400&q=80" }
+  ],
+  finaleMessage: "Here's to all our yesterdays and every tomorrow. I love you more than words could ever say."
+};
+/* ====================================================================== */
+
+// inject config
+document.getElementById('loaderName').textContent = config.partnerName;
+document.getElementById('navLogo').textContent = config.logo;
+document.getElementById('heroP1').textContent = config.personName;
+document.getElementById('heroP2').textContent = config.partnerName;
+document.getElementById('heroTag').textContent = config.heroTagline;
+document.getElementById('storyText').textContent = config.story;
+document.getElementById('storyDate').textContent = config.specialDate;
+document.getElementById('letterGreeting').textContent = config.letter.greeting;
+document.getElementById('letterSign').textContent = config.letter.sign + " " + config.personName;
+document.getElementById('songTitle').textContent = config.music.title;
+document.getElementById('songArtist').textContent = config.music.artist;
+document.getElementById('albumArt').src = config.music.art;
+document.getElementById('finaleMsg').textContent = config.finaleMessage;
+document.getElementById('footerNames').textContent = config.personName + " & " + config.partnerName;
+
+// gallery
+const gg = document.getElementById('galleryGrid');
+config.photos.forEach((p,i)=>{
+  const d = document.createElement('div');
+  d.className = "tilt-card reveal relative rounded-2xl overflow-hidden cursor-pointer group" + (i%3===0?" md:row-span-2":"");
+  d.innerHTML = `<img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg" class="w-full h-full object-cover group-hover:scale-110 transition duration-700"/>
+    <div class="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition flex items-end p-3">
+      <iconify-icon icon="solar:magnifer-zoom-in-linear" class="text-white"></iconify-icon></div>`;
+  d.onclick = ()=> openLightbox(p);
+  d.addEventListener('mousemove', e=>{
+    const r=d.getBoundingClientRect(); const x=(e.clientX-r.left)/r.width-.5; const y=(e.clientY-r.top)/r.height-.5;
+    d.style.transform=`perspective(800px) rotateY(${x*8}deg) rotateX(${-y*8}deg) scale(1.02)`;
+  });
+  d.addEventListener('mouseleave',()=> d.style.transform="");
+  gg.appendChild(d);
+});
+
+// timeline
+const tl = document.getElementById('timelineList');
+config.timeline.forEach((t,i)=>{
+  const left = i%2===0;
+  const el = document.createElement('div');
+  el.className = `reveal relative md:flex ${left?'md:justify-start':'md:justify-end'} pl-12 md:pl-0`;
+  el.innerHTML = `
+    <div class="absolute left-2.5 md:left-1/2 md:-translate-x-1/2 top-2 w-3 h-3 rounded-full bg-pink-400 ring-4 ring-pink-400/20"></div>
+    <div class="glass rounded-2xl overflow-hidden md:w-[45%] hover:scale-[1.02] transition">
+      <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/4734259a-bad7-422f-981e-ce01e79184f2_1600w.jpg" class="w-full h-36 object-cover"/>
+      <div class="p-5">
+        <span class="text-xs text-pink-300 font-medium">${t.date}</span>
+        <h3 class="font-serif-display text-xl mt-1">${t.title}</h3>
+        <p class="text-sm text-white/50 mt-2">${t.text}</p>
+      </div>
+    </div>`;
+  tl.appendChild(el);
+});
+
+// lightbox
+function openLightbox(src){ document.getElementById('lightboxImg').src=src; const l=document.getElementById('lightbox'); l.classList.remove('hidden'); l.classList.add('flex'); }
+function closeLightbox(){ const l=document.getElementById('lightbox'); l.classList.add('hidden'); l.classList.remove('flex'); }
+
+// letter
+let letterOpened=false;
+function openLetter(){
+  if(letterOpened) return; letterOpened=true;
+  document.getElementById('envelope').style.display='none';
+  const paper=document.getElementById('letterPaper'); paper.classList.remove('hidden');
+  paper.style.animation="fadeUp .8s ease forwards";
+  const body=document.getElementById('letterBody'); const text=config.letter.body; let i=0;
+  body.classList.add('cursor-blink');
+  const t=setInterval(()=>{ body.textContent=text.slice(0,i); i++; if(i>text.length){clearInterval(t);body.classList.remove('cursor-blink');} },35);
+}
+
+// music
+const audio = new Audio(config.music.src); audio.volume=0.75; audio.loop=true;
+let playing=false;
+function toggleMusic(){
+  if(playing){audio.pause(); document.getElementById('playIcon').setAttribute('icon','solar:play-bold');}
+  else{audio.play().catch(()=>{}); document.getElementById('playIcon').setAttribute('icon','solar:pause-bold');}
+  playing=!playing;
+}
+function fmt(s){ if(isNaN(s))return"0:00"; const m=Math.floor(s/60); const x=Math.floor(s%60); return m+":"+(x<10?'0':'')+x; }
+audio.addEventListener('timeupdate',()=>{
+  const p=(audio.currentTime/audio.duration)*100||0;
+  document.getElementById('musicProgress').style.width=p+'%';
+  document.getElementById('curTime').textContent=fmt(audio.currentTime);
+  document.getElementById('durTime').textContent=fmt(audio.duration);
+});
+function seekMusic(e){ const r=e.currentTarget.getBoundingClientRect(); audio.currentTime=((e.clientX-r.left)/r.width)*audio.duration; }
+function setVolume(e){ const r=e.currentTarget.getBoundingClientRect(); const v=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)); audio.volume=v; document.getElementById('volBar').style.width=(v*100)+'%'; }
+
+// game
+let gameScore=0, gameTime=15, gameInt, spawnInt;
+function startGame(){
+  gameScore=0; gameTime=15; document.getElementById('score').textContent=0; document.getElementById('timer').textContent=15;
+  document.getElementById('gameStart').style.display='none';
+  const area=document.getElementById('gameArea');
+  spawnInt=setInterval(()=>spawnHeart(area),650);
+  gameInt=setInterval(()=>{ gameTime--; document.getElementById('timer').textContent=gameTime; if(gameTime<=0) endGame(); },1000);
+}
+function spawnHeart(area){
+  const h=document.createElement('button');
+  h.className="absolute"; h.style.left=Math.random()*80+5+'%'; h.style.top=Math.random()*70+10+'%';
+  h.innerHTML=`<iconify-icon icon="solar:heart-bold" class="text-pink-400" style="font-size:${1.8+Math.random()*1.2}rem;"></iconify-icon>`;
+  h.style.transition="transform .2s"; h.style.animation="pulseHeart 1s infinite";
+  h.onclick=()=>{ gameScore++; document.getElementById('score').textContent=gameScore; burst(h); h.remove(); };
+  area.appendChild(h);
+  setTimeout(()=>h.remove(),2000);
+}
+function burst(el){
+  const r=el.getBoundingClientRect(); const area=document.getElementById('gameArea').getBoundingClientRect();
+  for(let i=0;i<6;i++){
+    const p=document.createElement('div'); p.className="absolute"; p.style.left=(r.left-area.left)+'px'; p.style.top=(r.top-area.top)+'px';
+    p.innerHTML=`<iconify-icon icon="solar:heart-bold" class="text-pink-300" style="font-size:.8rem;"></iconify-icon>`;
+    const ang=Math.random()*6.28, dist=30+Math.random()*30;
+    p.style.transition="all .6s ease-out"; document.getElementById('gameArea').appendChild(p);
+    requestAnimationFrame(()=>{ p.style.transform=`translate(${Math.cos(ang)*dist}px,${Math.sin(ang)*dist}px)`; p.style.opacity=0; });
+    setTimeout(()=>p.remove(),600);
+  }
+}
+function endGame(){
+  clearInterval(gameInt); clearInterval(spawnInt);
+  const area=document.getElementById('gameArea');
+  document.querySelectorAll('#gameArea button').forEach(b=>{ if(b.parentElement===area && b.id!=='') {} });
+  const win=document.createElement('div'); win.className="absolute inset-0 flex flex-col items-center justify-center glass";
+  win.innerHTML=`<iconify-icon icon="solar:cup-star-bold" class="text-yellow-300 mb-3" style="font-size:3rem;animation:pulseHeart 1.2s infinite;"></iconify-icon>
+    <p class="font-serif-display text-2xl">You caught ${gameScore} hearts!</p>
+    <p class="text-white/50 text-sm mt-1">${gameScore>10?'You really love me 💕':'Aww, play again?'}</p>
+    <button onclick="resetGame()" class="mt-5 px-6 py-2.5 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 text-sm">Play again</button>`;
+  area.appendChild(win); celebrate();
+}
+function resetGame(){
+  const area=document.getElementById('gameArea'); area.innerHTML='';
+  const s=document.createElement('div'); s.id='gameStart'; s.className="absolute inset-0 flex items-center justify-center";
+  s.innerHTML=`<button onclick="startGame()" class="px-8 py-3.5 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 font-medium hover:scale-105 transition flex items-center gap-2"><iconify-icon icon="solar:gamepad-bold"></iconify-icon> Start Game</button>`;
+  area.appendChild(s);
+}
+
+// background floating hearts
+const bgh=document.getElementById('bgHearts');
+for(let i=0;i<14;i++){
+  const h=document.createElement('div');
+  h.innerHTML=`<iconify-icon icon="solar:heart-bold" style="color:rgba(244,114,182,${0.15+Math.random()*0.25});font-size:${0.8+Math.random()*1.6}rem;"></iconify-icon>`;
+  h.style.position='absolute'; h.style.left=Math.random()*100+'%';
+  h.style.animation=`floatUp ${10+Math.random()*12}s linear ${Math.random()*10}s infinite`;
+  bgh.appendChild(h);
+}
+
+// confetti / hearts rain finale
+function celebrate(){
+  const box=document.getElementById('confettiBox');
+  const colors=['#f472b6','#c084fc','#f0abfc','#fbcfe8','#fde047'];
+  for(let i=0;i<60;i++){
+    const c=document.createElement('div');
+    const heart=Math.random()>0.5;
+    if(heart){ c.innerHTML=`<iconify-icon icon="solar:heart-bold" style="color:${colors[i%colors.length]};font-size:${0.8+Math.random()}rem;"></iconify-icon>`; }
+    else{ c.style.width='8px'; c.style.height='12px'; c.style.background=colors[i%colors.length]; c.style.borderRadius='2px'; }
+    c.style.position='absolute'; c.style.left=Math.random()*100+'%'; c.style.top='-5%';
+    c.style.animation=`confettiFall ${2+Math.random()*2.5}s linear ${Math.random()}s forwards`;
+    box.appendChild(c); setTimeout(()=>c.remove(),5000);
+  }
+}
+
+// scroll reveal
+const io=new IntersectionObserver((es)=>{ es.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target);} }); },{threshold:0.12});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+// loader
+let prog=0;
+const li=setInterval(()=>{
+  prog+=Math.random()*18; if(prog>100)prog=100;
+  document.getElementById('loadBar').style.width=prog+'%';
+  if(prog>=100){ clearInterval(li); setTimeout(()=>{ const l=document.getElementById('loader'); l.style.opacity=0; setTimeout(()=>l.style.display='none',700); },400); }
+},200);
+</script>
+</body>
+</html>

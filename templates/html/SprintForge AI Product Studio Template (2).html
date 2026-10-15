@@ -1,0 +1,1071 @@
+<html lang="en" class="scroll-smooth"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SprintForge — Ship AI Products in Weeks, Not Quarters</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;family=Instrument+Serif:ital@0;1&amp;display=swap" rel="stylesheet">
+<style>
+h1,h2,h3{letter-spacing:-0.035em}
+.font-serif-accent{font-family:'Instrument Serif',Georgia,serif;font-weight:400;font-style:italic;letter-spacing:-0.01em}
+.wchar{display:inline-block;font-variation-settings:'wght' 600;transition:font-variation-settings .15s linear;will-change:font-variation-settings}
+</style></head>
+  <body class="bg-[#ECEDEE] text-[#232427] antialiased" style="font-family:'Inter',sans-serif">
+    <!-- PAGE SHELL -->
+    <div class="max-w-[1440px] mx-auto px-2 sm:px-4 pt-2 sm:pt-4">
+      <!-- ================= HERO ================= -->
+      <section class="relative overflow-hidden rounded-[28px] sm:rounded-[40px] bg-[#F4F5F5] shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_20px_60px_-30px_rgba(35,36,39,0.25)] min-h-[100svh] flex flex-col">
+        <canvas id="meshGL" class="pointer-events-none absolute inset-0 z-0 h-full w-full opacity-70"></canvas>
+
+        <!-- Atmosphere -->
+        <div id="bloom" class="pointer-events-none absolute -right-40 top-0 h-[720px] w-[720px] rounded-full opacity-70 blur-3xl transition-transform duration-700 ease-out" style="background: radial-gradient(circle at 55% 45%, rgba(227,74,50,0.55), rgba(240,120,70,0.28) 40%, rgba(244,245,245,0) 70%)"></div>
+        <div class="pointer-events-none absolute -left-52 top-24 h-[640px] w-[640px] rounded-full opacity-60 blur-3xl" style="background: radial-gradient(circle at 50% 50%, rgba(46,48,52,0.35), rgba(120,124,130,0.15) 45%, rgba(244,245,245,0) 72%)"></div>
+        <div class="pointer-events-none absolute right-1/4 -bottom-40 h-[420px] w-[560px] rounded-full opacity-40 blur-3xl" style="background: radial-gradient(circle at 50% 50%, rgba(227,74,50,0.25), rgba(244,245,245,0) 70%)"></div>
+
+        <!-- FLOATING NAV -->
+        <div class="sticky top-3 sm:top-5 z-50 flex justify-center px-3 pt-4 sm:pt-6">
+          <nav id="nav" class="flex w-full max-w-[880px] items-center justify-between rounded-full border border-white/70 bg-white/75 py-2.5 pl-5 pr-2.5 backdrop-blur-xl transition-shadow duration-500 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_10px_30px_-14px_rgba(35,36,39,0.25)]">
+            <a href="#" class="flex items-center gap-2.5">
+              <span class="relative flex h-6 w-9 items-center">
+                <span class="absolute left-0 h-6 w-6 rounded-full bg-[#171719]"></span>
+                <span class="absolute left-3.5 h-6 w-6 rounded-full bg-[#E34A32]"></span>
+              </span>
+              <span class="text-base font-semibold">SprintForge</span>
+            </a>
+            <div class="hidden md:flex items-center gap-1 text-sm font-medium text-[#4b4d52]">
+              <a href="#" class="rounded-full px-3.5 py-2 hover:bg-black/5 transition">
+                Home
+              </a>
+              <a href="#services" class="rounded-full px-3.5 py-2 hover:bg-black/5 transition">
+                Services
+              </a>
+              <a href="#work" class="rounded-full px-3.5 py-2 hover:bg-black/5 transition">
+                Work
+              </a>
+              <a href="#packages" class="rounded-full px-3.5 py-2 hover:bg-black/5 transition">
+                Packages
+              </a>
+              <a href="#contact" class="rounded-full px-3.5 py-2 hover:bg-black/5 transition">
+                Contact
+              </a>
+            </div>
+            <div class="flex items-center gap-2">
+              <a href="#contact" class="group hidden sm:inline-flex items-center gap-1.5 rounded-full bg-[#171719] px-5 py-2.5 text-sm font-medium text-white transition-all duration-300 hover:-translate-y-0.5 shadow-[0_1px_0_rgba(255,255,255,0.25)_inset,0_10px_22px_-10px_rgba(23,23,25,0.7)] hover:shadow-[0_1px_0_rgba(255,255,255,0.3)_inset,0_16px_28px_-10px_rgba(23,23,25,0.8)]">
+                Book a Sprint
+                <i data-lucide="arrow-right" class="h-4 w-4 opacity-0 -ml-4 transition-all duration-300 group-hover:opacity-100 group-hover:ml-0" stroke-width="1.5"></i>
+              </a>
+              <button id="menuBtn" class="md:hidden flex h-10 w-10 items-center justify-center rounded-full border border-black/5 bg-white shadow-sm">
+                <i data-lucide="menu" class="h-5 w-5" stroke-width="1.5"></i>
+              </button>
+            </div>
+          </nav>
+        </div>
+
+        <!-- Mobile sheet -->
+        <div id="mobileMenu" class="hidden md:hidden relative z-40 mx-4 mt-3 rounded-3xl border border-white/70 bg-white/90 p-4 backdrop-blur-xl shadow-lg">
+          <div class="flex flex-col text-base font-medium">
+            <a href="#" class="rounded-xl px-4 py-3 hover:bg-black/5">Home</a>
+            <a href="#services" class="rounded-xl px-4 py-3 hover:bg-black/5">
+              Services
+            </a>
+            <a href="#work" class="rounded-xl px-4 py-3 hover:bg-black/5">
+              Work
+            </a>
+            <a href="#packages" class="rounded-xl px-4 py-3 hover:bg-black/5">
+              Packages
+            </a>
+            <a href="#contact" class="rounded-xl px-4 py-3 hover:bg-black/5">
+              Contact
+            </a>
+            <a href="#contact" class="mt-2 rounded-full bg-[#171719] px-5 py-3 text-center text-white shadow-lg">
+              Book a Sprint
+            </a>
+          </div>
+        </div>
+
+        <!-- HERO CONTENT -->
+        <div class="relative z-10 mx-auto flex max-w-5xl flex-col items-center px-6 pb-28 pt-16 text-center sm:pt-24 lg:pb-36 flex-1 justify-center">
+          <!-- Badge -->
+          <div data-rise="" class="opacity-0 translate-y-4 transition-all duration-700 inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/80 px-4 py-2 text-sm font-medium text-[#E34A32] backdrop-blur shadow-[0_6px_16px_-8px_rgba(35,36,39,0.25)]">
+            <i data-lucide="zap" class="h-4 w-4" stroke-width="1.5"></i>
+            AI-Native Product Studio
+          </div>
+
+          <!-- Headline + tiles -->
+          <div class="relative mt-7">
+            <h1 data-rise="" class="opacity-0 translate-y-4 transition-all duration-700 delay-150 text-5xl font-semibold leading-[1.02] text-[#2E3034] sm:text-7xl lg:text-8xl">
+              Ship AI products
+              <br>
+              <span class="relative inline-block font-serif-accent">
+                in weeks
+                <span class="absolute -right-6 top-1/2 hidden h-16 w-40 -translate-y-1/2 translate-x-full rounded-full bg-gradient-to-br from-[#F05A3C] to-[#C93A24] opacity-90 blur-[1px] lg:block shadow-[0_20px_40px_-14px_rgba(227,74,50,0.6)]"></span>
+              </span>
+            </h1>
+
+            <!-- Floating tiles -->
+            <div data-drift="" class="absolute -right-8 -top-10 hidden rotate-6 md:flex h-16 w-16 items-center justify-center rounded-2xl bg-white border border-black/5 shadow-[0_18px_35px_-14px_rgba(35,36,39,0.35)]">
+              <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-white">
+                <i data-lucide="workflow" class="h-5 w-5" stroke-width="1.5"></i>
+              </span>
+            </div>
+            <div data-drift="" class="absolute -right-24 top-16 hidden -rotate-6 lg:flex h-16 w-16 items-center justify-center rounded-2xl bg-white border border-black/5 shadow-[0_18px_35px_-14px_rgba(35,36,39,0.35)]" style="transition-delay:.2s">
+              <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">
+                <i data-lucide="bot" class="h-5 w-5" stroke-width="1.5"></i>
+              </span>
+            </div>
+            <div data-drift="" class="absolute -bottom-14 right-6 hidden rotate-3 md:flex h-16 w-16 items-center justify-center rounded-2xl bg-white border border-black/5 shadow-[0_18px_35px_-14px_rgba(35,36,39,0.35)]" style="transition-delay:.4s">
+              <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F7F7F5] border border-black/10 text-[#E34A32]">
+                <i data-lucide="sparkles" class="h-5 w-5" stroke-width="1.5"></i>
+              </span>
+            </div>
+          </div>
+
+          <!-- Paragraph -->
+          <p data-rise="" class="opacity-0 translate-y-4 transition-all duration-700 delay-300 mt-10 max-w-xl text-lg leading-relaxed text-[#55575c]">
+            We embed with your team to scope, build, and launch AI features that
+            make it past the demo — fully wired into your stack.
+          </p>
+
+          <!-- CTAs -->
+          <div data-rise="" class="opacity-0 translate-y-4 transition-all duration-700 delay-500 mt-9 flex flex-col items-center gap-3 sm:flex-row">
+            <a href="#services" class="group inline-flex items-center gap-2 rounded-full bg-[#171719] px-7 py-3.5 text-base font-medium text-white transition-all duration-300 hover:-translate-y-0.5 shadow-[0_1px_0_rgba(255,255,255,0.25)_inset,0_14px_28px_-12px_rgba(23,23,25,0.75)] hover:shadow-[0_1px_0_rgba(255,255,255,0.3)_inset,0_20px_34px_-12px_rgba(23,23,25,0.85)]">
+              Explore services
+              <i data-lucide="arrow-right" class="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" stroke-width="1.5"></i>
+            </a>
+            <a href="#packages" class="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white/90 px-7 py-3.5 text-base font-medium text-[#2E3034] transition-all duration-300 hover:-translate-y-0.5 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_10px_22px_-12px_rgba(35,36,39,0.3)] hover:shadow-[0_16px_30px_-12px_rgba(35,36,39,0.35)]">
+              View sprint packages
+            </a>
+          </div>
+          <div data-rise="" class="opacity-0 translate-y-4 transition-all duration-700 delay-700 mt-14">
+            <p class="text-xs font-medium uppercase tracking-widest text-[#8a8c91]">
+              Trusted by product teams at
+            </p>
+            <div class="mt-5 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[#55575c]">
+              <span class="text-lg font-semibold opacity-60">Alderpay</span>
+              <span class="text-lg font-semibold opacity-60">Vantrail</span>
+              <span class="text-lg font-semibold opacity-60">Fernwave</span>
+              <span class="text-lg font-semibold opacity-60">Northbeam</span>
+              <span class="text-lg font-semibold opacity-60">Quotient</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Preview chip -->
+        <div data-rise="" class="opacity-0 translate-y-4 transition-all duration-700 delay-700 absolute bottom-6 right-6 z-20 hidden items-center gap-3 rounded-2xl border border-white/70 bg-white/85 p-2.5 pr-4 backdrop-blur lg:flex shadow-[0_14px_30px_-14px_rgba(35,36,39,0.35)]">
+          <span class="flex h-10 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-[#2E3034] to-[#55575c]">
+            <i data-lucide="layout-grid" class="h-4 w-4 text-white/80" stroke-width="1.5"></i>
+          </span>
+          <div class="text-left">
+            <p class="text-sm font-semibold leading-tight">Next sprint slot</p>
+            <p class="text-xs text-[#8a8c91]">Opens March 3</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= SERVICES ================= -->
+      <section id="services" class="px-4 py-24 sm:px-10 lg:px-16 lg:py-32">
+        <div class="max-w-2xl">
+          <p class="text-sm font-semibold text-[#E34A32]">Services</p>
+          <h2 class="mt-3 text-4xl font-semibold leading-tight text-[#2E3034] sm:text-5xl">
+            What we build in a sprint.
+          </h2>
+          <p class="mt-4 text-lg leading-relaxed text-[#55575c]">
+            Six focused delivery lanes. Each one arrives as a working artifact
+            inside your stack — not a slide deck.
+          </p>
+        </div>
+
+        <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <!-- Card template x6 -->
+          <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 group rounded-3xl border border-black/5 bg-white p-7 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]">
+              <i data-lucide="git-branch" class="h-5 w-5" stroke-width="1.5"></i>
+            </span>
+            <h3 class="mt-5 text-lg font-semibold">AI workflow prototype</h3>
+            <p class="mt-2 text-base leading-relaxed text-[#55575c]">
+              A clickable, model-connected prototype of one core workflow, ready
+              for stakeholder testing.
+            </p>
+            <p class="mt-5 inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]">
+              <i data-lucide="clock" class="h-3.5 w-3.5" stroke-width="1.5"></i>
+              Ships in 8 days
+            </p>
+          </div>
+          <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 group rounded-3xl border border-black/5 bg-white p-7 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]">
+              <i data-lucide="message-square" class="h-5 w-5" stroke-width="1.5"></i>
+            </span>
+            <h3 class="mt-5 text-lg font-semibold">Internal copilot</h3>
+            <p class="mt-2 text-base leading-relaxed text-[#55575c]">
+              A private assistant grounded in your docs, tools, and data —
+              deployed where your team works.
+            </p>
+            <p class="mt-5 inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]">
+              <i data-lucide="clock" class="h-3.5 w-3.5" stroke-width="1.5"></i>
+              Ships in 2 weeks
+            </p>
+          </div>
+          <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 group rounded-3xl border border-black/5 bg-white p-7 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]">
+              <i data-lucide="headphones" class="h-5 w-5" stroke-width="1.5"></i>
+            </span>
+            <h3 class="mt-5 text-lg font-semibold">Support automation</h3>
+            <p class="mt-2 text-base leading-relaxed text-[#55575c]">
+              Triage, drafting, and resolution flows layered on your existing
+              helpdesk with human review built in.
+            </p>
+            <p class="mt-5 inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]">
+              <i data-lucide="clock" class="h-3.5 w-3.5" stroke-width="1.5"></i>
+              Ships in 3 weeks
+            </p>
+          </div>
+          <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 group rounded-3xl border border-black/5 bg-white p-7 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]">
+              <i data-lucide="database" class="h-5 w-5" stroke-width="1.5"></i>
+            </span>
+            <h3 class="mt-5 text-lg font-semibold">Data assistant</h3>
+            <p class="mt-2 text-base leading-relaxed text-[#55575c]">
+              Natural-language querying over your warehouse, with guardrails and
+              saved answers your team trusts.
+            </p>
+            <p class="mt-5 inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]">
+              <i data-lucide="clock" class="h-3.5 w-3.5" stroke-width="1.5"></i>
+              Ships in 3 weeks
+            </p>
+          </div>
+          <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 group rounded-3xl border border-black/5 bg-white p-7 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]">
+              <i data-lucide="pen-line" class="h-5 w-5" stroke-width="1.5"></i>
+            </span>
+            <h3 class="mt-5 text-lg font-semibold">Content pipeline</h3>
+            <p class="mt-2 text-base leading-relaxed text-[#55575c]">
+              Structured generation, review, and publishing flows tuned to your
+              brand voice and approval loops.
+            </p>
+            <p class="mt-5 inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]">
+              <i data-lucide="clock" class="h-3.5 w-3.5" stroke-width="1.5"></i>
+              Ships in 2 weeks
+            </p>
+          </div>
+          <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 group rounded-3xl border border-black/5 bg-white p-7 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)] hover:-translate-y-1 hover:shadow-[0_24px_44px_-18px_rgba(35,36,39,0.3)]">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F4F5F5] border border-black/5 text-[#E34A32]">
+              <i data-lucide="rocket" class="h-5 w-5" stroke-width="1.5"></i>
+            </span>
+            <h3 class="mt-5 text-lg font-semibold">Launch-page system</h3>
+            <p class="mt-2 text-base leading-relaxed text-[#55575c]">
+              A modular launch page and messaging kit so your AI feature ships
+              with a story, not just a toggle.
+            </p>
+            <p class="mt-5 inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]">
+              <i data-lucide="clock" class="h-3.5 w-3.5" stroke-width="1.5"></i>
+              Ships in 2 weeks
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PROOF ================= -->
+      <section class="px-4 pb-24 sm:px-10 lg:px-16 lg:pb-32">
+        <div class="relative rounded-[32px] bg-[#F7F7F5] border border-white p-8 sm:p-12 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_20px_50px_-30px_rgba(35,36,39,0.3)]">
+          <div class="flex flex-col items-stretch gap-4 lg:flex-row lg:items-center lg:-space-x-6">
+            <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 flex-1 rounded-full border border-black/5 bg-white px-8 py-7 text-center shadow-[0_14px_30px_-16px_rgba(35,36,39,0.3)] lg:rotate-[-1deg]">
+              <p class="text-4xl font-semibold text-[#2E3034] sm:text-5xl">
+                8
+                <span class="text-[#E34A32]">days</span>
+              </p>
+              <p class="mt-1.5 text-base text-[#55575c]">
+                to a working prototype
+              </p>
+            </div>
+            <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 delay-150 flex-1 rounded-full border border-black/5 bg-white px-8 py-7 text-center shadow-[0_14px_30px_-16px_rgba(35,36,39,0.3)] lg:z-10 lg:scale-105">
+              <p class="text-4xl font-semibold text-[#2E3034] sm:text-5xl">
+                4
+                <span class="text-[#E34A32]">demos</span>
+              </p>
+              <p class="mt-1.5 text-base text-[#55575c]">
+                live stakeholder demos per sprint
+              </p>
+            </div>
+            <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 delay-300 flex-1 rounded-full border border-black/5 bg-white px-8 py-7 text-center shadow-[0_14px_30px_-16px_rgba(35,36,39,0.3)] lg:rotate-[1deg]">
+              <p class="text-4xl font-semibold text-[#2E3034] sm:text-5xl">
+                1
+                <span class="text-[#E34A32]">system</span>
+              </p>
+              <p class="mt-1.5 text-base text-[#55575c]">
+                launch-ready and handed over
+              </p>
+            </div>
+          </div>
+          <p class="mt-8 text-center text-xs text-[#8a8c91]">
+            Sample sprint metrics shown for illustration — your engagement plan
+            defines the real numbers.
+          </p>
+        </div>
+      </section>
+      <section id="capabilities" class="px-4 pb-24 sm:px-10 lg:px-16 lg:pb-32">
+        <div class="max-w-2xl">
+          <p class="text-sm font-semibold text-[#E34A32]">How we work</p>
+          <h2 class="mt-3 text-4xl font-semibold leading-tight text-[#2E3034] sm:text-5xl">
+            One team. Every sprint.
+          </h2>
+        </div>
+        <div class="mt-14 rounded-[36px] bg-[#171719] p-4 sm:p-5 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset,0_30px_60px_-30px_rgba(23,23,25,0.8)]">
+          <div class="grid gap-4 lg:grid-cols-3">
+            <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 relative overflow-hidden rounded-[28px] border border-white/5 bg-[#202024] p-8 sm:p-10 lg:col-span-2">
+              <h3 class="text-2xl font-semibold text-white sm:text-3xl">
+                Full-cycle
+                <span class="text-white/50">sprint delivery</span>
+              </h3>
+              <p class="mt-3 max-w-md text-base leading-relaxed text-white/55">
+                Scope, build, and demo AI features in one continuous loop —
+                detailed briefs, model-connected prototypes, and live
+                stakeholder walkthroughs.
+              </p>
+              <div class="mt-10 flex items-center justify-center">
+                <div class="flex items-center">
+                  <div class="h-24 w-16 -rotate-6 rounded-2xl border border-white/5 bg-[#26262b]"></div>
+                  <div class="-ml-8 h-28 w-20 -rotate-3 rounded-2xl border border-white/10 bg-[#2c2c31]"></div>
+                  <div class="relative z-10 -ml-8 flex h-32 w-24 items-center justify-center rounded-2xl border border-white/15 bg-gradient-to-b from-[#34343a] to-[#232327] shadow-[0_20px_40px_-14px_rgba(0,0,0,0.7)]">
+                    <i data-lucide="bot" class="h-8 w-8 text-[#F05A3C]" stroke-width="1.5"></i>
+                    <span class="absolute -bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#F05A3C] px-3 py-1 text-xs font-medium text-white shadow-lg">
+                      Demo day
+                    </span>
+                  </div>
+                  <span class="z-10 mx-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#F05A3C]/50 bg-[#171719] text-[#F05A3C]">
+                    <i data-lucide="arrow-right" class="h-4 w-4" stroke-width="1.5"></i>
+                  </span>
+                  <div class="flex h-28 w-20 rotate-3 items-center justify-center rounded-2xl border border-white/10 bg-[#2c2c31]">
+                    <span class="h-7 w-7 rounded-lg bg-[#E34A32]"></span>
+                  </div>
+                  <div class="-ml-8 h-24 w-16 rotate-6 rounded-2xl border border-white/5 bg-[#26262b]"></div>
+                </div>
+              </div>
+            </div>
+            <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 delay-150 flex flex-col items-center justify-center rounded-[28px] border border-white/5 bg-[#202024] p-8">
+              <span class="rounded-full bg-[#E34A32] px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_12px_24px_-8px_rgba(227,74,50,0.8)]">
+                3× faster
+              </span>
+              <div class="mt-6 flex items-end gap-2.5">
+                <span class="h-10 w-5 rounded-full bg-white/10"></span>
+                <span class="h-16 w-5 rounded-full bg-white/15"></span>
+                <span class="h-24 w-5 rounded-full bg-gradient-to-b from-[#F05A3C] to-[#C93A24]"></span>
+                <span class="h-14 w-5 rounded-full bg-white/15"></span>
+                <span class="h-8 w-5 rounded-full bg-white/10"></span>
+              </div>
+              <p class="mt-6 text-center text-sm text-white/50">
+                Median time from idea to shipped feature
+              </p>
+            </div>
+            <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 relative overflow-hidden rounded-[28px] border border-white/5 bg-[#202024] p-8 sm:p-10 lg:col-span-2">
+              <div class="flex flex-col gap-8 sm:flex-row sm:items-center">
+                <div class="relative shrink-0">
+                  <span class="pointer-events-none absolute -left-5 -top-5 h-3 w-3 rounded-full bg-[#F05A3C]/70"></span>
+                  <span class="pointer-events-none absolute -bottom-4 left-16 h-2 w-2 rounded-full bg-[#F05A3C]/40"></span>
+                  <span class="pointer-events-none absolute -right-3 -top-2 h-1.5 w-1.5 rounded-full bg-white/30"></span>
+                  <span class="inline-flex items-center gap-2 rounded-full bg-[#F05A3C] px-4 py-2 text-sm font-medium text-white shadow-[0_14px_28px_-10px_rgba(227,74,50,0.8)]">
+                    <i data-lucide="rocket" class="h-4 w-4" stroke-width="1.5"></i>
+                    Prototype → Production
+                  </span>
+                </div>
+                <div>
+                  <h3 class="text-2xl font-semibold text-white">
+                    Prototype-to-launch
+                    <span class="text-white/50">synergy</span>
+                  </h3>
+                  <p class="mt-2 max-w-md text-base leading-relaxed text-white/55">
+                    Move seamlessly from validating an idea to launching and
+                    scaling it — without switching teams, tools, or contracts.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 delay-150 rounded-[28px] border border-white/5 bg-[#202024] p-8">
+              <div class="flex items-center">
+                <span class="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-[#2c2c31] text-white/70">
+                  <i data-lucide="user" class="h-5 w-5" stroke-width="1.5"></i>
+                </span>
+                <span class="-ml-2 flex h-8 w-8 items-center justify-center rounded-full bg-[#F05A3C] text-white shadow-[0_10px_20px_-8px_rgba(227,74,50,0.8)]">
+                  <i data-lucide="plus" class="h-4 w-4" stroke-width="1.5"></i>
+                </span>
+              </div>
+              <h3 class="mt-5 text-2xl font-semibold text-white">
+                Integrated
+                <span class="text-white/50">handover</span>
+              </h3>
+              <p class="mt-2 text-base leading-relaxed text-white/55">
+                Own everything after we leave — evals, guardrails, monitoring,
+                and playbooks your team actually runs.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= WORK ================= -->
+      <section id="work" class="px-4 pb-24 sm:px-10 lg:px-16 lg:pb-32">
+        <div class="max-w-2xl">
+          <p class="text-sm font-semibold text-[#E34A32]">Recent builds</p>
+          <h2 class="mt-3 text-4xl font-semibold leading-tight text-[#2E3034] sm:text-5xl">
+            Sprints that shipped.
+          </h2>
+        </div>
+
+        <div class="mt-14 space-y-6">
+          <!-- Case 1 -->
+          <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 grid overflow-hidden rounded-[28px] border border-black/5 bg-white shadow-[0_20px_44px_-24px_rgba(35,36,39,0.3)] lg:grid-cols-5">
+            <div class="p-8 sm:p-10 lg:col-span-3">
+              <span class="inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]">
+                Fintech · Prototype Sprint
+              </span>
+              <h3 class="mt-4 text-2xl font-semibold sm:text-3xl">
+                Reconciliation copilot for Alderpay
+              </h3>
+              <div class="mt-6 grid gap-5 sm:grid-cols-3 text-base leading-relaxed text-[#55575c]">
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    Problem
+                  </p>
+                  <p class="mt-1.5">
+                    Ops spent hours matching mismatched transactions by hand
+                    every week.
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    Sprint output
+                  </p>
+                  <p class="mt-1.5">
+                    A matching assistant with confidence scoring and a review
+                    queue.
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    Shipped artifact
+                  </p>
+                  <p class="mt-1.5">
+                    Internal tool in production, wired to their existing ledger
+                    API.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div class="relative min-h-[220px] bg-gradient-to-br from-[#F4F5F5] to-[#ECEDEE] lg:col-span-2">
+              <div class="absolute inset-6 rounded-2xl border border-black/5 bg-white p-4 shadow-lg rotate-1">
+                <div class="flex items-center gap-2">
+                  <span class="h-2.5 w-2.5 rounded-full bg-[#E34A32]"></span>
+                  <span class="h-2.5 w-2.5 rounded-full bg-black/10"></span>
+                  <span class="h-2.5 w-2.5 rounded-full bg-black/10"></span>
+                </div>
+                <div class="mt-4 space-y-2.5">
+                  <div class="h-3 w-3/4 rounded-full bg-[#ECEDEE]"></div>
+                  <div class="h-3 w-1/2 rounded-full bg-[#ECEDEE]"></div>
+                  <div class="h-9 rounded-xl bg-[#F4F5F5] border border-black/5"></div>
+                  <div class="h-9 rounded-xl bg-[#F4F5F5] border border-black/5"></div>
+                  <div class="h-8 w-28 rounded-full bg-[#171719]"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Case 2 -->
+          <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 grid overflow-hidden rounded-[28px] border border-black/5 bg-white shadow-[0_20px_44px_-24px_rgba(35,36,39,0.3)] lg:grid-cols-5">
+            <div class="relative order-last min-h-[220px] bg-gradient-to-bl from-[#F4F5F5] to-[#ECEDEE] lg:order-first lg:col-span-2">
+              <div class="absolute inset-6 rounded-2xl border border-black/5 bg-white p-4 shadow-lg -rotate-1">
+                <div class="flex gap-2.5">
+                  <span class="h-8 w-8 rounded-full bg-[#E34A32]/15"></span>
+                  <div class="flex-1 space-y-2 pt-1">
+                    <div class="h-3 w-2/3 rounded-full bg-[#ECEDEE]"></div>
+                    <div class="h-3 w-1/3 rounded-full bg-[#ECEDEE]"></div>
+                  </div>
+                </div>
+                <div class="mt-4 rounded-xl bg-[#F4F5F5] border border-black/5 p-3 space-y-2">
+                  <div class="h-2.5 w-full rounded-full bg-white"></div>
+                  <div class="h-2.5 w-4/5 rounded-full bg-white"></div>
+                  <div class="h-2.5 w-3/5 rounded-full bg-white"></div>
+                </div>
+                <div class="mt-3 h-8 rounded-full border border-black/5 bg-[#F7F7F5]"></div>
+              </div>
+            </div>
+            <div class="p-8 sm:p-10 lg:col-span-3">
+              <span class="inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]">
+                Logistics · Launch Sprint
+              </span>
+              <h3 class="mt-4 text-2xl font-semibold sm:text-3xl">
+                Dispatch assistant for Vantrail
+              </h3>
+              <div class="mt-6 grid gap-5 sm:grid-cols-3 text-base leading-relaxed text-[#55575c]">
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    Problem
+                  </p>
+                  <p class="mt-1.5">
+                    Dispatchers juggled five tools to answer one driver
+                    question.
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    Sprint output
+                  </p>
+                  <p class="mt-1.5">
+                    A single chat surface that pulls routes, ETAs, and
+                    exceptions.
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    Shipped artifact
+                  </p>
+                  <p class="mt-1.5">
+                    Slack-native assistant, live across three regional hubs.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Case 3 -->
+          <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 grid overflow-hidden rounded-[28px] border border-black/5 bg-white shadow-[0_20px_44px_-24px_rgba(35,36,39,0.3)] lg:grid-cols-5">
+            <div class="p-8 sm:p-10 lg:col-span-3">
+              <span class="inline-flex items-center gap-1.5 rounded-full bg-[#F4F5F5] px-3 py-1.5 text-xs font-medium text-[#55575c]">
+                SaaS · Operating System Sprint
+              </span>
+              <h3 class="mt-4 text-2xl font-semibold sm:text-3xl">
+                Content engine for Fernwave
+              </h3>
+              <div class="mt-6 grid gap-5 sm:grid-cols-3 text-base leading-relaxed text-[#55575c]">
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    Problem
+                  </p>
+                  <p class="mt-1.5">
+                    Marketing couldn't keep release notes and docs in sync at
+                    scale.
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    Sprint output
+                  </p>
+                  <p class="mt-1.5">
+                    A drafting pipeline with tone controls and human approval
+                    gates.
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase text-[#8a8c91]">
+                    Shipped artifact
+                  </p>
+                  <p class="mt-1.5">
+                    A full publishing system with CMS hooks and analytics.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div class="relative min-h-[220px] bg-gradient-to-br from-[#F4F5F5] to-[#ECEDEE] lg:col-span-2">
+              <div class="absolute inset-6 rounded-2xl border border-black/5 bg-white p-4 shadow-lg rotate-1">
+                <div class="h-16 rounded-xl bg-gradient-to-br from-[#E34A32]/20 to-[#F05A3C]/5 border border-black/5"></div>
+                <div class="mt-3 space-y-2.5">
+                  <div class="h-3 w-2/3 rounded-full bg-[#ECEDEE]"></div>
+                  <div class="h-3 w-full rounded-full bg-[#ECEDEE]"></div>
+                  <div class="h-3 w-1/2 rounded-full bg-[#ECEDEE]"></div>
+                </div>
+                <div class="mt-4 flex gap-2">
+                  <span class="h-7 w-20 rounded-full bg-[#171719]"></span>
+                  <span class="h-7 w-20 rounded-full border border-black/10 bg-white"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PACKAGES ================= -->
+      <section id="packages" class="px-4 pb-24 sm:px-10 lg:px-16 lg:pb-32">
+        <div class="relative overflow-hidden rounded-[36px] bg-[#F7F7F5] border border-white px-6 py-16 sm:px-12 lg:py-20 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_24px_60px_-30px_rgba(35,36,39,0.3)]">
+          <div class="pointer-events-none absolute -top-32 left-1/2 h-72 w-[600px] -translate-x-1/2 rounded-full opacity-40 blur-3xl" style="background: radial-gradient(circle, rgba(227,74,50,0.3), transparent 70%)"></div>
+
+          <div class="relative mx-auto max-w-2xl text-center">
+            <p class="text-sm font-semibold text-[#E34A32]">Packages</p>
+            <h2 class="mt-3 text-4xl font-semibold leading-tight text-[#2E3034] sm:text-5xl">
+              Pick the sprint that fits.
+            </h2>
+            <p class="mt-4 text-lg leading-relaxed text-[#55575c]">
+              Fixed scope, fixed timeline, real deliverables. Every package ends
+              with something running in your stack.
+            </p>
+          </div>
+
+          <div class="relative mt-14 grid gap-5 lg:grid-cols-3 lg:items-center">
+            <!-- Prototype -->
+            <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 rounded-[26px] border border-black/5 bg-white p-8 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)] lg:rotate-[-1deg]">
+              <h3 class="text-lg font-semibold">Prototype Sprint</h3>
+              <p class="mt-1 text-sm text-[#8a8c91]">8 days · one workflow</p>
+              <p class="mt-5 text-4xl font-semibold">
+                $9k
+                <span class="text-base font-medium text-[#8a8c91]">
+                  / sprint
+                </span>
+              </p>
+              <ul class="mt-6 space-y-3 text-base text-[#55575c]">
+                <li class="flex gap-2.5">
+                  <i data-lucide="check" class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]" stroke-width="1.5"></i>
+                  Discovery workshop + workflow map
+                </li>
+                <li class="flex gap-2.5">
+                  <i data-lucide="check" class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]" stroke-width="1.5"></i>
+                  Model-connected clickable prototype
+                </li>
+                <li class="flex gap-2.5">
+                  <i data-lucide="check" class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]" stroke-width="1.5"></i>
+                  Validation report + next-step plan
+                </li>
+              </ul>
+              <a href="#contact" class="mt-8 flex items-center justify-center rounded-full border border-black/10 bg-white px-6 py-3 text-base font-medium transition-all hover:-translate-y-0.5 shadow-[0_8px_18px_-10px_rgba(35,36,39,0.3)]">
+                Start a Prototype Sprint
+              </a>
+            </div>
+
+            <!-- Launch (featured) -->
+            <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 delay-150 relative z-10 rounded-[26px] bg-[#171719] p-8 text-white shadow-[0_1px_0_rgba(255,255,255,0.15)_inset,0_30px_60px_-24px_rgba(23,23,25,0.7)] lg:scale-[1.04]">
+              <div class="flex items-center justify-between">
+                <h3 class="text-lg font-semibold">Launch Sprint</h3>
+                <span class="rounded-full bg-[#E34A32] px-3 py-1 text-xs font-medium">
+                  Most booked
+                </span>
+              </div>
+              <p class="mt-1 text-sm text-white/50">
+                4 weeks · production build
+              </p>
+              <p class="mt-5 text-4xl font-semibold">
+                $28k
+                <span class="text-base font-medium text-white/50">
+                  / sprint
+                </span>
+              </p>
+              <ul class="mt-6 space-y-3 text-base text-white/75">
+                <li class="flex gap-2.5">
+                  <i data-lucide="check" class="mt-1 h-4 w-4 shrink-0 text-[#F05A3C]" stroke-width="1.5"></i>
+                  Everything in Prototype Sprint
+                </li>
+                <li class="flex gap-2.5">
+                  <i data-lucide="check" class="mt-1 h-4 w-4 shrink-0 text-[#F05A3C]" stroke-width="1.5"></i>
+                  Production integration into your stack
+                </li>
+                <li class="flex gap-2.5">
+                  <i data-lucide="check" class="mt-1 h-4 w-4 shrink-0 text-[#F05A3C]" stroke-width="1.5"></i>
+                  Evaluation suite + guardrails
+                </li>
+                <li class="flex gap-2.5">
+                  <i data-lucide="check" class="mt-1 h-4 w-4 shrink-0 text-[#F05A3C]" stroke-width="1.5"></i>
+                  Team handover + launch support
+                </li>
+              </ul>
+              <a href="#contact" class="mt-8 flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-base font-medium text-[#171719] transition-all hover:-translate-y-0.5 shadow-[0_14px_28px_-12px_rgba(0,0,0,0.6)]">
+                Book a Launch Sprint
+                <i data-lucide="arrow-right" class="h-4 w-4" stroke-width="1.5"></i>
+              </a>
+            </div>
+
+            <!-- OS -->
+            <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 delay-300 rounded-[26px] border border-black/5 bg-white p-8 shadow-[0_16px_36px_-20px_rgba(35,36,39,0.3)] lg:rotate-[1deg]">
+              <h3 class="text-lg font-semibold">Operating System Sprint</h3>
+              <p class="mt-1 text-sm text-[#8a8c91]">8 weeks · full system</p>
+              <p class="mt-5 text-4xl font-semibold">
+                $52k
+                <span class="text-base font-medium text-[#8a8c91]">
+                  / sprint
+                </span>
+              </p>
+              <ul class="mt-6 space-y-3 text-base text-[#55575c]">
+                <li class="flex gap-2.5">
+                  <i data-lucide="check" class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]" stroke-width="1.5"></i>
+                  Multi-workflow AI operating layer
+                </li>
+                <li class="flex gap-2.5">
+                  <i data-lucide="check" class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]" stroke-width="1.5"></i>
+                  Shared model + data infrastructure
+                </li>
+                <li class="flex gap-2.5">
+                  <i data-lucide="check" class="mt-1 h-4 w-4 shrink-0 text-[#E34A32]" stroke-width="1.5"></i>
+                  Internal enablement + playbooks
+                </li>
+              </ul>
+              <a href="#contact" class="mt-8 flex items-center justify-center rounded-full border border-black/10 bg-white px-6 py-3 text-base font-medium transition-all hover:-translate-y-0.5 shadow-[0_8px_18px_-10px_rgba(35,36,39,0.3)]">
+                Scope an OS Sprint
+              </a>
+            </div>
+          </div>
+          <p class="relative mt-8 text-center text-xs text-[#8a8c91]">
+            Prices shown are sample placeholders — final scope is confirmed on a
+            discovery call.
+          </p>
+        </div>
+      </section>
+      <section id="studio" class="px-4 pb-24 sm:px-10 lg:px-16 lg:pb-32">
+        <div class="max-w-2xl">
+          <p class="text-sm font-semibold text-[#E34A32]">Studio</p>
+          <h2 class="mt-3 text-4xl font-semibold leading-tight text-[#2E3034] sm:text-5xl">
+            The team behind the sprints.
+          </h2>
+        </div>
+        <div class="mx-auto mt-14 grid max-w-5xl gap-5 md:grid-cols-3">
+          <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 relative flex min-h-[440px] flex-col justify-between overflow-hidden rounded-[26px] bg-[#171719] shadow-[0_20px_44px_-24px_rgba(35,36,39,0.5)]">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/ab506a13-7aa3-443c-b74e-73cf2b8dd54d_800w.png" alt="Abstract light study" class="absolute inset-0 h-full w-full object-cover opacity-70">
+            <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30"></div>
+            <div class="relative flex items-start justify-between p-5">
+              <div class="flex gap-2">
+                <span class="rounded-full border border-white/30 bg-black/30 px-3 py-1 text-[10px] font-medium uppercase tracking-widest text-white backdrop-blur">
+                  AI
+                </span>
+                <span class="rounded-full border border-white/30 bg-black/30 px-3 py-1 text-[10px] font-medium uppercase tracking-widest text-white backdrop-blur">
+                  Product
+                </span>
+              </div>
+              <i data-lucide="arrow-up-right" class="h-4 w-4 text-white/80" stroke-width="1.5"></i>
+            </div>
+            <div class="relative p-5 pb-6">
+              <p class="text-sm leading-relaxed text-white/90">
+                “We don't just demo models. We ship AI systems teams are still
+                running a year later.”
+              </p>
+              <p class="mt-3 text-xs text-white/50">
+                — Lena Kort, AI Systems Lead
+              </p>
+            </div>
+          </div>
+          <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 delay-150 relative flex min-h-[440px] flex-col overflow-hidden rounded-[26px] bg-[#ECEDEE] shadow-[0_20px_44px_-24px_rgba(35,36,39,0.5)]">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/37997a14-d83a-4487-9a99-9b9c4fe21b14_800w.png" alt="Studio portrait" class="absolute inset-0 h-full w-full object-cover grayscale">
+            <div class="absolute inset-0 bg-black/20"></div>
+            <div class="relative flex flex-1 items-center justify-center">
+              <div class="text-center">
+                <p class="text-xl font-semibold text-white drop-shadow">
+                  SprintForge©
+                </p>
+                <p class="mt-1 text-[10px] font-medium uppercase tracking-widest text-white/80">
+                  Since '21
+                </p>
+              </div>
+            </div>
+            <div class="relative flex justify-center pb-6">
+              <a href="#work" class="rounded-full border border-white/50 bg-white/20 px-5 py-2 text-sm font-medium text-white backdrop-blur transition hover:bg-white/30">
+                View work
+              </a>
+            </div>
+          </div>
+          <div data-reveal="" class="opacity-0 translate-y-4 transition-all duration-700 delay-300 flex min-h-[440px] flex-col justify-between rounded-[26px] bg-[#171719] p-6 shadow-[0_20px_44px_-24px_rgba(35,36,39,0.5)]">
+            <div>
+              <p class="text-[10px] font-medium uppercase tracking-widest text-white/50">
+                → Concept
+              </p>
+              <p class="mt-5 text-sm leading-relaxed text-white/80">
+                <span class="font-semibold text-white">
+                  Don't just plug in a model.
+                </span>
+                Wire intelligence into the workflows people already use. Every
+                prompt is a decision. Every guardrail, a promise. This is AI as
+                infrastructure — shaped by shipping.
+              </p>
+            </div>
+            <div class="text-xs leading-relaxed text-white/60">
+              <a href="mailto:hello@sprintforge.studio" class="block hover:text-white">
+                hello@sprintforge.studio
+              </a>
+              <p class="mt-1">+1 415 555 0134</p>
+              <p class="mt-1">www.sprintforge.studio</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= FOOTER CTA ================= -->
+      <footer id="contact" class="px-2 pb-2 sm:px-0 sm:pb-4">
+        <div class="relative overflow-hidden rounded-[28px] sm:rounded-[40px] bg-[#F4F5F5] px-6 py-20 sm:px-12 lg:py-28 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_20px_60px_-30px_rgba(35,36,39,0.25)]">
+          <div class="pointer-events-none absolute -left-40 bottom-0 h-[520px] w-[520px] rounded-full opacity-60 blur-3xl" style="background: radial-gradient(circle, rgba(227,74,50,0.4), transparent 70%)"></div>
+          <div class="pointer-events-none absolute -right-40 -top-20 h-[420px] w-[420px] rounded-full opacity-40 blur-3xl" style="background: radial-gradient(circle, rgba(46,48,52,0.3), transparent 70%)"></div>
+
+          <div class="relative mx-auto max-w-3xl text-center">
+            <h2 class="text-4xl font-semibold leading-tight text-[#2E3034] sm:text-6xl">
+              Show us what's slowing you down.
+              <br class="hidden sm:block">
+              We'll turn it into a sprint.
+            </h2>
+            <p class="mt-6 text-lg leading-relaxed text-[#55575c]">
+              Tell us where your team loses time. You'll get a scoped sprint
+              proposal within one business day.
+            </p>
+
+            <form class="mx-auto mt-10 flex max-w-lg flex-col gap-3 sm:flex-row" onsubmit="event.preventDefault()">
+              <input type="email" required="" placeholder="you@company.com" class="flex-1 rounded-full border border-black/10 bg-white px-6 py-3.5 text-base outline-none placeholder:text-[#8a8c91] focus:border-[#E34A32]/50 focus:ring-2 focus:ring-[#E34A32]/20 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_8px_20px_-12px_rgba(35,36,39,0.25)]">
+              <button type="submit" class="group inline-flex items-center justify-center gap-2 rounded-full bg-[#171719] px-7 py-3.5 text-base font-medium text-white transition-all duration-300 hover:-translate-y-0.5 shadow-[0_1px_0_rgba(255,255,255,0.25)_inset,0_14px_28px_-12px_rgba(23,23,25,0.75)]">
+                Book a Sprint
+                <i data-lucide="arrow-right" class="h-4 w-4 transition-transform group-hover:translate-x-0.5" stroke-width="1.5"></i>
+              </button>
+            </form>
+            <p class="mt-4 text-sm text-[#8a8c91]">
+              Or write to us directly at
+              <a href="mailto:hello@sprintforge.studio" class="font-medium text-[#E34A32] hover:underline">
+                hello@sprintforge.studio
+              </a>
+            </p>
+          </div>
+
+          <div class="relative mx-auto mt-16 flex max-w-5xl flex-col items-center justify-between gap-6 border-t border-black/5 pt-8 sm:flex-row text-center sm:text-left">
+            <a href="#" class="flex items-center gap-2.5">
+              <span class="relative flex h-5 w-8 items-center">
+                <span class="absolute left-0 h-5 w-5 rounded-full bg-[#171719]"></span>
+                <span class="absolute left-3 h-5 w-5 rounded-full bg-[#E34A32]"></span>
+              </span>
+              <span class="text-base font-semibold">SprintForge</span>
+            </a>
+            <div class="flex items-center gap-6 text-sm font-medium text-[#55575c] flex-wrap justify-center">
+              <a href="#services" class="hover:text-[#232427]">Services</a>
+              <a href="#work" class="hover:text-[#232427]">Work</a>
+              <a href="#packages" class="hover:text-[#232427]">Packages</a>
+              <a href="#contact" class="hover:text-[#232427]">Contact</a>
+            </div>
+            <p class="text-xs text-[#8a8c91]">
+              © 2025 SprintForge Studio. All rights reserved.
+            </p>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <script>
+      lucide.createIcons();
+
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // Hero rise-in
+      window.addEventListener('load', () => {
+        document.querySelectorAll('[data-rise]').forEach(el => {
+          el.classList.remove('opacity-0', 'translate-y-4');
+        });
+        document.querySelectorAll('[data-drift]').forEach(el => {
+          el.classList.remove('opacity-0');
+        });
+      });
+
+      // Scroll reveals
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+          if (e.isIntersecting) {
+            e.target.classList.remove('opacity-0', 'translate-y-4');
+            io.unobserve(e.target);
+          }
+        });
+      }, { threshold: 0.15 });
+      document.querySelectorAll('[data-reveal]').forEach(el => io.observe(el));
+
+      // Nav shadow on scroll
+      const nav = document.getElementById('nav');
+      window.addEventListener('scroll', () => {
+        if (window.scrollY > 24) {
+          nav.classList.add('shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_44px_-14px_rgba(35,36,39,0.4)]');
+        } else {
+          nav.classList.remove('shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_44px_-14px_rgba(35,36,39,0.4)]');
+        }
+      }, { passive: true });
+
+      // Mobile menu
+      document.getElementById('menuBtn').addEventListener('click', () => {
+        document.getElementById('mobileMenu').classList.toggle('hidden');
+      });
+
+      // Subtle tile drift + bloom parallax
+      if (!reduceMotion) {
+        const tiles = document.querySelectorAll('[data-drift]');
+        let t = 0;
+        (function drift() {
+          t += 0.008;
+          tiles.forEach((el, i) => {
+            const base = el.classList.contains('rotate-6') ? 6 : el.classList.contains('-rotate-6') ? -6 : 3;
+            el.style.transform = `translateY(${Math.sin(t + i * 2) * 6}px) rotate(${base + Math.sin(t * 0.7 + i) * 2}deg)`;
+          });
+          requestAnimationFrame(drift);
+        })();
+
+        const bloom = document.getElementById('bloom');
+        window.addEventListener('pointermove', (e) => {
+          const x = (e.clientX / window.innerWidth - 0.5) * 24;
+          const y = (e.clientY / window.innerHeight - 0.5) * 24;
+          bloom.style.transform = `translate(${x}px, ${y}px)`;
+        }, { passive: true });
+      }
+    </script>
+
+    <script>
+      (function(){
+        var canvas = document.getElementById('meshGL');
+        if (canvas && window.THREE) {
+          var renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+          var scene = new THREE.Scene();
+          var camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+          camera.position.z = 15;
+
+          // Minimal faceted geometric shape
+          var geometry = new THREE.IcosahedronGeometry(3, 0);
+          var material = new THREE.MeshStandardMaterial({
+            color: 0xE34A32,
+            emissive: 0x7a2012,
+            roughness: 0.3,
+            metalness: 0.6,
+            flatShading: true
+          });
+          var mesh = new THREE.Mesh(geometry, material);
+          scene.add(mesh);
+
+          scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+          var mainLight = new THREE.DirectionalLight(0xffffff, 1.2);
+          mainLight.position.set(10, 10, 10);
+          scene.add(mainLight);
+          var fillLight = new THREE.DirectionalLight(0xF05A3C, 0.6);
+          fillLight.position.set(-10, -5, 5);
+          scene.add(fillLight);
+
+          function resize(){
+            var w = canvas.clientWidth, h = canvas.clientHeight;
+            renderer.setSize(w, h, false);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            mesh.position.x = (w < 1024) ? 0 : 4.5;
+          }
+          window.addEventListener('resize', resize);
+          resize();
+
+          var t = 0;
+          (function frame(){
+            t += 0.01;
+            mesh.rotation.x = t * 0.2;
+            mesh.rotation.y = t * 0.3;
+            mesh.position.y = 0.4 + Math.sin(t * 1.2) * 0.3;
+            renderer.render(scene, camera);
+            requestAnimationFrame(frame);
+          })();
+        }
+
+        function splitChars(el){
+          var walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,null);
+          var nodes=[]; while(walker.nextNode()) nodes.push(walker.currentNode);
+          nodes.forEach(function(node){
+            if(!node.textContent.trim()) return;
+            var frag=document.createDocumentFragment();
+            node.textContent.split('').forEach(function(ch){
+              if(ch===' '){frag.appendChild(document.createTextNode(' '));return;}
+              var s=document.createElement('span'); s.className='wchar'; s.textContent=ch; frag.appendChild(s);
+            });
+            node.parentNode.replaceChild(frag,node);
+          });
+        }
+        document.querySelectorAll('h1, h2').forEach(splitChars);
+        var chars=Array.prototype.slice.call(document.querySelectorAll('.wchar'));
+        var mx=-9999,my=-9999;
+        window.addEventListener('pointermove',function(e){mx=e.clientX;my=e.clientY;},{passive:true});
+        (function tick(){
+          for(var i=0;i<chars.length;i++){
+            var s=chars[i], r=s.getBoundingClientRect();
+            if(r.bottom<-80||r.top>innerHeight+80) continue;
+            var d=Math.hypot(mx-(r.left+r.width/2),my-(r.top+r.height/2));
+            var w=d<200?600+(1-d/200)*300:600;
+            s.style.fontVariationSettings="'wght' "+Math.round(w);
+          }
+          requestAnimationFrame(tick);
+        })();
+      })();
+    </script>
+  
+</body></html>

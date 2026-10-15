@@ -1,0 +1,1235 @@
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HALFTONE — Your camera roll, made physical</title>
+<meta name="description" content="HALFTONE is a tiny risograph print studio that turns your phone photos into grainy two-color art prints.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&amp;family=Manrope:wght@400..800&amp;display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+/* =========================================================
+Tokens
+========================================================== */
+:root{
+--paper:#f6f1e7;
+--paper-hi:#fbf7ee;
+--ink:#201c30;
+--muted:#6f6880;
+--pink:#ff48b0;
+--pink-deep:#d61b7d;
+--blue:#0078bf;
+--blue-deep:#1b3f97;
+--yellow:#ffe800;
+--teal:#00838a;
+--orange:#ff6c2f;
+--purple:#765ba7;
+--green:#00a95c;
+--flood:#14112b;
+--border:rgba(32,28,48,.14);
+--shell:1440px;
+--gutter:clamp(24px,4vw,56px);
+--radius:1.25rem;
+--shadow-lg:0 28px 76px rgba(32,28,48,.16), inset 0 1px 0 rgba(255,255,255,.65);
+--shadow-md:0 18px 48px rgba(32,28,48,.12), inset 0 1px 0 rgba(255,255,255,.6);
+--ease:cubic-bezier(.16,1,.3,1);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+margin:0;
+font-family:"Manrope",sans-serif;
+color:var(--ink);
+background:var(--paper);
+-webkit-font-smoothing:antialiased;
+text-rendering:geometricPrecision;
+/* clip, not hidden: hidden turns body into a scroll container and kills position:sticky */
+overflow-x:clip;
+}
+img{display:block;max-width:100%}
+a{color:inherit;text-decoration:none}
+/* paper grain over everything */
+body::after{
+content:"";position:fixed;inset:0;z-index:90;pointer-events:none;opacity:.05;
+background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.shell{max-width:var(--shell);margin:0 auto;padding-left:var(--gutter);padding-right:var(--gutter)}
+/* =========================================================
+Type
+========================================================== */
+.display{
+font-family:"Fraunces",serif;
+font-weight:420;
+font-variation-settings:"opsz" 120;
+line-height:.98;
+letter-spacing:-.035em;
+margin:0;
+}
+.h1{font-size:clamp(3.1rem,6.4vw,6rem)}
+.h2{font-size:clamp(2.6rem,5.2vw,4.9rem)}
+.h3{font-family:"Fraunces",serif;font-weight:460;letter-spacing:-.03em;line-height:1;margin:0}
+.kicker{display:flex;flex-direction:column;align-items:flex-start;gap:.7rem;margin-bottom:1.35rem;
+font-size:.95rem;font-weight:700;letter-spacing:-.01em;color:var(--pink-deep)}
+.kicker .rule{height:1px;width:3rem;background:var(--pink)}
+.body-copy{font-size:1.06rem;font-weight:500;line-height:1.75;letter-spacing:-.015em;color:#453e57;max-width:39rem;margin:1.7rem 0 0}
+/* misregistered accent word */
+.misprint{color:var(--pink);text-shadow:.045em .035em 0 rgba(0,120,191,.55)}
+/* hero headline: layers drift in and out of register, fluoro glow breathes */
+.h1 .misprint{display:inline-block;animation:misregister 5.5s ease-in-out infinite}
+@keyframes misregister{
+0%,100%{text-shadow:.045em .035em 0 rgba(0,120,191,.55), 0 0 .35em rgba(255,72,176,0)}
+30%{text-shadow:.068em .008em 0 rgba(0,120,191,.62), 0 0 .45em rgba(255,72,176,.38)}
+55%{text-shadow:.018em .058em 0 rgba(0,120,191,.48), 0 0 .3em rgba(255,72,176,.18)}
+78%{text-shadow:.058em .048em 0 rgba(0,120,191,.6), 0 0 .5em rgba(255,72,176,.42)}
+}
+@media (prefers-reduced-motion:reduce){.h1 .misprint{animation:none}}
+.misprint-blue{color:var(--blue);text-shadow:-.045em .035em 0 rgba(255,72,176,.5)}
+/* =========================================================
+Shared components
+========================================================== */
+.panel{
+border:1px solid var(--border);
+background:var(--paper-hi);
+border-radius:var(--radius);
+box-shadow:var(--shadow-lg);
+}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.9rem;height:64px;padding:0 2rem;
+border-radius:14px;font-size:1rem;font-weight:700;letter-spacing:-.01em;transition:transform .3s var(--ease),box-shadow .3s var(--ease),background .3s}
+.btn-ink{background:var(--ink);color:#fff;box-shadow:0 22px 50px rgba(32,28,48,.22)}
+.btn-ink:hover{transform:translateY(-2px);background:#2c2744;box-shadow:0 26px 56px rgba(214,27,125,.28)}
+.btn-ghost{border:1px solid var(--border);background:var(--paper-hi);color:var(--ink);box-shadow:0 12px 28px rgba(32,28,48,.06)}
+.btn-ghost:hover{transform:translateY(-2px);border-color:var(--pink)}
+.btn .play-ring{display:inline-flex;height:32px;width:32px;align-items:center;justify-content:center;border-radius:50%;border:1px solid currentColor}
+.btn i,.btn svg{width:20px;height:20px}
+.ink-dot{display:inline-block;border-radius:50%;border:1px solid rgba(255,255,255,.6);
+box-shadow:0 5px 12px rgba(32,28,48,.14), inset 0 0 0 1px rgba(32,28,48,.06)}
+.arrow-pill{display:inline-flex;height:40px;width:40px;align-items:center;justify-content:center;border-radius:50%;
+border:1px solid var(--border);background:var(--paper-hi);color:var(--pink-deep);flex-shrink:0;
+box-shadow:inset 0 1px 0 rgba(255,255,255,.7);transition:transform .3s var(--ease),border-color .3s}
+.arrow-pill svg{width:16px;height:16px}
+/* =========================================================
+Duotone imagery
+========================================================== */
+.duo{position:relative;overflow:hidden;isolation:isolate;background:var(--duo-dark,#1b3f97);transition:background-color .8s var(--ease)}
+.duo img{width:100%;height:100%;object-fit:cover;filter:grayscale(1) contrast(1.18) brightness(1.05);mix-blend-mode:screen}
+.duo::after{content:"";position:absolute;inset:0;z-index:1;background:var(--duo-light,#ffc9e5);mix-blend-mode:multiply;transition:background-color .8s var(--ease)}
+.duo::before{content:"";position:absolute;inset:0;z-index:2;mix-blend-mode:overlay;opacity:.55;
+background-image:radial-gradient(circle,rgba(10,8,20,.6) .8px,transparent 1.1px);background-size:4px 4px}
+.duo-pinkblue{--duo-dark:#1b3f97;--duo-light:#ffc9e5}
+.duo-yellowteal{--duo-dark:#00565c;--duo-light:#fff0a1}
+.duo-orangepurple{--duo-dark:#4d3585;--duo-light:#ffc9a3}
+.duo-greenblack{--duo-dark:#0d1f14;--duo-light:#c2ead0}
+.duo-pinkyellow{--duo-dark:#c1176d;--duo-light:#fff3a6}
+.duo-night{--duo-dark:#0e0c22;--duo-light:#ff8cc7}
+/* =========================================================
+Reveal on scroll
+========================================================== */
+.rv{opacity:0;transform:translateY(30px);transition:opacity 1.2s var(--ease),transform 1.2s var(--ease)}
+.rv.animate-in{opacity:1;transform:none}
+.d1{transition-delay:.15s}.d2{transition-delay:.3s}.d3{transition-delay:.5s}.d4{transition-delay:.7s}
+@media (prefers-reduced-motion:reduce){
+.rv{transition:none;opacity:1;transform:none}
+html{scroll-behavior:auto}
+}
+html.static .rv{transition:none;opacity:1;transform:none}
+/* =========================================================
+Nav
+========================================================== */
+nav{display:flex;align-items:center;justify-content:space-between;gap:1.5rem;padding-top:1.8rem;padding-bottom:1.8rem}
+.logo{font-family:"Fraunces",serif;font-weight:560;font-size:1.7rem;letter-spacing:.14em}
+.logo .misprint{color:var(--orange);text-shadow:.09em .06em 0 rgba(118,91,167,.55);animation:none}
+.nav-links{display:none;align-items:center;gap:2.6rem;font-size:.95rem;font-weight:700;letter-spacing:-.01em}
+.nav-links a{transition:color .25s}
+.nav-links a:hover{color:var(--pink-deep)}
+.nav-cta{display:inline-flex;height:52px;align-items:center;border-radius:12px;background:var(--ink);color:#fff;
+padding:0 1.6rem;font-size:.95rem;font-weight:700;box-shadow:0 16px 38px rgba(32,28,48,.18);transition:background .3s,box-shadow .3s}
+.nav-cta:hover{background:#2c2744;box-shadow:0 18px 40px rgba(214,27,125,.3)}
+@media (min-width:1024px){.nav-links{display:flex}}
+/* =========================================================
+Sections — swatch-book tints
+========================================================== */
+section{padding-top:5.5rem;padding-bottom:5.5rem}
+/* stacking sheets: each section pins at the top, the next slides up over it */
+main > section{
+position:sticky;top:0;min-height:100vh;
+background:var(--paper);
+box-shadow:0 -30px 70px rgba(32,28,48,.18);
+}
+.tint-pink{background:#f7e7ee}
+.tint-blue{background:#e9eef6}
+.tint-yellow{background:#f7f0d8}
+.tint-teal{background:#e6efec}
+.tint-flood{background:var(--flood);color:#efe9f6}
+/* =========================================================
+Hero
+========================================================== */
+.hero{padding-top:1.5rem;padding-bottom:4.5rem}
+.hero-grid{display:grid;gap:3.5rem}
+.hero-copy{display:flex;flex-direction:column;justify-content:center}
+.hero-rule{margin-top:2rem;height:1px;width:4.1rem;background:var(--pink)}
+.hero-ctas{margin-top:2.2rem;display:flex;flex-wrap:wrap;gap:1.2rem}
+.metrics{margin-top:2.6rem;display:flex;flex-wrap:wrap;align-items:center;gap:1.4rem}
+.metric{display:flex;align-items:center;gap:.9rem}
+.metric i,.metric svg{width:30px;height:30px;color:var(--pink-deep);flex-shrink:0}
+.metric .m-label{font-size:.8rem;font-weight:600;color:var(--muted);white-space:nowrap}
+.metric .m-value{margin-top:.35rem;font-size:1.05rem;font-weight:800;letter-spacing:-.02em;line-height:1}
+.metric-div{height:44px;width:1px;background:rgba(32,28,48,.14)}
+.metrics-note{margin-top:1.6rem;font-size:.95rem;font-weight:500;color:var(--muted)}
+.hero-visual{position:relative;min-height:560px}
+.hero-frame{position:relative;height:640px;border-radius:var(--radius);}
+@media (min-width:1024px){
+.hero-grid{grid-template-columns:.92fr 1.08fr;gap:4rem}
+.hero-visual{min-height:735px}
+.hero-frame{height:735px;border-radius:var(--radius) 0 0 var(--radius);
+margin-right:calc(-1 * (var(--gutter) + max(0px, (100vw - var(--shell)) / 2)))}
+}
+.hero-img{position:absolute;inset:0;border-radius:inherit;border:1px solid var(--border);box-shadow:0 34px 90px rgba(27,63,151,.22)}
+.hero-img img{object-position:50% 14%}
+.hero-img.duo::before,.hero-img.duo::after{border-radius:inherit}
+.before-card{position:absolute;top:34px;left:-16px;z-index:3;width:186px;padding:.45rem;border-radius:15px}
+@media (min-width:1200px){.before-card{left:-64px}}
+.before-card .ph{position:relative;overflow:hidden;border-radius:11px;border:1px solid var(--border)}
+.before-card .ph img{height:132px;width:100%;object-fit:cover}
+.before-badge{position:absolute;bottom:10px;left:10px;display:inline-flex;align-items:center;gap:.5rem;
+border-radius:999px;border:1px solid var(--border);background:var(--paper-hi);padding:.45rem .85rem;
+font-size:.8rem;font-weight:800;letter-spacing:-.01em;box-shadow:0 10px 22px rgba(32,28,48,.16)}
+.before-badge .dotp{height:8px;width:8px;border-radius:50%;background:var(--pink)}
+.hero-arrow{position:absolute;left:120px;top:150px;z-index:3;width:170px;color:rgba(255,255,255,.95);
+filter:drop-shadow(0 3px 10px rgba(0,0,0,.25));display:none}
+@media (min-width:640px){.hero-arrow{display:block}}
+.picker{position:absolute;right:22px;top:17%;z-index:3;width:250px;padding:.95rem;border-radius:1.25rem}
+.picker-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:.9rem;padding:0 .2rem}
+.picker-head h2{margin:0;font-size:.92rem;font-weight:800;letter-spacing:-.02em}
+.spark-chip{display:inline-flex;height:28px;width:28px;align-items:center;justify-content:center;border-radius:50%;
+border:1px solid var(--border);background:var(--paper);box-shadow:inset 0 1px 0 rgba(255,255,255,.7)}
+.spark-chip i,.spark-chip svg{width:14px;height:14px;color:var(--pink-deep)}
+.pair-row{display:flex;width:100%;align-items:center;gap:.7rem;border-radius:10px;border:1px solid var(--border);
+background:var(--paper);padding:.5rem .6rem;text-align:left;margin-top:.55rem;cursor:pointer;font-family:inherit;
+transition:transform .3s var(--ease),border-color .3s;font-size:.78rem;font-weight:800;letter-spacing:-.01em;color:var(--ink)}
+.pair-row:hover{transform:translateY(-2px);border-color:var(--pink)}
+.pair-row.selected{border-color:var(--pink);box-shadow:0 12px 25px rgba(214,27,125,.14),inset 0 1px 0 rgba(255,255,255,.7)}
+.pair-swatch{display:flex;flex-shrink:0}
+.pair-swatch span{height:26px;width:26px;border-radius:50%;border:2px solid var(--paper-hi)}
+.pair-swatch span+span{margin-left:-9px}
+.pair-row .check{margin-left:auto;display:inline-flex;height:20px;width:20px;flex-shrink:0;align-items:center;justify-content:center;
+border-radius:50%;border:1px solid var(--pink);background:#ffe3f2;color:var(--pink-deep)}
+.pair-row .check svg,.pair-row .check i{width:12px;height:12px}
+.pair-row .dot-idle{margin-left:auto;height:6px;width:6px;border-radius:50%;background:rgba(32,28,48,.2)}
+.drums{position:absolute;bottom:20px;left:20px;z-index:3;width:min(76%,34rem);padding:.9rem 1.2rem;border-radius:1.25rem;
+display:flex;align-items:center;gap:1.1rem;flex-wrap:wrap}
+.drums .dots{display:flex;align-items:center}
+.drums .ink-dot{height:44px;width:44px}
+.drums .ink-dot+.ink-dot{margin-left:-10px}
+.drums-label .t{font-size:.78rem;font-weight:800;letter-spacing:-.01em}
+.drums-label .s{margin-top:.25rem;font-size:.72rem;font-weight:600;color:var(--muted)}
+.drums-div{height:40px;width:1px;background:rgba(32,28,48,.14)}
+/* =========================================================
+Split sections (Idea / Inks / Grain)
+========================================================== */
+.split{display:grid;gap:4rem;align-items:center}
+@media (min-width:1024px){
+.split{grid-template-columns:.92fr 1.08fr;gap:5rem}
+.split.rev{grid-template-columns:1.08fr .92fr}
+}
+.quote-card{margin-top:2.4rem;max-width:500px;padding:1.8rem 2rem;border-radius:1.25rem}
+.quote-card .q-mark{font-family:"Fraunces",serif;font-size:4.4rem;line-height:1;color:var(--pink);margin-top:-.6rem}
+.quote-card .q-body{display:flex;gap:1.2rem}
+.quote-card p.q{font-family:"Fraunces",serif;font-size:1.7rem;font-weight:450;line-height:1.14;letter-spacing:-.025em;margin:0}
+.quote-card p.attr{margin:1.1rem 0 0;font-size:.85rem;font-weight:700;color:var(--pink-deep)}
+.points{margin-top:3.2rem;display:flex;flex-wrap:wrap;align-items:flex-start;gap:1.4rem}
+.point{display:flex;gap:.7rem;flex:1 1 0;min-width:0}
+.point i,.point svg{width:32px;height:32px;flex-shrink:0;color:var(--pink-deep);margin-top:2px}
+.point h3{margin:0;font-size:.98rem;font-weight:800;letter-spacing:-.02em;font-family:"Manrope",sans-serif}
+.point p{margin:.5rem 0 0;font-size:.8rem;font-weight:600;line-height:1.5;color:var(--muted)}
+.point-div{width:1px;align-self:stretch;background:rgba(32,28,48,.14)}
+/* Idea collage */
+.collage{position:relative;min-height:640px}
+.collage .c-big{position:absolute;left:0;top:40px;width:min(62%,380px);height:500px;border-radius:13px;
+border:1px solid var(--border);box-shadow:0 38px 92px rgba(27,63,151,.24);transform:rotate(-2deg)}
+.collage .c-small{position:absolute;right:6%;top:0;width:min(48%,300px);height:340px;border-radius:13px;
+border:1px solid var(--border);box-shadow:0 28px 74px rgba(214,27,125,.2);transform:rotate(2.5deg)}
+.collage .c-big.duo::before,.collage .c-big.duo::after,
+.collage .c-small.duo::before,.collage .c-small.duo::after{border-radius:inherit}
+.swatch-card{position:absolute;right:2%;bottom:56px;z-index:3;width:210px;padding:1.1rem;border-radius:1.05rem}
+.swatch-card .t{font-size:.82rem;font-weight:800;letter-spacing:-.01em}
+.swatch-card .grid2{margin-top:.85rem;display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
+.swatch-card .grid2 span{height:60px;border-radius:8px;box-shadow:0 8px 16px rgba(32,28,48,.09),inset 0 1px 0 rgba(255,255,255,.4)}
+.tape{position:absolute;top:-12px;left:50%;transform:translateX(-50%) rotate(-3deg);width:90px;height:26px;
+background:rgba(255,232,0,.65);border:1px solid rgba(32,28,48,.08);z-index:4}
+/* =========================================================
+Inks — card grid
+========================================================== */
+.ink-cards{display:grid;gap:1.3rem}
+@media (min-width:1024px){.ink-cards{grid-template-columns:1.02fr .98fr;gap:1.5rem}}
+.ink-col{display:flex;flex-direction:column;gap:1.3rem}
+.ink-card{overflow:hidden;border-radius:var(--radius);transition:transform .4s var(--ease)}
+.ink-card:hover{transform:translateY(-4px)}
+.ink-card .im{position:relative;overflow:hidden;border-bottom:1px solid var(--border)}
+.ink-card .im.tall{height:250px}
+.ink-card .im.short{height:145px}
+.ink-card .im img{transition:transform .7s var(--ease)}
+.ink-card:hover .im img{transform:scale(1.03)}
+.ink-card .meta{display:flex;align-items:flex-end;justify-content:space-between;gap:1.2rem;padding:1.25rem}
+.ink-card .meta h3{font-size:1.6rem}
+.ink-card .meta h3.sm{font-size:1.35rem}
+.ink-card .meta p{margin:.7rem 0 0;max-width:20rem;font-size:.84rem;font-weight:600;line-height:1.5;color:var(--muted)}
+.ink-card:hover .arrow-pill{transform:translateX(3px);border-color:var(--pink)}
+.badge{display:inline-flex;border-radius:999px;border:1px solid var(--border);background:var(--paper);
+padding:.3rem .8rem;font-size:.68rem;font-weight:800;color:var(--pink-deep);margin-left:.8rem;vertical-align:middle}
+.pair-title{display:flex;align-items:center;flex-wrap:wrap}
+.link-more{margin-top:2.2rem;display:inline-flex;align-items:center;gap:.8rem;font-size:.98rem;font-weight:800;
+letter-spacing:-.01em;color:var(--pink-deep);transition:color .25s}
+.link-more:hover{color:var(--ink)}
+.link-more svg,.link-more i{width:16px;height:16px}
+.house-card{margin-top:3rem;max-width:380px;padding:1.6rem;border-radius:1.25rem}
+.house-card .t{font-size:.92rem;font-weight:800;letter-spacing:-.02em}
+.house-card .dots{margin-top:1.5rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
+.house-card .ink-dot{height:40px;width:40px}
+.house-card hr{margin:1.4rem 0;border:none;height:1px;background:rgba(32,28,48,.12)}
+.house-card .s{margin:0;max-width:18rem;font-size:.8rem;font-weight:600;line-height:1.55;color:var(--muted)}
+/* =========================================================
+How it works
+========================================================== */
+.steps{margin-top:3.2rem;display:grid;gap:2.2rem}
+@media (min-width:768px){.steps{grid-template-columns:1fr 1fr}}
+@media (min-width:1100px){.steps{grid-template-columns:repeat(4,1fr);gap:2.5rem}}
+.step{position:relative;padding-top:1.4rem;border-top:1px solid rgba(32,28,48,.16)}
+.step .num{position:absolute;top:-17px;left:0;display:inline-flex;height:34px;min-width:34px;align-items:center;justify-content:center;
+border-radius:50%;border:1px solid var(--pink);background:var(--paper-hi);padding:0 .5rem;
+font-size:.8rem;font-weight:800;color:var(--pink-deep);box-shadow:inset 0 1px 0 rgba(255,255,255,.7)}
+.step h3{margin:.6rem 0 0;font-family:"Fraunces",serif;font-size:1.5rem;font-weight:480;letter-spacing:-.02em}
+.step p{margin:.8rem 0 0;font-size:.9rem;font-weight:550;line-height:1.65;color:#5c5570}
+.step i,.step svg{width:26px;height:26px;color:var(--pink-deep);margin-top:1rem}
+/* =========================================================
+The Grain — ink flood breakout
+========================================================== */
+.tint-flood .kicker{color:var(--pink)}
+.tint-flood .kicker .rule{background:var(--pink)}
+.tint-flood .display{color:#f6efff}
+.tint-flood .body-copy{color:#b9b0d4}
+.tint-flood .point h3{color:#f6efff}
+.tint-flood .point p{color:#9a90bb}
+.tint-flood .point i,.tint-flood .point svg{color:var(--pink)}
+.tint-flood .point-div{background:rgba(246,239,255,.16)}
+.tint-flood::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.28;border-radius:inherit;
+background-image:radial-gradient(circle,rgba(255,72,176,.5) 1px,transparent 1.4px);background-size:22px 22px;
+-webkit-mask-image:radial-gradient(60% 70% at 22% 45%,#000 0%,transparent 100%);
+mask-image:radial-gradient(60% 70% at 22% 45%,#000 0%,transparent 100%)}
+.grain-frame{--cut:78%;position:relative;height:560px;border-radius:var(--radius);border:1px solid rgba(255,140,199,.25);
+box-shadow:0 40px 100px rgba(0,0,0,.5);cursor:col-resize;touch-action:pan-y;user-select:none}
+.cmp-layer{position:absolute;inset:0;border-radius:inherit;overflow:hidden}
+/* both layers must render the photo identically so the split lines up 1:1 */
+.cmp-layer img{pointer-events:none;width:100%;height:100%;object-fit:cover;object-position:50% 50%}
+.cmp-orig{z-index:2;clip-path:inset(0 0 0 var(--cut))}
+.grain-frame .duo{clip-path:inset(0 calc(100% - var(--cut)) 0 0)}
+.cmp-handle{position:absolute;top:0;bottom:0;left:var(--cut);z-index:4;width:2px;margin-left:-1px;
+background:rgba(255,255,255,.85);box-shadow:0 0 14px rgba(0,0,0,.45)}
+.cmp-knob{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;height:46px;width:46px;
+align-items:center;justify-content:center;border-radius:50%;background:var(--paper-hi);border:1px solid var(--pink);
+color:var(--pink-deep);box-shadow:0 10px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.7)}
+.cmp-knob i,.cmp-knob svg{width:20px;height:20px}
+.grain-frame .caption{position:absolute;left:20px;bottom:20px;z-index:3;display:inline-flex;align-items:center;gap:.6rem;
+border-radius:999px;border:1px solid rgba(255,140,199,.35);background:rgba(14,12,34,.72);padding:.55rem 1rem;
+font-size:.76rem;font-weight:700;letter-spacing:.06em;color:#ff8cc7;backdrop-filter:blur(4px)}
+.grain-frame .caption-orig{left:auto;right:20px;border-color:rgba(255,255,255,.4);color:#fff}
+/* =========================================================
+The Prints
+========================================================== */
+.print-cards{margin-top:3.2rem;display:grid;gap:1.5rem}
+@media (min-width:900px){.print-cards{grid-template-columns:repeat(3,1fr)}}
+.print-card{overflow:hidden;border-radius:var(--radius);transition:transform .4s var(--ease)}
+.print-card:hover{transform:translateY(-4px)}
+.print-card .im{height:230px;border-bottom:1px solid var(--border);overflow:hidden}
+.print-card .im img{transition:transform .7s var(--ease)}
+.print-card:hover .im img{transform:scale(1.03)}
+.print-card .pc-body{padding:1.4rem 1.5rem 1.6rem}
+.print-card h3{font-size:1.55rem}
+.print-card .desc{margin:.8rem 0 0;font-size:.88rem;font-weight:600;line-height:1.55;color:var(--muted)}
+.print-card ul{margin:1.2rem 0 0;padding:0;list-style:none}
+.print-card li{display:flex;justify-content:space-between;gap:1rem;padding:.55rem 0;border-top:1px solid rgba(32,28,48,.1);
+font-size:.82rem;font-weight:600;color:#5c5570}
+.print-card li span:last-child{font-weight:800;color:var(--ink)}
+/* =========================================================
+The Machine — annotated blueprint
+========================================================== */
+.tint-purple{background:#efe9f6}
+.blueprint{padding:2.2rem;background:
+linear-gradient(rgba(118,91,167,.09) 1px,transparent 1px),
+linear-gradient(90deg,rgba(118,91,167,.09) 1px,transparent 1px),
+var(--paper-hi);
+background-size:26px 26px,26px 26px,auto}
+.blueprint svg{width:100%;height:auto;display:block}
+.spec-rows{margin-top:2.6rem;max-width:34rem}
+.spec-row{display:flex;gap:1.1rem;padding:1.05rem 0;border-top:1px solid rgba(32,28,48,.14);align-items:baseline}
+.spec-row:last-child{border-bottom:1px solid rgba(32,28,48,.14)}
+.spec-row .n{flex-shrink:0;display:inline-flex;height:30px;min-width:30px;align-items:center;justify-content:center;
+border-radius:50%;border:1px solid var(--purple);color:var(--purple);font-size:.75rem;font-weight:800}
+.spec-row h3{margin:0;font-family:"Fraunces",serif;font-weight:480;font-size:1.22rem;letter-spacing:-.02em;min-width:9.5rem}
+.spec-row p{margin:0;font-size:.87rem;font-weight:600;line-height:1.55;color:var(--muted)}
+.machine-tag{margin-top:2.2rem;display:inline-flex;align-items:center;gap:.7rem;flex-wrap:wrap;
+font-size:.78rem;font-weight:800;letter-spacing:.08em;color:#5c5570}
+.machine-tag .ink-dot{height:9px;width:9px}
+/* =========================================================
+The Misprint Pile — scattered seconds
+========================================================== */
+.tint-orange{background:#f8ecdd}
+.pile{position:relative;min-height:790px;margin-top:1rem}
+.pile-copy{position:relative;z-index:5;max-width:520px;margin:0 auto;text-align:center;padding-top:8.5rem}
+.pile-copy .kicker{align-items:center}
+.pile-copy .body-copy{margin-left:auto;margin-right:auto}
+.pile-note{margin-top:1.6rem;display:inline-flex;align-items:center;gap:.6rem;border-radius:999px;
+border:1px dashed var(--pink-deep);padding:.6rem 1.2rem;font-size:.78rem;font-weight:800;
+letter-spacing:.06em;color:var(--pink-deep)}
+.pile-card{position:absolute;z-index:1;width:216px;padding:.5rem .5rem .8rem;transform:rotate(var(--rot,0deg));
+transition:transform .5s var(--ease);cursor:default}
+.pile-card:hover{transform:rotate(0deg) translateY(-8px)}
+.pile-card .im{height:150px;overflow:hidden;border-radius:9px;border:1px solid var(--border)}
+.pile-card .lbl{margin:.7rem .3rem 0;font-size:.7rem;font-weight:700;letter-spacing:.04em;color:var(--muted)}
+.stamp{position:absolute;right:-12px;top:-13px;z-index:2;transform:rotate(-9deg);
+border:2px solid var(--pink-deep);border-radius:5px;background:rgba(251,247,238,.85);
+padding:.22rem .55rem;font-size:.6rem;font-weight:800;letter-spacing:.14em;color:var(--pink-deep)}
+.pile-card:nth-child(odd) .stamp{transform:rotate(7deg);border-color:var(--orange);color:#c14e1a}
+@media (max-width:920px){
+.pile{min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:1.1rem;align-items:start}
+.pile-copy{grid-column:1 / -1;order:-1;padding-top:0;margin-bottom:1.5rem}
+.pile-card{position:static;width:auto}
+}
+/* =========================================================
+Come Say Hi
+========================================================== */
+.hello{display:flex;flex-direction:column;justify-content:center;text-align:center;padding-top:3rem;padding-bottom:3rem}
+.hello .display{margin:1.6rem auto 0;max-width:640px}
+.hello .body-copy{margin:1.8rem auto 0;text-align:center}
+.hello .hero-ctas{justify-content:center}
+.hello-details{margin-top:3.6rem;display:flex;flex-wrap:wrap;justify-content:center;gap:1.4rem}
+.hello-details .metric{text-align:left}
+footer{position:relative;background:var(--paper);padding:2.5rem var(--gutter) 3rem;text-align:center;font-size:.85rem;font-weight:600;color:var(--muted)}
+footer .ink-dot{height:10px;width:10px;margin:0 .3rem;vertical-align:middle}
+/* small screens */
+@media (max-width:640px){
+.hero-frame{height:540px}
+.picker{right:10px;width:220px}
+.before-card{left:10px}
+.collage{min-height:560px}
+.collage .c-small{right:0}
+.swatch-card{right:0}
+}
+</style>
+<script src="https://cdn.tailwindcss.com"></script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+
+<body>
+<!-- =========================================================
+  Navigation
+========================================================== -->
+<header class="shell">
+  <nav>
+    <a href="#" class="logo">HALF<span class="misprint">TONE</span></a>
+    <div class="nav-links">
+      <a href="#idea">The Idea</a>
+      <a href="#inks">Inks</a>
+      <a href="#process">Process</a>
+      <a href="#prints">Prints</a>
+    </div>
+    <a href="#hello" class="nav-cta">Print Something</a>
+  </nav>
+</header>
+
+<main>
+<!-- =========================================================
+  01 / Hero — plain paper
+========================================================== -->
+<section class="hero">
+  <div class="shell">
+  <div class="hero-grid">
+    <!-- Copy -->
+    <div class="hero-copy">
+      <div>
+        <h1 class="display h1 rv">Your camera roll,<br>made <span class="misprint">physical.</span></h1>
+        <div class="hero-rule rv d1"></div>
+        <p class="body-copy rv d1">
+          HALFTONE is a tiny risograph studio that turns the photos rotting in your phone
+          into grainy, two-color art prints — the kind you frame, gift, and squint at
+          <strong style="color:var(--pink-deep)">happily.</strong>
+        </p>
+        <div class="hero-ctas rv d2">
+          <a href="#hello" class="btn btn-ink"><i data-lucide="printer"></i>Start a Print</a>
+          <a href="#process" class="btn btn-ghost"><span class="play-ring"><i data-lucide="play"></i></span>See the Process</a>
+        </div>
+        <div class="rv d3">
+          <div class="metrics">
+            <div class="metric">
+              <i data-lucide="layers"></i>
+              <div><div class="m-label">Prints pulled</div><div class="m-value">12,408</div></div>
+            </div>
+            <div class="metric-div"></div>
+            <div class="metric">
+              <i data-lucide="droplets"></i>
+              <div><div class="m-label">Ink pairs</div><div class="m-value">21</div></div>
+            </div>
+            <div class="metric-div"></div>
+            <div class="metric">
+              <i data-lucide="badge-check"></i>
+              <div><div class="m-label">Perfect copies</div><div class="m-value">0</div></div>
+            </div>
+          </div>
+          <p class="metrics-note">Loved by gift-givers, wall-fillers, and people who still like paper.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Visual -->
+    <div class="hero-visual">
+      <div class="hero-frame rv d2">
+        <div class="hero-img duo duo-pinkblue">
+          <img src="https://picsum.photos/id/1025/1200/1500" alt="A pug portrait as a pink and blue risograph print">
+        </div>
+
+        <!-- Before thumbnail -->
+        <div class="before-card panel rv d3">
+          <div class="ph">
+            <img src="https://picsum.photos/id/1025/400/300" alt="The original phone photo, full color">
+            <span class="before-badge"><span class="dotp"></span>Your photo</span>
+          </div>
+        </div>
+
+        <!-- Dotted arrow -->
+        <svg class="hero-arrow" viewBox="0 0 180 130" fill="none" aria-hidden="true">
+          <path d="M8 9C72 18 126 48 151 102" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="5 7"></path>
+          <path d="M137 94L153 105L158 86" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+
+        <!-- Ink pair picker -->
+        <aside class="picker panel rv d3">
+          <div class="picker-head">
+            <h2>Pick your inks</h2>
+            <span class="spark-chip"><i data-lucide="sparkles"></i></span>
+          </div>
+          <button class="pair-row selected" data-dark="#1b3f97" data-light="#ffc9e5">
+            <span class="pair-swatch"><span style="background:var(--pink)"></span><span style="background:var(--blue)"></span></span>
+            Fluoro Pink × Blue
+            <span class="check"><i data-lucide="check"></i></span>
+          </button>
+          <button class="pair-row" data-dark="#00565c" data-light="#fff0a1">
+            <span class="pair-swatch"><span style="background:var(--yellow)"></span><span style="background:var(--teal)"></span></span>
+            Yellow × Teal
+            <span class="dot-idle"></span>
+          </button>
+          <button class="pair-row" data-dark="#4d3585" data-light="#ffc9a3">
+            <span class="pair-swatch"><span style="background:var(--orange)"></span><span style="background:var(--purple)"></span></span>
+            Orange × Purple
+            <span class="dot-idle"></span>
+          </button>
+          <button class="pair-row" data-dark="#0d1f14" data-light="#c2ead0">
+            <span class="pair-swatch"><span style="background:var(--green)"></span><span style="background:#1c1c1c"></span></span>
+            Green × Black
+            <span class="dot-idle"></span>
+          </button>
+        </aside>
+
+        <!-- Today's drums -->
+        <div class="drums panel rv d4">
+          <div class="dots">
+            <span class="ink-dot" style="background:var(--pink)"></span>
+            <span class="ink-dot" style="background:var(--blue)"></span>
+            <span class="ink-dot" style="background:var(--yellow)"></span>
+            <span class="ink-dot" style="background:var(--green)"></span>
+            <span class="ink-dot" style="background:var(--teal)"></span>
+            <span class="ink-dot" style="background:var(--orange)"></span>
+          </div>
+          <div class="drums-div"></div>
+          <div class="drums-label">
+            <div class="t">Today's drums</div>
+            <div class="s">Six inks, loaded &amp; humming</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+</section>
+
+<!-- =========================================================
+  02 / The Idea — faint pink
+========================================================== -->
+<section id="idea" class="tint-pink">
+  <div class="shell">
+    <div class="split">
+      <div class="rv">
+        <div class="kicker rv"><span>The Idea</span><span class="rule"></span></div>
+        <h2 class="display h2 rv d1">Some photos<br>deserve to<br><span class="misprint">exist.</span></h2>
+        <p class="body-copy rv d1">
+          You have three thousand photos in your pocket and none in your hands. We think the
+          good ones — the dog mid-zoomie, the beach nobody else got up for — have earned a
+          place on an actual wall.
+        </p>
+        <div class="quote-card panel rv d2">
+          <div class="q-body">
+            <span class="q-mark">“</span>
+            <div>
+              <p class="q">A print you can hold beats<br>a thousand you scroll past.</p>
+              <p class="attr">— HALFTONE, probably in an apron</p>
+            </div>
+          </div>
+        </div>
+        <div class="points rv d3">
+          <div class="point">
+            <i data-lucide="snail"></i>
+            <div>
+              <h3>Slow printing</h3>
+              <p>One drum, one pass, one color at a time. No rushing the machine.</p>
+            </div>
+          </div>
+          <div class="point-div"></div>
+          <div class="point">
+            <i data-lucide="droplets"></i>
+            <div>
+              <h3>Two inks only</h3>
+              <p>Limits are the style. Two colors say more than sixteen million.</p>
+            </div>
+          </div>
+          <div class="point-div"></div>
+          <div class="point">
+            <i data-lucide="fingerprint"></i>
+            <div>
+              <h3>Never identical</h3>
+              <p>Every pull lands a little different. Yours is the only one like it.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Collage -->
+      <div class="collage">
+        <div class="c-small duo duo-yellowteal rv d1">
+          <img src="https://picsum.photos/id/1080/600/700" alt="Still-life print in yellow and teal">
+        </div>
+        <div class="c-big duo duo-pinkblue rv">
+          <img src="https://picsum.photos/id/64/800/1100" alt="Portrait print in pink and blue">
+        </div>
+        <div class="swatch-card panel rv d2">
+          <span class="tape"></span>
+          <div class="t">Test swatches, batch 41</div>
+          <div class="grid2">
+            <span style="background:linear-gradient(135deg,#ff48b0,#ff8cc7)"></span>
+            <span style="background:linear-gradient(135deg,#0078bf,#62a8e5)"></span>
+            <span style="background:linear-gradient(135deg,#ffe800,#fff3a6)"></span>
+            <span style="background:linear-gradient(135deg,#00838a,#4fb3ba)"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================
+  03 / The Inks — faint cobalt
+========================================================== -->
+<section id="inks" class="tint-blue">
+  <div class="shell">
+    <div class="split">
+      <div>
+        <div class="kicker rv"><span>The Ink Library</span><span class="rule"></span></div>
+        <h2 class="display h2 rv d1">Two drums.<br><span class="misprint-blue">Infinite</span> moods.</h2>
+        <p class="body-copy rv d1">
+          Every print gets exactly two inks. Pick a pair and we handle the color
+          separations — or tell us the feeling and we'll pick for you.
+        </p>
+        <a href="#hello" class="link-more rv d2">See all 21 pairs<i data-lucide="arrow-right"></i></a>
+        <div class="house-card panel rv d3">
+          <div class="t">House favourites</div>
+          <div class="dots">
+            <span class="ink-dot" style="background:var(--pink)"></span>
+            <span class="ink-dot" style="background:var(--blue)"></span>
+            <span class="ink-dot" style="background:var(--yellow)"></span>
+            <span class="ink-dot" style="background:var(--teal)"></span>
+            <span class="ink-dot" style="background:var(--orange)"></span>
+            <span class="ink-dot" style="background:var(--purple)"></span>
+          </div>
+          <hr>
+          <p class="s">Real soy-based riso inks on uncoated paper. Fluoro pink genuinely glows; we can't explain it either.</p>
+        </div>
+      </div>
+
+      <div class="ink-cards">
+        <div class="ink-col">
+          <article class="ink-card panel rv">
+            <div class="im tall duo duo-pinkblue">
+              <img src="https://picsum.photos/id/1015/800/500" alt="River valley in fluoro pink and blue">
+            </div>
+            <div class="meta">
+              <div>
+                <div class="pair-title"><h3 class="h3">The Classic</h3><span class="badge">Most pulled</span></div>
+                <p>Fluoro Pink × Blue. Loud, warm, unreasonably flattering to sunsets and pets.</p>
+              </div>
+              <span class="arrow-pill"><i data-lucide="arrow-right"></i></span>
+            </div>
+          </article>
+          <article class="ink-card panel rv d1">
+            <div class="im tall duo duo-yellowteal">
+              <img src="https://picsum.photos/id/1016/800/500" alt="Canyon in yellow and teal">
+            </div>
+            <div class="meta">
+              <div>
+                <h3 class="h3">Poolside</h3>
+                <p>Yellow × Teal. Permanent summer. Made for water, fruit, and lawn chairs.</p>
+              </div>
+              <span class="arrow-pill"><i data-lucide="arrow-right"></i></span>
+            </div>
+          </article>
+        </div>
+        <div class="ink-col">
+          <article class="ink-card panel rv d2">
+            <div class="im short duo duo-orangepurple">
+              <img src="https://picsum.photos/id/1039/600/300" alt="Waterfall in orange and purple">
+            </div>
+            <div class="meta">
+              <div>
+                <h3 class="h3 sm">Sunset Motel</h3>
+                <p>Orange × Purple. Dusky, cinematic, faintly nostalgic for a road trip you never took.</p>
+              </div>
+              <span class="arrow-pill"><i data-lucide="arrow-right"></i></span>
+            </div>
+          </article>
+          <article class="ink-card panel rv d3">
+            <div class="im short duo duo-greenblack">
+              <img src="https://picsum.photos/id/1043/600/300" alt="Forest scene in green and black">
+            </div>
+            <div class="meta">
+              <div>
+                <h3 class="h3 sm">Botanical</h3>
+                <p>Green × Black. Serious, leafy, excellent for plants and moody landscapes.</p>
+              </div>
+              <span class="arrow-pill"><i data-lucide="arrow-right"></i></span>
+            </div>
+          </article>
+          <article class="ink-card panel rv d4">
+            <div class="im short duo duo-pinkyellow">
+              <img src="https://picsum.photos/id/292/600/300" alt="Food flat-lay in pink and yellow">
+            </div>
+            <div class="meta">
+              <div>
+                <h3 class="h3 sm">Sherbet</h3>
+                <p>Pink × Yellow. Sugary and bright. Birthday energy, all year.</p>
+              </div>
+              <span class="arrow-pill"><i data-lucide="arrow-right"></i></span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================
+  04 / How It Works — faint sunflower
+========================================================== -->
+<section id="process" class="tint-yellow">
+  <div class="shell">
+    <div style="max-width:760px">
+      <div class="kicker rv"><span>The Process</span><span class="rule"></span></div>
+      <h2 class="display h2 rv d1">From pocket<br>to <span class="misprint">paper.</span></h2>
+      <p class="body-copy rv d1">
+        Four steps, one spinning drum, and a machine older than some of our customers.
+      </p>
+    </div>
+    <div class="steps">
+      <div class="step rv">
+        <span class="num">01</span>
+        <h3>Send us a photo</h3>
+        <p>Any photo. Even the blurry ones — especially the blurry ones. Grain forgives everything.</p>
+        <i data-lucide="camera"></i>
+      </div>
+      <div class="step rv d1">
+        <span class="num">02</span>
+        <h3>We split the colors</h3>
+        <p>Your photo becomes two halftone layers, one per ink. This is where the magic math lives.</p>
+        <i data-lucide="layers"></i>
+      </div>
+      <div class="step rv d2">
+        <span class="num">03</span>
+        <h3>The drum spins</h3>
+        <p>Each layer prints in a single pass. Alignment: approximate. On purpose. Mostly.</p>
+        <i data-lucide="disc-3"></i>
+      </div>
+      <div class="step rv d3">
+        <span class="num">04</span>
+        <h3>It ships flat</h3>
+        <p>Board-backed, never rolled, with a note about which happy accidents happened to yours.</p>
+        <i data-lucide="package"></i>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================
+  05 / The Machine — faint purple, annotated blueprint
+========================================================== -->
+<section id="machine" class="tint-purple">
+  <div class="shell">
+    <div class="split rev">
+      <div class="panel blueprint rv">
+        <svg viewBox="0 0 640 460" fill="none" role="img" aria-label="Blueprint line drawing of Rosie, the risograph duplicator">
+          <!-- stand -->
+          <rect x="120" y="380" width="16" height="58" rx="3" stroke="#201c30" stroke-width="2"></rect>
+          <rect x="504" y="380" width="16" height="58" rx="3" stroke="#201c30" stroke-width="2"></rect>
+          <line x1="100" y1="440" x2="156" y2="440" stroke="#201c30" stroke-width="2"></line>
+          <line x1="484" y1="440" x2="540" y2="440" stroke="#201c30" stroke-width="2"></line>
+          <!-- body -->
+          <rect x="70" y="200" width="500" height="180" rx="14" stroke="#201c30" stroke-width="2.5"></rect>
+          <!-- lid -->
+          <rect x="92" y="158" width="280" height="42" rx="8" stroke="#201c30" stroke-width="2"></rect>
+          <rect x="206" y="146" width="52" height="12" rx="4" stroke="#201c30" stroke-width="2"></rect>
+          <!-- drum -->
+          <circle cx="300" cy="290" r="62" stroke="#ff48b0" stroke-width="2.5"></circle>
+          <circle cx="300" cy="290" r="38" stroke="#ff48b0" stroke-width="1.5" stroke-dasharray="5 6"></circle>
+          <circle cx="300" cy="290" r="5" fill="#ff48b0"></circle>
+          <line x1="262" y1="252" x2="338" y2="328" stroke="#ff48b0" stroke-width="1.2" opacity=".5"></line>
+          <line x1="262" y1="328" x2="338" y2="252" stroke="#ff48b0" stroke-width="1.2" opacity=".5"></line>
+          <!-- control panel -->
+          <rect x="440" y="216" width="106" height="54" rx="8" stroke="#201c30" stroke-width="2"></rect>
+          <rect x="452" y="226" width="38" height="20" rx="3" stroke="#201c30" stroke-width="1.5"></rect>
+          <circle cx="506" cy="236" r="5" stroke="#201c30" stroke-width="1.5"></circle>
+          <circle cx="524" cy="236" r="5" stroke="#201c30" stroke-width="1.5"></circle>
+          <circle cx="506" cy="256" r="5" stroke="#201c30" stroke-width="1.5"></circle>
+          <circle cx="524" cy="256" r="5" fill="#ff48b0"></circle>
+          <!-- feed tray -->
+          <polygon points="18,232 70,216 70,262 26,274" stroke="#201c30" stroke-width="2"></polygon>
+          <line x1="28" y1="238" x2="64" y2="227" stroke="#201c30" stroke-width="1.2"></line>
+          <line x1="30" y1="248" x2="64" y2="238" stroke="#201c30" stroke-width="1.2"></line>
+          <!-- output tray + flying sheet -->
+          <polygon points="570,298 626,284 626,332 570,338" stroke="#201c30" stroke-width="2"></polygon>
+          <rect x="576" y="246" width="48" height="32" rx="3" stroke="#ff48b0" stroke-width="2" stroke-dasharray="4 5" transform="rotate(-9 600 262)"></rect>
+          <line x1="548" y1="252" x2="566" y2="250" stroke="#ff48b0" stroke-width="1.5"></line>
+          <line x1="546" y1="262" x2="564" y2="260" stroke="#ff48b0" stroke-width="1.5"></line>
+          <!-- label -->
+          <text x="96" y="360" font-family="Manrope, sans-serif" font-size="15" font-weight="800" letter-spacing="3" fill="#201c30">MZ-790 “ROSIE”</text>
+          <!-- hotspots -->
+          <g font-family="Manrope, sans-serif" font-size="12.5" font-weight="800">
+            <circle cx="44" cy="198" r="14" fill="#fbf7ee" stroke="#765ba7" stroke-width="1.5"></circle>
+            <text x="44" y="202.5" text-anchor="middle" fill="#765ba7">1</text>
+            <circle cx="300" cy="212" r="14" fill="#fbf7ee" stroke="#765ba7" stroke-width="1.5"></circle>
+            <text x="300" y="216.5" text-anchor="middle" fill="#765ba7">2</text>
+            <circle cx="493" cy="196" r="14" fill="#fbf7ee" stroke="#765ba7" stroke-width="1.5"></circle>
+            <text x="493" y="200.5" text-anchor="middle" fill="#765ba7">3</text>
+            <circle cx="600" cy="360" r="14" fill="#fbf7ee" stroke="#765ba7" stroke-width="1.5"></circle>
+            <text x="600" y="364.5" text-anchor="middle" fill="#765ba7">4</text>
+          </g>
+        </svg>
+      </div>
+      <div>
+        <div class="kicker rv"><span>The Machine</span><span class="rule"></span></div>
+        <h2 class="display h2 rv d1">Meet Rosie.<br>She <span class="misprint">is</span> the studio.</h2>
+        <p class="body-copy rv d1">
+          One secondhand risograph duplicator, born 1998, bought for the price of a decent
+          office chair. Everything on this page comes out of her.
+        </p>
+        <div class="spec-rows rv d2">
+          <div class="spec-row">
+            <span class="n">1</span>
+            <h3>Paper feed</h3>
+            <p>Eats 300&nbsp;gsm municipal card for breakfast. Jams on Mondays, like everyone.</p>
+          </div>
+          <div class="spec-row">
+            <span class="n">2</span>
+            <h3>The drum</h3>
+            <p>One color per pass. Swapping inks takes eleven seconds — current studio record.</p>
+          </div>
+          <div class="spec-row">
+            <span class="n">3</span>
+            <h3>Control panel</h3>
+            <p>Fourteen buttons from 1998. We trust four of them.</p>
+          </div>
+          <div class="spec-row">
+            <span class="n">4</span>
+            <h3>Output tray</h3>
+            <p>Up to 150 prints a minute, when she's in the mood. She is rarely in the mood.</p>
+          </div>
+        </div>
+        <div class="machine-tag rv d3">
+          RISO MZ-790
+          <span class="ink-dot" style="background:var(--purple)"></span>
+          TWO DRUMS LOADED
+          <span class="ink-dot" style="background:var(--pink)"></span>
+          SOUNDS LIKE A SHY HELICOPTER
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================
+  06 / The Grain — ink flood breakout
+========================================================== -->
+<section class="tint-flood">
+  <div class="shell">
+    <div class="split rev">
+      <div class="grain-frame rv" tabindex="0" role="slider" aria-label="Compare the riso print with the original photo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="78">
+        <div class="cmp-layer duo duo-night">
+          <img src="https://picsum.photos/id/237/900/1100" alt="Macro of a riso print — halftone dots and grain">
+          <span class="caption"><i data-lucide="zoom-in" style="width:14px;height:14px"></i>FLUORO PINK LAYER · DRAG TO COMPARE</span>
+        </div>
+        <div class="cmp-layer cmp-orig">
+          <img src="https://picsum.photos/id/237/900/1100" alt="The original photo, full color">
+          <span class="caption caption-orig">THE ORIGINAL</span>
+        </div>
+        <div class="cmp-handle"><span class="cmp-knob"><i data-lucide="move-horizontal"></i></span></div>
+      </div>
+      <div>
+        <div class="kicker rv"><span>The Grain</span><span class="rule"></span></div>
+        <h2 class="display h2 rv d1">The smudge<br>is the point.</h2>
+        <p class="body-copy rv d1">
+          Risograph isn't trying to be perfect — that's what makes it feel alive. Up close,
+          your photo dissolves into dots, drift, and glow. These are the features:
+        </p>
+        <div class="points rv d2" style="flex-direction:column;gap:1.8rem">
+          <div class="point" style="flex-basis:auto">
+            <i data-lucide="move-diagonal"></i>
+            <div>
+              <h3>Misregistration</h3>
+              <p>The two layers land about a millimetre apart, differently every pass. Twins, never clones.</p>
+            </div>
+          </div>
+          <div class="point" style="flex-basis:auto">
+            <i data-lucide="grip"></i>
+            <div>
+              <h3>Halftone dots</h3>
+              <p>Zoom in and the image becomes rhythm — thousands of dots doing an impression of your photo.</p>
+            </div>
+          </div>
+          <div class="point" style="flex-basis:auto">
+            <i data-lucide="sun"></i>
+            <div>
+              <h3>The fluoro glow</h3>
+              <p>Fluorescent pink reflects more light than it receives. Physics, but make it fun.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================
+  07 / The Misprint Pile — faint orange, scattered seconds
+========================================================== -->
+<section id="misprints" class="tint-orange">
+  <div class="shell">
+    <div class="pile">
+      <div class="pile-copy rv">
+        <div class="kicker"><span>The Misprint Pile</span><span class="rule"></span></div>
+        <h2 class="display h2">Our best<br><span class="misprint">mistakes.</span></h2>
+        <p class="body-copy">
+          Not every pull makes it out the door. The nearly-rights retire to a box by the
+          entrance — five bucks each, honor system. No refunds, obviously.
+        </p>
+        <span class="pile-note"><i data-lucide="box" style="width:15px;height:15px"></i>SECONDS SALE · SATURDAYS · WHILE THE BOX LASTS</span>
+      </div>
+
+      <article class="pile-card panel rv d1" style="--rot:-5deg;left:0;top:30px">
+        <span class="tape"></span>
+        <span class="stamp">TOO PINK</span>
+        <div class="im duo duo-pinkyellow"><img src="https://picsum.photos/id/200/500/380" alt="Misprint of a highland cow, very pink"></div>
+        <div class="lbl">batch 38 · pull 12</div>
+      </article>
+      <article class="pile-card panel rv d2" style="--rot:4deg;right:2%;top:0">
+        <span class="tape"></span>
+        <span class="stamp">DRUM SNEEZED</span>
+        <div class="im duo duo-orangepurple"><img src="https://picsum.photos/id/433/500/380" alt="Misprint of a bear with an ink smudge"></div>
+        <div class="lbl">batch 41 · pull 2</div>
+      </article>
+      <article class="pile-card panel rv d3" style="--rot:3deg;left:4%;bottom:20px">
+        <span class="tape"></span>
+        <span class="stamp">OFF BY 3MM</span>
+        <div class="im duo duo-greenblack"><img src="https://picsum.photos/id/577/500/380" alt="Misregistered landscape print"></div>
+        <div class="lbl">batch 39 · pull 7</div>
+      </article>
+      <article class="pile-card panel rv d4" style="--rot:-4deg;right:0;bottom:60px">
+        <span class="tape"></span>
+        <span class="stamp">DOUBLE-FED</span>
+        <div class="im duo duo-pinkblue"><img src="https://picsum.photos/id/1062/500/380" alt="Two prints stuck together"></div>
+        <div class="lbl">batch 42 · pull 19</div>
+      </article>
+      <article class="pile-card panel rv d2" style="--rot:6deg;left:36%;bottom:-30px">
+        <span class="tape"></span>
+        <span class="stamp">MYSTERY SMUDGE</span>
+        <div class="im duo duo-yellowteal"><img src="https://picsum.photos/id/431/500/380" alt="Print with an unexplained smudge"></div>
+        <div class="lbl">batch 40 · pull 1</div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================
+  08 / The Prints — faint teal
+========================================================== -->
+<section id="prints" class="tint-teal">
+  <div class="shell">
+    <div style="max-width:760px">
+      <div class="kicker rv"><span>The Prints</span><span class="rule"></span></div>
+      <h2 class="display h2 rv d1">Paper worth<br><span class="misprint">keeping.</span></h2>
+      <p class="body-copy rv d1">
+        Three ways your photo can live on a wall, a fridge, or someone's very good mail day.
+      </p>
+    </div>
+    <div class="print-cards">
+      <article class="print-card panel rv">
+        <div class="im duo duo-pinkyellow">
+          <img src="https://picsum.photos/id/1060/700/460" alt="Postcard print in pink and yellow">
+        </div>
+        <div class="pc-body">
+          <h3 class="h3">The Postcard</h3>
+          <p class="desc">Small, mighty, mailable. The gateway print.</p>
+          <ul>
+            <li><span>Size</span><span>A6 · 105 × 148 mm</span></li>
+            <li><span>Paper</span><span>300 gsm municipal card</span></li>
+            <li><span>Edition</span><span>One of one</span></li>
+          </ul>
+        </div>
+      </article>
+      <article class="print-card panel rv d1">
+        <div class="im duo duo-pinkblue">
+          <img src="https://picsum.photos/id/1035/700/460" alt="Poster print in pink and blue">
+        </div>
+        <div class="pc-body">
+          <h3 class="h3">The Poster</h3>
+          <p class="desc">Frame-ready and loud about it. Most walls' favourite.</p>
+          <ul>
+            <li><span>Size</span><span>A3 · 297 × 420 mm</span></li>
+            <li><span>Paper</span><span>Uncoated 170 gsm, off-white</span></li>
+            <li><span>Edition</span><span>One of one</span></li>
+          </ul>
+        </div>
+      </article>
+      <article class="print-card panel rv d2">
+        <div class="im duo duo-yellowteal">
+          <img src="https://picsum.photos/id/1050/700/460" alt="Zine spread in yellow and teal">
+        </div>
+        <div class="pc-body">
+          <h3 class="h3">The Zine</h3>
+          <p class="desc">Sixteen pages of your month, stapled by hand.</p>
+          <ul>
+            <li><span>Size</span><span>A5 · 16 pages</span></li>
+            <li><span>Paper</span><span>Riso cover + 120 gsm inner</span></li>
+            <li><span>Edition</span><span>Up to 50 copies</span></li>
+          </ul>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================
+  07 / Come Say Hi — back to paper
+========================================================== -->
+<section id="hello" class="hello">
+  <div class="shell">
+  <div class="kicker rv" style="align-items:center"><span>Come Say Hi</span><span class="rule"></span></div>
+  <h2 class="display h2 rv d1">Come smell<br>the <span class="misprint">ink.</span></h2>
+  <p class="body-copy rv d1">
+    The studio door is usually open, the drum is usually spinning, and there's usually a
+    misprint pile you can dig through for free. Bring a photo — leave with a plan.
+  </p>
+  <div class="hero-ctas rv d2" style="margin-top:2.4rem">
+    <a href="mailto:hello@halftone.studio" class="btn btn-ink"><i data-lucide="mail"></i>hello@halftone.studio</a>
+    <a href="#" class="btn btn-ghost"><i data-lucide="instagram"></i>@halftone.studio</a>
+  </div>
+  <div class="hello-details rv d3">
+    <div class="metric">
+      <i data-lucide="map-pin"></i>
+      <div><div class="m-label">The studio</div><div class="m-value">14 Ledger Lane, Unit B</div></div>
+    </div>
+    <div class="metric-div"></div>
+    <div class="metric">
+      <i data-lucide="clock"></i>
+      <div><div class="m-label">Open</div><div class="m-value">Wed – Sat, 10 – 6</div></div>
+    </div>
+    <div class="metric-div"></div>
+    <div class="metric">
+      <i data-lucide="printer"></i>
+      <div><div class="m-label">Turnaround</div><div class="m-value">About a week</div></div>
+    </div>
+  </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  HALFTONE — printed loosely since 2024
+  <span class="ink-dot" style="background:var(--pink)"></span>
+  <span class="ink-dot" style="background:var(--blue)"></span>
+  no two alike
+</footer>
+
+<script>
+if (new URLSearchParams(location.search).has('static')) {
+  document.documentElement.classList.add('static');
+}
+
+lucide.createIcons();
+
+// Stacking sheets: sections taller than the viewport pin bottom-aligned
+// (top stays 0 for shorter ones) so no content is ever scroll-locked out of view.
+const sheets = document.querySelectorAll('main > section');
+function setSheetTops() {
+  sheets.forEach(s => { s.style.top = Math.min(0, innerHeight - s.offsetHeight) + 'px'; });
+}
+setSheetTops();
+addEventListener('resize', setSheetTops);
+addEventListener('load', setSheetTops);
+
+// Grain section: before/after compare slider
+const cmp = document.querySelector('.grain-frame');
+function setCut(clientX) {
+  const r = cmp.getBoundingClientRect();
+  const p = Math.max(0, Math.min(100, (clientX - r.left) / r.width * 100));
+  cmp.style.setProperty('--cut', p + '%');
+  cmp.setAttribute('aria-valuenow', Math.round(p));
+}
+cmp.addEventListener('pointerdown', e => {
+  cmp.setPointerCapture(e.pointerId);
+  setCut(e.clientX);
+  const move = ev => setCut(ev.clientX);
+  cmp.addEventListener('pointermove', move);
+  cmp.addEventListener('pointerup', () => cmp.removeEventListener('pointermove', move), { once: true });
+});
+cmp.addEventListener('keydown', e => {
+  const now = parseFloat(cmp.style.getPropertyValue('--cut')) || 78;
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    e.preventDefault();
+    const p = Math.max(0, Math.min(100, now + (e.key === 'ArrowRight' ? 5 : -5)));
+    cmp.style.setProperty('--cut', p + '%');
+    cmp.setAttribute('aria-valuenow', Math.round(p));
+  }
+});
+
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (!reduced && !document.documentElement.classList.contains('static')) {
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) { e.target.classList.add('animate-in'); io.unobserve(e.target); }
+    }
+  }, { threshold: 0.15, rootMargin: '0px 0px -5% 0px' });
+  document.querySelectorAll('.rv').forEach(el => io.observe(el));
+} else {
+  document.querySelectorAll('.rv').forEach(el => el.classList.add('animate-in'));
+}
+
+// Ink pair picker — re-inks the hero print
+const heroImg = document.querySelector('.hero-img');
+document.querySelectorAll('.pair-row').forEach(row => {
+  row.addEventListener('click', () => {
+    document.querySelectorAll('.pair-row').forEach(r => {
+      r.classList.remove('selected');
+      const c = r.querySelector('.check');
+      if (c) c.outerHTML = '<span class="dot-idle"></span>';
+    });
+    row.classList.add('selected');
+    const idle = row.querySelector('.dot-idle');
+    if (idle) idle.outerHTML = '<span class="check"><i data-lucide="check"></i></span>';
+    lucide.createIcons();
+    heroImg.style.setProperty('--duo-dark', row.dataset.dark);
+    heroImg.style.setProperty('--duo-light', row.dataset.light);
+  });
+});
+</script>
+
+
+</body></html>

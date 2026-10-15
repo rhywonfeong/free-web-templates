@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en" class="antialiased">
+<head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>VR Cinema</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<style>
+:root {
+--glass-border: rgba(255, 255, 255, 0.06);
+--glass-bg: rgba(255, 255, 255, 0.02);
+}
+html, body {
+width: 100vw;
+height: 100dvh;
+overflow: hidden;
+overscroll-behavior: none;
+font-family: 'Inter', sans-serif;
+background-color: #0B0B0C;
+-webkit-tap-highlight-color: transparent;
+}
+::-webkit-scrollbar { width: 0; height: 0; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.glass-panel {
+background: var(--glass-bg);
+backdrop-filter: blur(16px);
+-webkit-backdrop-filter: blur(16px);
+border: 1px solid var(--glass-border);
+}
+.ambient-glow {
+background: radial-gradient(circle at 50% 50%, rgba(30, 41, 59, 0.4) 0%, rgba(11, 11, 12, 0) 70%);
+transition: opacity 1s ease;
+}
+.cinema-active .ambient-glow { opacity: 0; }
+.cinema-active { background-color: #000 !important; }
+#vr-environment {
+display: flex;
+width: 100vw;
+height: 100dvh;
+padding-top: env(safe-area-inset-top);
+padding-bottom: env(safe-area-inset-bottom);
+padding-left: env(safe-area-inset-left);
+padding-right: env(safe-area-inset-right);
+overflow: hidden;
+}
+.vr-half {
+flex: 0 0 50%;
+width: 50%;
+height: 100%;
+position: relative;
+display: flex;
+align-items: center;
+justify-content: center;
+overflow: hidden;
+}
+.vignette {
+box-shadow: inset 0 0 8vw rgba(0,0,0,0.95);
+pointer-events: none;
+}
+.lens-distortion {
+border-radius: 10%;
+transform: scale(1.05);
+overflow: hidden;
+width: 100%;
+height: 100%;
+display: flex;
+align-items: center;
+justify-content: center;
+/* Slight sharpening filter for VR Mode */
+filter: contrast(1.05) saturate(1.05);
+}
+.ios-fullscreen-fallback {
+position: fixed !important;
+inset: 0 !important;
+width: 100vw !important;
+height: 100dvh !important;
+max-width: none !important;
+z-index: 60 !important;
+border-radius: 0 !important;
+transform: none !important;
+background: #000 !important;
+aspect-ratio: auto !important;
+}
+input[type=range] {
+-webkit-appearance: none;
+background: transparent;
+}
+input[type=range]::-webkit-slider-thumb {
+-webkit-appearance: none;
+height: 1rem;
+width: 1rem;
+border-radius: 50%;
+background: #ffffff;
+cursor: pointer;
+margin-top: -0.375rem;
+box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+}
+input[type=range]::-webkit-slider-runnable-track {
+width: 100%;
+height: 0.25rem;
+cursor: pointer;
+background: rgba(255,255,255,0.1);
+border-radius: 1rem;
+}
+.ytp-chrome-top, .ytp-show-cards-title { display: none !important; }
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="text-gray-200 flex flex-col items-center justify-center relative transition-colors duration-700 select-none">
+
+    <!-- System Toast Messages -->
+    <div id="sys-toast" class="fixed top-8 left-1/2 -translate-x-1/2 z-[200] glass-panel px-5 py-3 rounded-full text-white text-xs font-medium tracking-wide opacity-0 transition-opacity duration-500 pointer-events-none shadow-2xl flex items-center gap-2.5 max-w-[90vw] text-center">
+        <iconify-icon icon="solar:info-circle-linear" class="text-base text-gray-400 shrink-0"></iconify-icon>
+        <span id="sys-toast-msg">Notification</span>
+    </div>
+
+    <!-- Ambient Background -->
+    <div class="ambient-glow absolute inset-0 z-0 pointer-events-none w-[150vw] h-[150vw] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"></div>
+
+    <!-- Main UI Layer -->
+    <main id="ui-layer" class="z-10 w-full max-w-xl px-6 flex flex-col items-center gap-8 transition-opacity duration-500 ease-in-out">
+        
+        <header class="text-center space-y-1.5 pt-8">
+            <h1 class="text-2xl font-semibold tracking-tight text-white flex items-center justify-center gap-2.5">
+                <iconify-icon icon="solar:glasses-linear"></iconify-icon>
+                VR Cinema
+            </h1>
+            <p class="text-sm text-gray-500 font-medium">Watch any video in immersive mode</p>
+        </header>
+
+        <div class="glass-panel w-full rounded-3xl p-6 sm:p-8 flex flex-col gap-5 shadow-2xl shadow-black/60 relative overflow-hidden transition-transform">
+            <div class="absolute inset-0 opacity-[0.03] pointer-events-none" style="background-image: url('data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E');"></div>
+            
+            <div class="relative z-10">
+                <div class="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-400">
+                    <iconify-icon icon="solar:link-linear" class="text-lg"></iconify-icon>
+                </div>
+                <input type="text" id="yt-input" placeholder="Paste YouTube link..." 
+                    class="w-full bg-[#050505]/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-white/20 focus:bg-[#050505]/80 transition-all font-medium">
+                <p id="error-msg" class="text-xs text-red-400 mt-2 ml-2 hidden opacity-0 transition-opacity">Invalid video link</p>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-3 z-10">
+                <button id="btn-play" class="flex-1 bg-white text-black hover:bg-gray-100 font-semibold rounded-2xl py-4 text-sm flex items-center justify-center gap-2 transition-transform active:scale-[0.98]">
+                    <iconify-icon icon="solar:play-linear" class="text-lg"></iconify-icon>
+                    Play Video
+                </button>
+                <button id="btn-demo" class="sm:flex-none bg-transparent hover:bg-white/5 border border-white/10 font-medium text-gray-300 rounded-2xl py-4 px-6 text-sm transition-colors active:scale-[0.98]">
+                    Try Demo
+                </button>
+            </div>
+        </div>
+
+        <div id="video-wrapper" class="w-full aspect-video glass-panel rounded-3xl overflow-hidden hidden relative opacity-0 translate-y-4 transition-all duration-700 shadow-2xl shadow-black/80">
+            <div id="loading-state" class="absolute inset-0 bg-[#0B0B0C] flex flex-col items-center justify-center gap-3 z-20">
+                <div class="w-8 h-8 rounded-full border-2 border-white/10 border-t-white/60 animate-spin"></div>
+            </div>
+            <div id="player-main" class="w-full h-full relative z-10 pointer-events-none sm:pointer-events-auto"></div>
+            <div id="interaction-layer" class="absolute inset-0 z-30 sm:hidden"></div>
+        </div>
+    </main>
+
+    <!-- Floating Bottom Controls (Normal Mode) -->
+    <nav id="floating-controls" class="z-20 fixed bottom-8 glass-panel rounded-full p-2 flex items-center gap-1 opacity-0 translate-y-8 transition-all duration-500 pointer-events-none">
+        
+        <div class="relative flex items-center">
+            <button id="btn-quality-toggle" class="p-3.5 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors flex items-center justify-center active:scale-95" title="Quality Settings">
+                <iconify-icon icon="solar:settings-linear" class="text-xl"></iconify-icon>
+            </button>
+            <div id="quality-menu-normal" class="absolute bottom-[calc(100%+12px)] left-0 glass-panel p-1.5 rounded-2xl flex-col gap-1 w-28 origin-bottom scale-95 opacity-0 pointer-events-none transition-all flex hidden">
+                <button data-q="auto" class="q-btn-normal w-full text-left px-3 py-2 rounded-xl text-xs font-semibold bg-white text-black transition-colors">Auto</button>
+                <button data-q="hd1080" class="q-btn-normal w-full text-left px-3 py-2 rounded-xl text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors">1080p</button>
+                <button data-q="hd1440" class="q-btn-normal w-full text-left px-3 py-2 rounded-xl text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors">1440p</button>
+                <button data-q="hd2160" class="q-btn-normal w-full text-left px-3 py-2 rounded-xl text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors">2160p</button>
+                <button data-q="highres" class="q-btn-normal w-full text-left px-3 py-2 rounded-xl text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors">4320p</button>
+            </div>
+        </div>
+
+        <div class="w-px h-5 bg-white/10 mx-1"></div>
+
+        <button id="btn-cinema" class="p-3.5 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors flex items-center justify-center active:scale-95" title="Cinema Mode">
+            <iconify-icon icon="solar:monitor-camera-linear" class="text-xl"></iconify-icon>
+        </button>
+        <div class="w-px h-5 bg-white/10 mx-1"></div>
+        <button id="btn-enter-vr" class="py-3 px-6 rounded-full bg-white text-black hover:bg-gray-100 font-semibold text-sm transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+            <iconify-icon icon="solar:glasses-linear" class="text-xl"></iconify-icon>
+            Enter VR
+        </button>
+        <div class="w-px h-5 bg-white/10 mx-1"></div>
+        <button id="btn-fullscreen" class="p-3.5 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors flex items-center justify-center active:scale-95" title="Fullscreen">
+            <iconify-icon icon="solar:maximize-square-linear" class="text-xl"></iconify-icon>
+        </button>
+    </nav>
+
+    <!-- VR Mode Container -->
+    <div id="vr-environment" class="fixed inset-0 z-[100] bg-black hidden opacity-0 transition-opacity duration-500">
+        
+        <div class="vr-half border-r border-white/5">
+            <div class="lens-distortion bg-[#050505]">
+                <div id="vr-left-wrap" class="w-[120%] aspect-video relative transition-transform duration-200" style="transform: scale(1.1);">
+                    <div id="player-left" class="w-full h-full pointer-events-none"></div>
+                </div>
+            </div>
+            <div class="absolute inset-0 vignette z-20"></div>
+        </div>
+
+        <div class="vr-half border-l border-white/5">
+            <div class="lens-distortion bg-[#050505]">
+                <div id="vr-right-wrap" class="w-[120%] aspect-video relative transition-transform duration-200" style="transform: scale(1.1);">
+                    <div id="player-right" class="w-full h-full pointer-events-none"></div>
+                </div>
+            </div>
+            <div class="absolute inset-0 vignette z-20"></div>
+        </div>
+
+        <!-- VR Overlay Messages & Controls -->
+        <div id="vr-ui-layer" class="absolute inset-0 z-40 pointer-events-none flex flex-col items-center justify-center">
+            
+            <div id="vr-toast" class="glass-panel px-6 py-3 rounded-full text-white text-sm opacity-0 transition-opacity duration-700 shadow-2xl font-medium tracking-wide">
+                Rotate your phone and insert into VR headset
+            </div>
+
+            <div id="vr-settings" class="absolute bottom-8 glass-panel p-5 rounded-3xl w-80 flex flex-col gap-5 opacity-0 transition-opacity duration-300 pointer-events-auto scale-95 origin-bottom">
+                
+                <div class="space-y-2">
+                    <div class="flex justify-between text-xs text-gray-400 font-medium px-1">
+                        <span>Quality</span> <span id="val-vr-quality" class="text-white">Auto</span>
+                    </div>
+                    <div class="flex gap-1 overflow-x-auto no-scrollbar snap-x pb-1 px-1">
+                        <button data-q="auto" class="q-btn-vr snap-start shrink-0 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white text-black transition-colors">Auto</button>
+                        <button data-q="hd1080" class="q-btn-vr snap-start shrink-0 px-3.5 py-2 rounded-xl text-xs font-medium text-gray-400 bg-white/5 hover:text-white hover:bg-white/10 transition-colors">1080p</button>
+                        <button data-q="hd1440" class="q-btn-vr snap-start shrink-0 px-3.5 py-2 rounded-xl text-xs font-medium text-gray-400 bg-white/5 hover:text-white hover:bg-white/10 transition-colors">1440p</button>
+                        <button data-q="hd2160" class="q-btn-vr snap-start shrink-0 px-3.5 py-2 rounded-xl text-xs font-medium text-gray-400 bg-white/5 hover:text-white hover:bg-white/10 transition-colors">2160p</button>
+                        <button data-q="highres" class="q-btn-vr snap-start shrink-0 px-3.5 py-2 rounded-xl text-xs font-medium text-gray-400 bg-white/5 hover:text-white hover:bg-white/10 transition-colors">4320p</button>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <div class="flex justify-between text-xs text-gray-400 font-medium px-1">
+                        <span>Zoom</span> <span id="val-zoom">110%</span>
+                    </div>
+                    <input type="range" id="slider-zoom" min="80" max="150" value="110" class="w-full">
+                </div>
+
+                <div class="space-y-2">
+                    <div class="flex justify-between text-xs text-gray-400 font-medium px-1">
+                        <span>Eye Alignment</span> <span id="val-align">0</span>
+                    </div>
+                    <input type="range" id="slider-align" min="-10" max="10" value="0" step="0.5" class="w-full">
+                </div>
+
+                <div class="h-px w-full bg-white/10 my-1"></div>
+
+                <button id="btn-exit-vr" class="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white text-sm font-medium transition-colors active:scale-95 flex items-center justify-center gap-2">
+                    <iconify-icon icon="solar:quit-linear"></iconify-icon>
+                    Exit VR
+                </button>
+            </div>
+
+            <div id="vr-tap-zone" class="absolute inset-0 pointer-events-auto z-[-1]"></div>
+        </div>
+    </div>
+
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script>
+        // DOM Elements
+        const uiLayer = document.getElementById('ui-layer');
+        const inputField = document.getElementById('yt-input');
+        const btnPlay = document.getElementById('btn-play');
+        const btnDemo = document.getElementById('btn-demo');
+        const errorMsg = document.getElementById('error-msg');
+        const videoWrapper = document.getElementById('video-wrapper');
+        const loadingState = document.getElementById('loading-state');
+        const floatingControls = document.getElementById('floating-controls');
+        
+        const btnEnterVr = document.getElementById('btn-enter-vr');
+        const btnCinema = document.getElementById('btn-cinema');
+        const btnFullscreen = document.getElementById('btn-fullscreen');
+        const interactionLayer = document.getElementById('interaction-layer');
+        
+        // Quality Controls
+        const btnQualityToggle = document.getElementById('btn-quality-toggle');
+        const qualityMenuNormal = document.getElementById('quality-menu-normal');
+        const sysToast = document.getElementById('sys-toast');
+        const sysToastMsg = document.getElementById('sys-toast-msg');
+        
+        // VR Elements
+        const vrEnvironment = document.getElementById('vr-environment');
+        const vrToast = document.getElementById('vr-toast');
+        const btnExitVr = document.getElementById('btn-exit-vr');
+        const vrTapZone = document.getElementById('vr-tap-zone');
+        const vrSettings = document.getElementById('vr-settings');
+        const sliderZoom = document.getElementById('slider-zoom');
+        const sliderAlign = document.getElementById('slider-align');
+        const valZoom = document.getElementById('val-zoom');
+        const valAlign = document.getElementById('val-align');
+        const vrLeftWrap = document.getElementById('vr-left-wrap');
+        const vrRightWrap = document.getElementById('vr-right-wrap');
+
+        // State
+        let currentVideoId = localStorage.getItem('vrcinema_last_video') || '';
+        let players = { main: null, left: null, right: null };
+        let isCinemaMode = false;
+        let isVRMode = false;
+        let qMenuOpen = false;
+        let hideSettingsTimeout;
+        let toastTimeout;
+        const DEMO_VIDEO = 'yCgX6P1T03I';
+
+        // Quality Settings
+        let targetQuality = 'auto';
+        const qualityLabels = { 'auto': 'Auto', 'hd1080': '1080p', 'hd1440': '1440p', 'hd2160': '2160p', 'highres': '4320p' };
+
+        // Initialize Optimal Quality Based on Device
+        function initOptimalQuality() {
+            const is4K = (window.innerWidth * window.devicePixelRatio) >= 3840;
+            const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+            const isFast = conn ? (!conn.saveData && (conn.effectiveType === '4g' || conn.effectiveType === 'wifi')) : true;
+            
+            if (isVRMode) {
+                targetQuality = 'hd2160';
+            } else if (is4K && isFast) {
+                targetQuality = 'hd2160';
+            } else {
+                targetQuality = 'auto';
+            }
+            updateQualityUI();
+        }
+        initOptimalQuality();
+
+        if (currentVideoId) {
+            inputField.value = `https://youtube.com/watch?v=${currentVideoId}`;
+        }
+
+        const haptic = (type = 'light') => {
+            if (!navigator.vibrate) return;
+            if (type === 'light') navigator.vibrate(30);
+            if (type === 'medium') navigator.vibrate(50);
+            if (type === 'heavy') navigator.vibrate([50, 30, 50]);
+        };
+
+        function showToast(message, duration = 4000) {
+            clearTimeout(toastTimeout);
+            sysToastMsg.textContent = message;
+            sysToast.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-2');
+            
+            toastTimeout = setTimeout(() => {
+                sysToast.classList.add('opacity-0', 'pointer-events-none', 'translate-y-2');
+            }, duration);
+        }
+
+        function extractVideoID(url) {
+            const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[7].length == 11) ? match[7] : false;
+        }
+
+        function createPlayer(elementId, videoId, mute = false) {
+            return new YT.Player(elementId, {
+                height: '100%',
+                width: '100%',
+                videoId: videoId,
+                playerVars: {
+                    'autoplay': 1,
+                    'controls': elementId === 'player-main' ? 1 : 0,
+                    'disablekb': 1,
+                    'fs': 0,
+                    'modestbranding': 1,
+                    'rel': 0,
+                    'showinfo': 0,
+                    'mute': mute ? 1 : 0,
+                    'playsinline': 1,
+                    'vq': targetQuality === 'auto' ? 'hd1080' : targetQuality // Initial request hint
+                },
+                events: {
+                    'onReady': onPlayerReady,
+                    'onStateChange': onPlayerStateChange
+                }
+            });
+        }
+
+        let playersReadyCount = 0;
+        function onPlayerReady(event) {
+            playersReadyCount++;
+            
+            // Apply quality via API immediately if possible
+            if (targetQuality !== 'auto' && event.target.setPlaybackQuality) {
+                event.target.setPlaybackQuality(targetQuality);
+            }
+
+            if (event.target.getIframe().id === 'player-main') {
+                setTimeout(() => {
+                    loadingState.style.opacity = '0';
+                    setTimeout(() => loadingState.style.display = 'none', 300);
+                    btnEnterVr.disabled = false;
+                }, 800);
+            }
+        }
+
+        function onPlayerStateChange(event) {
+            const state = event.data;
+            const time = event.target.getCurrentTime();
+            
+            if (state == YT.PlayerState.PLAYING) {
+                // Retry quality enforcement (YouTube overrides initial calls sometimes)
+                if (event.target.enforceQualityTimeout) {
+                    clearTimeout(event.target.enforceQualityTimeout);
+                }
+                event.target.enforceQualityTimeout = setTimeout(() => {
+                    if (targetQuality !== 'auto' && event.target.setPlaybackQuality) {
+                        event.target.setPlaybackQuality(targetQuality);
+                    }
+                }, 1000);
+
+                if (isVRMode) {
+                    if(players.left && players.left.getPlayerState() !== YT.PlayerState.PLAYING) {
+                        players.left.seekTo(time, true); players.left.playVideo();
+                    }
+                    if(players.right && players.right.getPlayerState() !== YT.PlayerState.PLAYING) {
+                        players.right.seekTo(time, true); players.right.playVideo();
+                    }
+                }
+            } else if (state == YT.PlayerState.PAUSED) {
+                if (isVRMode) {
+                    if(players.left) players.left.pauseVideo();
+                    if(players.right) players.right.pauseVideo();
+                }
+            }
+        }
+
+        function loadVideo(vidId) {
+            if (!vidId) {
+                errorMsg.classList.remove('hidden');
+                setTimeout(() => errorMsg.classList.remove('opacity-0'), 10);
+                haptic('heavy');
+                return;
+            }
+
+            haptic('medium');
+            errorMsg.classList.add('opacity-0');
+            currentVideoId = vidId;
+            localStorage.setItem('vrcinema_last_video', vidId);
+
+            inputField.blur();
+            videoWrapper.classList.remove('hidden');
+            loadingState.style.display = 'flex';
+            loadingState.style.opacity = '1';
+            
+            setTimeout(() => {
+                videoWrapper.classList.remove('opacity-0', 'translate-y-4');
+                floatingControls.classList.remove('opacity-0', 'translate-y-8');
+                floatingControls.classList.add('pointer-events-auto');
+            }, 50);
+
+            if (players.main) players.main.destroy();
+            if (players.left) players.left.destroy();
+            if (players.right) players.right.destroy();
+            
+            btnEnterVr.disabled = true;
+            playersReadyCount = 0;
+
+            players.main = createPlayer('player-main', vidId, false);
+            players.left = createPlayer('player-left', vidId, true);
+            players.right = createPlayer('player-right', vidId, true);
+        }
+
+        btnPlay.addEventListener('click', () => {
+            loadVideo(extractVideoID(inputField.value));
+        });
+
+        inputField.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') btnPlay.click();
+        });
+
+        btnDemo.addEventListener('click', () => {
+            inputField.value = `https://youtube.com/watch?v=${DEMO_VIDEO}`;
+            loadVideo(DEMO_VIDEO);
+        });
+
+        // Double Tap Shortcut
+        let globalLastTap = 0;
+        document.body.addEventListener('touchend', (e) => {
+            const isControl = e.target.tagName === 'INPUT' || e.target.closest('button');
+            if (isControl) return;
+
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - globalLastTap;
+            
+            if (tapLength < 300 && tapLength > 0) {
+                if (!btnEnterVr.disabled && !isVRMode && currentVideoId) {
+                    enterVR();
+                    e.preventDefault();
+                }
+            } else if (e.target === interactionLayer && players.main) {
+                const state = players.main.getPlayerState();
+                if (state === YT.PlayerState.PLAYING) players.main.pauseVideo();
+                else players.main.playVideo();
+            }
+            globalLastTap = currentTime;
+        }, { passive: false });
+
+        // Quality Selection Logic
+        function selectQuality(q) {
+            haptic('light');
+            targetQuality = q;
+            updateQualityUI();
+            
+            ['main', 'left', 'right'].forEach(key => {
+                if(players[key] && typeof players[key].setPlaybackQuality === 'function') {
+                    players[key].setPlaybackQuality(targetQuality === 'auto' ? 'default' : targetQuality);
+                }
+            });
+
+            if (['hd1440', 'hd2160', 'highres'].includes(q)) {
+                showToast("Quality requested. Max resolution depends on video & device.");
+            }
+            
+            if (qMenuOpen) closeQualityMenu();
+        }
+
+        function updateQualityUI() {
+            document.querySelectorAll('.q-btn-normal, .q-btn-vr').forEach(btn => {
+                if (btn.dataset.q === targetQuality) {
+                    btn.classList.remove('text-gray-400', 'font-medium', 'bg-white/5');
+                    btn.classList.add('bg-white', 'text-black', 'font-semibold');
+                    if (btn.classList.contains('q-btn-vr')) btn.classList.remove('hover:bg-white/10');
+                    else btn.classList.remove('hover:bg-white/5');
+                } else {
+                    btn.classList.remove('bg-white', 'text-black', 'font-semibold');
+                    btn.classList.add('text-gray-400', 'font-medium');
+                    if (btn.classList.contains('q-btn-vr')) btn.classList.add('bg-white/5', 'hover:bg-white/10');
+                    else btn.classList.add('hover:bg-white/5');
+                }
+            });
+            document.getElementById('val-vr-quality').textContent = qualityLabels[targetQuality];
+        }
+
+        document.querySelectorAll('.q-btn-normal, .q-btn-vr').forEach(btn => {
+            btn.addEventListener('click', (e) => selectQuality(e.target.dataset.q));
+        });
+
+        // Normal View Quality Menu Toggle
+        btnQualityToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            qMenuOpen = !qMenuOpen;
+            if (qMenuOpen) {
+                qualityMenuNormal.classList.remove('hidden');
+                requestAnimationFrame(() => {
+                    qualityMenuNormal.classList.remove('opacity-0', 'scale-95', 'pointer-events-none');
+                });
+                btnQualityToggle.classList.add('text-white', 'bg-white/10');
+            } else {
+                closeQualityMenu();
+            }
+        });
+
+        function closeQualityMenu() {
+            qMenuOpen = false;
+            qualityMenuNormal.classList.add('opacity-0', 'scale-95', 'pointer-events-none');
+            btnQualityToggle.classList.remove('text-white', 'bg-white/10');
+            setTimeout(() => { if (!qMenuOpen) qualityMenuNormal.classList.add('hidden'); }, 300);
+        }
+
+        document.addEventListener('click', (e) => {
+            if (qMenuOpen && !qualityMenuNormal.contains(e.target) && !btnQualityToggle.contains(e.target)) {
+                closeQualityMenu();
+            }
+        });
+
+        // Normal View Controls
+        btnCinema.addEventListener('click', () => {
+            haptic('light');
+            isCinemaMode = !isCinemaMode;
+            document.body.classList.toggle('cinema-active');
+            
+            if (isCinemaMode) {
+                uiLayer.classList.add('opacity-0', 'pointer-events-none');
+                btnCinema.classList.add('bg-white/20', 'text-white');
+            } else {
+                uiLayer.classList.remove('opacity-0', 'pointer-events-none');
+                btnCinema.classList.remove('bg-white/20', 'text-white');
+            }
+        });
+
+        btnFullscreen.addEventListener('click', () => {
+            haptic('light');
+            const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement || videoWrapper.classList.contains('ios-fullscreen-fallback');
+            
+            if (!isFullscreen) {
+                const docEl = document.documentElement;
+                if (docEl.requestFullscreen) docEl.requestFullscreen().catch(()=>{});
+                else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen();
+                videoWrapper.classList.add('ios-fullscreen-fallback');
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+                else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+                videoWrapper.classList.remove('ios-fullscreen-fallback');
+            }
+        });
+
+        // VR Core Logic
+        function enterVR() {
+            haptic('heavy');
+            isVRMode = true;
+
+            // Optional: Prioritize 4K natively when entering VR mode
+            if (targetQuality === 'auto' || targetQuality === 'hd1080') {
+                selectQuality('hd2160');
+            }
+
+            document.body.style.overflow = "hidden";
+
+            const docEl = document.documentElement;
+            if (docEl.requestFullscreen) docEl.requestFullscreen().catch(() => {});
+            else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen();
+
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('landscape').catch(() => {});
+            }
+
+            uiLayer.style.display = 'none';
+            floatingControls.style.display = 'none';
+            vrEnvironment.classList.remove('hidden');
+            
+            const currentTime = players.main.getCurrentTime();
+            players.main.pauseVideo();
+            players.left.seekTo(currentTime, true);
+            players.right.seekTo(currentTime, true);
+            players.left.playVideo();
+            players.right.playVideo();
+
+            setTimeout(() => {
+                vrEnvironment.classList.remove('opacity-0');
+                window.scrollTo(0, 1);
+                
+                setTimeout(() => {
+                    vrToast.classList.remove('opacity-0');
+                    setTimeout(() => vrToast.classList.add('opacity-0'), 4000);
+                }, 600);
+            }, 50);
+        }
+
+        function exitVR() {
+            haptic('medium');
+            isVRMode = false;
+            
+            if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+            
+            if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+
+            vrEnvironment.classList.add('opacity-0');
+            
+            setTimeout(() => {
+                vrEnvironment.classList.add('hidden');
+                uiLayer.style.display = 'flex';
+                floatingControls.style.display = 'flex';
+                
+                const currentTime = players.left.getCurrentTime();
+                players.left.pauseVideo();
+                players.right.pauseVideo();
+                players.main.seekTo(currentTime, true);
+                players.main.playVideo();
+            }, 500);
+        }
+
+        btnEnterVr.addEventListener('click', enterVR);
+        btnExitVr.addEventListener('click', exitVR);
+
+        // VR Settings
+        function showVrSettings() {
+            clearTimeout(hideSettingsTimeout);
+            vrSettings.classList.remove('opacity-0', 'scale-95');
+            vrSettings.classList.add('opacity-100', 'scale-100');
+            
+            hideSettingsTimeout = setTimeout(() => {
+                vrSettings.classList.remove('opacity-100', 'scale-100');
+                vrSettings.classList.add('opacity-0', 'scale-95');
+            }, 4000);
+        }
+
+        vrTapZone.addEventListener('click', showVrSettings);
+        vrSettings.addEventListener('click', () => {
+            // Keep menu open while interacting
+            clearTimeout(hideSettingsTimeout);
+            hideSettingsTimeout = setTimeout(() => {
+                vrSettings.classList.remove('opacity-100', 'scale-100');
+                vrSettings.classList.add('opacity-0', 'scale-95');
+            }, 5000);
+        });
+
+        sliderZoom.addEventListener('input', (e) => {
+            const val = e.target.value;
+            valZoom.textContent = `${val}%`;
+            const scale = val / 100;
+            vrLeftWrap.style.transform = `scale(${scale})`;
+            vrRightWrap.style.transform = `scale(${scale})`;
+        });
+
+        sliderAlign.addEventListener('input', (e) => {
+            const val = e.target.value;
+            valAlign.textContent = val;
+            vrLeftWrap.style.left = `${val}px`;
+            vrRightWrap.style.right = `${val}px`;
+        });
+    </script>
+</body>
+</html>

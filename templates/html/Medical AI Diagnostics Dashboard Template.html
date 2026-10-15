@@ -1,0 +1,906 @@
+<html lang="en" class="dark"><head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medical AI Diagnostics</title>
+<!-- Libraries -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* Base Settings */
+:root {
+--cyan: #22d3ee;
+--bg: #050505;
+--text-main: #f5f5f5;
+--text-muted: #737373;
+--border: #262626;
+}
+body {
+background-color: var(--bg);
+color: var(--text-main);
+font-family: 'Inter', sans-serif;
+overflow-x: hidden;
+}
+/* Typography */
+.font-serif-heading {
+font-family: 'Playfair Display', serif;
+}
+.font-mono-tech {
+font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+/* 3D Background */
+#canvas-container {
+position: fixed;
+top: 0;
+left: 0;
+width: 100%;
+height: 100%;
+z-index: 0;
+opacity: 0;
+transition: opacity 2s ease-out;
+pointer-events: none;
+}
+/* Animations */
+.fade-in-up {
+animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+opacity: 0;
+transform: translateY(20px);
+}
+@keyframes fadeInUp {
+to { opacity: 1; transform: translateY(0); }
+}
+/* Card Interactions */
+.card-hover {
+transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.card-hover:hover {
+transform: translateY(-2px);
+background: rgba(255,255,255,0.03);
+border-color: #404040;
+}
+.card-hover.selected {
+background: rgba(8, 145, 178, 0.1);
+border-color: var(--cyan);
+box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.2), 0 10px 20px -5px rgba(0,0,0,0.5);
+}
+/* Progress Bar Animation */
+.progress-fill {
+width: 0%;
+transition: width 1.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* Scanner Overlay */
+#scanner-overlay {
+background: linear-gradient(to bottom, transparent, rgba(34, 211, 238, 0.2), transparent);
+height: 100px;
+width: 100%;
+position: absolute;
+top: -100px;
+left: 0;
+z-index: 20;
+pointer-events: none;
+}
+.scanning #scanner-overlay {
+animation: scan 2s linear infinite;
+}
+@keyframes scan {
+0% { top: -100px; }
+100% { top: 100%; }
+}
+/* Audio Waveform Animation */
+.bar {
+width: 2px;
+height: 8px;
+background-color: #22d3ee;
+border-radius: 2px;
+animation: sound 0ms -800ms linear infinite alternate;
+transition: height 0.1s;
+}
+.speaking .bar {
+animation-duration: 400ms;
+}
+.bar:nth-child(1)  { animation-delay: -300ms; }
+.bar:nth-child(2)  { animation-delay: -400ms; }
+.bar:nth-child(3)  { animation-delay: -500ms; }
+.bar:nth-child(4)  { animation-delay: -600ms; }
+.bar:nth-child(5)  { animation-delay: -700ms; }
+@keyframes sound {
+0% { height: 3px; opacity: 0.5; }
+100% { height: 16px; opacity: 1; }
+}
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #404040; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #525252; }
+/* Custom Utilities */
+.glass-panel {
+background: rgba(20, 20, 20, 0.6);
+backdrop-filter: blur(12px);
+border: 1px solid rgba(255, 255, 255, 0.08);
+}
+</style></head>
+<body class="min-h-screen flex text-neutral-100 bg-neutral-950 selection:bg-cyan-900 selection:text-cyan-50">
+
+    <!-- Backgrounds -->
+    <div id="canvas-container"></div>
+    <div class="fixed inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none z-[1] mix-blend-overlay"></div>
+
+    <!-- Sidebar -->
+    <aside class="hidden md:flex flex-col w-64 h-screen fixed left-0 top-0 border-r border-neutral-800 bg-neutral-950/80 backdrop-blur-xl z-50">
+        <div class="p-6 border-b border-neutral-800">
+             <div class="flex items-center gap-3 cursor-default">
+                <div class="relative">
+                    <div class="w-2.5 h-2.5 rounded-full bg-cyan-500 shadow-[0_0_15px_rgba(34,211,238,0.6)]"></div>
+                </div>
+                <span class="font-serif-heading text-lg tracking-tight font-semibold text-white">
+                  Ark<span class="text-cyan-500 font-serif-heading italic">Diagnostics</span>
+                </span>
+            </div>
+        </div>
+
+        <nav class="flex-1 p-4 space-y-1">
+            <a href="#" class="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-cyan-400 bg-cyan-950/30 border border-cyan-900/50 rounded-lg">
+                <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                Dashboard
+            </a>
+            <a href="#" class="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800/50 rounded-lg transition-colors">
+                <i data-lucide="folder-search" class="w-4 h-4"></i>
+                Recent Scans
+            </a>
+            <a href="#" class="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800/50 rounded-lg transition-colors">
+                <i data-lucide="users" class="w-4 h-4"></i>
+                Patients
+            </a>
+            <a href="#" class="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800/50 rounded-lg transition-colors">
+                <i data-lucide="file-bar-chart" class="w-4 h-4"></i>
+                Analytics
+            </a>
+        </nav>
+
+        <div class="p-4 border-t border-neutral-800">
+            <div class="flex items-center gap-3 px-2 py-2">
+                <div class="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-xs font-medium text-neutral-400 border border-neutral-700">DR</div>
+                <div class="flex flex-col">
+                    <span class="text-xs font-medium text-white">Dr. Reynolds</span>
+                    <span class="text-[10px] text-neutral-500">Radiology Dept.</span>
+                </div>
+                <i data-lucide="settings" class="w-4 h-4 ml-auto text-neutral-600 cursor-pointer hover:text-neutral-300"></i>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 md:ml-64 p-8 md:p-12 relative z-10 flex flex-col gap-10 max-w-7xl mx-auto w-full">
+      
+      <!-- Analytics Header -->
+      <section class="fade-in-up space-y-6" style="animation-delay: 0.05s;">
+        <div class="flex items-center justify-between">
+            <h1 class="font-serif-heading text-3xl text-white font-medium">Overview</h1>
+            <div class="flex items-center gap-2 text-xs font-mono-tech text-neutral-400 bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded-full shadow-sm">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]"></span>
+                SYSTEM OPERATIONAL
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <!-- Stats -->
+            <div class="glass-panel p-5 rounded-xl transition-all hover:bg-neutral-900">
+                <div class="flex justify-between items-start mb-4">
+                    <div class="p-2 bg-neutral-800/50 rounded-lg border border-neutral-700/50"><i data-lucide="activity" class="w-4 h-4 text-neutral-400"></i></div>
+                    <span class="text-[10px] font-mono-tech text-emerald-400 bg-emerald-950/30 border border-emerald-900/50 px-2 py-1 rounded-full">+12%</span>
+                </div>
+                <div class="text-2xl font-semibold text-white tracking-tight">2,405</div>
+                <div class="text-xs text-neutral-500 mt-1">Total Scans Processed</div>
+            </div>
+
+            <div class="glass-panel p-5 rounded-xl transition-all hover:bg-neutral-900">
+                <div class="flex justify-between items-start mb-4">
+                    <div class="p-2 bg-neutral-800/50 rounded-lg border border-neutral-700/50"><i data-lucide="alert-triangle" class="w-4 h-4 text-neutral-400"></i></div>
+                    <span class="text-[10px] font-mono-tech text-rose-400 bg-rose-950/30 border border-rose-900/50 px-2 py-1 rounded-full">+4%</span>
+                </div>
+                <div class="text-2xl font-semibold text-white tracking-tight">184</div>
+                <div class="text-xs text-neutral-500 mt-1">Anomalies Detected</div>
+            </div>
+
+            <div class="glass-panel p-5 rounded-xl transition-all hover:bg-neutral-900">
+                <div class="flex justify-between items-start mb-4">
+                    <div class="p-2 bg-neutral-800/50 rounded-lg border border-neutral-700/50"><i data-lucide="clock" class="w-4 h-4 text-neutral-400"></i></div>
+                    <span class="text-[10px] font-mono-tech text-neutral-400 bg-neutral-800 px-2 py-1 rounded-full">-0.8s</span>
+                </div>
+                <div class="text-2xl font-semibold text-white tracking-tight">1.2s</div>
+                <div class="text-xs text-neutral-500 mt-1">Avg. Processing Time</div>
+            </div>
+
+            <div class="glass-panel p-5 rounded-xl transition-all hover:bg-neutral-900">
+                <div class="flex justify-between items-start mb-4">
+                    <div class="p-2 bg-neutral-800/50 rounded-lg border border-neutral-700/50"><i data-lucide="check-circle" class="w-4 h-4 text-neutral-400"></i></div>
+                    <span class="text-[10px] font-mono-tech text-emerald-400 bg-emerald-950/30 border border-emerald-900/50 px-2 py-1 rounded-full">99.9%</span>
+                </div>
+                <div class="text-2xl font-semibold text-white tracking-tight">98.2%</div>
+                <div class="text-xs text-neutral-500 mt-1">Model Accuracy</div>
+            </div>
+        </div>
+      </section>
+
+      <!-- Recent Scans Section -->
+      <section class="fade-in-up space-y-4" style="animation-delay: 0.08s;">
+         <div class="flex items-center justify-between">
+            <h2 class="font-serif-heading text-xl text-white">Recent Activity</h2>
+            <button class="text-xs text-neutral-500 hover:text-white transition-colors">View All</button>
+         </div>
+         
+         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Recent Card 1 -->
+            <div class="group relative p-4 rounded-xl border border-neutral-800 bg-neutral-900/40 hover:bg-neutral-900 transition-all cursor-pointer">
+                <div class="flex justify-between items-start mb-3">
+                    <div class="p-1.5 rounded bg-neutral-800 text-neutral-400 group-hover:text-white transition-colors"><i data-lucide="scan-line" class="w-4 h-4"></i></div>
+                    <span class="text-[10px] font-medium text-emerald-400 border border-emerald-900/30 bg-emerald-950/20 px-2 py-0.5 rounded">Normal</span>
+                </div>
+                <div class="space-y-1">
+                    <h4 class="text-sm font-semibold text-neutral-200">Patient #8842</h4>
+                    <p class="text-[10px] text-neutral-500 font-mono-tech uppercase">CT Chest • 24 mins ago</p>
+                </div>
+            </div>
+
+            <!-- Recent Card 2 -->
+            <div class="group relative p-4 rounded-xl border border-neutral-800 bg-neutral-900/40 hover:bg-neutral-900 transition-all cursor-pointer">
+                <div class="flex justify-between items-start mb-3">
+                    <div class="p-1.5 rounded bg-neutral-800 text-neutral-400 group-hover:text-white transition-colors"><i data-lucide="brain-circuit" class="w-4 h-4"></i></div>
+                    <span class="text-[10px] font-medium text-rose-400 border border-rose-900/30 bg-rose-950/20 px-2 py-0.5 rounded">Anomaly</span>
+                </div>
+                <div class="space-y-1">
+                    <h4 class="text-sm font-semibold text-neutral-200">Patient #9921</h4>
+                    <p class="text-[10px] text-neutral-500 font-mono-tech uppercase">MRI Brain • 1 hr ago</p>
+                </div>
+            </div>
+
+             <!-- Recent Card 3 -->
+            <div class="group relative p-4 rounded-xl border border-neutral-800 bg-neutral-900/40 hover:bg-neutral-900 transition-all cursor-pointer">
+                <div class="flex justify-between items-start mb-3">
+                    <div class="p-1.5 rounded bg-neutral-800 text-neutral-400 group-hover:text-white transition-colors"><i data-lucide="bone" class="w-4 h-4"></i></div>
+                    <span class="text-[10px] font-medium text-amber-400 border border-amber-900/30 bg-amber-950/20 px-2 py-0.5 rounded">Review</span>
+                </div>
+                <div class="space-y-1">
+                    <h4 class="text-sm font-semibold text-neutral-200">Patient #7331</h4>
+                    <p class="text-[10px] text-neutral-500 font-mono-tech uppercase">X-Ray Femur • 3 hrs ago</p>
+                </div>
+            </div>
+         </div>
+      </section>
+
+      <hr class="border-neutral-800" />
+
+      <!-- Action Section -->
+      <section class="fade-in-up space-y-6" style="animation-delay: 0.1s;">
+        <div class="flex flex-col gap-2">
+            <h2 class="font-serif-heading text-2xl text-white">New Diagnostic</h2>
+            <p class="text-sm text-neutral-500 max-w-2xl">Select input data type and upload source files for neural analysis.</p>
+        </div>
+
+        <!-- Selection Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <!-- Card 1 -->
+          <div id="opt-xray" onclick="selectType('xray')" class="card-hover group cursor-pointer border border-neutral-800 bg-neutral-900/50 rounded-xl p-6 relative overflow-hidden shadow-sm">
+            <div class="flex items-start justify-between mb-4">
+                <div class="w-10 h-10 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                  <i data-lucide="bone" class="w-5 h-5 text-neutral-400 group-hover:text-cyan-400 transition-colors"></i>
+                </div>
+                <div class="w-4 h-4 rounded-full border border-neutral-600 group-[.selected]:bg-cyan-500 group-[.selected]:border-cyan-500 transition-colors"></div>
+            </div>
+            <h3 class="font-medium text-neutral-200 mb-1">Radiology Scan</h3>
+            <p class="text-xs text-neutral-500 leading-relaxed">
+              Detection of fractures and bone density issues via DICOM/JPG.
+            </p>
+          </div>
+
+          <!-- Card 2 -->
+          <div id="opt-blood" onclick="selectType('blood')" class="card-hover group cursor-pointer border border-neutral-800 bg-neutral-900/50 rounded-xl p-6 relative overflow-hidden shadow-sm">
+             <div class="flex items-start justify-between mb-4">
+                <div class="w-10 h-10 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                  <i data-lucide="activity" class="w-5 h-5 text-neutral-400 group-hover:text-rose-400 transition-colors"></i>
+                </div>
+                <div class="w-4 h-4 rounded-full border border-neutral-600 group-[.selected]:bg-rose-500 group-[.selected]:border-rose-500 transition-colors"></div>
+            </div>
+            <h3 class="font-medium text-neutral-200 mb-1">Biochemical Panel</h3>
+            <p class="text-xs text-neutral-500 leading-relaxed">
+              Complete blood count (CBC) and metabolic marker analysis.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Upload Zone -->
+      <section id="upload-section" class="fade-in-up transition-all duration-700 opacity-50 pointer-events-none grayscale" style="animation-delay: 0.2s;">
+        <div class="relative group rounded-xl overflow-hidden bg-neutral-900/30 border border-dashed border-neutral-700 hover:border-cyan-500/50 transition-colors">
+            
+            <input type="file" id="file-upload" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-30" onchange="handleFile(this)">
+            
+            <div id="drop-zone" class="relative z-20 p-12 flex flex-col items-center justify-center gap-4 transition-all duration-300">
+                <div class="w-14 h-14 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center group-hover:scale-110 group-hover:bg-cyan-950 group-hover:text-cyan-400 transition-all duration-300">
+                    <i data-lucide="upload-cloud" class="w-6 h-6 text-neutral-500"></i>
+                </div>
+                <div class="text-center space-y-1">
+                    <p id="file-label" class="text-sm font-medium text-neutral-300">Click to upload or drag and drop</p>
+                    <p class="text-[10px] text-neutral-500 font-mono-tech uppercase">DICOM, PDF, JPG, PNG • Max 50MB</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 flex justify-end">
+             <button id="analyze-btn" onclick="startAnalysis()" class="group relative px-6 py-2.5 bg-white text-black rounded-lg font-medium text-sm transition-all duration-300 hover:bg-neutral-200 hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none overflow-hidden" disabled>
+                <span class="relative z-10 flex items-center gap-2">
+                    Start Analysis <i data-lucide="sparkles" class="w-3.5 h-3.5 transition-transform group-hover:rotate-12"></i>
+                </span>
+            </button>
+        </div>
+      </section>
+
+      <!-- Demo Analysis Section -->
+      <section id="demo-section" class="fade-in-up mt-8 border-t border-neutral-800 pt-8" style="animation-delay: 0.25s;">
+         <div class="flex items-center gap-4 mb-6">
+            <h3 class="text-sm font-medium text-neutral-400 uppercase tracking-wider">Demo Data Preview</h3>
+            <div class="h-px bg-neutral-800 flex-1"></div>
+         </div>
+
+         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 opacity-60 hover:opacity-100 transition-opacity duration-500 cursor-default">
+            <!-- Demo Chart -->
+            <div class="glass-panel p-5 rounded-xl border border-neutral-800">
+                <div class="flex justify-between items-center mb-6">
+                    <h4 class="text-xs text-neutral-300 font-semibold">Longitudinal Analysis</h4>
+                    <i data-lucide="bar-chart-2" class="w-4 h-4 text-neutral-600"></i>
+                </div>
+                <div class="flex items-end justify-between h-32 gap-2">
+                    <div class="w-full bg-neutral-800 rounded-t-sm h-[40%] hover:bg-cyan-900/50 hover:h-[45%] transition-all"></div>
+                    <div class="w-full bg-neutral-800 rounded-t-sm h-[60%] hover:bg-cyan-900/50 hover:h-[65%] transition-all"></div>
+                    <div class="w-full bg-neutral-800 rounded-t-sm h-[30%] hover:bg-cyan-900/50 hover:h-[35%] transition-all"></div>
+                    <div class="w-full bg-neutral-800 rounded-t-sm h-[80%] hover:bg-cyan-900/50 hover:h-[85%] transition-all"></div>
+                    <div class="w-full bg-cyan-900 rounded-t-sm h-[95%] shadow-[0_0_10px_rgba(34,211,238,0.2)]"></div>
+                </div>
+                <div class="mt-3 flex justify-between text-[10px] text-neutral-600 font-mono-tech">
+                    <span>Q1</span><span>Q2</span><span>Q3</span><span>Q4</span><span>Curr</span>
+                </div>
+            </div>
+
+            <!-- Demo Visual -->
+            <div class="glass-panel p-5 rounded-xl border border-neutral-800 flex gap-4">
+                <div class="w-24 h-24 rounded bg-neutral-900 border border-neutral-800 overflow-hidden relative">
+                     <div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1579154204601-01588f351e67?auto=format&fit=crop&q=80&w=150')] bg-cover opacity-50 mix-blend-luminosity"></div>
+                </div>
+                <div class="flex-1 space-y-2">
+                    <div class="flex justify-between">
+                         <div class="h-2 w-20 bg-neutral-800 rounded animate-pulse"></div>
+                         <div class="h-2 w-8 bg-cyan-900/30 rounded"></div>
+                    </div>
+                    <div class="h-2 w-32 bg-neutral-800 rounded animate-pulse delay-75"></div>
+                    <div class="h-2 w-24 bg-neutral-800 rounded animate-pulse delay-150"></div>
+                    <div class="mt-4 pt-2 border-t border-neutral-800 flex gap-2">
+                         <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                         <span class="text-[10px] text-neutral-500">Pathology detected in region A2</span>
+                    </div>
+                </div>
+            </div>
+         </div>
+      </section>
+
+      <!-- Results Section -->
+      <section id="results-section" class="hidden w-full transition-all duration-500">
+        
+        <div class="flex items-center gap-3 mb-4">
+            <div class="h-px bg-neutral-800 flex-1"></div>
+            <span class="text-xs font-mono-tech text-neutral-500 uppercase tracking-widest">Analysis Results</span>
+            <div class="h-px bg-neutral-800 flex-1"></div>
+        </div>
+
+        <div class="relative rounded-xl overflow-hidden border border-neutral-800 bg-neutral-900 shadow-2xl shadow-black/50">
+            
+            <!-- Scanner Effect -->
+            <div id="scanner-overlay"></div>
+
+            <!-- Header -->
+            <div class="p-4 border-b border-neutral-800 flex justify-between items-center bg-neutral-900/50">
+                <div class="flex items-center gap-3">
+                    <div class="flex h-2.5 w-2.5 relative">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    </div>
+                    <span class="text-[10px] font-mono-tech text-neutral-400 font-medium">Processing Complete</span>
+                </div>
+                
+                <div class="flex items-center gap-4">
+                    <!-- Audio Control -->
+                    <button id="audio-btn" onclick="toggleAudio()" class="hidden items-center gap-2 px-3 py-1 rounded-full bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 transition-colors group">
+                        <div id="audio-wave" class="flex items-end gap-0.5 h-4">
+                            <span class="bar"></span>
+                            <span class="bar"></span>
+                            <span class="bar"></span>
+                            <span class="bar"></span>
+                            <span class="bar"></span>
+                        </div>
+                        <span id="audio-status" class="text-[10px] font-medium text-neutral-400 group-hover:text-white">Speaking...</span>
+                    </button>
+                    
+                    <button onclick="resetApp()" class="text-xs text-neutral-500 hover:text-white underline">Clear Results</button>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="p-0 min-h-[300px] relative bg-neutral-950">
+                
+                <!-- Loading State -->
+                <div id="loading-state" class="absolute inset-0 flex flex-col items-center justify-center gap-6 z-10 bg-neutral-950/90 backdrop-blur-sm">
+                    <div class="relative w-16 h-16">
+                        <svg class="w-full h-full animate-spin text-neutral-800" viewBox="0 0 100 100">
+                            <circle class="opacity-25" cx="50" cy="50" r="45" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                            <path class="opacity-75 text-cyan-500" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </div>
+                    <div class="flex flex-col items-center gap-1">
+                        <p class="text-xs font-semibold text-white">AI Model Active</p>
+                        <p id="loading-text" class="text-[10px] text-neutral-500 font-mono-tech">Parsing metadata...</p>
+                    </div>
+                </div>
+
+                <!-- Report Content -->
+                <div id="report-content" class="p-8 hidden opacity-0 transition-opacity duration-1000">
+                    <!-- Injected via JS -->
+                </div>
+
+            </div>
+        </div>
+      </section>
+
+    </main>
+
+    <script>
+      // Initialize Icons
+      lucide.createIcons();
+
+      // UI Logic
+      let selectedType = null;
+      let fileSelected = false;
+      let isSpeaking = false;
+      let synthesis = window.speechSynthesis;
+
+      function selectType(type) {
+        selectedType = type;
+        
+        // Reset
+        document.querySelectorAll('.card-hover').forEach(el => {
+            el.classList.remove('selected');
+        });
+
+        // Activate
+        const activeEl = document.getElementById(`opt-${type}`);
+        activeEl.classList.add('selected');
+        
+        // Show Upload
+        const uploadSec = document.getElementById('upload-section');
+        uploadSec.classList.remove('opacity-50', 'pointer-events-none', 'grayscale');
+        
+        checkReady();
+      }
+
+      function handleFile(input) {
+        if (input.files && input.files[0]) {
+            const fileName = input.files[0].name;
+            const dropZone = document.getElementById('drop-zone');
+            const dropIcon = dropZone.querySelector('svg');
+            
+            // Success State
+            dropZone.parentElement.classList.add('border-cyan-500', 'bg-cyan-900/10');
+            dropZone.parentElement.classList.remove('border-dashed', 'border-neutral-700');
+            dropZone.parentElement.classList.add('border-solid');
+
+            document.getElementById('file-label').innerHTML = `
+                <div class="flex flex-col items-center gap-2">
+                    <span class="font-semibold text-cyan-400">${fileName}</span>
+                    <span class="text-xs text-cyan-500/70">Ready for analysis</span>
+                </div>`;
+            
+            // Change icon to check
+            dropIcon.innerHTML = '<polyline points="20 6 9 17 4 12"></polyline>';
+            dropIcon.classList.remove('text-neutral-500');
+            dropIcon.classList.add('text-cyan-400');
+            dropZone.querySelector('.w-14').classList.remove('bg-neutral-800');
+            dropZone.querySelector('.w-14').classList.add('bg-cyan-900/30');
+
+            fileSelected = true;
+            checkReady();
+        }
+      }
+
+      function checkReady() {
+        const btn = document.getElementById('analyze-btn');
+        if (selectedType && fileSelected) {
+            btn.disabled = false;
+        }
+      }
+
+      function startAnalysis() {
+        const resultsSec = document.getElementById('results-section');
+        const loading = document.getElementById('loading-state');
+        const report = document.getElementById('report-content');
+        
+        // Hide Demo Section for cleaner view
+        document.getElementById('demo-section').classList.add('hidden');
+
+        // Reveal Section
+        resultsSec.classList.remove('hidden');
+        resultsSec.classList.add('scanning'); // Start scan line animation
+        
+        // Smooth scroll
+        setTimeout(() => {
+            resultsSec.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+
+        // Sequence Animation
+        const steps = ['Identifying structures...', 'Comparing dataset #8842...', 'Generating insights...'];
+        let step = 0;
+        
+        const interval = setInterval(() => {
+            if(step < steps.length) {
+                document.getElementById('loading-text').innerText = steps[step];
+                step++;
+            }
+        }, 800);
+
+        setTimeout(() => {
+            clearInterval(interval);
+            loading.classList.add('hidden');
+            resultsSec.classList.remove('scanning');
+            report.classList.remove('hidden');
+            // Slight delay to allow display:block to render before opacity transition
+            setTimeout(() => {
+                report.classList.remove('opacity-0');
+                renderReport();
+                lucide.createIcons();
+                animateBars();
+                // Trigger Audio after visual render
+                speakResults();
+            }, 50);
+        }, 3000);
+      }
+
+      function speakResults() {
+          // Cancel any ongoing speech
+          synthesis.cancel();
+
+          let textToSpeak = "";
+
+          if (selectedType === 'xray') {
+              textToSpeak = "Analysis complete for Patient 8823-XJ. Distal Radius Scan. AI confidence is 98.2%. Anomaly detected. Bone Density is 0.92 grams per centimeter squared. Cortical Integrity is compromised. Interpretation: Micro-fracture identified in the styloid process. Soft tissue swelling suggests acute trauma from approximately 2 to 6 hours ago. No joint dislocation observed.";
+          } else {
+              textToSpeak = "Analysis complete. Hematology Profile for October 24, 2024. Hemoglobin is 14.2, within normal range. Leukocytes are elevated at 11.8. C-Reactive Protein is high at 8.2. Summary: Elevated WBC and CRP levels suggest an active immune response, possibly due to localized infection or recent tissue trauma. Recommended action: Monitor temperature and schedule follow-up in 48 hours.";
+          }
+
+          const utterance = new SpeechSynthesisUtterance(textToSpeak);
+          utterance.rate = 1.0;
+          utterance.pitch = 1.0;
+          utterance.volume = 1.0;
+
+          // UI Audio Control
+          const audioBtn = document.getElementById('audio-btn');
+          const audioWave = document.getElementById('audio-wave');
+          const audioStatus = document.getElementById('audio-status');
+          
+          audioBtn.classList.remove('hidden');
+          audioBtn.classList.add('flex');
+          
+          utterance.onstart = () => {
+              isSpeaking = true;
+              audioWave.classList.add('speaking');
+              audioStatus.innerText = "Speaking...";
+          };
+
+          utterance.onend = () => {
+              isSpeaking = false;
+              audioWave.classList.remove('speaking');
+              audioStatus.innerText = "Replay Audio";
+          };
+
+          synthesis.speak(utterance);
+      }
+
+      function toggleAudio() {
+          if (isSpeaking) {
+              synthesis.cancel();
+              isSpeaking = false;
+              document.getElementById('audio-wave').classList.remove('speaking');
+              document.getElementById('audio-status').innerText = "Replay Audio";
+          } else {
+              speakResults();
+          }
+      }
+
+      function renderReport() {
+        const container = document.getElementById('report-content');
+        
+        if (selectedType === 'xray') {
+            container.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <!-- Visualizer Column -->
+                    <div class="col-span-1 md:col-span-1">
+                        <div class="aspect-[3/4] rounded-lg bg-black relative overflow-hidden group shadow-lg border border-neutral-800">
+                            <div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1530497610245-94d3c16cda28?auto=format&fit=crop&q=80&w=300')] bg-cover bg-center opacity-70 mix-blend-luminosity"></div>
+                            
+                            <!-- Overlays -->
+                            <div class="absolute top-1/4 left-1/2 w-16 h-16 border-2 border-red-500/80 rounded-full -translate-x-1/2 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.4)]"></div>
+                            <div class="absolute bottom-4 left-4 right-4 p-3 bg-neutral-900/90 backdrop-blur border border-neutral-700 text-[10px] rounded shadow-md">
+                                <div class="flex justify-between mb-1 text-neutral-400 font-medium"><span>AI Confidence</span><span>98.2%</span></div>
+                                <div class="w-full h-1 bg-neutral-800 rounded-full"><div class="h-full bg-cyan-500 w-[98%] rounded-full shadow-[0_0_10px_rgba(34,211,238,0.5)]"></div></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Data Column -->
+                    <div class="col-span-1 md:col-span-2 space-y-6">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <h3 class="font-serif-heading text-2xl text-white">Distal Radius Scan</h3>
+                                <p class="text-sm text-neutral-500">ID: 8823-XJ • View: Anterior-Posterior</p>
+                            </div>
+                            <div class="px-3 py-1 rounded-full bg-red-950/30 border border-red-900/50 text-red-500 text-xs font-semibold flex items-center gap-2">
+                                <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> Anomaly Detected
+                            </div>
+                        </div>
+
+                        <div class="space-y-4">
+                            <!-- Metric 1 -->
+                            <div class="bg-neutral-900/50 p-4 rounded-lg border border-neutral-800">
+                                <div class="flex justify-between text-xs text-neutral-500 mb-2">
+                                    <span>Bone Density (BMD)</span>
+                                    <span class="text-white font-medium">0.92 g/cm²</span>
+                                </div>
+                                <div class="w-full h-2 bg-neutral-800 rounded-full overflow-hidden">
+                                    <div class="progress-fill h-full bg-emerald-500 rounded-full" style="width: 0%" data-width="85%"></div>
+                                </div>
+                            </div>
+
+                            <!-- Metric 2 -->
+                            <div class="bg-neutral-900/50 p-4 rounded-lg border border-neutral-800">
+                                <div class="flex justify-between text-xs text-neutral-500 mb-2">
+                                    <span>Cortical Integrity</span>
+                                    <span class="text-red-400 font-medium">Compromised</span>
+                                </div>
+                                <div class="w-full h-2 bg-neutral-800 rounded-full overflow-hidden">
+                                    <div class="progress-fill h-full bg-red-500 rounded-full" style="width: 0%" data-width="45%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="text-sm text-neutral-300 leading-relaxed p-5 border-l-4 border-cyan-500 bg-cyan-950/10 rounded-r-lg">
+                            <strong class="text-cyan-400 block mb-1 text-xs uppercase tracking-wider font-semibold">AI Interpretation</strong>
+                            Micro-fracture identified in the styloid process. Soft tissue swelling suggests acute trauma (approx 2-6 hrs old). No joint dislocation observed.
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+             container.innerHTML = `
+                <div class="space-y-6">
+                    <div class="flex items-center justify-between pb-4 border-b border-neutral-800">
+                        <h3 class="font-serif-heading text-2xl text-white">Hematology Profile</h3>
+                        <div class="flex gap-4 text-xs font-mono-tech">
+                            <div class="text-neutral-500">Date: <span class="text-neutral-300">Oct 24, 2024</span></div>
+                            <div class="text-neutral-500">Sample: <span class="text-neutral-300">Venous</span></div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-3">
+                         <!-- Row 1 -->
+                         <div class="group flex items-center justify-between p-4 rounded-lg bg-neutral-900/50 border border-neutral-800 hover:border-cyan-500/30 hover:bg-neutral-800/80 hover:shadow-sm transition-all">
+                            <div class="flex items-center gap-4">
+                                <div class="p-2 rounded bg-neutral-800 border border-neutral-700 shadow-sm"><i data-lucide="droplet" class="w-4 h-4 text-rose-500"></i></div>
+                                <div>
+                                    <div class="text-sm text-white font-medium">Hemoglobin</div>
+                                    <div class="text-[10px] text-neutral-500">O2 Transport</div>
+                                </div>
+                            </div>
+                            <div class="text-right w-32">
+                                <div class="text-sm text-emerald-400 font-mono-tech font-medium">14.2 g/dL</div>
+                                <div class="text-[10px] text-neutral-500">Range: 13.5 - 17.5</div>
+                            </div>
+                         </div>
+
+                         <!-- Row 2 -->
+                         <div class="group flex items-center justify-between p-4 rounded-lg bg-neutral-900/50 border border-neutral-800 hover:border-cyan-500/30 hover:bg-neutral-800/80 hover:shadow-sm transition-all">
+                            <div class="flex items-center gap-4">
+                                <div class="p-2 rounded bg-neutral-800 border border-neutral-700 shadow-sm"><i data-lucide="shield" class="w-4 h-4 text-cyan-500"></i></div>
+                                <div>
+                                    <div class="text-sm text-white font-medium">Leukocytes (WBC)</div>
+                                    <div class="text-[10px] text-neutral-500">Immune Response</div>
+                                </div>
+                            </div>
+                            <div class="text-right w-32">
+                                <div class="text-sm text-amber-400 font-mono-tech font-medium">11.8 K/µL</div>
+                                <div class="text-[10px] text-neutral-500">High (4.5 - 11.0)</div>
+                            </div>
+                         </div>
+                         
+                         <!-- Row 3 -->
+                         <div class="group flex items-center justify-between p-4 rounded-lg bg-neutral-900/50 border border-neutral-800 hover:border-cyan-500/30 hover:bg-neutral-800/80 hover:shadow-sm transition-all">
+                            <div class="flex items-center gap-4">
+                                <div class="p-2 rounded bg-neutral-800 border border-neutral-700 shadow-sm"><i data-lucide="zap" class="w-4 h-4 text-yellow-500"></i></div>
+                                <div>
+                                    <div class="text-sm text-white font-medium">C-Reactive Protein</div>
+                                    <div class="text-[10px] text-neutral-500">Inflammation Marker</div>
+                                </div>
+                            </div>
+                            <div class="text-right w-32">
+                                <div class="text-sm text-amber-400 font-mono-tech font-medium">8.2 mg/L</div>
+                                <div class="text-[10px] text-neutral-500">Elevated (< 3.0)</div>
+                            </div>
+                         </div>
+                    </div>
+
+                    <div class="mt-6 p-5 rounded-lg bg-amber-950/20 border border-amber-900/50 flex gap-4">
+                        <div class="p-2 h-fit rounded bg-amber-900/30 text-amber-500">
+                            <i data-lucide="alert-circle" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-semibold text-white mb-1">Inflammatory Indicators</h4>
+                            <p class="text-xs text-neutral-400 leading-relaxed">
+                                Elevated WBC and CRP levels suggest an active immune response, possibly due to localized infection or recent tissue trauma. Recommended action: Monitor temperature and schedule follow-up in 48 hours.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+             `;
+        }
+      }
+
+      function animateBars() {
+          setTimeout(() => {
+              document.querySelectorAll('.progress-fill').forEach(bar => {
+                  bar.style.width = bar.getAttribute('data-width');
+              });
+          }, 200);
+      }
+
+      function resetApp() {
+        // Cancel speech
+        synthesis.cancel();
+        isSpeaking = false;
+        
+        // Hide Audio Button
+        document.getElementById('audio-btn').classList.add('hidden');
+        document.getElementById('audio-btn').classList.remove('flex');
+        
+        // Hide Results
+        const results = document.getElementById('results-section');
+        results.classList.add('hidden');
+        results.classList.remove('scanning');
+        document.getElementById('report-content').classList.add('hidden', 'opacity-0');
+        
+        // Show Demo again
+        document.getElementById('demo-section').classList.remove('hidden');
+
+        // Reset Upload
+        const upload = document.getElementById('upload-section');
+        upload.classList.add('opacity-50', 'pointer-events-none', 'grayscale');
+        
+        document.getElementById('file-upload').value = '';
+        
+        // Reset Drop Zone
+        const dropZone = document.getElementById('drop-zone');
+        dropZone.parentElement.classList.remove('border-cyan-500', 'bg-cyan-900/10', 'border-solid');
+        dropZone.parentElement.classList.add('border-dashed', 'border-neutral-700');
+        dropZone.querySelector('.w-14').classList.remove('bg-cyan-900/30');
+        dropZone.querySelector('.w-14').classList.add('bg-neutral-800');
+        
+        // Reset Icon
+        const dropIcon = dropZone.querySelector('svg');
+        dropIcon.innerHTML = '<path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><path d="M12 12v9"></path><path d="m16 16-4-4-4 4"></path>';
+        dropIcon.classList.remove('text-cyan-400');
+        dropIcon.classList.add('text-neutral-500');
+        lucide.createIcons();
+
+        document.getElementById('file-label').innerHTML = 'Click to upload or drag and drop';
+        document.getElementById('analyze-btn').disabled = true;
+
+        // Reset Cards
+        document.querySelectorAll('.card-hover').forEach(el => {
+            el.classList.remove('selected');
+        });
+        
+        selectedType = null;
+        fileSelected = false;
+        
+        // Scroll to upload
+        document.getElementById('upload-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      // Three.js Background (Dark Mode)
+      function initThree() {
+          const container = document.getElementById('canvas-container');
+          const scene = new THREE.Scene();
+          scene.background = new THREE.Color(0x050505);
+          
+          const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+          camera.position.z = 30;
+
+          const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+          renderer.setSize(window.innerWidth, window.innerHeight);
+          renderer.setPixelRatio(window.devicePixelRatio);
+          container.appendChild(renderer.domElement);
+
+          // Particles
+          const geometry = new THREE.BufferGeometry();
+          const count = 1000;
+          const pos = new Float32Array(count * 3);
+          const colors = new Float32Array(count * 3);
+
+          for(let i = 0; i < count; i++) {
+              pos[i*3] = (Math.random() - 0.5) * 50; 
+              pos[i*3+1] = (Math.random() - 0.5) * 50; 
+              pos[i*3+2] = (Math.random() - 0.5) * 30; 
+
+              // Colors: White and Cyan for Dark Mode
+              if (Math.random() > 0.8) {
+                  colors[i*3] = 0.13; colors[i*3+1] = 0.82; colors[i*3+2] = 0.93; // Cyan
+              } else {
+                  colors[i*3] = 0.4; colors[i*3+1] = 0.4; colors[i*3+2] = 0.4; // Dark Gray
+              }
+          }
+
+          geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+          geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+          const material = new THREE.PointsMaterial({
+              size: 0.1,
+              vertexColors: true,
+              transparent: true,
+              opacity: 0.6,
+          });
+
+          const particleSystem = new THREE.Points(geometry, material);
+          scene.add(particleSystem);
+
+          // Interaction
+          let mouseX = 0;
+          let mouseY = 0;
+          document.addEventListener('mousemove', (e) => {
+              mouseX = (e.clientX - window.innerWidth / 2) * 0.0005;
+              mouseY = (e.clientY - window.innerHeight / 2) * 0.0005;
+          });
+
+          const clock = new THREE.Clock();
+
+          function animate() {
+              const time = clock.getElapsedTime();
+              
+              particleSystem.rotation.y += 0.0005;
+              particleSystem.rotation.x += (mouseY - particleSystem.rotation.x) * 0.05;
+              particleSystem.rotation.y += (mouseX - particleSystem.rotation.y) * 0.05;
+
+              const positions = particleSystem.geometry.attributes.position.array;
+              for(let i = 0; i < count; i++) {
+                  positions[i*3+1] += Math.sin(time * 0.5 + positions[i*3]) * 0.005;
+              }
+              particleSystem.geometry.attributes.position.needsUpdate = true;
+
+              renderer.render(scene, camera);
+              requestAnimationFrame(animate);
+          }
+          animate();
+
+          window.addEventListener('resize', () => {
+              camera.aspect = window.innerWidth / window.innerHeight;
+              camera.updateProjectionMatrix();
+              renderer.setSize(window.innerWidth, window.innerHeight);
+          });
+          
+          setTimeout(() => container.style.opacity = '1', 200);
+      }
+      
+      window.addEventListener('DOMContentLoaded', initThree);
+    </script>
+
+</body></html>

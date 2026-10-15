@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PixelVerse - Arte y Comunidad</title>
+<!-- Google Fonts: Inter para un look neo-grotesco muy limpio -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link
+href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap"
+rel="stylesheet"
+/>
+<!-- Iconify Solar Linear Icons -->
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<!-- Tailwind CSS v4 -->
+<script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+<style>
+/* CSS Base y Tokens de Diseño */
+@theme {
+--font-sans: 'Inter', sans-serif;
+--color-background: #FFFFFF;
+--color-foreground: #111111;
+--color-muted: #666666;
+--color-border: #EAEAEA;
+--color-accent: #F5F5F5;
+}
+/* Utilidades Masonry para el layout tipo Pinterest */
+.masonry-grid {
+column-count: 2;
+column-gap: 1.5rem;
+width: 100%;
+}
+@media (min-width: 640px) { .masonry-grid { column-count: 3; } }
+@media (min-width: 1024px) { .masonry-grid { column-count: 4; } }
+@media (min-width: 1280px) { .masonry-grid { column-count: 5; } }
+.masonry-item {
+break-inside: avoid;
+margin-bottom: 1.5rem;
+transform-origin: center top;
+will-change: transform, opacity;
+}
+/* Renderizado Pixelado puro para imágenes/canvas */
+.pixelated {
+image-rendering: pixelated;
+image-rendering: -moz-crisp-edges;
+image-rendering: crisp-edges;
+}
+/* Ocultar scrollbar pero permitir scroll */
+::-webkit-scrollbar {
+width: 0px;
+background: transparent;
+}
+/* Contenedor del Hero Animation */
+#hero-canvas {
+perspective: 1000px;
+transform-style: preserve-3d;
+}
+.pixel-block {
+position: absolute;
+will-change: transform, opacity;
+box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05);
+}
+/* Custom Checkbox Toggles */
+.filter-toggle input:checked + div {
+background-color: #111111;
+color: #FFFFFF;
+border-color: #111111;
+}
+</style>
+<script src="https://cdn.tailwindcss.com"></script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body
+    class="bg-white text-[#111111] antialiased overflow-x-hidden selection:bg-[#111111] selection:text-white flex flex-col min-h-screen"
+  >
+    <!-- Navegación Sticky -->
+    <nav
+      class="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-[#EAEAEA]"
+      id="navbar"
+    >
+      <div
+        class="max-w-[1600px] mx-auto px-6 h-14 flex items-center justify-between"
+      >
+        <div class="flex items-center gap-8">
+          <!-- Logo con tracking muy ajustado -->
+          <a
+            href="#"
+            class="text-sm font-semibold tracking-widest uppercase flex items-center gap-2"
+          >
+            <div class="w-4 h-4 grid grid-cols-2 grid-rows-2 gap-[1px]">
+              <div class="bg-[#111]"></div>
+              <div class="bg-[#111]"></div>
+              <div class="bg-transparent"></div>
+              <div class="bg-[#111]"></div>
+            </div>
+            PXVL
+          </a>
+          <div
+            class="hidden md:flex items-center gap-6 text-sm font-medium text-[#666666]"
+          >
+            <a href="#" class="text-[#111111]">Descubrir</a>
+            <a href="#" class="hover:text-[#111111] transition-colors">
+              Artistas
+            </a>
+            <a href="#" class="hover:text-[#111111] transition-colors">
+              Recursos
+            </a>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-4">
+          <div
+            class="hidden sm:flex items-center border border-[#EAEAEA] bg-[#F5F5F5] rounded-md px-3 py-1.5 w-64 group focus-within:border-[#111111] focus-within:bg-white transition-colors"
+          >
+            <iconify-icon
+              icon="solar:magnifier-linear"
+              width="16"
+              class="text-[#666666] group-focus-within:text-[#111111]"
+            ></iconify-icon>
+            <input
+              type="text"
+              placeholder="Buscar arte, paletas..."
+              class="bg-transparent text-sm w-full ml-2 focus:outline-none placeholder-[#888888]"
+            />
+          </div>
+          <button
+            class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-[#F5F5F5] transition-colors md:hidden"
+          >
+            <iconify-icon
+              icon="solar:magnifier-linear"
+              width="20"
+            ></iconify-icon>
+          </button>
+          <div class="w-[1px] h-4 bg-[#EAEAEA] mx-2"></div>
+          <button
+            class="text-sm font-medium hover:text-[#666666] transition-colors"
+          >
+            Entrar
+          </button>
+          <button
+            class="bg-[#111111] text-white text-sm font-medium px-4 py-1.5 rounded-md hover:bg-[#333333] transition-colors"
+          >
+            Crear
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header
+      class="relative w-full h-[70vh] min-h-[500px] flex flex-col items-center justify-center overflow-hidden border-b border-[#EAEAEA] mt-14"
+      id="hero"
+    >
+      <!-- Contenedor para la animación de partículas/píxeles -->
+      <div
+        id="hero-canvas"
+        class="absolute inset-0 w-full h-full z-0 opacity-50 pointer-events-none"
+      ></div>
+
+      <div
+        class="relative z-10 text-center max-w-3xl px-6 flex flex-col items-center"
+      >
+        <div class="overflow-hidden mb-4">
+          <h1
+            class="text-5xl md:text-7xl font-medium tracking-tighter leading-tight text-[#111111]"
+            id="hero-title"
+          >
+            El universo
+            <br />
+            en un pixel.
+          </h1>
+        </div>
+        <div class="overflow-hidden mb-8">
+          <p
+            class="text-base md:text-lg text-[#666666] max-w-xl mx-auto"
+            id="hero-subtitle"
+          >
+            Una galería curada para la comunidad de pixel art. Explora estéticas
+            precisas, paletas exactas y flujos de trabajo limpios.
+          </p>
+        </div>
+        <div class="flex items-center gap-4" id="hero-actions">
+          <button
+            class="bg-[#111111] text-white text-sm font-medium px-6 py-2.5 rounded-md hover:bg-[#333333] transition-colors flex items-center gap-2"
+          >
+            Explorar Galería
+            <iconify-icon
+              icon="solar:arrow-right-linear"
+              width="16"
+            ></iconify-icon>
+          </button>
+          <button
+            class="bg-white text-[#111111] border border-[#EAEAEA] text-sm font-medium px-6 py-2.5 rounded-md hover:bg-[#F5F5F5] transition-colors"
+          >
+            Saber más
+          </button>
+        </div>
+      </div>
+
+      <!-- Indicador de Scroll -->
+      <div
+        class="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
+        id="scroll-indicator"
+      >
+        <span
+          class="text-xs font-medium tracking-widest text-[#666666] uppercase"
+        >
+          Scroll
+        </span>
+        <div class="w-[1px] h-8 bg-[#EAEAEA] relative overflow-hidden">
+          <div
+            class="w-full h-full bg-[#111111] absolute top-0 left-0 animate-[scrolldown_1.5s_ease-in-out_infinite]"
+          ></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Contenido Principal: Filtros y Galería -->
+    <main class="flex-1 w-full max-w-[1600px] mx-auto px-4 md:px-8 py-12">
+      <!-- Controles de Flujo / Filtros -->
+      <div
+        class="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6"
+        id="gallery-controls"
+      >
+        <div
+          class="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide w-full md:w-auto"
+        >
+          <!-- Custom Toggles -->
+          <label class="filter-toggle cursor-pointer shrink-0">
+            <input type="radio" name="filter" class="hidden" checked="" />
+            <div
+              class="px-4 py-1.5 rounded-full border border-[#EAEAEA] text-sm font-medium transition-colors hover:border-[#111111] text-[#666666]"
+            >
+              Todo
+            </div>
+          </label>
+          <label class="filter-toggle cursor-pointer shrink-0">
+            <input type="radio" name="filter" class="hidden" />
+            <div
+              class="px-4 py-1.5 rounded-full border border-[#EAEAEA] text-sm font-medium transition-colors hover:border-[#111111] text-[#666666]"
+            >
+              Escenarios
+            </div>
+          </label>
+          <label class="filter-toggle cursor-pointer shrink-0">
+            <input type="radio" name="filter" class="hidden" />
+            <div
+              class="px-4 py-1.5 rounded-full border border-[#EAEAEA] text-sm font-medium transition-colors hover:border-[#111111] text-[#666666]"
+            >
+              Personajes
+            </div>
+          </label>
+          <label class="filter-toggle cursor-pointer shrink-0">
+            <input type="radio" name="filter" class="hidden" />
+            <div
+              class="px-4 py-1.5 rounded-full border border-[#EAEAEA] text-sm font-medium transition-colors hover:border-[#111111] text-[#666666]"
+            >
+              UI / Assets
+            </div>
+          </label>
+        </div>
+
+        <div class="flex items-center gap-3 shrink-0">
+          <span class="text-xs font-medium text-[#666666]">Densidad</span>
+          <div
+            class="flex items-center gap-1 border border-[#EAEAEA] rounded-md p-1 bg-[#F5F5F5]"
+          >
+            <button
+              class="w-7 h-7 flex items-center justify-center rounded bg-white shadow-sm border border-[#EAEAEA]"
+            >
+              <iconify-icon
+                icon="solar:hamburger-menu-linear"
+                width="14"
+              ></iconify-icon>
+            </button>
+            <button
+              class="w-7 h-7 flex items-center justify-center rounded text-[#666666] hover:text-[#111111] transition-colors"
+            >
+              <iconify-icon
+                icon="solar:widget-3-linear"
+                width="14"
+              ></iconify-icon>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Grid Pinterest -->
+      <div class="masonry-grid" id="gallery-grid">
+        <!-- Los items serán inyectados por JS para simular contenido diverso -->
+      </div>
+    </main>
+
+    <!-- Script de Animación (Anime.js v4 según requerimientos) -->
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+          const grid = document.getElementById('gallery-grid');
+          const itemsCount = 25;
+          const heights = [240, 320, 400, 280, 450, 200];
+          const colors = ['#FF595E', '#FFCA3A', '#8AC926', '#1982C4', '#6A4C93', '#111111', '#EAEAEA'];
+
+          for (let i = 0; i < itemsCount; i++) {
+              const height = heights[Math.floor(Math.random() * heights.length)];
+              const mainColor = colors[Math.floor(Math.random() * colors.length)];
+              const isDark = mainColor === '#111111' || mainColor === '#6A4C93' || mainColor === '#1982C4';
+
+              let pixelsHTML = '';
+              const gridSize = 8;
+              for(let p = 0; p < gridSize * gridSize; p++) {
+                  const opacity = Math.random() > 0.6 ? 1 : (Math.random() > 0.3 ? 0.5 : 0);
+                  pixelsHTML += '<div style="background-color: ' + (isDark ? '#FFF' : '#111') + '; opacity: ' + opacity + '; width: 100%; height: 100%;"></div>';
+              }
+
+              const item = document.createElement('div');
+              item.className = 'masonry-item relative group rounded-md overflow-hidden border border-[#EAEAEA] bg-[#F5F5F5] cursor-pointer animate-[fadeInUp_0.8s_ease-out_forwards]';
+              item.style.opacity = '0';
+              item.style.animationDelay = ((i % 10) * 100) + 'ms';
+              item.innerHTML = '<div class="w-full relative flex items-center justify-center overflow-hidden transition-transform duration-500 ease-out group-hover:scale-[1.03]" style="height: ' + height + 'px; background-color: ' + mainColor + '"><div class="w-24 h-24 grid grid-cols-8 grid-rows-8 gap-0 mix-blend-overlay opacity-30">' + pixelsHTML + '</div></div><div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-4 pointer-events-none"><div class="flex justify-end"><button class="bg-white text-[#111111] text-xs font-medium px-3 py-1.5 rounded-full pointer-events-auto hover:bg-[#F5F5F5] transition-colors flex items-center gap-1 shadow-sm"><iconify-icon icon="solar:bookmark-linear" width="14"></iconify-icon> Guardar</button></div><div class="flex items-center justify-between pointer-events-auto"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full bg-white flex items-center justify-center text-[10px] font-medium text-[#111111]">' + String.fromCharCode(65 + Math.floor(Math.random() * 26)) + '</div><span class="text-xs font-medium text-white">Artis_' + i + '</span></div><button class="w-6 h-6 rounded-full bg-white/20 text-white flex items-center justify-center backdrop-blur-sm hover:bg-white/40 transition-colors"><iconify-icon icon="solar:arrow-right-up-linear" width="12"></iconify-icon></button></div></div>';
+              grid.appendChild(item);
+          }
+
+          const heroCanvas = document.getElementById('hero-canvas');
+          const numPixels = 80;
+
+          for(let i=0; i < numPixels; i++) {
+              const p = document.createElement('div');
+              const size = Math.random() > 0.8 ? 16 : 8;
+              p.className = 'pixel-block rounded-sm animate-[fadeIn_1.5s_ease-out_forwards]';
+              p.style.width = size + 'px';
+              p.style.height = size + 'px';
+              p.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+
+              const endX = (Math.random() - 0.5) * 400;
+              const endY = (Math.random() - 0.5) * 300;
+
+              p.style.transform = 'translate3d(' + endX + 'px, ' + endY + 'px, 0px) rotate(' + (Math.random() * 360) + 'deg)';
+              p.style.opacity = '0';
+              p.style.animationDelay = (Math.random() * 1000) + 'ms';
+
+              heroCanvas.appendChild(p);
+          }
+      });
+
+      const style = document.createElement('style');
+      style.textContent = '@keyframes scrolldown { 0% { transform: translateY(-100%); } 50% { transform: translateY(0); } 100% { transform: translateY(100%); } } @keyframes fadeInUp { 0% { opacity: 0; transform: translateY(40px); } 100% { opacity: 1; transform: translateY(0); } } @keyframes fadeIn { 0% { opacity: 0; transform: scale(0); } 100% { opacity: 0.5; transform: scale(1); } }';
+      document.head.appendChild(style);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wayfinding Pro - Diagnostic Dashboard</title>
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- D3.js -->
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<!-- Iconify -->
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<style>
+body { font-family: 'Inter', sans-serif; }
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
+/* Custom Range Slider Styling */
+input[type=range] {
+-webkit-appearance: none;
+width: 100%;
+background: transparent;
+}
+input[type=range]::-webkit-slider-thumb {
+-webkit-appearance: none;
+height: 14px;
+width: 14px;
+border-radius: 50%;
+background: #fff;
+cursor: pointer;
+margin-top: -6px;
+box-shadow: 0 0 10px rgba(255,255,255,0.5);
+transition: all 0.2s ease;
+}
+input[type=range]::-webkit-slider-runnable-track {
+width: 100%;
+height: 2px;
+cursor: pointer;
+background: #334155;
+border-radius: 1px;
+}
+input[type=range]:focus::-webkit-slider-thumb {
+box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+}
+/* D3 Tooltip */
+.tooltip {
+position: absolute;
+text-align: left;
+padding: 12px;
+background: rgba(15, 23, 42, 0.9);
+border: 1px solid #334155;
+border-radius: 8px;
+pointer-events: none;
+color: #e2e8f0;
+box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+backdrop-filter: blur(4px);
+opacity: 0;
+transition: opacity 0.3s;
+max-width: 250px;
+z-index: 50;
+}
+/* SVG Glow Filters */
+.node-glow { filter: url(#glow); transition: stroke 0.3s, fill 0.3s; }
+@keyframes pulse-red {
+0% { filter: drop-shadow(0 0 2px #ef4444); }
+50% { filter: drop-shadow(0 0 10px #ef4444); }
+100% { filter: drop-shadow(0 0 2px #ef4444); }
+}
+@keyframes pulse-green {
+0% { filter: drop-shadow(0 0 2px #10b981); }
+50% { filter: drop-shadow(0 0 8px #10b981); }
+100% { filter: drop-shadow(0 0 2px #10b981); }
+}
+.pulsating-red { animation: pulse-red 2s infinite; }
+.pulsating-green { animation: pulse-green 3s infinite; }
+/* Toast Animation */
+@keyframes slideIn {
+from { transform: translateX(100%); opacity: 0; }
+to { transform: translateX(0); opacity: 1; }
+}
+.toast-enter { animation: slideIn 0.3s ease-out forwards; }
+</style></head>
+<body class="bg-[#0B0E14] text-slate-300 h-screen w-full flex overflow-hidden selection:bg-emerald-500 selection:text-white relative">
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="absolute top-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="w-96 h-full border-r border-slate-800 flex flex-col bg-[#0B0E14] z-20 shrink-0 transition-all duration-300 ease-in-out">
+        <!-- Header (Fixed) -->
+        <div class="p-6 border-b border-slate-800 shrink-0 flex justify-between items-center">
+            <div class="flex flex-col">
+                <div class="flex items-center gap-2 mb-1">
+                    <iconify-icon icon="solar:pulse-linear" class="text-emerald-400 text-xl"></iconify-icon>
+                    <h1 class="text-lg font-medium tracking-tight text-white">Wayfinding Pro</h1>
+                </div>
+                <p class="text-xs text-slate-500 tracking-wide">DIAGNOSTIC PATHWAY & RISK MAPPING</p>
+            </div>
+            <!-- Mobile/Collapse Toggle (Simulated) -->
+            <button id="btn-collapse-sidebar" class="text-slate-500 hover:text-white transition-colors lg:hidden">
+                <iconify-icon icon="solar:sidebar-minimalistic-linear" width="20"></iconify-icon>
+            </button>
+        </div>
+
+        <!-- Scrollable Content Area -->
+        <div class="flex-1 overflow-y-auto custom-scrollbar">
+            
+            <!-- Selected Node Info -->
+            <div class="p-6 border-b border-slate-800">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-xs font-medium tracking-wider text-slate-500 uppercase">Selected Node</span>
+                    <span class="bg-slate-800 text-slate-300 text-[10px] px-2 py-0.5 rounded border border-slate-700 font-medium">LIVE</span>
+                </div>
+                <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4 group hover:border-slate-600 transition-colors">
+                    <h2 class="text-lg text-slate-100 font-medium mb-2 flex items-center gap-2" id="card-title">
+                        Cardiology
+                        <iconify-icon icon="solar:arrow-right-up-linear" class="text-slate-600 text-sm group-hover:text-emerald-400 transition-colors"></iconify-icon>
+                    </h2>
+                    <p class="text-xs text-slate-400 leading-relaxed italic" id="card-desc">
+                        "Elevated cardiac markers detected in baseline. Focus on mitral valve synchronization."
+                    </p>
+                </div>
+            </div>
+
+            <!-- Metric Visualization (Radar) -->
+            <div class="p-6 border-b border-slate-800">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-xs font-medium tracking-wider text-slate-500 uppercase">Metric Visualization</span>
+                    <button class="text-slate-500 hover:text-white transition-colors" title="Refresh Metrics" onclick="showToast('Metrics Refreshed', 'Real-time data synchronization complete.')">
+                        <iconify-icon icon="solar:refresh-linear" width="14"></iconify-icon>
+                    </button>
+                </div>
+                <div class="relative w-full h-48 bg-slate-900/30 rounded-xl border border-slate-800 flex items-center justify-center overflow-hidden">
+                    <div id="radar-chart" class="w-full h-full flex items-center justify-center"></div>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="p-6 bg-[#0d1117]">
+                <div class="flex justify-between items-end mb-4">
+                    <span class="text-xs font-medium tracking-wider text-slate-500 uppercase">Risk Adjustments</span>
+                    <iconify-icon icon="solar:tuning-2-linear" class="text-slate-600"></iconify-icon>
+                </div>
+
+                <!-- Slider 1 -->
+                <div class="mb-5">
+                    <div class="flex justify-between text-xs mb-2">
+                        <span class="text-slate-400">Node Risk Intensity</span>
+                        <span class="text-emerald-400 font-medium" id="val-intensity">45%</span>
+                    </div>
+                    <input type="range" id="slider-intensity" min="0" max="100" value="45" class="accent-emerald-500">
+                </div>
+
+                <!-- Slider 2 -->
+                <div class="mb-5">
+                    <div class="flex justify-between text-xs mb-2">
+                        <span class="text-slate-400">Path Frequency</span>
+                        <span class="text-blue-400 font-medium" id="val-frequency">70%</span>
+                    </div>
+                    <input type="range" id="slider-frequency" min="0" max="100" value="70">
+                </div>
+
+                <!-- Slider 3 -->
+                <div class="mb-2">
+                    <div class="flex justify-between text-xs mb-2">
+                        <span class="text-slate-400">Impact Radius</span>
+                        <span class="text-purple-400 font-medium" id="val-radius">85%</span>
+                    </div>
+                    <input type="range" id="slider-radius" min="0" max="100" value="85">
+                </div>
+            </div>
+            
+             <!-- Extra Content to demonstrate scroll -->
+             <div class="p-6 border-t border-slate-800">
+                <span class="text-xs font-medium tracking-wider text-slate-500 uppercase mb-3 block">System Logs</span>
+                <div class="space-y-2">
+                    <div class="flex items-center gap-2 text-[10px] text-slate-400">
+                        <span class="text-slate-600">10:42:01</span>
+                        <span>Node synchronization complete</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-[10px] text-slate-400">
+                        <span class="text-slate-600">10:41:55</span>
+                        <span class="text-emerald-500">Optimization successful</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-[10px] text-slate-400">
+                        <span class="text-slate-600">10:40:12</span>
+                        <span>User session established</span>
+                    </div>
+                </div>
+             </div>
+        </div>
+
+        <!-- Footer (Fixed) -->
+        <div class="p-4 border-t border-slate-800 shrink-0 bg-[#0B0E14]">
+            <button id="btn-report" class="w-full flex items-center justify-between bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium py-3 px-4 rounded-lg transition-all border border-slate-700 group shadow-lg shadow-black/20">
+                <div class="flex items-center gap-2">
+                    <iconify-icon icon="solar:document-add-linear" class="text-slate-400 group-hover:text-white transition-colors" width="16"></iconify-icon>
+                    <span>Generate Report</span>
+                </div>
+                <iconify-icon icon="solar:alt-arrow-right-linear" class="text-slate-500 group-hover:text-white transition-colors" width="16"></iconify-icon>
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Canvas Area -->
+    <main class="flex-grow relative bg-[#0B0E14] overflow-hidden">
+        
+        <!-- Status Overlay -->
+        <div class="absolute top-6 left-6 z-10 flex items-center gap-2">
+            <div class="bg-slate-900/80 backdrop-blur border border-slate-700 rounded-full py-1.5 px-3 flex items-center gap-2 shadow-lg">
+                <iconify-icon icon="solar:shield-check-linear" class="text-emerald-500 text-base"></iconify-icon>
+                <span class="text-[10px] font-semibold tracking-wide text-slate-300">SYSTEM STATUS: OPERATIONAL</span>
+            </div>
+        </div>
+
+        <!-- Top Right Tools -->
+        <div class="absolute top-6 right-6 z-10 flex gap-2">
+             <!-- Legend -->
+             <div class="bg-slate-900/80 backdrop-blur border border-slate-700 rounded-lg p-2 flex flex-col gap-1 shadow-lg hidden md:flex">
+                <div class="flex items-center gap-2 text-[10px] text-slate-400 px-1">
+                    <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]"></div>
+                    <span>Stable</span>
+                </div>
+                <div class="flex items-center gap-2 text-[10px] text-slate-400 px-1">
+                    <div class="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.5)]"></div>
+                    <span>Critical</span>
+                </div>
+             </div>
+             
+             <!-- Sidebar Toggle -->
+             <button id="btn-toggle-sidebar-main" class="h-9 w-9 flex items-center justify-center bg-slate-900/80 border border-slate-700 rounded-lg text-slate-400 hover:text-white hover:border-slate-500 transition-all shadow-lg active:scale-95">
+                <iconify-icon icon="solar:sidebar-minimalistic-linear" width="18"></iconify-icon>
+             </button>
+             
+             <!-- Fullscreen -->
+             <button id="btn-fullscreen" class="h-9 w-9 flex items-center justify-center bg-slate-900/80 border border-slate-700 rounded-lg text-slate-400 hover:text-white hover:border-slate-500 transition-all shadow-lg active:scale-95">
+                <iconify-icon icon="solar:full-screen-linear" width="18"></iconify-icon>
+             </button>
+        </div>
+
+        <!-- D3 Canvas Container -->
+        <div id="graph-container" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+        <!-- Tooltip Element -->
+        <div id="graph-tooltip" class="tooltip"></div>
+
+        <!-- Wayfinding Engine Control -->
+        <div class="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-20">
+            <div class="bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-xl p-1.5 flex items-center gap-4 shadow-2xl pl-4 pr-2">
+                <div class="flex flex-col">
+                    <span class="text-[10px] font-bold tracking-widest text-slate-500 uppercase">Wayfinding Engine</span>
+                    <div class="flex items-center gap-1.5">
+                        <div id="engine-status-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></div>
+                        <span id="engine-status-text" class="text-xs text-slate-300 font-medium">Idle</span>
+                    </div>
+                </div>
+                
+                <div class="h-8 w-[1px] bg-slate-700"></div>
+
+                <button id="btn-wayfinding" class="bg-emerald-500 hover:bg-emerald-400 text-slate-900 flex items-center gap-2 px-4 py-2 rounded-lg transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] font-semibold text-xs active:scale-95">
+                    <iconify-icon icon="solar:play-linear" class="text-lg"></iconify-icon>
+                    Start Analysis
+                </button>
+
+                <button id="btn-reset-view" class="h-9 w-9 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 transition-all active:scale-95" title="Reset View">
+                    <iconify-icon icon="solar:restart-linear" class="text-lg"></iconify-icon>
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // --- Toast System ---
+        function showToast(title, message) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast-enter bg-slate-800 border border-slate-700 text-white px-4 py-3 rounded-lg shadow-xl flex items-start gap-3 pointer-events-auto min-w-[300px] backdrop-blur-md';
+            toast.innerHTML = `
+                <iconify-icon icon="solar:info-circle-linear" class="text-emerald-400 mt-0.5 text-lg"></iconify-icon>
+                <div class="flex flex-col">
+                    <span class="text-sm font-medium text-white">${title}</span>
+                    <span class="text-xs text-slate-400 mt-1">${message}</span>
+                </div>
+            `;
+            container.appendChild(toast);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(-10px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // --- Mock Data ---
+        const nodesData = [
+            { id: "Cardiology", group: 1, risk: 0.2, x: 0, y: -150, desc: "Elevated cardiac markers detected in baseline." },
+            { id: "Neurology", group: 1, risk: 0.3, x: 200, y: -50, desc: "Synaptic response latency within normal bounds." },
+            { id: "Gastroenterology", group: 2, risk: 0.8, x: 150, y: 150, desc: "Inflammatory markers suggest acute anomaly." },
+            { id: "Orthopedics", group: 2, risk: 0.1, x: 0, y: 250, desc: "Structural integrity verified. No fractures." },
+            { id: "Dermatology", group: 3, risk: 0.4, x: -150, y: 150, desc: "Surface tissue regeneration at 85%." },
+            { id: "Pulmonology", group: 3, risk: 0.5, x: -200, y: -50, desc: "Oxygen saturation fluctuating during stress tests." }
+        ];
+
+        const linksData = [
+            { source: "Cardiology", target: "Neurology" },
+            { source: "Neurology", target: "Gastroenterology" },
+            { source: "Gastroenterology", target: "Orthopedics" },
+            { source: "Orthopedics", target: "Dermatology" },
+            { source: "Dermatology", target: "Pulmonology" },
+            { source: "Pulmonology", target: "Cardiology" },
+            { source: "Cardiology", target: "Gastroenterology" },
+            { source: "Neurology", target: "Dermatology" }
+        ];
+
+        // --- D3 Graph Setup ---
+        const container = document.getElementById('graph-container');
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+
+        const svg = d3.select("#graph-container").append("svg")
+            .attr("width", "100%")
+            .attr("height", "100%")
+            .attr("viewBox", [-width / 2, -height / 2, width, height])
+            .style("display", "block");
+
+        // Defs for Glow Filter
+        const defs = svg.append("defs");
+        const filter = defs.append("filter")
+            .attr("id", "glow");
+        filter.append("feGaussianBlur")
+            .attr("stdDeviation", "3.5")
+            .attr("result", "coloredBlur");
+        const feMerge = filter.append("feMerge");
+        feMerge.append("feMergeNode").attr("in", "coloredBlur");
+        feMerge.append("feMergeNode").attr("in", "SourceGraphic");
+
+        // G Group for Zoom
+        const g = svg.append("g");
+
+        // Zoom Behavior
+        const zoomBehavior = d3.zoom()
+            .scaleExtent([0.1, 4])
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            });
+        svg.call(zoomBehavior);
+
+        // Simulation
+        const simulation = d3.forceSimulation(nodesData)
+            .force("link", d3.forceLink(linksData).id(d => d.id).distance(180))
+            .force("charge", d3.forceManyBody().strength(-400))
+            .force("center", d3.forceCenter(0, 0))
+            .force("collide", d3.forceCollide().radius(60));
+
+        // Draw Links
+        const link = g.append("g")
+            .attr("stroke", "#334155")
+            .attr("stroke-opacity", 0.6)
+            .selectAll("line")
+            .data(linksData)
+            .join("line")
+            .attr("stroke-width", 1.5);
+
+        // Draw Nodes
+        const nodeGroup = g.append("g")
+            .selectAll("g")
+            .data(nodesData)
+            .join("g")
+            .call(d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended));
+
+        // Node Circles
+        const circles = nodeGroup.append("circle")
+            .attr("r", 35)
+            .attr("fill", "#0B0E14") // Dark center
+            .attr("stroke-width", 3)
+            .attr("class", d => d.risk > 0.6 ? "node-glow pulsating-red" : "node-glow pulsating-green")
+            .attr("stroke", d => d.risk > 0.6 ? "#ef4444" : "#10b981")
+            .style("cursor", "pointer");
+
+        // Node Icons (using foreignObject to embed Iconify) - Simplified to text for stability in single file
+        // Reverting to Text labels for robustness
+        nodeGroup.append("text")
+            .text(d => d.id)
+            .attr("x", 0)
+            .attr("y", 55)
+            .attr("text-anchor", "middle")
+            .attr("fill", "#94a3b8")
+            .attr("font-size", "12px")
+            .attr("font-weight", "500")
+            .style("pointer-events", "none");
+            
+        // Icon inside circle
+        nodeGroup.append("text")
+            .attr("text-anchor", "middle")
+            .attr("dominant-baseline", "central")
+            .style("font-family", "Arial") 
+            .style("font-size", "14px")
+            .style("fill", "#fff")
+            .text(d => d.id.substring(0, 2).toUpperCase());
+
+
+        // Simulation Update
+        simulation.on("tick", () => {
+            link
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+
+            nodeGroup
+                .attr("transform", d => `translate(${d.x},${d.y})`);
+        });
+
+        // --- Interaction Logic ---
+        
+        // Tooltip & Selection
+        const tooltip = d3.select("#graph-tooltip");
+        const titleEl = document.getElementById('card-title');
+        const descEl = document.getElementById('card-desc');
+
+        nodeGroup.on("click", (event, d) => {
+            // Update Sidebar
+            titleEl.innerHTML = `${d.id} <iconify-icon icon="solar:arrow-right-up-linear" class="text-slate-600 text-sm"></iconify-icon>`;
+            descEl.textContent = d.desc;
+            showToast("Node Selected", d.id + " data loaded into sidebar.");
+            
+            // Highlight Visuals
+            circles.attr("stroke-opacity", 0.4);
+            d3.select(event.currentTarget).select("circle").attr("stroke-opacity", 1);
+        });
+
+        // Sliders Logic
+        const sliderIntensity = document.getElementById('slider-intensity');
+        const sliderLabel = document.getElementById('val-intensity');
+        
+        // Add listeners to all sliders to show they work
+        document.querySelectorAll('input[type="range"]').forEach(slider => {
+             slider.addEventListener('input', (e) => {
+                 const id = e.target.id;
+                 const val = e.target.value;
+                 if(id === 'slider-intensity') sliderLabel.innerText = val + "%";
+                 if(id === 'slider-frequency') document.getElementById('val-frequency').innerText = val + "%";
+                 if(id === 'slider-radius') document.getElementById('val-radius').innerText = val + "%";
+             });
+        });
+
+        sliderIntensity.addEventListener('input', (e) => {
+            const val = e.target.value;
+            const threshold = val / 100;
+            circles
+                .transition().duration(200)
+                .attr("stroke", d => {
+                    const adjustedRisk = (d.risk + threshold) / 2;
+                    return adjustedRisk > 0.6 ? "#ef4444" : "#10b981";
+                })
+                .attr("class", d => {
+                    const adjustedRisk = (d.risk + threshold) / 2;
+                    return adjustedRisk > 0.6 ? "node-glow pulsating-red" : "node-glow pulsating-green";
+                });
+        });
+
+        // --- Button Functionality ---
+
+        // 1. Sidebar Toggle
+        const sidebar = document.getElementById('sidebar');
+        const sidebarBtn = document.getElementById('btn-toggle-sidebar-main');
+        let isSidebarVisible = true;
+
+        sidebarBtn.addEventListener('click', () => {
+            if (isSidebarVisible) {
+                sidebar.style.marginLeft = "-24rem"; // w-96 is 24rem
+                sidebar.style.opacity = "0.5";
+            } else {
+                sidebar.style.marginLeft = "0";
+                sidebar.style.opacity = "1";
+            }
+            isSidebarVisible = !isSidebarVisible;
+        });
+
+        // 2. Fullscreen
+        const fsBtn = document.getElementById('btn-fullscreen');
+        fsBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch((e) => {
+                    showToast("Error", "Fullscreen not supported");
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        });
+
+        // 3. Reset View
+        const resetBtn = document.getElementById('btn-reset-view');
+        resetBtn.addEventListener('click', () => {
+            svg.transition().duration(750).call(zoomBehavior.transform, d3.zoomIdentity);
+            showToast("View Reset", "Camera position restored to center.");
+        });
+
+        // 4. Generate Report
+        const reportBtn = document.getElementById('btn-report');
+        reportBtn.addEventListener('click', () => {
+            showToast("Generating Report", "Compiling CSV data from active nodes...");
+            // Simulate process
+            setTimeout(() => {
+                showToast("Success", "Report 'analysis_v4.csv' downloaded.");
+            }, 1500);
+        });
+
+        // --- Wayfinding Engine (Play Button) ---
+        const playBtn = document.getElementById('btn-wayfinding');
+        const engineStatus = document.getElementById('engine-status-text');
+        const engineDot = document.getElementById('engine-status-dot');
+        let isPlaying = false;
+        
+        playBtn.addEventListener('click', () => {
+            if(isPlaying) return resetWayfinding();
+
+            isPlaying = true;
+            // UI Update
+            playBtn.innerHTML = `<iconify-icon icon="solar:stop-circle-linear" class="text-lg"></iconify-icon> Stop`;
+            playBtn.classList.replace('bg-emerald-500', 'bg-red-500');
+            playBtn.classList.replace('hover:bg-emerald-400', 'hover:bg-red-400');
+            engineStatus.textContent = "Navigating...";
+            engineDot.classList.replace('bg-slate-500', 'bg-emerald-400');
+            
+            showToast("Engine Started", "Autonomous traversal sequence initiated.");
+
+            // Sequence of nodes to visit
+            const sequence = ["Pulmonology", "Neurology", "Gastroenterology"];
+            let step = 0;
+
+            function navigateToNext() {
+                if (!isPlaying) return;
+                if (step >= sequence.length) {
+                    resetWayfinding();
+                    showToast("Sequence Complete", "All waypoints analyzed.");
+                    return;
+                }
+
+                const targetId = sequence[step];
+                const targetNode = nodesData.find(n => n.id === targetId);
+
+                if (targetNode) {
+                    // 1. Zoom/Pan to node
+                    svg.transition()
+                        .duration(1500)
+                        .call(zoomBehavior.transform, d3.zoomIdentity.translate(0, 0).scale(1.5).translate(-targetNode.x, -targetNode.y))
+                        .on("end", () => {
+                            if (!isPlaying) return;
+                            
+                             // Highlight Node
+                            circles.filter(d => d.id === targetId)
+                                .transition().duration(300)
+                                .attr("stroke-width", 6)
+                                .attr("stroke", "#ffffff");
+
+                            tooltip.style("opacity", 1)
+                                .html(`<strong class="text-white">${targetId}</strong><br/><span class="text-xs text-slate-400">Analyzing...</span>`)
+                                .style("left", (width/2 + 40) + "px")
+                                .style("top", (height/2 - 40) + "px");
+
+                            setTimeout(() => {
+                                if (!isPlaying) return;
+                                tooltip.style("opacity", 0);
+                                circles.filter(d => d.id === targetId)
+                                    .transition().duration(500)
+                                    .attr("stroke-width", 3)
+                                    .attr("stroke", d => d.risk > 0.6 ? "#ef4444" : "#10b981");
+                                
+                                step++;
+                                navigateToNext();
+                            }, 1500);
+                        });
+                }
+            }
+            navigateToNext();
+        });
+
+        function resetWayfinding() {
+            isPlaying = false;
+            playBtn.innerHTML = `<iconify-icon icon="solar:play-linear" class="text-lg"></iconify-icon> Start Analysis`;
+            playBtn.classList.replace('bg-red-500', 'bg-emerald-500');
+            playBtn.classList.replace('hover:bg-red-400', 'hover:bg-emerald-400');
+            engineStatus.textContent = "Idle";
+            engineDot.classList.replace('bg-emerald-400', 'bg-slate-500');
+            
+            tooltip.style("opacity", 0);
+            svg.transition().duration(1000).call(zoomBehavior.transform, d3.zoomIdentity);
+        }
+
+        // Helper: drag functions
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+        // --- Radar Chart Implementation ---
+        const radarW = 200, radarH = 160;
+        const radarSvg = d3.select("#radar-chart").append("svg")
+            .attr("width", "100%")
+            .attr("height", "100%")
+            .attr("viewBox", `0 0 ${radarW} ${radarH}`);
+
+        const features = ["Risk", "Freq", "Time", "Impact", "Load"];
+        const data = [ { "Risk": 80, "Freq": 60, "Time": 40, "Impact": 90, "Load": 70 } ];
+
+        const radialScale = d3.scaleLinear().domain([0, 100]).range([0, 55]);
+        const ticks = [33, 66, 100];
+        
+        const gRadar = radarSvg.append("g").attr("transform", `translate(${radarW/2}, ${radarH/2})`);
+
+        features.forEach((f, i) => {
+            const angle = (Math.PI / 2) + (2 * Math.PI * i / features.length);
+            const lineX = Math.cos(angle) * 55;
+            const lineY = Math.sin(angle) * 55;
+            const labelX = Math.cos(angle) * 70;
+            const labelY = Math.sin(angle) * 70;
+
+            gRadar.append("line")
+                .attr("x1", 0).attr("y1", 0).attr("x2", lineX).attr("y2", -lineY)
+                .attr("stroke", "#334155").attr("stroke-width", 1);
+            
+            gRadar.append("text")
+                .attr("x", labelX).attr("y", -labelY)
+                .text(f)
+                .attr("text-anchor", "middle").attr("alignment-baseline", "middle")
+                .attr("fill", "#64748b").attr("font-size", "9px")
+                .attr("font-weight", "500");
+        });
+
+        ticks.forEach(t => {
+            gRadar.append("circle")
+                .attr("r", radialScale(t))
+                .attr("fill", "none")
+                .attr("stroke", "#334155")
+                .attr("stroke-opacity", 0.3)
+                .attr("stroke-dasharray", "2,2");
+        });
+
+        function getPathCoordinates(data_point){
+            let coordinates = [];
+            for (let i = 0; i < features.length; i++){
+                let ft_name = features[i];
+                let angle = (Math.PI / 2) + (2 * Math.PI * i / features.length);
+                coordinates.push({
+                    x: Math.cos(angle) * radialScale(data_point[ft_name]),
+                    y: -Math.sin(angle) * radialScale(data_point[ft_name])
+                });
+            }
+            return coordinates;
+        }
+
+        const coords = getPathCoordinates(data[0]);
+        const lineFn = d3.line().x(d => d.x).y(d => d.y).curve(d3.curveLinearClosed);
+
+        gRadar.append("path")
+            .datum(coords)
+            .attr("d", lineFn)
+            .attr("stroke-width", 2)
+            .attr("stroke", "#10b981")
+            .attr("fill", "#10b981")
+            .attr("fill-opacity", 0.15);
+
+    </script>
+</body>
+</html>

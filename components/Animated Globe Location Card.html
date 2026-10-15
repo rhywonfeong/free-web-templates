@@ -1,0 +1,314 @@
+<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+  <article class="relative w-full min-h-[520px] bg-[#000] border border-white/10 overflow-hidden"
+    style="font-family: system-ui, -apple-system, sans-serif;">
+    <style>
+      @keyframes vmSlideIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes pulseDot {
+
+        0%,
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+
+        50% {
+          opacity: 0.55;
+          transform: scale(1.18);
+        }
+      }
+
+      @keyframes pulseRing {
+        0% {
+          transform: scale(0.7);
+          opacity: 0.7;
+        }
+
+        100% {
+          transform: scale(1.65);
+          opacity: 0;
+        }
+      }
+
+      .animate-slide-in {
+        animation: vmSlideIn 0.45s ease;
+      }
+
+      .pulse-dot {
+        animation: pulseDot 2s ease-in-out infinite;
+      }
+
+      .pulse-ring {
+        animation: pulseRing 2.4s linear infinite;
+      }
+    </style>
+
+    <div class="relative min-h-[520px] animate-slide-in">
+      <canvas id="globeCanvas" style="position:absolute; inset:0; width:100%; height:100%; display:block;"></canvas>
+
+      <!-- subtle readability overlay -->
+      <div
+        class="absolute inset-0 pointer-events-none z-[1] bg-[linear-gradient(to_right,rgba(0,0,0,0.26)_0%,rgba(0,0,0,0.08)_35%,rgba(0,0,0,0.03)_100%)]">
+      </div>
+
+      <!-- top left label -->
+      <div class="absolute top-10 left-10 z-10">
+        <span class="text-white/45 text-[12px] sm:text-[13px] tracking-[0.32em] uppercase">
+          Location
+        </span>
+      </div>
+
+      <!-- top right indicator -->
+      <div class="absolute top-10 right-10 z-10 flex items-center gap-3">
+        <div class="w-8 h-1 rounded-full bg-white/95"></div>
+        <div class="w-2 h-2 rounded-full bg-white/25"></div>
+      </div>
+
+      <!-- bottom info -->
+      <div class="absolute left-10 bottom-10 z-10 max-w-[420px]">
+        <div class="flex items-center gap-4">
+          <span class="inline-block w-5 h-5 rounded-full bg-[#00ff66]/55 pulse-dot"
+            style="box-shadow: 0 0 20px rgba(0,255,102,0.28);"></span>
+          <h3 class="text-white text-[36px] sm:text-[38px] leading-none tracking-[-0.045em] font-semibold">
+            Tokyo, Japan
+          </h3>
+        </div>
+
+        <div class="mt-6 h-px w-full bg-white/14"></div>
+
+        <div
+          class="mt-5 flex flex-wrap gap-x-10 gap-y-2 text-white/42 text-[13px] sm:text-[14px] tracking-[0.12em] uppercase">
+          <span>35.6762° N</span>
+          <span>139.6503° E</span>
+          <span>UTC+9</span>
+        </div>
+      </div>
+
+      <!-- marker overlay -->
+      <div id="tokyoMarker" class="absolute z-10 pointer-events-none hidden">
+        <div class="absolute inset-0 rounded-full border border-[#00ff66]/35 pulse-ring"></div>
+        <div class="absolute inset-0 rounded-full border border-[#00ff66]/25 pulse-ring" style="animation-delay: 0.8s;">
+        </div>
+        <div class="absolute left-1/2 top-1/2 w-4 h-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#00ff66]"
+          style="box-shadow: 0 0 18px rgba(0,255,102,0.95), 0 0 34px rgba(0,255,102,0.35);"></div>
+      </div>
+    </div>
+
+    <script>
+      (function initGlobe() {
+        const gc = document.getElementById('globeCanvas');
+        const marker = document.getElementById('tokyoMarker');
+        if (!gc) return;
+
+        const gx = gc.getContext('2d');
+        if (!gx) return;
+
+        function resize() {
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          const rect = gc.getBoundingClientRect();
+          gc.width = Math.max(1, Math.floor(rect.width * dpr));
+          gc.height = Math.max(1, Math.floor(rect.height * dpr));
+          gx.setTransform(1, 0, 0, 1, 0, 0);
+          gx.scale(dpr, dpr);
+        }
+
+        resize();
+        window.addEventListener('resize', resize);
+
+        function latLonToXYZ(latDeg, lonDeg) {
+          const lat = latDeg * Math.PI / 180;
+          const lon = lonDeg * Math.PI / 180;
+          return {
+            x: Math.cos(lat) * Math.cos(lon),
+            y: Math.sin(lat),
+            z: Math.cos(lat) * Math.sin(lon)
+          };
+        }
+
+        function rotY(p, a) {
+          return {
+            x: p.x * Math.cos(a) + p.z * Math.sin(a),
+            y: p.y,
+            z: -p.x * Math.sin(a) + p.z * Math.cos(a)
+          };
+        }
+
+        const pts = [];
+        const DOT_STEP = 5.5;
+
+        for (let lat = -82; lat <= 82; lat += DOT_STEP) {
+          for (let lon = -180; lon <= 180; lon += DOT_STEP) {
+            const p = latLonToXYZ(lat, lon);
+            pts.push({
+              x: p.x,
+              y: p.y,
+              z: p.z,
+              size: 0.9 + Math.random() * 0.55,
+              alpha: 0.42 + Math.random() * 0.28
+            });
+          }
+        }
+
+        const tokyo = latLonToXYZ(35.6762, 139.6503);
+
+        let angle = -1.28;
+        let tick = 0;
+
+        function drawLongitudeLines(cx, cy, R) {
+          for (let m = 0; m < 8; m++) {
+            const lonDeg = (m / 8) * 180 - 90;
+            gx.beginPath();
+            let first = true;
+
+            for (let s = 0; s <= 80; s++) {
+              const latDeg = (s / 80) * 180 - 90;
+              const p = latLonToXYZ(latDeg, lonDeg);
+              const rp = rotY(p, angle);
+              if (rp.z < 0) {
+                first = true;
+                continue;
+              }
+              const sx = cx + rp.x * R;
+              const sy = cy - rp.y * R;
+              if (first) gx.moveTo(sx, sy);
+              else gx.lineTo(sx, sy);
+              first = false;
+            }
+
+            gx.strokeStyle = 'rgba(0,255,102,0.055)';
+            gx.lineWidth = 1;
+            gx.stroke();
+          }
+        }
+
+        function drawLatitudeLines(cx, cy, R) {
+          const lats = [-60, -30, 0, 30, 60];
+          lats.forEach(latDeg => {
+            gx.beginPath();
+            let first = true;
+
+            for (let s = 0; s <= 120; s++) {
+              const lonDeg = (s / 120) * 360 - 180;
+              const p = latLonToXYZ(latDeg, lonDeg);
+              const rp = rotY(p, angle);
+              if (rp.z < 0) {
+                first = true;
+                continue;
+              }
+              const sx = cx + rp.x * R;
+              const sy = cy - rp.y * R;
+              if (first) gx.moveTo(sx, sy);
+              else gx.lineTo(sx, sy);
+              first = false;
+            }
+
+            gx.strokeStyle = 'rgba(0,255,102,0.05)';
+            gx.lineWidth = 1;
+            gx.stroke();
+          });
+        }
+
+        function draw() {
+          const rect = gc.getBoundingClientRect();
+          const W = rect.width;
+          const H = rect.height;
+
+          gx.clearRect(0, 0, W, H);
+
+          angle += 0.0018;
+          tick += 0.016;
+
+          const cx = W * 0.62;
+          const cy = H * 0.48;
+          const R = Math.min(W, H) * 0.48;
+
+          const glow = gx.createRadialGradient(cx, cy, R * 0.55, cx, cy, R * 1.25);
+          glow.addColorStop(0, 'rgba(0,255,102,0.045)');
+          glow.addColorStop(0.5, 'rgba(0,255,102,0.025)');
+          glow.addColorStop(1, 'rgba(0,0,0,0)');
+          gx.beginPath();
+          gx.arc(cx, cy, R * 1.25, 0, Math.PI * 2);
+          gx.fillStyle = glow;
+          gx.fill();
+
+          gx.beginPath();
+          gx.arc(cx, cy, R, 0, Math.PI * 2);
+          gx.fillStyle = 'rgba(0,18,7,0.14)';
+          gx.fill();
+
+          drawLongitudeLines(cx, cy, R);
+          drawLatitudeLines(cx, cy, R);
+
+          const projected = pts.map(pt => {
+            const rp = rotY(pt, angle);
+            return { ...pt, rx: rp.x, ry: rp.y, rz: rp.z };
+          }).sort((a, b) => a.rz - b.rz);
+
+          projected.forEach(pt => {
+            const sx = cx + pt.rx * R;
+            const sy = cy - pt.ry * R;
+
+            if (pt.rz < 0) {
+              const depthBack = Math.max(0, 1 + pt.rz);
+              gx.beginPath();
+              gx.arc(sx, sy, pt.size * 0.55, 0, Math.PI * 2);
+              gx.fillStyle = `rgba(0,255,102,${depthBack * 0.03})`;
+              gx.fill();
+              return;
+            }
+
+            const depth = (pt.rz + 1) / 2;
+            const twinkle = 0.82 + 0.18 * Math.sin(tick + sx * 0.01 + sy * 0.008);
+            gx.beginPath();
+            gx.arc(sx, sy, pt.size * Math.max(0.72, depth), 0, Math.PI * 2);
+            gx.fillStyle = `rgba(0,255,102,${pt.alpha * depth * twinkle})`;
+            gx.fill();
+          });
+
+          gx.beginPath();
+          gx.arc(cx, cy, R, 0, Math.PI * 2);
+          gx.strokeStyle = 'rgba(0,255,102,0.18)';
+          gx.lineWidth = 1.4;
+          gx.stroke();
+
+          const tokyoRot = rotY(tokyo, angle);
+
+          if (tokyoRot.z > 0) {
+            const sx = cx + tokyoRot.x * R;
+            const sy = cy - tokyoRot.y * R;
+
+            marker.classList.remove('hidden');
+            marker.style.left = `${sx - 34}px`;
+            marker.style.top = `${sy - 34}px`;
+            marker.style.width = `68px`;
+            marker.style.height = `68px`;
+
+            gx.beginPath();
+            gx.arc(sx, sy, 4.2, 0, Math.PI * 2);
+            gx.fillStyle = '#00ff66';
+            gx.shadowColor = '#00ff66';
+            gx.shadowBlur = 18;
+            gx.fill();
+            gx.shadowBlur = 0;
+          } else {
+            marker.classList.add('hidden');
+          }
+
+          requestAnimationFrame(draw);
+        }
+
+        draw();
+      })();
+    </script>
+  </article>
+</div>

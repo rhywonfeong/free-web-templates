@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Handpick — Personal job-search agent</title>
+<meta name="description" content="Handpick finds relevant opportunities, explains the match, and prepares outreach. Nothing is sent without your approval.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script></head>
+
+<body class="bg-white text-zinc-950 antialiased selection:bg-zinc-900 selection:text-white" style="font-family:'Inter Tight',sans-serif;">
+
+  <!-- direction switcher -->
+  <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
+    <div class="flex items-center gap-1 rounded-full border border-zinc-200 bg-white/90 p-1 shadow-[0_8px_30px_-12px_rgba(0,0,0,0.25)] backdrop-blur">
+      <span class="hidden pl-3 pr-1 text-xs tracking-tight text-zinc-400 sm:block" style="font-family:'IBM Plex Mono',monospace;">DIR</span>
+      <button data-tab="a" class="tab rounded-full bg-zinc-950 px-3.5 py-1.5 text-xs font-medium text-white transition">Product</button>
+      <button data-tab="b" class="tab rounded-full px-3.5 py-1.5 text-xs font-medium text-zinc-500 transition hover:text-zinc-900">Dark</button>
+      <button data-tab="c" class="tab rounded-full px-3.5 py-1.5 text-xs font-medium text-zinc-500 transition hover:text-zinc-900">Editorial</button>
+    </div>
+  </div>
+
+  <!-- ══ DIRECTION A — light, product-led ══ -->
+  <section data-panel="a" class="panel">
+    <header class="border-b border-zinc-100">
+      <nav class="mx-auto flex max-w-[78rem] items-center justify-between px-6 py-5 lg:px-10">
+        <a href="#" class="text-base font-semibold tracking-tight">Handpick<span class="text-indigo-600">.</span></a>
+        <div class="hidden items-center gap-8 text-sm text-zinc-500 md:flex">
+          <a href="#a-app" class="transition hover:text-zinc-950">How it works</a>
+          <a href="#a-app" class="transition hover:text-zinc-950">Sourcing</a>
+          <a href="#a-app" class="transition hover:text-zinc-950">Pricing</a>
+        </div>
+        <div class="flex items-center gap-5">
+          <a href="#a-app" class="hidden text-sm text-zinc-500 transition hover:text-zinc-950 sm:block">Sign in</a>
+          <a href="#a-app" class="rounded-md bg-zinc-950 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Request access</a>
+        </div>
+      </nav>
+    </header>
+
+    <div class="mx-auto max-w-[78rem] px-6 lg:px-10">
+      <div class="grid gap-14 border-b border-zinc-100 py-16 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:gap-20 lg:py-24">
+        <div class="lg:pt-6">
+          <p class="text-xs uppercase tracking-[0.18em] text-zinc-400" style="font-family:'IBM Plex Mono',monospace;">Personal search agent</p>
+          <h1 class="mt-6 text-4xl font-medium leading-[1.05] tracking-tight sm:text-5xl">
+            It finds the opportunities.
+            <span class="block text-zinc-400">You make the moves.</span>
+          </h1>
+          <p class="mt-6 max-w-sm text-base leading-7 text-zinc-600">
+            Handpick reads the market for you — roles, contracts and freelance briefs — then explains why each one fits and writes the first message. You decide what goes out.
+          </p>
+
+          <div class="mt-8 flex flex-wrap items-center gap-x-5 gap-y-3">
+            <a href="#a-app" class="rounded-md bg-zinc-950 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800">Request access</a>
+            <a href="#a-app" class="group inline-flex items-center gap-1.5 text-sm text-zinc-600 transition hover:text-zinc-950">
+              See a 90-second walkthrough
+              <iconify-icon icon="solar:arrow-right-linear" width="15" height="15" stroke-width="1.5" class="transition group-hover:translate-x-0.5"></iconify-icon>
+            </a>
+          </div>
+
+          <dl class="mt-12 grid max-w-sm grid-cols-3 gap-6 border-t border-zinc-100 pt-6">
+            <div>
+              <dd class="text-xl font-medium tracking-tight">1,400+</dd>
+              <dt class="mt-1 text-xs leading-4 text-zinc-500">sources scanned daily</dt>
+            </div>
+            <div>
+              <dd class="text-xl font-medium tracking-tight">6</dd>
+              <dt class="mt-1 text-xs leading-4 text-zinc-500">matches surfaced weekly</dt>
+            </div>
+            <div>
+              <dd class="text-xl font-medium tracking-tight">0</dd>
+              <dt class="mt-1 text-xs leading-4 text-zinc-500">messages sent unapproved</dt>
+            </div>
+          </dl>
+        </div>
+
+        <!-- app -->
+        <div id="a-app" class="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_24px_48px_-32px_rgba(0,0,0,0.25)]">
+          <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-2.5">
+            <div class="flex items-center gap-2 text-xs text-zinc-500" style="font-family:'IBM Plex Mono',monospace;">
+              <iconify-icon icon="solar:inbox-line-linear" width="15" height="15" stroke-width="1.5"></iconify-icon>
+              queue / this week
+            </div>
+            <span class="text-xs text-zinc-400" style="font-family:'IBM Plex Mono',monospace;">sample data</span>
+          </div>
+
+          <div class="grid md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
+            <!-- queue -->
+            <div class="border-b border-zinc-100 md:border-b-0 md:border-r">
+              <button data-item
+                data-role="Senior Product Designer" data-org="Northstar Labs" data-meta="Contract · 6 months · Remote (EU)"
+                data-fit="Complex B2B workflow design" data-flag="Rate not published — confirm early"
+                data-person="Maya Chen" data-title="Design Director"
+                data-body="I came across Northstar's search for a senior product designer. The brief mentions untangling multi-step approval flows — that's been the centre of my last two engagements, most recently cutting a 9-step review down to 3."
+                class="flex w-full items-start gap-3 border-b border-zinc-100 bg-zinc-50 px-4 py-3.5 text-left transition">
+                <span class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-white text-xs font-medium text-zinc-600">N</span>
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-sm font-medium tracking-tight">Senior Product Designer</span>
+                  <span class="mt-0.5 block truncate text-xs text-zinc-500">Northstar Labs · Contract</span>
+                </span>
+                <span class="text-xs text-zinc-400" style="font-family:'IBM Plex Mono',monospace;">94</span>
+              </button>
+
+              <button data-item
+                data-role="Design Systems Lead" data-org="Orbit Health" data-meta="Permanent · Hybrid, Berlin"
+                data-fit="Token architecture across 4 platforms" data-flag="Hybrid — 2 days on-site required"
+                data-person="Tomas Weber" data-title="Head of Platform"
+                data-body="Orbit's systems role stood out because of the multi-platform scope. I built and documented a token layer shared across web, iOS and an internal admin suite, with adoption tracking baked in."
+                class="flex w-full items-start gap-3 border-b border-zinc-100 px-4 py-3.5 text-left transition hover:bg-zinc-50">
+                <span class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-white text-xs font-medium text-zinc-600">O</span>
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-sm font-medium tracking-tight">Design Systems Lead</span>
+                  <span class="mt-0.5 block truncate text-xs text-zinc-500">Orbit Health · Permanent</span>
+                </span>
+                <span class="text-xs text-zinc-400" style="font-family:'IBM Plex Mono',monospace;">88</span>
+              </button>
+
+              <button data-item
+                data-role="Product Design (Fractional)" data-org="Kestrel Studio" data-meta="Freelance · 2 days/week · Remote"
+                data-fit="Zero-to-one work for seed-stage teams" data-flag="Start date is immediate"
+                data-person="Ana Ferreira" data-title="Founder"
+                data-body="Kestrel is looking for two days a week of senior design help. I've run that exact cadence with two seed-stage teams, owning discovery through shipped UI without needing a full-time seat."
+                class="flex w-full items-start gap-3 border-b border-zinc-100 px-4 py-3.5 text-left transition hover:bg-zinc-50">
+                <span class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-white text-xs font-medium text-zinc-600">K</span>
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-sm font-medium tracking-tight">Product Design (Fractional)</span>
+                  <span class="mt-0.5 block truncate text-xs text-zinc-500">Kestrel Studio · Freelance</span>
+                </span>
+                <span class="text-xs text-zinc-400" style="font-family:'IBM Plex Mono',monospace;">81</span>
+              </button>
+
+              <div class="px-4 py-3.5 text-xs leading-5 text-zinc-400">
+                14 further listings reviewed and set aside. Reasons kept on file.
+              </div>
+            </div>
+
+            <!-- detail -->
+            <div class="flex flex-col">
+              <div class="border-b border-zinc-100 px-5 py-4">
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 data-f="role" class="text-base font-medium tracking-tight">Senior Product Designer</h2>
+                    <p class="mt-1 text-xs text-zinc-500"><span data-f="org">Northstar Labs</span> · <span data-f="meta">Contract · 6 months · Remote (EU)</span></p>
+                  </div>
+                  <span data-status class="shrink-0 whitespace-nowrap border-l border-zinc-200 pl-3 text-xs text-amber-700" style="font-family:'IBM Plex Mono',monospace;">awaiting you</span>
+                </div>
+              </div>
+
+              <div class="grid gap-y-3 border-b border-zinc-100 px-5 py-4 text-xs sm:grid-cols-[6rem_minmax(0,1fr)]">
+                <span class="text-zinc-400">Reason</span>
+                <span data-f="fit" class="leading-5 text-zinc-700">Complex B2B workflow design</span>
+                <span class="text-zinc-400">Worth noting</span>
+                <span data-f="flag" class="leading-5 text-zinc-700">Rate not published — confirm early</span>
+                <span class="text-zinc-400">Contact</span>
+                <span class="leading-5 text-zinc-700"><span data-f="person">Maya Chen</span>, <span data-f="title">Design Director</span> — from the public team page</span>
+              </div>
+
+              <div class="px-5 py-4">
+                <p class="text-xs uppercase tracking-[0.16em] text-zinc-400" style="font-family:'IBM Plex Mono',monospace;">Draft message</p>
+                <div class="mt-3 text-sm leading-7 text-zinc-700">
+                  <p>Hi <span data-f="person2">Maya</span>,</p>
+                  <p data-f="body" class="mt-3">I came across Northstar's search for a senior product designer. The brief mentions untangling multi-step approval flows — that's been the centre of my last two engagements, most recently cutting a 9-step review down to 3.</p>
+                  <p class="mt-3">Happy to send that case study over if it's useful.</p>
+                  <p class="mt-3">Alex</p>
+                </div>
+              </div>
+
+              <div class="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-zinc-100 bg-zinc-50/60 px-5 py-3.5">
+                <p class="text-xs text-zinc-500">Handpick will not send this on its own.</p>
+                <div class="flex items-center gap-2">
+                  <button class="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50">Rewrite</button>
+                  <button data-approve class="flex items-center gap-2 rounded-md bg-zinc-950 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-zinc-800">
+                    Approve
+                    <span class="text-zinc-500" style="font-family:'IBM Plex Mono',monospace;">⌘↵</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid gap-x-10 gap-y-8 py-12 sm:grid-cols-3">
+        <div>
+          <p class="text-xs text-zinc-400" style="font-family:'IBM Plex Mono',monospace;">01</p>
+          <h3 class="mt-3 text-sm font-medium tracking-tight">It reads everything</h3>
+          <p class="mt-2 text-sm leading-6 text-zinc-600">Job boards, company pages, funding news and community posts — checked daily against what you actually want.</p>
+        </div>
+        <div>
+          <p class="text-xs text-zinc-400" style="font-family:'IBM Plex Mono',monospace;">02</p>
+          <h3 class="mt-3 text-sm font-medium tracking-tight">It shows its reasoning</h3>
+          <p class="mt-2 text-sm leading-6 text-zinc-600">Every match arrives with the specific overlap, and the caveat you should raise in the first conversation.</p>
+        </div>
+        <div>
+          <p class="text-xs text-zinc-400" style="font-family:'IBM Plex Mono',monospace;">03</p>
+          <h3 class="mt-3 text-sm font-medium tracking-tight">You hold the send button</h3>
+          <p class="mt-2 text-sm leading-6 text-zinc-600">Drafts wait in your queue. Nothing is submitted, messaged or applied for without an explicit approval.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ DIRECTION B — dark, restrained ══ -->
+  <section data-panel="b" class="panel hidden bg-[#09090b] text-zinc-100">
+    <header class="border-b border-white/[0.07]">
+      <nav class="mx-auto flex max-w-[78rem] items-center justify-between px-6 py-5 lg:px-10">
+        <a href="#" class="text-base font-semibold tracking-tight">Handpick</a>
+        <div class="hidden items-center gap-8 text-sm text-zinc-500 md:flex">
+          <a href="#b-app" class="transition hover:text-zinc-100">Method</a>
+          <a href="#b-app" class="transition hover:text-zinc-100">Boundaries</a>
+          <a href="#b-app" class="transition hover:text-zinc-100">Pricing</a>
+        </div>
+        <a href="#b-app" class="rounded-md border border-white/15 px-3.5 py-2 text-sm font-medium transition hover:bg-white hover:text-zinc-950">Request access</a>
+      </nav>
+    </header>
+
+    <div class="mx-auto max-w-[78rem] px-6 lg:px-10">
+      <div class="grid items-end gap-10 py-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] lg:py-24">
+        <h1 class="text-4xl font-light leading-[1.02] tracking-tight sm:text-6xl lg:text-7xl">
+          It finds the opportunities.<br>
+          <span class="text-zinc-600">You make the moves.</span>
+        </h1>
+        <div class="lg:pb-3">
+          <p class="text-sm leading-7 text-zinc-400">
+            A quiet agent working the market on your behalf. It researches, reasons and drafts — then stops, because the last step is yours.
+          </p>
+          <p class="mt-5 text-xs leading-5 text-zinc-500" style="font-family:'IBM Plex Mono',monospace;">
+            no bulk applying · no auto-send · no scraped inboxes
+          </p>
+        </div>
+      </div>
+
+      <!-- activity + draft -->
+      <div id="b-app" class="grid border-y border-white/[0.07] lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
+        <div class="border-b border-white/[0.07] py-6 lg:border-b-0 lg:border-r lg:pr-10">
+          <p class="text-xs uppercase tracking-[0.18em] text-zinc-600" style="font-family:'IBM Plex Mono',monospace;">Today's log</p>
+          <ul class="mt-6 text-sm" style="font-family:'IBM Plex Mono',monospace;">
+            <li class="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-4 border-t border-white/[0.05] py-3">
+              <span class="text-zinc-600">06:02</span>
+              <span class="text-zinc-400">Scanned 1,412 sources · 38 new listings</span>
+            </li>
+            <li class="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-4 border-t border-white/[0.05] py-3">
+              <span class="text-zinc-600">06:14</span>
+              <span class="text-zinc-400">Set aside 32 — location, seniority, stack</span>
+            </li>
+            <li class="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-4 border-t border-white/[0.05] py-3">
+              <span class="text-zinc-600">06:31</span>
+              <span class="text-zinc-200">Shortlisted <span class="text-white">Northstar Labs</span> — workflow design overlap</span>
+            </li>
+            <li class="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-4 border-t border-white/[0.05] py-3">
+              <span class="text-zinc-600">06:33</span>
+              <span class="text-zinc-400">Found contact on public team page</span>
+            </li>
+            <li class="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-4 border-t border-white/[0.05] py-3">
+              <span class="text-zinc-600">06:35</span>
+              <span class="text-zinc-400">Drafted a 94-word note, second pass for tone</span>
+            </li>
+            <li class="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-4 border-y border-white/[0.05] py-3">
+              <span class="text-zinc-600">06:36</span>
+              <span class="text-amber-300/90">Stopped. Waiting for your approval.</span>
+            </li>
+          </ul>
+          <p class="mt-6 max-w-md text-xs leading-5 text-zinc-600">Two replies from last week's approvals are still open. Handpick will remind you on Thursday rather than chasing on your behalf.</p>
+        </div>
+
+        <div class="py-6 lg:pl-10">
+          <div class="flex items-baseline justify-between">
+            <p class="text-xs uppercase tracking-[0.18em] text-zinc-600" style="font-family:'IBM Plex Mono',monospace;">Draft 01</p>
+            <p class="text-xs text-zinc-600" style="font-family:'IBM Plex Mono',monospace;">sample</p>
+          </div>
+
+          <h2 class="mt-6 text-xl font-normal tracking-tight">Senior Product Designer</h2>
+          <p class="mt-1.5 text-sm text-zinc-500">Northstar Labs · Contract, 6 months · Remote (EU)</p>
+
+          <div class="mt-6 grid gap-y-2.5 border-t border-white/[0.07] pt-5 text-xs sm:grid-cols-[4.5rem_minmax(0,1fr)]">
+            <span class="text-zinc-600">To</span><span class="text-zinc-300">Maya Chen, Design Director</span>
+            <span class="text-zinc-600">Subject</span><span class="text-zinc-300">Workflow design support</span>
+          </div>
+
+          <div class="mt-5 border-t border-white/[0.07] pt-5 text-sm leading-7 text-zinc-400">
+            <p>Hi Maya,</p>
+            <p class="mt-3">I came across Northstar's search for a senior product designer. The brief mentions untangling multi-step approval flows — that's been the centre of my last two engagements, most recently cutting a 9-step review down to 3.</p>
+            <p class="mt-3">Happy to send that case study over if it's useful.</p>
+            <p class="mt-3">Alex</p>
+          </div>
+
+          <div class="mt-6 flex items-center gap-2 border-t border-white/[0.07] pt-5">
+            <button data-approve class="flex-1 rounded-md bg-white px-3 py-2.5 text-xs font-medium text-zinc-950 transition hover:bg-zinc-300">Approve and send</button>
+            <button class="rounded-md border border-white/15 px-3 py-2.5 text-xs font-medium text-zinc-300 transition hover:bg-white/5">Rewrite</button>
+            <button class="rounded-md border border-white/15 px-3 py-2.5 text-xs font-medium text-zinc-500 transition hover:bg-white/5">Skip</button>
+          </div>
+          <p data-status class="mt-3 text-xs text-zinc-600" style="font-family:'IBM Plex Mono',monospace;">held · nothing sent</p>
+        </div>
+      </div>
+
+      <div class="grid gap-6 py-10 sm:grid-cols-3">
+        <p class="text-sm leading-6 text-zinc-500">Built for one person at a time — your preferences, your voice, your timing.</p>
+        <p class="text-sm leading-6 text-zinc-500">Sources are public. Every claim in a draft can be traced back to where it came from.</p>
+        <p class="text-sm leading-6 text-zinc-500">Pause it for a week and nothing happens. That's the point.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ DIRECTION C — editorial ══ -->
+  <section data-panel="c" class="panel hidden bg-[#f6f3ec] text-[#1c1a17]">
+    <header class="border-b border-[#1c1a17]/15">
+      <nav class="mx-auto flex max-w-[76rem] items-center justify-between px-6 py-5 lg:px-10">
+        <a href="#" class="text-xl tracking-tight" style="font-family:'Instrument Serif',serif;">Handpick</a>
+        <div class="hidden items-center gap-8 text-xs uppercase tracking-[0.14em] text-[#6b6355] md:flex">
+          <a href="#c-app" class="transition hover:text-[#1c1a17]">The method</a>
+          <a href="#c-app" class="transition hover:text-[#1c1a17]">The limits</a>
+          <a href="#c-app" class="transition hover:text-[#1c1a17]">Enquire</a>
+        </div>
+        <a href="#c-app" class="border-b border-[#1c1a17] pb-0.5 text-sm">Sign in</a>
+      </nav>
+    </header>
+
+    <div class="mx-auto max-w-[76rem] px-6 lg:px-10">
+      <p class="flex items-center justify-between border-b border-[#1c1a17]/10 py-3 text-xs uppercase tracking-[0.16em] text-[#8a8071]">
+        <span>A personal agent for the working search</span>
+        <span class="hidden sm:block">No. 01</span>
+      </p>
+
+      <div class="grid gap-10 py-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,17rem)] lg:gap-16">
+        <div>
+          <h1 class="text-5xl leading-[0.93] tracking-tight sm:text-7xl lg:text-[5.5rem]" style="font-family:'Instrument Serif',serif;">
+            It finds the opportunities.
+            <em class="text-[#8a5a3f]">You make the moves.</em>
+          </h1>
+          <div class="mt-10 grid gap-8 border-t border-[#1c1a17]/10 pt-8 sm:grid-cols-2">
+            <p class="text-base leading-7 text-[#4a443b]" style="font-family:'Newsreader',serif;">
+              <span class="float-left mr-2 mt-1 text-5xl leading-[0.75]" style="font-family:'Instrument Serif',serif;">H</span>andpick spends the morning reading the market — job boards, hiring pages, funding notes, the quieter corners where contracts get mentioned first. By the time you sit down, the noise has been cleared.
+            </p>
+            <p class="text-base leading-7 text-[#4a443b]" style="font-family:'Newsreader',serif;">
+              What remains is a short list with its reasoning attached, and a note already written in your own register. It goes no further than that. Approval is a human act, and it stays one.
+            </p>
+          </div>
+        </div>
+
+        <aside class="border-t border-[#1c1a17]/10 pt-8 lg:border-l lg:border-t-0 lg:pl-10 lg:pt-2">
+          <p class="text-xs uppercase tracking-[0.16em] text-[#8a8071]">This week</p>
+          <dl class="mt-5 space-y-4 text-sm">
+            <div class="flex items-baseline justify-between border-b border-dotted border-[#1c1a17]/20 pb-2">
+              <dt class="text-[#6b6355]">Listings read</dt><dd style="font-family:'Instrument Serif',serif;" class="text-lg">2,140</dd>
+            </div>
+            <div class="flex items-baseline justify-between border-b border-dotted border-[#1c1a17]/20 pb-2">
+              <dt class="text-[#6b6355]">Worth your time</dt><dd style="font-family:'Instrument Serif',serif;" class="text-lg">6</dd>
+            </div>
+            <div class="flex items-baseline justify-between border-b border-dotted border-[#1c1a17]/20 pb-2">
+              <dt class="text-[#6b6355]">Sent without asking</dt><dd style="font-family:'Instrument Serif',serif;" class="text-lg">0</dd>
+            </div>
+          </dl>
+          <a href="#c-app" class="mt-8 inline-flex items-center gap-2 border-b border-[#1c1a17] pb-1 text-sm">
+            Request an invitation
+            <iconify-icon icon="solar:arrow-right-up-linear" width="15" height="15" stroke-width="1.5"></iconify-icon>
+          </a>
+        </aside>
+      </div>
+
+      <!-- letter -->
+      <div id="c-app" class="grid border-t border-[#1c1a17]/15 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+        <div class="border-b border-[#1c1a17]/10 py-10 lg:border-b-0 lg:border-r lg:pr-10">
+          <p class="text-xs uppercase tracking-[0.16em] text-[#8a8071]">The shortlist, first entry</p>
+          <h2 class="mt-6 text-3xl leading-tight tracking-tight" style="font-family:'Instrument Serif',serif;">Senior Product Designer</h2>
+          <p class="mt-2 text-sm text-[#6b6355]">Northstar Labs — contract of six months, remote within Europe.</p>
+
+          <ol class="mt-8 space-y-5 border-t border-[#1c1a17]/10 pt-6">
+            <li class="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-3">
+              <span class="text-xs text-[#8a5a3f]" style="font-family:'IBM Plex Mono',monospace;">i</span>
+              <p class="text-sm leading-6 text-[#4a443b]">The brief describes untangling approval flows — the same problem your last two projects were built around.</p>
+            </li>
+            <li class="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-3">
+              <span class="text-xs text-[#8a5a3f]" style="font-family:'IBM Plex Mono',monospace;">ii</span>
+              <p class="text-sm leading-6 text-[#4a443b]">Length and location sit inside the boundaries you set in March.</p>
+            </li>
+            <li class="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-3">
+              <span class="text-xs text-[#8a5a3f]" style="font-family:'IBM Plex Mono',monospace;">iii</span>
+              <p class="text-sm leading-6 text-[#4a443b]">The rate is unpublished. Worth raising in the first exchange rather than the third.</p>
+            </li>
+          </ol>
+        </div>
+
+        <div class="py-10 lg:pl-12">
+          <div class="flex flex-wrap items-baseline justify-between gap-3 border-b border-[#1c1a17]/10 pb-4">
+            <p class="text-xs uppercase tracking-[0.16em] text-[#8a8071]">A note, prepared for you</p>
+            <p data-status class="text-xs uppercase tracking-[0.16em] text-[#8a5a3f]">Unsent — awaiting you</p>
+          </div>
+
+          <div class="mt-8 max-w-xl">
+            <p class="text-sm text-[#8a8071]">To Maya Chen, Design Director — found on the public team page.</p>
+            <div class="mt-6 text-base leading-8 text-[#332f29]" style="font-family:'Newsreader',serif;">
+              <p>Hi Maya,</p>
+              <p class="mt-4">I came across Northstar's search for a senior product designer. The brief mentions untangling multi-step approval flows — that has been the centre of my last two engagements, most recently taking a nine-step review down to three.</p>
+              <p class="mt-4">Happy to send that case study over if it would be useful.</p>
+              <p class="mt-6 text-xl" style="font-family:'Instrument Serif',serif;">Alex</p>
+            </div>
+          </div>
+
+          <div class="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-[#1c1a17]/10 pt-6">
+            <button data-approve class="rounded-full bg-[#1c1a17] px-5 py-2.5 text-xs uppercase tracking-[0.14em] text-[#f6f3ec] transition hover:bg-black">Approve</button>
+            <button class="text-xs uppercase tracking-[0.14em] text-[#6b6355] underline decoration-[#1c1a17]/30 underline-offset-4 transition hover:text-[#1c1a17]">Rewrite</button>
+            <p class="text-xs leading-5 text-[#8a8071]">Until then it stays on this page.</p>
+          </div>
+        </div>
+      </div>
+
+      <p class="border-t border-[#1c1a17]/15 py-6 text-xs uppercase tracking-[0.16em] text-[#8a8071]">Handpick — for candidates, freelancers and independent practitioners</p>
+    </div>
+  </section>
+
+  <script>
+    const tabs = document.querySelectorAll('.tab');
+    const panels = document.querySelectorAll('.panel');
+    tabs.forEach(t => t.addEventListener('click', () => {
+      panels.forEach(p => p.classList.toggle('hidden', p.dataset.panel !== t.dataset.tab));
+      tabs.forEach(o => {
+        const on = o === t;
+        o.classList.toggle('bg-zinc-950', on);
+        o.classList.toggle('text-white', on);
+        o.classList.toggle('text-zinc-500', !on);
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }));
+
+    // queue selection (direction A)
+    const items = document.querySelectorAll('[data-item]');
+    const set = (k, v) => document.querySelectorAll('[data-f="' + k + '"]').forEach(e => e.textContent = v);
+    items.forEach(item => item.addEventListener('click', () => {
+      items.forEach(i => i.classList.remove('bg-zinc-50'));
+      item.classList.add('bg-zinc-50');
+      const d = item.dataset;
+      set('role', d.role); set('org', d.org); set('meta', d.meta);
+      set('fit', d.fit); set('flag', d.flag);
+      set('person', d.person); set('person2', d.person.split(' ')[0]);
+      set('title', d.title); set('body', d.body);
+    }));
+
+    // approval
+    document.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', () => {
+      const panel = btn.closest('.panel');
+      const status = panel.querySelector('[data-status]');
+      if (status) status.textContent = panel.dataset.panel === 'c' ? 'Approved — sending 09:00' : 'approved · 09:00';
+      btn.textContent = 'Approved';
+      btn.disabled = true;
+      btn.classList.add('opacity-60', 'pointer-events-none');
+    }));
+  </script>
+</body>
+</html>

@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>The Frugal U — Project Direction & Scope of Work</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+:root, .fu{
+--ink:#0B0D11;--ink-2:#101319;--surface:#14181F;--surface-2:#1A1F28;
+--line:#262C37;--line-soft:#1E232C;--text:#E9E6DF;--text-soft:#A7ADB8;--muted:#6E747F;
+--gold:#D4A24C;--gold-soft:#8A6E36;--steel:#5B7C99;--danger:#B85C5C;--green:#6FA08C;
+color-scheme:dark;
+}
+.fu, .fu *{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+.fu{position:relative;isolation:isolate;overflow:hidden;background:var(--ink);color:var(--text);font-family:'Hanken Grotesk',sans-serif;font-size:17px;line-height:1.65;-webkit-font-smoothing:antialiased}
+.fu::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+background:radial-gradient(900px 600px at 78% -5%, rgba(212,162,76,.07), transparent 60%),radial-gradient(800px 700px at -10% 30%, rgba(91,124,153,.05), transparent 55%);}
+.wrap{max-width:1120px;margin:0 auto;padding:0 32px;position:relative;z-index:1}
+.col{max-width:760px}
+.fu h1,.fu h2,.fu h3{font-family:'Fraunces',serif;font-weight:500;letter-spacing:-.01em;line-height:1.08}
+.mono{font-family:'JetBrains Mono',monospace}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);font-weight:500}
+.lede{font-size:clamp(19px,2.4vw,23px);line-height:1.5;color:var(--text-soft)}
+.fu p{margin-bottom:18px}.fu p:last-child{margin-bottom:0}
+.fu strong{color:var(--text);font-weight:600}
+.fu em{color:var(--gold);font-style:normal}
+.fu a{color:var(--gold);text-decoration:none}
+.sectionnum{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--gold-soft);letter-spacing:.1em;display:block;margin-bottom:14px}
+.cover{padding:120px 0 90px}
+.cover .tag{display:flex;gap:14px;align-items:center;margin-bottom:40px;flex-wrap:wrap}
+.pill{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-soft);border:1px solid var(--line);border-radius:100px;padding:7px 14px}
+.cover h1{font-size:clamp(44px,7.5vw,84px);font-weight:400;margin:8px 0 28px;letter-spacing:-.025em}
+.cover h1 em{font-style:italic;color:var(--gold);font-weight:400}
+.cover .lede{max-width:660px;margin-bottom:48px}
+.metaline{display:flex;gap:28px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;padding-top:26px;border-top:1px solid var(--line)}
+.metaline b{color:var(--text-soft);font-weight:500}
+section{padding:78px 0;position:relative}
+.sec-head{margin-bottom:40px}
+.sec-head h2{font-size:clamp(30px,4.4vw,46px);font-weight:500;margin-bottom:18px}
+.sec-head h2 em{font-style:italic;color:var(--gold)}
+.finding{border-left:2px solid var(--gold);padding:6px 0 6px 28px;margin:34px 0}
+.finding .lede{color:var(--text)}
+/* reconcile two-doc */
+.twoup{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:10px 0 8px}
+.twoup .b{background:var(--ink-2);border:1px solid var(--line-soft);border-radius:12px;padding:24px 26px}
+.twoup .b .k{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--steel);display:block;margin-bottom:12px}
+.twoup .b h3{font-family:'Hanken Grotesk';font-size:16px;font-weight:700;letter-spacing:0;margin-bottom:8px}
+.twoup .b p{font-size:14.5px;color:var(--text-soft);margin:0}
+.converge{text-align:center;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--gold);letter-spacing:.1em;margin:18px 0 0}
+@media(max-width:640px){.twoup{grid-template-columns:1fr}}
+/* ladder */
+.ladder{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:8px 0 10px}
+.rung{background:linear-gradient(180deg,var(--surface),var(--ink-2));border:1px solid var(--line);border-radius:14px;padding:28px 26px;position:relative}
+.rung.mid{border-color:var(--gold-soft)}
+.rung .tier{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:10px}
+.rung .price{font-family:'Fraunces';font-size:34px;color:var(--text);font-weight:400;line-height:1}
+.rung .price small{font-size:14px;color:var(--muted);font-family:'JetBrains Mono'}
+.rung h3{font-family:'Hanken Grotesk';font-size:17px;font-weight:700;letter-spacing:0;margin:14px 0 6px}
+.rung p{font-size:13.5px;color:var(--text-soft);margin:0}
+.rung .role{margin-top:16px;padding-top:14px;border-top:1px solid var(--line-soft);font-size:12.5px;color:var(--muted)}
+.rung .role b{color:var(--green);font-family:'JetBrains Mono';font-size:11px;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:4px}
+@media(max-width:760px){.ladder{grid-template-columns:1fr}}
+/* workstreams */
+.ws{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--ink-2);margin-bottom:16px}
+.ws .top{display:flex;gap:20px;padding:26px 32px;align-items:flex-start;border-bottom:1px solid var(--line-soft)}
+.ws .wn{font-family:'Fraunces';font-size:34px;color:var(--gold);line-height:1;flex:0 0 auto;min-width:48px}
+.ws .top h3{font-size:22px;font-weight:500;margin-bottom:5px}
+.ws .top p{font-size:14.5px;color:var(--text-soft);margin:0}
+.ws .body{padding:22px 32px 26px 100px}
+.ws ul{list-style:none}
+.ws li{position:relative;padding:0 0 13px 22px;font-size:15px;color:var(--text-soft)}
+.ws li::before{content:"+";position:absolute;left:0;color:var(--gold-soft);font-family:'JetBrains Mono'}
+.ws li:last-child{padding-bottom:0}
+.ws li b{color:var(--text)}
+@media(max-width:640px){.ws .body{padding-left:32px}}
+/* funnel map */
+.funnel{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0 22px;align-items:stretch}
+.step{flex:1 1 150px;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:18px 16px}
+.step .n{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--gold);letter-spacing:.1em}
+.step .t{font-size:14.5px;font-weight:600;margin-top:8px;line-height:1.3}
+.step .d{font-size:12.5px;color:var(--muted);margin-top:5px;line-height:1.4}
+/* flows table */
+.flows{border:1px solid var(--line);border-radius:14px;overflow:hidden;margin:8px 0}
+.frow{display:grid;grid-template-columns:230px 1fr;gap:20px;padding:20px 28px;border-bottom:1px solid var(--line-soft)}
+.frow:last-child{border-bottom:0}
+.frow.head{background:var(--surface);font-family:'JetBrains Mono';font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.frow .fn{font-weight:600;font-size:15.5px}
+.frow .fn span{display:block;font-family:'JetBrains Mono';font-size:11px;color:var(--gold);letter-spacing:.06em;margin-top:5px;font-weight:400}
+.frow .fd{font-size:14.5px;color:var(--text-soft)}
+@media(max-width:640px){.frow{grid-template-columns:1fr;gap:8px}}
+/* out of scope */
+.fence{background:rgba(184,92,92,.06);border:1px solid rgba(184,92,92,.24);border-radius:14px;padding:28px 32px}
+.fence .label{font-family:'JetBrains Mono';font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--danger);display:block;margin-bottom:14px}
+.fence ul{list-style:none}
+.fence li{position:relative;padding:0 0 11px 22px;font-size:15px;color:var(--text-soft)}
+.fence li::before{content:"×";position:absolute;left:0;color:var(--danger);font-family:'JetBrains Mono'}
+.fence li:last-child{padding-bottom:0}
+/* design align */
+.swatches{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0 8px}
+.sw{width:80px;height:80px;border-radius:10px;border:1px solid var(--line);position:relative;overflow:hidden}
+.sw span{position:absolute;bottom:6px;left:8px;font-family:'JetBrains Mono';font-size:9px;color:rgba(255,255,255,.7);letter-spacing:.04em}
+/* phases */
+.phase{display:grid;grid-template-columns:70px 1fr;gap:30px;padding:28px 0;border-top:1px solid var(--line)}
+.phase .pn{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--gold);letter-spacing:.06em}
+.phase .pn b{display:block;font-family:'Fraunces';font-size:34px;color:var(--gold);font-weight:400;letter-spacing:0;line-height:1}
+.phase h3{font-size:20px;font-weight:500;margin-bottom:10px}
+.phase p{font-size:15px;color:var(--text-soft)}
+@media(max-width:640px){.phase{grid-template-columns:1fr;gap:10px}}
+/* investment */
+.invest{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:10px 0 8px}
+.invest.one{grid-template-columns:1fr;max-width:520px}
+.inv{background:linear-gradient(180deg,var(--surface),var(--ink-2));border:1px solid var(--line);border-radius:16px;padding:30px 30px}
+.inv.build{border-color:var(--gold-soft)}
+.inv .k{font-family:'JetBrains Mono';font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:14px}
+.inv .amt{font-family:'Fraunces';font-size:44px;color:var(--text);font-weight:400;line-height:1}
+.inv .amt small{font-size:15px;color:var(--muted);font-family:'JetBrains Mono'}
+.inv .desc{font-size:14px;color:var(--text-soft);margin:10px 0 18px}
+.inv ul{list-style:none}
+.inv li{position:relative;padding:0 0 9px 20px;font-size:14px;color:var(--text-soft)}
+.inv li::before{content:"—";position:absolute;left:0;color:var(--gold-soft)}
+.inv li:last-child{padding-bottom:0}
+@media(max-width:640px){.invest{grid-template-columns:1fr}}
+.note{font-size:13.5px;color:var(--muted);font-family:'JetBrains Mono';letter-spacing:.01em;line-height:1.6;margin-top:20px}
+.need{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.need .n{background:var(--ink-2);border:1px solid var(--line-soft);border-radius:10px;padding:16px 20px;font-size:14.5px;color:var(--text-soft);display:flex;gap:12px;align-items:flex-start}
+.need .n .b{color:var(--gold);font-family:'JetBrains Mono';font-size:13px;flex:0 0 auto}
+@media(max-width:640px){.need{grid-template-columns:1fr}}
+.close{padding:96px 0 40px}
+.close h2{font-size:clamp(32px,5vw,52px);font-weight:400;letter-spacing:-.02em;margin-bottom:24px}
+.close h2 em{font-style:italic;color:var(--gold)}
+.nextstep{margin-top:40px;background:linear-gradient(180deg,var(--surface),var(--ink-2));border:1px solid var(--line);border-radius:16px;padding:34px 36px}
+.nextstep .label{font-family:'JetBrains Mono';font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:12px}
+.nextstep p{font-size:16px;margin:0}
+footer{padding:50px 0 70px;border-top:1px solid var(--line);margin-top:60px}
+footer .f{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;font-family:'JetBrains Mono';font-size:12px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+.reveal{opacity:1;transform:none}
+.fu.anim .reveal{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .7s ease}
+.fu.anim .reveal.in{opacity:1;transform:none}
+@media(max-width:640px){.wrap{padding:0 22px}.fu{font-size:16px}section{padding:56px 0}}
+</style>
+<script src="https://cdn.tailwindcss.com"></script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body>
+<div class="fu">
+
+<!-- COVER -->
+<header class="cover">
+  <div class="wrap">
+    <div class="tag reveal">
+      <span class="pill">Project Direction</span>
+      <span class="pill">Scope of Work</span>
+      <span class="pill">v1.0</span>
+    </div>
+    <span class="eyebrow reveal">The Frugal U · Funnel &amp; Automation Engagement</span>
+    <h1 class="reveal">Building the engine<br>behind your <em>vision.</em></h1>
+    <p class="lede reveal">Thank you for the opportunity to build out The Frugal U. This is the outline of what I'd build and how it all fits together — your blueprint tells me where you're headed, and the work below is the system that gets you there: the funnel, the flows, and the automations that turn the platform into something that enrolls and keeps members.</p>
+    <div class="metaline reveal">
+      <span>For <b>Troy Mitchel · Frugal Mitch</b></span>
+      <span>The Frugal U</span>
+      <span>May 28, 2026</span>
+    </div>
+  </div>
+</header>
+
+<!-- 01 RECONCILE -->
+<section>
+  <div class="wrap col">
+    <span class="sectionnum reveal">01 / Two documents, one direction</span>
+    <div class="sec-head reveal"><h2>The vision and the diagnosis <em>agree.</em></h2></div>
+    <div class="reveal">
+      <p>Your blueprint and what I found looking at the live site came from opposite ends — one's your vision for where this is going, the other's a cold read of what's there right now. They land in the same place. That's a good sign. It means we're not debating direction; we just need to build it.</p>
+    </div>
+  </div>
+  <div class="wrap reveal" style="margin-top:30px">
+    <div class="twoup">
+      <div class="b">
+        <span class="k">Your blueprint says</span>
+        <h3>A calm, education-first freedom platform</h3>
+        <p>Free Community → Boot Camp → Mentorship. Discipline and skill-building, not signals. Calm, cinematic, anti-"guru." Using a skill set to create freedom of time.</p>
+      </div>
+      <div class="b">
+        <span class="k">The live site shows</span>
+        <h3>A strong position, no engine behind it</h3>
+        <p>A real anti-hype philosophy and a mentor people can name — but dead buttons, no trust layer, and no way to actually enroll. "Develop independent traders, not signal dependents" was the best idea on the site, and it wasn't being used.</p>
+      </div>
+    </div>
+    <p class="converge reveal">↓ Both point to the same build ↓</p>
+  </div>
+  <div class="wrap col reveal" style="margin-top:30px">
+    <p>One thing worth flagging: the offer ladder in your blueprint — <strong>Free / $999 / $5,000+</strong> — replaces the old "Signals &amp; Community / Full Access / Coaching" setup that's on the site now. I'm building to your blueprint. And moving from selling signals to selling education isn't just more on-brand; it's the stronger, safer position in a money-related space. We're building the right business, not just a nicer-looking version of the current one.</p>
+  </div>
+</section>
+
+<!-- 02 THE ENGAGEMENT -->
+<section style="background:var(--ink-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+  <div class="wrap col">
+    <span class="sectionnum reveal">02 / What I'm building for you</span>
+    <div class="sec-head reveal"><h2>I'm not just building a website. I'm building the <em>revenue engine.</em></h2></div>
+    <div class="finding reveal">
+      <p class="lede">I design and build the funnel, the landing pages, the email and SMS flows, and the automations that carry a cold visitor from "who is this?" all the way to a paying member — and then help keep them in the room.</p>
+    </div>
+    <div class="reveal">
+      <p>The website is the front door. This is everything that makes the front door lead somewhere. A platform with a $5,000+ top offer and no working funnel is leaving the whole opportunity on the table — this is the system that captures it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 03 THE LADDER -->
+<section>
+  <div class="wrap">
+    <span class="sectionnum reveal">03 / The offer ladder I build around</span>
+    <div class="sec-head col reveal"><h2>Three tiers, one ascension path.</h2>
+      <p class="lede" style="color:var(--text-soft)">Every page and every flow is built to move members <em>up</em> this ladder — the highest-leverage way to grow a business with a high-ticket top tier.</p>
+    </div>
+    <div class="ladder">
+      <div class="rung reveal">
+        <span class="tier">Tier 01 · Top of funnel</span>
+        <div class="price">Free</div>
+        <h3>Free Community</h3>
+        <p>Intro education, weekly commentary, mindset content, PDFs, community chat.</p>
+        <div class="role"><b>Funnel role</b>The on-ramp. Builds the email list and earns trust before any ask.</div>
+      </div>
+      <div class="rung mid reveal">
+        <span class="tier">Tier 02 · Core monetization</span>
+        <div class="price">$999</div>
+        <h3>Forex Boot Camp</h3>
+        <p>Structured beginner-to-intermediate curriculum, technical analysis, risk management, weekly Q&amp;A.</p>
+        <div class="role"><b>Funnel role</b>The conversion target. A real sales page + nurture sequence drives Free → Boot Camp.</div>
+      </div>
+      <div class="rung reveal">
+        <span class="tier">Tier 03 · High ticket</span>
+        <div class="price">$5,000<small>+</small></div>
+        <h3>Mentorship</h3>
+        <p>High-level coaching, live sessions, private mastermind, accountability, direct access.</p>
+        <div class="role"><b>Funnel role</b>Application-based, not a buy button. Ascension nurture + booked-call funnel.</div>
+      </div>
+    </div>
+    <div class="col reveal" style="margin-top:18px">
+      <p>At $5,000+, the Mentorship tier is <strong>qualified, not purchased on impulse</strong> — so its funnel is an application and booked call, not a checkout. That distinction shapes the whole back end: the Boot Camp converts on a page, the Mentorship converts on a conversation.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 04 SCOPE / WORKSTREAMS -->
+<section style="background:var(--ink-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+  <div class="wrap">
+    <span class="sectionnum reveal">04 / Scope of work — what's included</span>
+    <div class="sec-head col reveal"><h2>Four workstreams.</h2></div>
+
+    <div class="ws reveal">
+      <div class="top"><div class="wn">01</div><div><h3>Landing Page &amp; Funnel Design</h3><p>The pages a visitor actually moves through.</p></div></div>
+      <div class="body"><ul>
+        <li><b>Homepage</b> — the freedom-platform hub, built on the calm, cinematic direction from your blueprint.</li>
+        <li><b>Free Community opt-in page</b> — the top-of-funnel lead capture.</li>
+        <li><b>Boot Camp sales page ($999)</b> — full conversion page: outcome, curriculum, proof, objection handling, checkout.</li>
+        <li><b>Mentorship application page ($5,000+)</b> — qualification + booked-call funnel.</li>
+        <li><b>Supporting pages</b> — thank-you / confirmation steps and member welcome / onboarding entry.</li>
+        <li><b>Mobile-first, conversion-led layout</b> with copy direction included alongside design.</li>
+      </ul></div>
+    </div>
+
+    <div class="ws reveal">
+      <div class="top"><div class="wn">02</div><div><h3>Email &amp; SMS Flow Architecture</h3><p>The sequences that warm, convert, and retain on autopilot.</p></div></div>
+      <div class="body"><ul>
+        <li><b>Full flow mapping</b> — trigger, timing, content purpose, and conversion goal for every email.</li>
+        <li><b>Copywriting</b> for each sequence, in the restrained no-hype voice the brand runs on.</li>
+        <li><b>Design direction</b> and build inside the chosen ESP — not just copy handed off.</li>
+        <li><b>Segmentation logic</b> — who enters each flow and under what conditions.</li>
+        <li>Detailed in §05.</li>
+      </ul></div>
+    </div>
+
+    <div class="ws reveal">
+      <div class="top"><div class="wn">03</div><div><h3>Automations &amp; Pipeline</h3><p>The invisible wiring that routes every member to the right place.</p></div></div>
+      <div class="body"><ul>
+        <li><b>Pipeline stages</b> — lead → free member → Boot Camp buyer → Mentorship applicant → Mentorship member.</li>
+        <li><b>Tagging &amp; segmentation</b> by tier and engagement, so messaging stays relevant.</li>
+        <li><b>Application routing &amp; booking integration</b> for the Mentorship funnel.</li>
+        <li><b>Payment &amp; enrollment triggers</b> — purchase fires onboarding, access, and the right next flow.</li>
+        <li><b>Free → paid escalation rules</b> that move warm leads toward the next rung automatically.</li>
+      </ul></div>
+    </div>
+
+    <div class="ws reveal">
+      <div class="top"><div class="wn">04</div><div><h3>Launch &amp; QA</h3><p>Proving the machine works before a dollar depends on it.</p></div></div>
+      <div class="body"><ul>
+        <li><b>End-to-end testing</b> — every CTA, every checkout, every flow trigger, on mobile and desktop.</li>
+        <li><b>Trust-killer sweep</b> — no dead buttons, no typos, no broken steps (the stuff that's hurting the current site).</li>
+        <li><b>Handoff &amp; walkthrough</b> so you know exactly what's running and how.</li>
+      </ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 05 FUNNEL + FLOWS -->
+<section>
+  <div class="wrap">
+    <span class="sectionnum reveal">05 / The funnel &amp; the flows behind it</span>
+    <div class="sec-head col reveal"><h2>One path. Built to ascend.</h2></div>
+    <div class="funnel reveal">
+      <div class="step"><span class="n">01</span><div class="t">Cold visitor</div><div class="d">Search, social, referral</div></div>
+      <div class="step"><span class="n">02</span><div class="t">Free Community</div><div class="d">Trades email for real value</div></div>
+      <div class="step"><span class="n">03</span><div class="t">Nurture</div><div class="d">Trust + teaching over days</div></div>
+      <div class="step"><span class="n">04</span><div class="t">Boot Camp $999</div><div class="d">Sales page + checkout</div></div>
+      <div class="step"><span class="n">05</span><div class="t">Ascension</div><div class="d">Grad → mentorship interest</div></div>
+      <div class="step"><span class="n">06</span><div class="t">Mentorship $5K+</div><div class="d">Apply → booked call</div></div>
+      <div class="step"><span class="n">07</span><div class="t">Retention</div><div class="d">Onboarding + community</div></div>
+    </div>
+    <div class="flows reveal">
+      <div class="frow head"><span>Flow</span><span>Job</span></div>
+      <div class="frow"><div class="fn">Free Community Welcome<span>Trigger · opt-in</span></div><div class="fd">Deliver the free value, introduce you, teach the method, set the no-hype tone. The trust build.</div></div>
+      <div class="frow"><div class="fn">Boot Camp Conversion<span>Trigger · engaged free member</span></div><div class="fd">Move warm free members to the $999 Boot Camp with education-led selling, not pressure.</div></div>
+      <div class="frow"><div class="fn">Boot Camp Onboarding<span>Trigger · purchase</span></div><div class="fd">Get new students into the curriculum fast and active in week one — where retention is won.</div></div>
+      <div class="frow"><div class="fn">Mentorship Ascension<span>Trigger · Boot Camp progress</span></div><div class="fd">Invite the committed to apply for the $5,000+ tier once they've earned the readiness.</div></div>
+      <div class="frow"><div class="fn">Application → Call<span>Trigger · application</span></div><div class="fd">Nurture applicants to a booked, showed-up call — the real conversion point for high ticket.</div></div>
+      <div class="frow"><div class="fn">Win-back / Re-engage<span>Trigger · gone cold</span></div><div class="fd">Pull lapsed leads and members back before they're lost for good.</div></div>
+    </div>
+    <p class="note reveal">Final flow count and sequencing confirmed at kickoff once you've picked your platform. Subject-line and preview-text options included per email; success metrics defined per flow.</p>
+  </div>
+</section>
+
+<!-- 06 OUT OF SCOPE -->
+<section style="background:var(--ink-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+  <div class="wrap col">
+    <span class="sectionnum reveal">06 / What's not included</span>
+    <div class="sec-head reveal"><h2>Drawing the line — so nothing's assumed.</h2>
+      <p class="lede" style="color:var(--text-soft)">Clear boundaries keep the timeline, the budget, and our working relationship clean. These sit outside this scope, and I can quote them separately if you want them down the line.</p>
+    </div>
+    <div class="fence reveal">
+      <span class="label">Out of scope</span>
+      <ul>
+        <li><b>Course / curriculum content creation</b> — lesson videos, study materials, and the Boot Camp/Mentorship teaching content are yours. I build the funnel <i>to</i> them.</li>
+        <li><b>LMS / course-dashboard buildout &amp; video hosting</b> — beyond connecting the funnel to your platform (Kajabi, etc.). A full course-delivery build is a separate phase.</li>
+        <li><b>Software &amp; subscription fees</b> — ESP, payment processor, hosting, community platform, and booking tools are on your accounts.</li>
+        <li><b>Paid ads strategy &amp; management</b> — this builds the engine; driving traffic into it is separate.</li>
+        <li><b>Ongoing content production</b> for the education hub and community.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 07 DESIGN ALIGN -->
+<section>
+  <div class="wrap col">
+    <span class="sectionnum reveal">07 / Design direction</span>
+    <div class="sec-head reveal"><h2>Built to your <em>brand direction.</em></h2></div>
+    <div class="reveal">
+      <p>The palette comes straight from your logo — <strong>warm browns and cream</strong>, the espresso-and-caramel feel that's already your brand. From your blueprint I'm keeping the <em>mood</em>: calm, cinematic, minimal, no-hype. Warm and calm aren't a contradiction — think rich, grounded, documentary, not loud. That combination is the whole point: it looks disciplined and intentional, which is exactly what you're selling.</p>
+    </div>
+    <div class="swatches reveal">
+      <div class="sw" style="background:#2A1C12"><span>espresso</span></div>
+      <div class="sw" style="background:#5A3A22"><span>coffee</span></div>
+      <div class="sw" style="background:#805030"><span>caramel</span></div>
+      <div class="sw" style="background:#B98A5E"><span style="color:#2A1C12">tan</span></div>
+      <div class="sw" style="background:#EDE6DA"><span style="color:#5A3A22">cream</span></div>
+    </div>
+    <p class="note reveal">Pulled from the logo, indicative only — final palette and type locked in the design phase. (This document's own styling is just for the proposal; the site is built to your brand.)</p>
+  </div>
+</section>
+
+<!-- 08 TIMELINE -->
+<section style="background:var(--ink-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+  <div class="wrap">
+    <span class="sectionnum reveal">08 / How it gets built</span>
+    <div class="sec-head col reveal"><h2>The whole build, in <em>7–14 days.</em></h2>
+      <p class="lede" style="color:var(--text-soft)">Sequenced so the parts that make money come first. Here's the order it happens in.</p>
+    </div>
+    <div class="phase reveal">
+      <div class="pn"><b>01</b></div>
+      <div><h3>Foundation &amp; the money path</h3><p>Kickoff, platform confirmation, offer-ladder lockdown. Build the Free opt-in and the Boot Camp sales page + checkout — the shortest path to revenue — and wire the core pipeline.</p></div>
+    </div>
+    <div class="phase reveal">
+      <div class="pn"><b>02</b></div>
+      <div><h3>Flows &amp; ascension</h3><p>Homepage, Mentorship application funnel, and the email/SMS flows: welcome, Boot Camp conversion, onboarding, ascension, application-to-call.</p></div>
+    </div>
+    <div class="phase reveal">
+      <div class="pn"><b>03</b></div>
+      <div><h3>Wire, test, launch</h3><p>All automations connected, win-back live, full end-to-end QA, trust-killer sweep, handoff and walkthrough. The system goes live.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 09 INVESTMENT -->
+<section>
+  <div class="wrap">
+    <span class="sectionnum reveal">09 / Investment</span>
+    <div class="sec-head col reveal"><h2>One build. One flat fee.</h2>
+      <p class="lede" style="color:var(--text-soft)">The complete funnel system, delivered and live. A flat number — not a range — so the price is the price.</p>
+    </div>
+    <div class="invest one">
+      <div class="inv build reveal">
+        <span class="k">Funnel system build</span>
+        <div class="amt">$4,500</div>
+        <p class="desc">Everything in this scope, designed, built, tested, and handed off live.</p>
+        <ul>
+          <li>Landing page &amp; funnel design</li>
+          <li>Email &amp; SMS flow architecture + copy</li>
+          <li>Automations &amp; pipeline build</li>
+          <li>Launch, QA &amp; handoff</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note reveal">Flat project fee covering the full scope in §04. Payment terms (e.g. 50% to start / 50% on launch) confirmed on agreement. The funnel is built to be tuned over time as real data comes in — that optimization layer can be scoped separately once the system is live and there are numbers to act on.</p>
+  </div>
+</section>
+
+<!-- 10 INPUTS -->
+<section style="background:var(--ink-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+  <div class="wrap">
+    <span class="sectionnum reveal">10 / What I'll need from you</span>
+    <div class="sec-head col reveal"><h2>The inputs that have to be real.</h2>
+      <p class="lede" style="color:var(--text-soft)">I build the machine; the proof and the teaching come from you. These are what we'll need to get going.</p>
+    </div>
+    <div class="need">
+      <div class="n reveal"><span class="b">01</span><span>Final pricing &amp; tier contents (Boot Camp at $999; the Mentorship floor confirmed).</span></div>
+      <div class="n reveal"><span class="b">02</span><span>Platform decisions — ESP, payment processor, community, booking, and course host.</span></div>
+      <div class="n reveal"><span class="b">03</span><span>Your real assets — bio, history, photo, and the cinematic lifestyle footage from your blueprint.</span></div>
+      <div class="n reveal"><span class="b">04</span><span>The core of your free giveaway (I'll shape and write it; the expertise is yours).</span></div>
+      <div class="n reveal"><span class="b">05</span><span>Real testimonials with permission, and anonymized trade breakdowns we can use as proof.</span></div>
+      <div class="n reveal"><span class="b">06</span><span>Your Boot Camp / Mentorship curriculum outline, so the flows can point to real deliverables.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 11 CLOSE -->
+<section class="close">
+  <div class="wrap col">
+    <span class="sectionnum reveal">11 / The bottom line</span>
+    <h2 class="reveal">You bring the skill set and the vision. I build the system that turns it into <em>recurring revenue.</em></h2>
+    <div class="reveal">
+      <p class="lede" style="color:var(--text-soft)">The blueprint is sound. The position is real. What's missing is the engine that carries a stranger from a free PDF to a $999 student to a $5,000 mentee — without you having to chase a single one of them. That's what I'm building, end to end.</p>
+    </div>
+    <div class="nextstep reveal">
+      <span class="label">Next step</span>
+      <p>Let's hop on a quick kickoff call to lock pricing, confirm the platform stack, and gather the inputs above. Once we're good to go, the entire build is done in 7–14 days.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="f">
+      <span>Bigger Vision Agency</span>
+      <span>The Frugal U · Project Direction &amp; SOW · v1.0</span>
+      <span>Confidential</span>
+    </div>
+  </div>
+</footer>
+
+</div><!-- /.fu -->
+
+<script>
+(function(){
+  function init(){
+    var fu=document.querySelector('.fu');
+    if(!fu) return;
+    var els=[].slice.call(fu.querySelectorAll('.reveal'));
+    if(!els.length) return;
+    fu.classList.add('anim');
+    els.forEach(function(el,i){el.style.transitionDelay=(Math.min(i,6)*55)+'ms';});
+    function show(){
+      var vh=window.innerHeight||document.documentElement.clientHeight||800;
+      els=els.filter(function(el){
+        var r=el.getBoundingClientRect();
+        if(r.top < vh*0.92 && r.bottom > 0){el.classList.add('in');return false;}
+        return true;
+      });
+      if(!els.length){window.removeEventListener('scroll',onScroll);window.removeEventListener('resize',onScroll);}
+    }
+    var ticking=false;
+    function onScroll(){if(!ticking){ticking=true;requestAnimationFrame(function(){show();ticking=false;});}}
+    window.addEventListener('scroll',onScroll,{passive:true});
+    window.addEventListener('resize',onScroll);
+    show();
+    // failsafe: never let content stay hidden, even if scroll/sizing is unreliable in the builder
+    setTimeout(function(){fu.querySelectorAll('.reveal').forEach(function(el){el.classList.add('in');});},2500);
+  }
+  if(document.readyState!=='loading'){init();}
+  else{document.addEventListener('DOMContentLoaded',init);}
+})();
+</script>
+</body>
+</html>

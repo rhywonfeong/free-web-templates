@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta
+name="viewport"
+content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+/>
+<meta name="theme-color" content="#0f1419" />
+<meta
+name="description"
+content="Satellite Tracker 3D visualization dashboard"
+/>
+<link rel="icon" href="https://satellitemap.space/favicon.svg?v5" />
+<title>Satellite Tracker 3D</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/satellite.js@6.0.1/dist/satellite.min.js"></script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+
+  <body
+    class="m-0 h-screen min-h-screen overflow-hidden bg-black font-sans text-white antialiased selection:bg-blue-500/30"
+  >
+    <div id="app" class="relative h-full w-full overflow-hidden bg-black">
+      <!-- Full viewport visualization -->
+      <main id="viewport" class="absolute inset-0 overflow-hidden bg-black">
+        <canvas
+          id="spaceCanvas"
+          aria-label="Live satellite visualization"
+          class="absolute inset-0 h-full w-full"
+        ></canvas>
+
+        <!-- Very subtle viewport vignette -->
+        <div
+          class="pointer-events-none absolute inset-0"
+          style="background: radial-gradient(circle at 54% 53%, rgba(13,20,28,0.10), transparent 52%), linear-gradient(to bottom, rgba(8,12,17,0.14), transparent 18%, transparent 82%, rgba(0,0,0,0.28));"
+        ></div>
+
+        <!-- Navbar -->
+
+        <!-- Bottom-left tool controls -->
+        <div class="fixed bottom-1 left-1 z-20 flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="Search satellites"
+            class="flex h-7 w-7 items-center justify-center rounded-sm border border-white/15 bg-[#171a20]/90 text-slate-300 hover:bg-[#242932] hover:text-white"
+          >
+            <iconify-icon
+              icon="solar:magnifer-linear"
+              stroke-width="1.5"
+              class="text-sm"
+            ></iconify-icon>
+          </button>
+          <button
+            type="button"
+            aria-label="Locate me"
+            class="flex h-7 w-7 items-center justify-center rounded-sm border border-white/15 bg-[#171a20]/90 text-slate-300 hover:bg-[#242932] hover:text-white"
+          >
+            <iconify-icon
+              icon="solar:map-point-linear"
+              stroke-width="1.5"
+              class="text-sm"
+            ></iconify-icon>
+          </button>
+          <button
+            type="button"
+            aria-label="Satellite options"
+            class="flex h-7 w-7 items-center justify-center rounded-sm border border-white/15 bg-[#171a20]/90 text-slate-300 hover:bg-[#242932] hover:text-white"
+          >
+            <iconify-icon
+              icon="solar:satellite-linear"
+              stroke-width="1.5"
+              class="text-sm"
+            ></iconify-icon>
+          </button>
+          <button
+            type="button"
+            aria-label="Toggle layers"
+            class="flex h-7 w-7 items-center justify-center rounded-sm border border-white/15 bg-[#171a20]/90 text-slate-300 hover:bg-[#242932] hover:text-white"
+          >
+            <iconify-icon
+              icon="solar:layers-linear"
+              stroke-width="1.5"
+              class="text-sm"
+            ></iconify-icon>
+          </button>
+          <button
+            type="button"
+            aria-label="Settings"
+            class="flex h-7 w-7 items-center justify-center rounded-sm border border-white/15 bg-[#171a20]/90 text-slate-300 hover:bg-[#242932] hover:text-white"
+          >
+            <iconify-icon
+              icon="solar:settings-linear"
+              stroke-width="1.5"
+              class="text-sm"
+            ></iconify-icon>
+          </button>
+          <button
+            id="fpsButton"
+            type="button"
+            aria-label="Frame rate"
+            class="h-7 min-w-12 rounded-sm border border-white/15 bg-[#171a20]/90 px-2 font-mono text-xs text-slate-300 hover:bg-[#242932] hover:text-white"
+          >
+            60 FPS
+          </button>
+        </div>
+
+        <!-- Information control -->
+        <button
+          id="infoButton"
+          type="button"
+          aria-label="Show controls help"
+          class="fixed bottom-2 left-[57%] z-20 flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-[#161a20]/90 text-slate-300 hover:border-slate-400 hover:text-white"
+        >
+          <iconify-icon
+            icon="solar:info-circle-linear"
+            stroke-width="1.5"
+            class="text-base"
+          ></iconify-icon>
+        </button>
+
+        <!-- Legend -->
+        <section
+          id="legend"
+          aria-label="Live TLE satellite catalog legend"
+          class="fixed bottom-10 right-2 z-20 flex select-none border border-slate-700/90 bg-[#10141a]/95 text-xs text-slate-300 shadow-lg backdrop-blur-sm"
+        >
+          <div class="w-[144px]">
+            <div
+              id="legendHandle"
+              class="flex h-8 cursor-move items-center justify-between border-b border-slate-700 px-3"
+            >
+              <h2 class="font-medium tracking-wide text-slate-100">
+                Live TLE Catalog
+              </h2>
+              <button
+                id="closeLegend"
+                type="button"
+                aria-label="Close legend"
+                class="text-slate-500 hover:text-white"
+              >
+                <iconify-icon
+                  icon="solar:close-circle-linear"
+                  stroke-width="1.5"
+                  class="text-sm"
+                ></iconify-icon>
+              </button>
+            </div>
+
+            <div class="space-y-1.5 px-3 py-2.5">
+              <div class="flex items-center gap-2">
+                <span
+                  class="h-2.5 w-2.5 animate-pulse rounded-full bg-amber-400"
+                ></span>
+                <span id="tleStatus">Loading active satellites…</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="h-2.5 w-2.5 rounded-full bg-[#66c9dd]"></span>
+                <span>CelesTrak orbital data</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
+                <span>Live SGP4 positions</span>
+              </div>
+            </div>
+
+            <div class="grid h-8 grid-cols-3 border-t border-slate-700">
+              <button
+                type="button"
+                aria-label="Previous legend page"
+                class="flex items-center justify-center border-r border-slate-700 text-slate-400 hover:bg-white/5 hover:text-white"
+              >
+                <iconify-icon
+                  icon="solar:alt-arrow-left-linear"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </button>
+              <button
+                type="button"
+                aria-label="Legend list"
+                class="flex items-center justify-center border-r border-slate-700 text-slate-400 hover:bg-white/5 hover:text-white"
+              >
+                <iconify-icon
+                  icon="solar:list-linear"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </button>
+              <button
+                type="button"
+                aria-label="Next legend page"
+                class="flex items-center justify-center text-slate-400 hover:bg-white/5 hover:text-white"
+              >
+                <iconify-icon
+                  icon="solar:alt-arrow-right-linear"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </button>
+            </div>
+          </div>
+
+          <button
+            id="collapseLegend"
+            type="button"
+            aria-label="Collapse legend"
+            class="flex w-5 items-center justify-center border-l border-slate-700 text-slate-500 hover:bg-white/5 hover:text-white"
+            style="background-image: repeating-linear-gradient(135deg, rgba(148,163,184,0.08) 0, rgba(148,163,184,0.08) 1px, transparent 1px, transparent 4px);"
+          >
+            <iconify-icon
+              icon="solar:alt-arrow-right-linear"
+              stroke-width="1.5"
+              class="text-sm"
+            ></iconify-icon>
+          </button>
+        </section>
+
+        <!-- Timeline controls -->
+        <div class="fixed bottom-1 right-2 z-20 flex items-center gap-1">
+          <time
+            id="utcClock"
+            class="mr-1 whitespace-nowrap font-mono text-xs text-slate-400"
+          >
+            13/07/26 12:19:26 UTC
+          </time>
+
+          <button
+            id="previousButton"
+            type="button"
+            aria-label="Previous step"
+            class="flex h-7 w-7 items-center justify-center rounded-sm border border-white/15 bg-[#171a20]/90 text-slate-300 hover:bg-[#242932] hover:text-white"
+          >
+            <iconify-icon
+              icon="solar:rewind-back-linear"
+              stroke-width="1.5"
+              class="text-sm"
+            ></iconify-icon>
+          </button>
+          <button
+            id="playButton"
+            type="button"
+            aria-label="Pause simulation"
+            class="flex h-7 w-7 items-center justify-center rounded-sm border border-white/15 bg-[#171a20]/90 text-slate-300 hover:bg-[#242932] hover:text-white"
+          >
+            <iconify-icon
+              id="playIcon"
+              icon="solar:pause-linear"
+              stroke-width="1.5"
+              class="text-sm"
+            ></iconify-icon>
+          </button>
+          <button
+            id="nextButton"
+            type="button"
+            aria-label="Next step"
+            class="flex h-7 w-7 items-center justify-center rounded-sm border border-white/15 bg-[#171a20]/90 text-slate-300 hover:bg-[#242932] hover:text-white"
+          >
+            <iconify-icon
+              icon="solar:rewind-forward-linear"
+              stroke-width="1.5"
+              class="text-sm"
+            ></iconify-icon>
+          </button>
+          <button
+            id="speedButton"
+            type="button"
+            aria-label="Increase speed"
+            class="flex h-7 w-7 items-center justify-center rounded-sm border border-white/15 bg-[#171a20]/90 text-slate-300 hover:bg-[#242932] hover:text-white"
+          >
+            <iconify-icon
+              icon="solar:forward-2-linear"
+              stroke-width="1.5"
+              class="text-sm"
+            ></iconify-icon>
+          </button>
+          <button
+            id="resetButton"
+            type="button"
+            aria-label="Reset time"
+            class="flex h-7 w-7 items-center justify-center rounded-sm border border-white/15 bg-[#171a20]/90 text-slate-300 hover:bg-[#242932] hover:text-white"
+          >
+            <iconify-icon
+              icon="solar:restart-linear"
+              stroke-width="1.5"
+              class="text-sm"
+            ></iconify-icon>
+          </button>
+        </div>
+      </main>
+
+      <!-- Promotional sidebar -->
+
+      <!-- Sidebar reopen -->
+
+      <!-- Help modal -->
+      <div
+        id="helpModal"
+        class="fixed inset-0 z-50 hidden items-center justify-center bg-black/65 p-4 backdrop-blur-sm"
+      >
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="helpTitle"
+          class="w-[91%] max-w-lg rounded-2xl border border-slate-700 bg-gradient-to-br from-slate-800 to-black p-5 shadow-2xl"
+        >
+          <div class="flex items-center justify-between">
+            <h2
+              id="helpTitle"
+              class="text-xl font-medium tracking-wide text-white"
+            >
+              Controls
+            </h2>
+            <button
+              id="closeHelp"
+              type="button"
+              aria-label="Close help"
+              class="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-white/5 hover:text-white"
+            >
+              <iconify-icon
+                icon="solar:close-circle-linear"
+                stroke-width="1.5"
+                class="text-xl"
+              ></iconify-icon>
+            </button>
+          </div>
+
+          <div
+            class="mt-4 grid grid-cols-2 rounded-full border border-white/10 bg-black/30 p-1 text-xs"
+          >
+            <button
+              data-help-tab="desktop"
+              class="help-tab rounded-full bg-blue-600 px-4 py-2 text-white"
+            >
+              Desktop
+            </button>
+            <button
+              data-help-tab="touch"
+              class="help-tab rounded-full px-4 py-2 text-slate-400"
+            >
+              Touch
+            </button>
+          </div>
+
+          <div id="desktopHelp" class="mt-5 space-y-3 text-sm text-slate-300">
+            <div class="grid grid-cols-[6rem_1fr] items-center gap-3">
+              <kbd
+                class="rounded border border-slate-600 bg-black/40 px-2 py-1 text-center font-mono text-xs"
+              >
+                Drag
+              </kbd>
+              <span>Rotate the globe</span>
+            </div>
+            <div class="grid grid-cols-[6rem_1fr] items-center gap-3">
+              <kbd
+                class="rounded border border-slate-600 bg-black/40 px-2 py-1 text-center font-mono text-xs"
+              >
+                Scroll
+              </kbd>
+              <span>Zoom in or out</span>
+            </div>
+            <div class="grid grid-cols-[6rem_1fr] items-center gap-3">
+              <kbd
+                class="rounded border border-slate-600 bg-black/40 px-2 py-1 text-center font-mono text-xs"
+              >
+                Click
+              </kbd>
+              <span>Select a satellite</span>
+            </div>
+          </div>
+
+          <div
+            id="touchHelp"
+            class="mt-5 hidden space-y-3 text-sm text-slate-300"
+          >
+            <div class="grid grid-cols-[6rem_1fr] items-center gap-3">
+              <span class="text-center text-blue-300">One finger</span>
+              <span>Rotate the globe</span>
+            </div>
+            <div class="grid grid-cols-[6rem_1fr] items-center gap-3">
+              <span class="text-center text-blue-300">Pinch</span>
+              <span>Zoom in or out</span>
+            </div>
+            <div class="grid grid-cols-[6rem_1fr] items-center gap-3">
+              <span class="text-center text-blue-300">Tap</span>
+              <span>Select a satellite</span>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div
+        id="toast"
+        role="status"
+        class="fixed bottom-12 left-1/2 z-50 hidden -translate-x-1/2 rounded-md border border-slate-700 bg-[#111827]/95 px-4 py-2 text-xs text-slate-200 shadow-xl backdrop-blur"
+      >
+        Link copied
+      </div>
+    </div>
+
+    <script>
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const canvas = document.getElementById('spaceCanvas');
+      const context = canvas.getContext('2d', { alpha: false });
+      const toast = document.getElementById('toast');
+      const clock = document.getElementById('utcClock');
+      const fpsButton = document.getElementById('fpsButton');
+      const playIcon = document.getElementById('playIcon');
+      let width = 0;
+      let height = 0;
+      let stars = [];
+      let simulatedTime = new Date();
+      let playing = true;
+      let speed = 1;
+      let frameCount = 0;
+      let lastFpsTime = performance.now();
+      let viewLongitude = -0.45;
+      let viewLatitude = -0.18;
+      let zoom = 1;
+      let draggingGlobe = false;
+      let dragX = 0;
+      let dragY = 0;
+      let showOrbits = true;
+      let showLabels = true;
+      let glowEnabled = true;
+      let selectedSatellite = null;
+      const earthRadiusKm = 6371;
+      const satellites = [
+        { name: 'STARLINK-1007', shell: 'Gen1-I', color: '#4c78d0', inclination: 53, altitude: 550, period: 95.5, phase: 0.2 },
+        { name: 'STARLINK-1130', shell: 'Gen1-I', color: '#4c78d0', inclination: 53, altitude: 550, period: 95.5, phase: 1.3 },
+        { name: 'STARLINK-3021', shell: 'Gen1-II', color: '#3aa6a0', inclination: 53.2, altitude: 540, period: 95.2, phase: 2.4 },
+        { name: 'STARLINK-3186', shell: 'Gen1-Transit', color: '#66c9dd', inclination: 53.2, altitude: 570, period: 95.8, phase: 3.5 },
+        { name: 'STARLINK-5102', shell: 'Gen2', color: '#d9864f', inclination: 43, altitude: 530, period: 94.9, phase: 4.6 },
+        { name: 'STARLINK-5241', shell: 'Gen2', color: '#d9864f', inclination: 43, altitude: 530, period: 94.9, phase: 5.7 },
+        { name: 'STARLINK-6012', shell: 'Gen2-Transit', color: '#997256', inclination: 43, altitude: 565, period: 95.7, phase: 0.8 },
+        { name: 'STARLINK-2108', shell: 'Polar', color: '#9064ae', inclination: 97.6, altitude: 560, period: 95.6, phase: 1.9 },
+        { name: 'STARLINK-2144', shell: 'Polar', color: '#9064ae', inclination: 97.6, altitude: 560, period: 95.6, phase: 3 },
+        { name: 'STARLINK-4205', shell: 'SSO Shell 1', color: '#b74e58', inclination: 70, altitude: 570, period: 95.8, phase: 4.1 },
+        { name: 'STARLINK-4310', shell: 'SSO Shell 2', color: '#b6687c', inclination: 70, altitude: 560, period: 95.6, phase: 5.2 },
+        { name: 'ISS (ZARYA)', shell: 'Other', color: '#e2e8f0', inclination: 51.6, altitude: 420, period: 92.9, phase: 2.1 },
+        { name: 'HUBBLE', shell: 'Other', color: '#777d87', inclination: 28.5, altitude: 535, period: 95.1, phase: 4.9 }
+      ];
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.remove('hidden');
+        clearTimeout(showToast.timer);
+        showToast.timer = setTimeout(() => toast.classList.add('hidden'), 1800);
+      }
+      function formatUtc(date) {
+        const pad = value => String(value).padStart(2, '0');
+        return `${pad(date.getUTCDate())}/${pad(date.getUTCMonth() + 1)}/${pad(date.getUTCFullYear() % 100)} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())} UTC`;
+      }
+      function updateClock() {
+        clock.textContent = formatUtc(simulatedTime);
+      }
+      function resizeCanvas() {
+        const ratio = Math.min(window.devicePixelRatio || 1, 2);
+        const rect = canvas.getBoundingClientRect();
+        width = rect.width;
+        height = rect.height;
+        canvas.width = Math.round(width * ratio);
+        canvas.height = Math.round(height * ratio);
+        context.setTransform(ratio, 0, 0, ratio, 0, 0);
+        stars = Array.from({ length: Math.max(90, Math.round(width * height / 9000)) }, () => ({ x: Math.random() * width, y: Math.random() * height, r: Math.random() * 0.8 + 0.2, a: Math.random() * 0.5 + 0.15 }));
+        drawSpace(performance.now());
+      }
+      function rotatePoint(latitude, longitude, radius) {
+        const cosLat = Math.cos(latitude);
+        let x = radius * cosLat * Math.sin(longitude - viewLongitude);
+        let y = -radius * Math.sin(latitude);
+        let z = radius * cosLat * Math.cos(longitude - viewLongitude);
+        const cosTilt = Math.cos(viewLatitude);
+        const sinTilt = Math.sin(viewLatitude);
+        const tiltedY = y * cosTilt - z * sinTilt;
+        const tiltedZ = y * sinTilt + z * cosTilt;
+        return { x: width / 2 + x, y: height / 2 + tiltedY, z: tiltedZ };
+      }
+      function satellitePosition(satellite, date) {
+        const seconds = date.getTime() / 1000;
+        const angle = satellite.phase + seconds * Math.PI * 2 / (satellite.period * 60);
+        const inclination = satellite.inclination * Math.PI / 180;
+        const latitude = Math.asin(Math.sin(inclination) * Math.sin(angle));
+        const ascendingNode = satellite.phase * 1.73;
+        const longitude = ascendingNode + Math.atan2(Math.cos(inclination) * Math.sin(angle), Math.cos(angle)) - seconds * Math.PI * 2 / 86164;
+        return { latitude, longitude };
+      }
+      function drawGrid(radius) {
+        context.strokeStyle = 'rgba(91,140,172,0.18)';
+        context.lineWidth = 0.7;
+        for (let latitude = -60; latitude <= 60; latitude += 30) {
+          context.beginPath();
+          let started = false;
+          for (let longitude = -Math.PI; longitude <= Math.PI; longitude += 0.04) {
+            const point = rotatePoint(latitude * Math.PI / 180, longitude, radius);
+            if (point.z < 0) { started = false; continue; }
+            if (!started) context.moveTo(point.x, point.y); else context.lineTo(point.x, point.y);
+            started = true;
+          }
+          context.stroke();
+        }
+        for (let longitude = -150; longitude <= 180; longitude += 30) {
+          context.beginPath();
+          let started = false;
+          for (let latitude = -Math.PI / 2; latitude <= Math.PI / 2; latitude += 0.035) {
+            const point = rotatePoint(latitude, longitude * Math.PI / 180, radius);
+            if (point.z < 0) { started = false; continue; }
+            if (!started) context.moveTo(point.x, point.y); else context.lineTo(point.x, point.y);
+            started = true;
+          }
+          context.stroke();
+        }
+      }
+      function drawOrbit(satellite, globeRadius) {
+        context.strokeStyle = `${satellite.color}35`;
+        context.lineWidth = 0.7;
+        context.beginPath();
+        let started = false;
+        const inclination = satellite.inclination * Math.PI / 180;
+        for (let angle = 0; angle <= Math.PI * 2 + 0.05; angle += 0.05) {
+          const latitude = Math.asin(Math.sin(inclination) * Math.sin(angle));
+          const longitude = satellite.phase * 1.73 + Math.atan2(Math.cos(inclination) * Math.sin(angle), Math.cos(angle)) - simulatedTime.getTime() / 1000 * Math.PI * 2 / 86164;
+          const point = rotatePoint(latitude, longitude, globeRadius * (1 + satellite.altitude / earthRadiusKm));
+          if (point.z < -globeRadius * 0.08) { started = false; continue; }
+          if (!started) context.moveTo(point.x, point.y); else context.lineTo(point.x, point.y);
+          started = true;
+        }
+        context.stroke();
+      }
+      function drawSpace(time) {
+        context.fillStyle = '#000000';
+        context.fillRect(0, 0, width, height);
+        stars.forEach((star, index) => {
+          const pulse = reduceMotion ? 1 : 0.75 + Math.sin(time * 0.001 + index) * 0.25;
+          context.fillStyle = `rgba(210,225,238,${star.a * pulse})`;
+          context.beginPath();
+          context.arc(star.x, star.y, star.r, 0, Math.PI * 2);
+          context.fill();
+        });
+        const globeRadius = Math.min(width, height) * 0.34 * zoom;
+        if (glowEnabled) {
+          const glow = context.createRadialGradient(width / 2, height / 2, globeRadius * 0.82, width / 2, height / 2, globeRadius * 1.2);
+          glow.addColorStop(0, 'rgba(13,48,67,0)');
+          glow.addColorStop(0.82, 'rgba(37,117,156,0.15)');
+          glow.addColorStop(1, 'rgba(20,76,108,0)');
+          context.fillStyle = glow;
+          context.beginPath();
+          context.arc(width / 2, height / 2, globeRadius * 1.2, 0, Math.PI * 2);
+          context.fill();
+        }
+        const earth = context.createRadialGradient(width / 2 - globeRadius * 0.28, height / 2 - globeRadius * 0.3, globeRadius * 0.1, width / 2, height / 2, globeRadius);
+        earth.addColorStop(0, '#183c52');
+        earth.addColorStop(0.58, '#092536');
+        earth.addColorStop(1, '#02080e');
+        context.fillStyle = earth;
+        context.beginPath();
+        context.arc(width / 2, height / 2, globeRadius, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = 'rgba(97,171,207,0.42)';
+        context.lineWidth = 1;
+        context.stroke();
+        drawGrid(globeRadius);
+        if (showOrbits) satellites.forEach(satellite => drawOrbit(satellite, globeRadius));
+        satellites.forEach(satellite => {
+          const orbital = satellitePosition(satellite, simulatedTime);
+          const point = rotatePoint(orbital.latitude, orbital.longitude, globeRadius * (1 + satellite.altitude / earthRadiusKm));
+          satellite.screen = point;
+          const visible = point.z > -globeRadius * 0.04;
+          const selected = satellite === selectedSatellite;
+          context.globalAlpha = visible ? 1 : 0.16;
+          context.fillStyle = satellite.color;
+          if (selected) {
+            context.strokeStyle = '#ffffff';
+            context.lineWidth = 1;
+            context.beginPath();
+            context.arc(point.x, point.y, 7, 0, Math.PI * 2);
+            context.stroke();
+          }
+          context.beginPath();
+          context.arc(point.x, point.y, selected ? 3.5 : 2.2, 0, Math.PI * 2);
+          context.fill();
+          if (visible && (showLabels || selected)) {
+            context.fillStyle = selected ? '#ffffff' : 'rgba(203,213,225,0.72)';
+            context.font = selected ? '500 11px sans-serif' : '10px sans-serif';
+            context.fillText(satellite.name, point.x + 7, point.y - 6);
+          }
+          context.globalAlpha = 1;
+        });
+        if (selectedSatellite) {
+          const orbital = satellitePosition(selectedSatellite, simulatedTime);
+          const latitude = (orbital.latitude * 180 / Math.PI).toFixed(2);
+          let longitude = (orbital.longitude * 180 / Math.PI) % 360;
+          if (longitude > 180) longitude -= 360;
+          if (longitude < -180) longitude += 360;
+          context.fillStyle = 'rgba(10,15,22,0.88)';
+          context.strokeStyle = 'rgba(148,163,184,0.35)';
+          context.lineWidth = 1;
+          context.fillRect(12, 58, 210, 74);
+          context.strokeRect(12, 58, 210, 74);
+          context.fillStyle = '#f8fafc';
+          context.font = '500 12px sans-serif';
+          context.fillText(selectedSatellite.name, 24, 80);
+          context.fillStyle = '#94a3b8';
+          context.font = '11px monospace';
+          context.fillText(`${latitude}°, ${longitude.toFixed(2)}°`, 24, 100);
+          context.fillText(`${selectedSatellite.altitude} km · ${selectedSatellite.period} min`, 24, 119);
+        }
+      }
+      function animate(time) {
+        drawSpace(time);
+        frameCount++;
+        if (time - lastFpsTime >= 1000) {
+          fpsButton.textContent = `${Math.min(60, Math.round(frameCount * 1000 / (time - lastFpsTime)))} FPS`;
+          frameCount = 0;
+          lastFpsTime = time;
+        }
+        if (!reduceMotion) requestAnimationFrame(animate);
+      }
+      canvas.addEventListener('pointerdown', event => {
+        draggingGlobe = true;
+        dragX = event.clientX;
+        dragY = event.clientY;
+        canvas.setPointerCapture(event.pointerId);
+      });
+      canvas.addEventListener('pointermove', event => {
+        if (!draggingGlobe) return;
+        viewLongitude -= (event.clientX - dragX) * 0.006;
+        viewLatitude = Math.max(-1.2, Math.min(1.2, viewLatitude + (event.clientY - dragY) * 0.006));
+        dragX = event.clientX;
+        dragY = event.clientY;
+      });
+      canvas.addEventListener('pointerup', event => {
+        const moved = Math.hypot(event.clientX - dragX, event.clientY - dragY);
+        draggingGlobe = false;
+        if (moved > 4) return;
+        let nearest = null;
+        let distance = 14;
+        satellites.forEach(satellite => {
+          if (!satellite.screen || satellite.screen.z < 0) return;
+          const candidate = Math.hypot(event.offsetX - satellite.screen.x, event.offsetY - satellite.screen.y);
+          if (candidate < distance) { distance = candidate; nearest = satellite; }
+        });
+        selectedSatellite = nearest;
+        if (nearest) showToast(`Tracking ${nearest.name}`);
+      });
+      canvas.addEventListener('pointercancel', () => draggingGlobe = false);
+      canvas.addEventListener('wheel', event => {
+        event.preventDefault();
+        zoom = Math.max(0.65, Math.min(1.45, zoom - event.deltaY * 0.001));
+      }, { passive: false });
+      document.getElementById('playButton').addEventListener('click', () => {
+        playing = !playing;
+        playIcon.setAttribute('icon', playing ? 'solar:pause-linear' : 'solar:play-linear');
+        document.getElementById('playButton').setAttribute('aria-label', playing ? 'Pause simulation' : 'Play simulation');
+      });
+      document.getElementById('previousButton').addEventListener('click', () => { simulatedTime = new Date(simulatedTime.getTime() - 60000); updateClock(); });
+      document.getElementById('nextButton').addEventListener('click', () => { simulatedTime = new Date(simulatedTime.getTime() + 60000); updateClock(); });
+      document.getElementById('speedButton').addEventListener('click', () => {
+        speed = speed === 1 ? 10 : speed === 10 ? 60 : 1;
+        showToast(`${speed}× tracking speed`);
+      });
+      document.getElementById('resetButton').addEventListener('click', () => {
+        simulatedTime = new Date();
+        speed = 1;
+        updateClock();
+        showToast('Returned to live time');
+      });
+      document.querySelector('[aria-label="Search satellites"]').addEventListener('click', () => {
+        const query = prompt('Enter a satellite name');
+        if (!query) return;
+        const match = satellites.find(satellite => satellite.name.toLowerCase().includes(query.toLowerCase()));
+        if (match) { selectedSatellite = match; showToast(`Tracking ${match.name}`); } else showToast('Satellite not found');
+      });
+      document.querySelector('[aria-label="Locate me"]').addEventListener('click', () => {
+        if (!navigator.geolocation) return showToast('Location is unavailable');
+        navigator.geolocation.getCurrentPosition(position => {
+          viewLatitude = -position.coords.latitude * Math.PI / 180;
+          viewLongitude = position.coords.longitude * Math.PI / 180;
+          showToast('Centered on your location');
+        }, () => showToast('Location permission denied'));
+      });
+      document.querySelector('[aria-label="Satellite options"]').addEventListener('click', () => {
+        showLabels = !showLabels;
+        showToast(showLabels ? 'Satellite labels shown' : 'Satellite labels hidden');
+      });
+      document.querySelector('[aria-label="Toggle layers"]').addEventListener('click', () => {
+        showOrbits = !showOrbits;
+        showToast(showOrbits ? 'Orbit paths shown' : 'Orbit paths hidden');
+      });
+      document.querySelector('[aria-label="Settings"]').addEventListener('click', () => {
+        glowEnabled = !glowEnabled;
+        showToast(glowEnabled ? 'Atmosphere enabled' : 'Atmosphere disabled');
+      });
+      const helpModal = document.getElementById('helpModal');
+      function closeHelp() { helpModal.classList.add('hidden'); helpModal.classList.remove('flex'); }
+      document.getElementById('infoButton').addEventListener('click', () => { helpModal.classList.remove('hidden'); helpModal.classList.add('flex'); });
+      document.getElementById('closeHelp').addEventListener('click', closeHelp);
+      helpModal.addEventListener('click', event => { if (event.target === helpModal) closeHelp(); });
+      document.querySelectorAll('[data-help-tab]').forEach(tab => {
+        tab.addEventListener('click', () => {
+          const desktop = tab.dataset.helpTab === 'desktop';
+          document.getElementById('desktopHelp').classList.toggle('hidden', !desktop);
+          document.getElementById('touchHelp').classList.toggle('hidden', desktop);
+          document.querySelectorAll('.help-tab').forEach(item => { item.classList.remove('bg-blue-600', 'text-white'); item.classList.add('text-slate-400'); });
+          tab.classList.add('bg-blue-600', 'text-white');
+          tab.classList.remove('text-slate-400');
+        });
+      });
+      let legendCollapsed = false;
+      document.getElementById('collapseLegend').addEventListener('click', () => {
+        const legendBody = document.querySelector('#legend > div');
+        legendCollapsed = !legendCollapsed;
+        legendBody.classList.toggle('hidden', legendCollapsed);
+        document.querySelector('#collapseLegend iconify-icon').setAttribute('icon', legendCollapsed ? 'solar:alt-arrow-left-linear' : 'solar:alt-arrow-right-linear');
+      });
+      document.getElementById('closeLegend').addEventListener('click', () => document.getElementById('legend').classList.add('hidden'));
+      const legend = document.getElementById('legend');
+      const legendHandle = document.getElementById('legendHandle');
+      let draggingLegend = false;
+      let legendOffsetX = 0;
+      let legendOffsetY = 0;
+      legendHandle.addEventListener('pointerdown', event => {
+        draggingLegend = true;
+        const rect = legend.getBoundingClientRect();
+        legendOffsetX = event.clientX - rect.left;
+        legendOffsetY = event.clientY - rect.top;
+        legendHandle.setPointerCapture(event.pointerId);
+      });
+      legendHandle.addEventListener('pointermove', event => {
+        if (!draggingLegend) return;
+        legend.style.left = `${Math.max(0, Math.min(window.innerWidth - legend.offsetWidth, event.clientX - legendOffsetX))}px`;
+        legend.style.top = `${Math.max(0, Math.min(window.innerHeight - legend.offsetHeight, event.clientY - legendOffsetY))}px`;
+        legend.style.right = 'auto';
+        legend.style.bottom = 'auto';
+      });
+      legendHandle.addEventListener('pointerup', () => draggingLegend = false);
+      legendHandle.addEventListener('pointercancel', () => draggingLegend = false);
+      window.setInterval(() => {
+        if (playing) {
+          simulatedTime = new Date(simulatedTime.getTime() + 1000 * speed);
+          updateClock();
+        }
+      }, 1000);
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeHelp();
+        if (event.code === 'Space' && event.target === document.body) {
+          event.preventDefault();
+          document.getElementById('playButton').click();
+        }
+      });
+      window.addEventListener('resize', resizeCanvas);
+      updateClock();
+      resizeCanvas();
+      if (reduceMotion) {
+        drawSpace(0);
+        fpsButton.textContent = '60 FPS';
+      } else {
+        requestAnimationFrame(animate);
+      }
+    </script>
+    <script>
+      (() => { const tleStatus = document.getElementById('tleStatus'); const tleUrl = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle'; const analyticSatellitePosition = satellitePosition; const orbitalColor = altitude => altitude > 30000 ? '#d9864f' : altitude > 2000 ? '#9064ae' : altitude > 1000 ? '#3aa6a0' : '#66c9dd'; function parseTleCatalog(text) { const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean); const catalog = []; for (let index = 0; index < lines.length - 1; index++) { if (!lines[index].startsWith('1 ') || !lines[index + 1].startsWith('2 ')) continue; const line1 = lines[index]; const line2 = lines[index + 1]; const previous = lines[index - 1] || ''; const name = previous.startsWith('0 ') ? previous.slice(2).trim() : (!previous.startsWith('1 ') && !previous.startsWith('2 ') ? previous : 'NORAD ' + line1.slice(2, 7).trim()); try { const satrec = window.satellite.twoline2satrec(line1, line2); const altitude = Math.max(0, Math.round(((satrec.a || 1) - 1) * earthRadiusKm)); const period = satrec.no ? Number((Math.PI * 2 / satrec.no).toFixed(1)) : 0; const inclination = satrec.inclo * 180 / Math.PI; const probe = window.satellite.propagate(satrec, new Date()); if (!probe.position) continue; catalog.push({ name, shell: altitude > 30000 ? 'GEO' : altitude > 2000 ? 'MEO' : 'LEO', color: orbitalColor(altitude), inclination, altitude, period, phase: Number(line1.slice(2, 7)) % 628 / 100, satrec, positionTick: -1, position: null }); } catch (error) {} index++; } return catalog; } satellitePosition = function(satelliteObject, date) { if (!satelliteObject.satrec || !window.satellite) return analyticSatellitePosition(satelliteObject, date); const tick = Math.floor(date.getTime() / 1000); if (satelliteObject.positionTick === tick && satelliteObject.position) return satelliteObject.position; const propagated = window.satellite.propagate(satelliteObject.satrec, date); if (!propagated.position) return satelliteObject.position || analyticSatellitePosition(satelliteObject, date); const geodetic = window.satellite.eciToGeodetic(propagated.position, window.satellite.gstime(date)); satelliteObject.positionTick = tick; satelliteObject.position = { latitude: geodetic.latitude, longitude: geodetic.longitude }; return satelliteObject.position; }; async function loadTleCatalog() { try { tleStatus.textContent = 'Updating active satellites…'; const response = await fetch(tleUrl, { cache: 'no-store' }); if (!response.ok) throw new Error('TLE request failed: ' + response.status); const catalog = parseTleCatalog(await response.text()); if (!catalog.length) throw new Error('No valid TLE records received'); satellites.splice(0, satellites.length, ...catalog); selectedSatellite = null; showOrbits = false; showLabels = false; tleStatus.textContent = catalog.length.toLocaleString() + ' active satellites'; showToast('Tracking ' + catalog.length.toLocaleString() + ' satellites from live TLE data'); } catch (error) { tleStatus.textContent = 'TLE feed unavailable'; console.error(error); } } if (window.satellite) { loadTleCatalog(); window.setInterval(loadTleCatalog, 6 * 60 * 60 * 1000); } else { tleStatus.textContent = 'SGP4 library unavailable'; } })();
+    </script>
+  </body>
+</html>

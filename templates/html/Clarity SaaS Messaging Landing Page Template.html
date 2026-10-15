@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DMG-01 — Skeuomorphic Study</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+:root {
+/* Backdrop */
+--bg: #08090b;
+/* Shell colors — KOSMA-derived charcoal with warm undertone */
+--shell-1: #232529;
+--shell-2: #1a1c20;
+--shell-3: #131418;
+--shell-4: #0c0d10;
+--shell-edge-hi: rgba(255, 255, 255, 0.22);
+--shell-edge-md: rgba(255, 255, 255, 0.09);
+--shell-edge-lo: rgba(0, 0, 0, 0.7);
+--rim-hi: rgba(255, 255, 255, 0.16);
+--rim-hi-strong: rgba(255, 255, 255, 0.24);
+/* Screen */
+--bezel-1: #0a0b0d;
+--bezel-2: #050608;
+--lcd-frame: #08090b;
+--lcd-off: #0a0b0c;
+--lcd-on: #2f3a31;
+--lcd-on-bright: #3a4a3d;
+/* A/B — classic Game Boy maroon, rendered dark to fit charcoal body */
+--ab-hi: #a13a4d;
+--ab-mid: #842b3c;
+--ab-lo: #5a1e2a;
+--ab-rim: #2a0e14;
+/* D-pad */
+--dpad-hi: #15171a;
+--dpad-mid: #0e0f12;
+--dpad-lo: #060708;
+--dpad-rim: #020203;
+/* SELECT / START — soft-touch silver-graphite */
+--ss-hi: #6a6d72;
+--ss-mid: #4d5055;
+--ss-lo: #36383c;
+--ss-rim: #1a1c1f;
+/* Power slider — brushed graphite */
+--slider-hi: #767a80;
+--slider-mid: #585b60;
+--slider-lo: #3a3d42;
+/* Wheels (volume / contrast) — ridged dark graphite */
+--wheel-hi: #2e3035;
+--wheel-mid: #1c1e22;
+--wheel-lo: #0c0d10;
+/* Labels */
+--label-em: rgba(208, 213, 220, 0.42);
+--label-dim: rgba(200, 206, 215, 0.28);
+--label-strong: rgba(225, 228, 233, 0.7);
+--label-shadow-d: rgba(0, 0, 0, 0.65);
+--label-shadow-l: rgba(255, 255, 255, 0.035);
+/* Pixel-purple (DMG-01 signature) */
+--pixel-purple: rgba(150, 122, 188, 0.55);
+--pixel-purple-strong: rgba(165, 138, 202, 0.78);
+/* Battery LED */
+--led-off: #2a0c0c;
+--led-on: #ff3a3a;
+/* Easing */
+--ease-out-quart: cubic-bezier(0.165, 0.84, 0.44, 1);
+--ease-out-cubic: cubic-bezier(0.215, 0.61, 0.355, 1);
+--ease-in-out-cubic: cubic-bezier(0.645, 0.045, 0.355, 1);
+--ease-press: cubic-bezier(0.4, 0, 0.6, 1);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+min-height: 100vh;
+background: var(--bg);
+color: var(--label-em);
+font-family: 'JetBrains Mono', ui-monospace, monospace;
+-webkit-font-smoothing: antialiased;
+overflow-x: hidden;
+}
+body {
+display: flex;
+align-items: center;
+justify-content: center;
+padding: 56px 24px 88px;
+background:
+radial-gradient(ellipse 70% 55% at 50% 45%, #14161a 0%, #0a0b0d 55%, #050608 100%),
+var(--bg);
+background-attachment: fixed;
+}
+/* Subtle film grain over everything */
+body::after {
+content: '';
+position: fixed;
+inset: 0;
+pointer-events: none;
+background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.055 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+mix-blend-mode: overlay;
+opacity: 0.55;
+z-index: 999;
+}
+.stage {
+position: relative;
+display: flex;
+align-items: center;
+justify-content: center;
+perspective: 1800px;
+}
+/* ============================================================
+The Game Boy
+============================================================ */
+.gameboy {
+--w: 384px;
+--h: 632px;
+position: relative;
+width: var(--w);
+height: var(--h);
+border-radius: 18px 18px 18px 80px;
+background:
+linear-gradient(168deg,
+#32353a 0%,
+#22252a 18%,
+#181a1f 50%,
+#0e1014 82%,
+#08090c 100%);
+box-shadow:
+/* outer cast — multi-layer for depth */
+0 60px 120px -24px rgba(0, 0, 0, 0.78),
+0 36px 60px -18px rgba(0, 0, 0, 0.58),
+0 12px 28px -8px rgba(0, 0, 0, 0.5),
+0 4px 8px -2px rgba(0, 0, 0, 0.45),
+/* inner shell bevels — bright crisp top rim */
+inset 0 2px 0 var(--shell-edge-hi),
+inset 0 1px 0 rgba(255, 255, 255, 0.32),
+inset 2px 0 0 var(--shell-edge-md),
+inset -1px 0 0 var(--shell-edge-lo),
+inset 0 -2px 0 rgba(0, 0, 0, 0.7),
+/* hairline edge */
+0 0 0 1px rgba(0, 0, 0, 0.75);
+transform-style: preserve-3d;
+animation: float 6.5s ease-in-out infinite;
+}
+@keyframes float {
+0%, 100% { transform: translateY(0) rotateX(0); }
+50% { transform: translateY(-6px) rotateX(0.5deg); }
+}
+/* Inner seam — the line between front shell and back shell visible on the edge */
+.gameboy::before {
+content: '';
+position: absolute;
+inset: 7px;
+border-radius: 12px 12px 12px 74px;
+pointer-events: none;
+box-shadow:
+inset 0 1px 0 rgba(255, 255, 255, 0.10),
+inset 0 -1px 0 rgba(0, 0, 0, 0.55),
+inset 1px 0 0 rgba(255, 255, 255, 0.05),
+inset -1px 0 0 rgba(0, 0, 0, 0.5);
+}
+/* Top sheen — soft directional light from upper-left + ambient top glow */
+.gameboy::after {
+content: '';
+position: absolute;
+inset: 0;
+border-radius: 18px 18px 18px 80px;
+pointer-events: none;
+background:
+radial-gradient(ellipse 90% 32% at 40% -8%,
+rgba(255, 255, 255, 0.14) 0%,
+rgba(255, 255, 255, 0.05) 40%,
+transparent 75%),
+linear-gradient(128deg,
+rgba(255, 255, 255, 0.16) 0%,
+rgba(255, 255, 255, 0.05) 20%,
+transparent 42%);
+mix-blend-mode: overlay;
+}
+/* ============================================================
+Power slider (top edge)
+============================================================ */
+.power {
+position: absolute;
+top: -12px;
+left: 26px;
+width: 78px;
+height: 22px;
+display: flex;
+align-items: center;
+justify-content: space-between;
+border-radius: 6px 6px 10px 10px / 6px 6px 22px 22px;
+background: linear-gradient(180deg,
+#1e2024 0%,
+#14161a 45%,
+#06070a 100%);
+box-shadow:
+inset 0 2px 0 rgba(255, 255, 255, 0.16),
+inset 0 1px 0 rgba(255, 255, 255, 0.24),
+inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+inset 0 -6px 8px rgba(0, 0, 0, 0.55),
+0 2px 4px rgba(0, 0, 0, 0.55);
+padding: 0 8px;
+}
+.power__label {
+font-size: 7px;
+letter-spacing: 0.12em;
+color: var(--label-dim);
+text-shadow:
+0 1px 0 var(--label-shadow-l),
+0 -1px 0 var(--label-shadow-d);
+user-select: none;
+}
+.power__slot {
+position: absolute;
+top: 5px;
+left: 22px;
+right: 22px;
+height: 12px;
+border-radius: 4px;
+background: linear-gradient(180deg, #030405 0%, #0a0b0e 100%);
+box-shadow:
+inset 0 1px 2px rgba(0, 0, 0, 0.9),
+inset 0 -1px 0 rgba(255, 255, 255, 0.02);
+}
+.power__knob {
+position: absolute;
+top: 2px;
+left: 22px;
+width: 18px;
+height: 18px;
+border-radius: 3px;
+background: linear-gradient(180deg, #989ba0 0%, var(--slider-hi) 22%, var(--slider-mid) 60%, var(--slider-lo) 100%);
+box-shadow:
+inset 0 1px 0 rgba(255, 255, 255, 0.55),
+inset 0 2px 0 rgba(255, 255, 255, 0.22),
+inset 0 -1px 0 rgba(0, 0, 0, 0.55),
+inset 1px 0 0 rgba(255, 255, 255, 0.15),
+inset -1px 0 0 rgba(0, 0, 0, 0.45),
+0 1px 2px rgba(0, 0, 0, 0.75),
+0 3px 6px rgba(0, 0, 0, 0.45);
+cursor: pointer;
+transition: transform 280ms var(--ease-in-out-cubic);
+z-index: 2;
+}
+/* knob ridges */
+.power__knob::before {
+content: '';
+position: absolute;
+inset: 4px 2px;
+background-image: repeating-linear-gradient(90deg,
+rgba(0, 0, 0, 0.4) 0 1px,
+rgba(255, 255, 255, 0.06) 1px 2px,
+transparent 2px 3px);
+border-radius: 1px;
+}
+.gameboy.on .power__knob {
+transform: translateX(18px);
+}
+/* Arrow indicator */
+.power__arrow {
+position: absolute;
+top: -7px;
+left: 36px;
+font-size: 6px;
+color: var(--label-dim);
+letter-spacing: 0.1em;
+}
+/* ============================================================
+Screen bezel (the dark plate around the LCD)
+============================================================ */
+.screen {
+position: absolute;
+top: 30px;
+left: 24px;
+right: 24px;
+height: 244px;
+border-radius: 14px 14px 8px 60px;
+background: linear-gradient(160deg,
+var(--bezel-1) 0%,
+var(--bezel-2) 60%,
+#030405 100%);
+box-shadow:
+/* OUTER top rim — bright bevel where the shell meets the recess */
+0 -1px 0 rgba(255, 255, 255, 0.22),
+0 1px 0 rgba(0, 0, 0, 0.5),
+/* recessed inset */
+inset 0 3px 8px rgba(0, 0, 0, 0.9),
+inset 0 1px 0 rgba(255, 255, 255, 0.04),
+inset 0 -1px 0 rgba(255, 255, 255, 0.06),
+inset 1px 0 2px rgba(0, 0, 0, 0.65),
+inset -1px 0 2px rgba(0, 0, 0, 0.65);
+padding: 14px 18px;
+}
+/* Bright rim arc — sits just above the screen bezel like polished metal */
+.screen::before {
+content: '';
+position: absolute;
+top: -1px;
+left: 2px;
+right: 2px;
+height: 1px;
+background: linear-gradient(90deg,
+transparent 0%,
+rgba(255, 255, 255, 0.28) 12%,
+rgba(255, 255, 255, 0.42) 50%,
+rgba(255, 255, 255, 0.18) 88%,
+transparent 100%);
+border-radius: 14px 14px 0 0;
+pointer-events: none;
+z-index: 4;
+}
+/* "DOT MATRIX WITH STEREO SOUND" header */
+.screen__title {
+position: absolute;
+top: 9px;
+left: 50%;
+transform: translateX(-50%);
+font-size: 7px;
+letter-spacing: 0.16em;
+color: var(--pixel-purple-strong);
+font-weight: 500;
+white-space: nowrap;
+text-shadow: 0 0 4px rgba(160, 130, 200, 0.25);
+}
+/* The header has thin lines on either side, like the original */
+.screen__title::before,
+.screen__title::after {
+content: '';
+display: inline-block;
+width: 16px;
+height: 1px;
+background: var(--pixel-purple);
+vertical-align: middle;
+margin: 0 8px;
+transform: translateY(-1px);
+}
+/* BATTERY LED + label */
+.battery {
+position: absolute;
+top: 86px;
+left: 12px;
+display: flex;
+flex-direction: column;
+align-items: center;
+gap: 4px;
+}
+.battery__led {
+width: 7px;
+height: 7px;
+border-radius: 50%;
+background: radial-gradient(circle at 35% 35%, #5a1a1a 0%, var(--led-off) 60%, #1a0606 100%);
+box-shadow:
+inset 0 0 2px rgba(0, 0, 0, 0.8),
+inset 0 1px 0 rgba(255, 255, 255, 0.1),
+0 0 0 1px rgba(0, 0, 0, 0.6);
+transition: background 300ms var(--ease-out-cubic), box-shadow 300ms var(--ease-out-cubic);
+}
+.gameboy.on .battery__led {
+background: radial-gradient(circle at 35% 35%, #ffacac 0%, var(--led-on) 50%, #b40000 100%);
+box-shadow:
+inset 0 0 2px rgba(255, 255, 255, 0.3),
+inset 0 1px 0 rgba(255, 255, 255, 0.4),
+0 0 6px rgba(255, 60, 60, 0.7),
+0 0 12px rgba(255, 60, 60, 0.3),
+0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.battery__label {
+font-size: 6px;
+letter-spacing: 0.1em;
+color: var(--label-dim);
+text-shadow:
+0 1px 0 var(--label-shadow-l),
+0 -1px 0 var(--label-shadow-d);
+}
+/* LCD — the actual screen surface */
+.lcd {
+position: absolute;
+top: 32px;
+left: 50%;
+transform: translateX(-50%);
+width: 220px;
+height: 198px;
+border-radius: 4px;
+background: var(--lcd-off);
+box-shadow:
+/* outer top rim — thin bright line where bezel meets glass */
+0 -1px 0 rgba(255, 255, 255, 0.10),
+0 1px 0 rgba(0, 0, 0, 0.7),
+/* inner recess */
+inset 0 3px 6px rgba(0, 0, 0, 0.92),
+inset 0 1px 0 rgba(255, 255, 255, 0.03),
+inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+inset 1px 0 0 rgba(0, 0, 0, 0.55),
+inset -1px 0 0 rgba(0, 0, 0, 0.55),
+0 0 0 1px rgba(0, 0, 0, 0.65);
+overflow: hidden;
+transition: background 350ms var(--ease-out-cubic), box-shadow 350ms var(--ease-out-cubic);
+}
+/* LCD subtle reflection sheen */
+.lcd::before {
+content: '';
+position: absolute;
+inset: 0;
+background: linear-gradient(160deg,
+rgba(255, 255, 255, 0.06) 0%,
+rgba(255, 255, 255, 0.01) 25%,
+transparent 50%);
+pointer-events: none;
+z-index: 3;
+}
+/* LCD scanlines */
+.lcd::after {
+content: '';
+position: absolute;
+inset: 0;
+background-image: repeating-linear-gradient(
+0deg,
+rgba(0, 0, 0, 0.1) 0px,
+rgba(0, 0, 0, 0.1) 1px,
+transparent 1px,
+transparent 3px
+);
+opacity: 0;
+transition: opacity 400ms var(--ease-out-cubic);
+pointer-events: none;
+z-index: 2;
+}
+.gameboy.on .lcd {
+background:
+radial-gradient(ellipse at 50% 45%, var(--lcd-on-bright) 0%, var(--lcd-on) 60%, #1a2620 100%);
+box-shadow:
+inset 0 2px 6px rgba(0, 0, 0, 0.85),
+inset 0 -1px 0 rgba(255, 255, 255, 0.03),
+inset 1px 0 0 rgba(0, 0, 0, 0.5),
+inset -1px 0 0 rgba(0, 0, 0, 0.5),
+0 0 0 1px rgba(0, 0, 0, 0.6),
+0 0 28px rgba(60, 100, 75, 0.25);
+}
+.gameboy.on .lcd::after { opacity: 0.65; }
+/* ============================================================
+GAME BOY logo (SVG)
+============================================================ */
+.wordmark {
+position: absolute;
+top: 290px;
+left: 50%;
+transform: translateX(-50%);
+width: 168px;
+height: auto;
+color: rgba(225, 228, 233, 0.92);
+filter:
+drop-shadow(0 1px 0 rgba(0, 0, 0, 0.7))
+drop-shadow(0 -1px 0 rgba(255, 255, 255, 0.18))
+drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+.wordmark svg { display: block; width: 100%; height: auto; }
+/* ============================================================
+D-pad
+============================================================ */
+.controls {
+position: absolute;
+top: 360px;
+left: 0;
+right: 0;
+height: 140px;
+}
+.dpad {
+position: absolute;
+left: 48px;
+top: 8px;
+width: 96px;
+height: 96px;
+}
+/* dpad recessed well behind cross */
+.dpad::before {
+content: '';
+position: absolute;
+inset: -6px;
+border-radius: 50%;
+background: radial-gradient(circle at 50% 40%, #06070a 0%, #0a0b0e 60%, #060709 100%);
+box-shadow:
+/* outer top rim — bright bevel around the recess */
+0 -1px 0 rgba(255, 255, 255, 0.18),
+0 1px 0 rgba(0, 0, 0, 0.6),
+inset 0 2px 4px rgba(0, 0, 0, 0.85),
+inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+}
+.dpad__cross {
+position: relative;
+width: 100%;
+height: 100%;
+}
+/* vertical arm */
+.dpad__v, .dpad__h {
+position: absolute;
+background: linear-gradient(165deg,
+#1f2126 0%,
+#14161a 45%,
+#0a0b0e 100%);
+box-shadow:
+inset 0 2px 0 rgba(255, 255, 255, 0.22),
+inset 0 1px 0 rgba(255, 255, 255, 0.32),
+inset 0 -2px 1px rgba(0, 0, 0, 0.7),
+inset 1px 0 0 rgba(255, 255, 255, 0.08),
+inset -1px 0 0 rgba(0, 0, 0, 0.5),
+0 2px 3px rgba(0, 0, 0, 0.65),
+0 5px 10px rgba(0, 0, 0, 0.4),
+0 -1px 0 rgba(255, 255, 255, 0.04);
+border-radius: 4px;
+}
+.dpad__v {
+left: 32px;
+top: 0;
+width: 32px;
+height: 96px;
+}
+.dpad__h {
+left: 0;
+top: 32px;
+width: 96px;
+height: 32px;
+}
+/* directional press hit-zones — invisible overlays */
+.dpad__btn {
+position: absolute;
+width: 32px;
+height: 32px;
+cursor: pointer;
+transition: transform 90ms var(--ease-press);
+}
+.dpad__btn--up    { left: 32px; top: 0; }
+.dpad__btn--down  { left: 32px; top: 64px; }
+.dpad__btn--left  { left: 0; top: 32px; }
+.dpad__btn--right { left: 64px; top: 32px; }
+.dpad__btn:active { transform: translateY(0); }
+/* press indicator overlays — actually visually press the cross arms */
+.dpad__cross.press-up    { transform: translateY(1px) rotateX(4deg); transform-origin: 50% 100%; }
+.dpad__cross.press-down  { transform: translateY(-1px) rotateX(-4deg); transform-origin: 50% 0%; }
+.dpad__cross.press-left  { transform: translateX(1px) rotateY(-4deg); transform-origin: 100% 50%; }
+.dpad__cross.press-right { transform: translateX(-1px) rotateY(4deg); transform-origin: 0% 50%; }
+.dpad__cross {
+transition: transform 110ms var(--ease-press);
+transform-style: preserve-3d;
+}
+/* tiny center dot */
+.dpad__center {
+position: absolute;
+left: 50%;
+top: 50%;
+transform: translate(-50%, -50%);
+width: 8px;
+height: 8px;
+border-radius: 50%;
+background: radial-gradient(circle, rgba(0, 0, 0, 0.7) 0%, transparent 80%);
+pointer-events: none;
+}
+/* ============================================================
+A / B buttons
+============================================================ */
+.ab {
+position: absolute;
+right: 28px;
+top: 22px;
+width: 144px;
+height: 78px;
+transform: rotate(-25deg);
+transform-origin: 50% 50%;
+}
+.ab__btn {
+position: absolute;
+width: 56px;
+height: 56px;
+border-radius: 50%;
+cursor: pointer;
+background: radial-gradient(circle at 35% 28%,
+#c14a5e 0%,
+var(--ab-hi) 22%,
+var(--ab-mid) 60%,
+var(--ab-lo) 100%);
+box-shadow:
+/* very bright crisp top rim — the hero highlight */
+inset 0 2px 0 rgba(255, 220, 230, 0.45),
+inset 0 1px 0 rgba(255, 235, 240, 0.6),
+/* underside shading */
+inset 0 -3px 6px rgba(0, 0, 0, 0.55),
+inset 0 -1px 0 rgba(0, 0, 0, 0.45),
+/* warm inner glow at top */
+inset 0 4px 10px rgba(255, 190, 200, 0.12),
+/* depth stack */
+0 2px 0 var(--ab-rim),
+0 4px 6px rgba(0, 0, 0, 0.6),
+0 8px 16px rgba(0, 0, 0, 0.4);
+border: 1px solid rgba(0, 0, 0, 0.55);
+transition: transform 80ms var(--ease-press),
+box-shadow 80ms var(--ease-press);
+}
+/* recessed ring around each button — with bright top bevel */
+.ab__btn::before {
+content: '';
+position: absolute;
+inset: -6px;
+border-radius: 50%;
+background: radial-gradient(circle, transparent 56%, #06070a 65%, #0a0b0e 100%);
+z-index: -1;
+box-shadow:
+0 -1px 0 rgba(255, 255, 255, 0.16),
+0 1px 0 rgba(0, 0, 0, 0.5),
+inset 0 2px 3px rgba(0, 0, 0, 0.85);
+}
+.ab__btn:active,
+.ab__btn.pressed {
+transform: translateY(2px) scale(0.98);
+box-shadow:
+inset 0 1px 0 rgba(255, 200, 210, 0.1),
+inset 0 -2px 4px rgba(0, 0, 0, 0.6),
+inset 0 2px 4px rgba(0, 0, 0, 0.4),
+0 0 0 var(--ab-rim),
+0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.ab__a { right: 0; top: 0; }
+.ab__b { left: 0; bottom: 0; }
+/* B / A pixel-purple labels */
+.ab__label {
+position: absolute;
+font-size: 9px;
+letter-spacing: 0.08em;
+color: var(--pixel-purple-strong);
+font-weight: 700;
+text-shadow: 0 0 3px rgba(160, 130, 200, 0.2);
+transform: rotate(25deg);
+transform-origin: 50% 50%;
+}
+.ab__label--a { right: 8px; top: 60px; }
+.ab__label--b { left: 8px; bottom: -2px; }
+/* ============================================================
+SELECT / START
+============================================================ */
+.ss {
+position: absolute;
+top: 540px;
+left: 50%;
+transform: translateX(-50%) rotate(-25deg);
+display: flex;
+gap: 18px;
+}
+.ss__btn {
+width: 44px;
+height: 11px;
+border-radius: 6px;
+background: linear-gradient(180deg,
+#8a8d92 0%,
+var(--ss-hi) 18%,
+var(--ss-mid) 55%,
+var(--ss-lo) 100%);
+box-shadow:
+/* bright crisp top rim */
+inset 0 1px 0 rgba(255, 255, 255, 0.55),
+inset 0 2px 0 rgba(255, 255, 255, 0.18),
+inset 0 -1px 0 rgba(0, 0, 0, 0.65),
+inset 1px 0 0 rgba(255, 255, 255, 0.14),
+inset -1px 0 0 rgba(0, 0, 0, 0.45),
+0 1px 0 var(--ss-rim),
+0 2px 3px rgba(0, 0, 0, 0.55),
+0 4px 8px rgba(0, 0, 0, 0.3);
+border: 1px solid rgba(0, 0, 0, 0.55);
+cursor: pointer;
+transition: transform 80ms var(--ease-press),
+box-shadow 80ms var(--ease-press);
+position: relative;
+}
+/* recessed slot under each — with bright top rim */
+.ss__btn::before {
+content: '';
+position: absolute;
+inset: -3px -5px;
+border-radius: 8px;
+background: radial-gradient(ellipse, transparent 50%, #06070a 70%);
+z-index: -1;
+box-shadow:
+0 -1px 0 rgba(255, 255, 255, 0.14),
+0 1px 0 rgba(0, 0, 0, 0.5),
+inset 0 1px 2px rgba(0, 0, 0, 0.75);
+}
+.ss__btn:active,
+.ss__btn.pressed {
+transform: translateY(1px) scaleY(0.85);
+box-shadow:
+inset 0 1px 0 rgba(255, 255, 255, 0.08),
+inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+0 0 0 var(--ss-rim),
+0 0 2px rgba(0, 0, 0, 0.4);
+}
+/* SELECT / START labels (below in pixel-purple) */
+.ss__label {
+position: absolute;
+top: 18px;
+left: 50%;
+transform: translateX(-50%);
+font-size: 7px;
+letter-spacing: 0.15em;
+color: var(--pixel-purple-strong);
+font-weight: 500;
+white-space: nowrap;
+}
+/* ============================================================
+Speaker grille (diagonal dot grid)
+============================================================ */
+.speaker {
+position: absolute;
+bottom: 36px;
+right: 26px;
+width: 96px;
+height: 76px;
+display: grid;
+grid-template-columns: repeat(6, 1fr);
+grid-template-rows: repeat(6, 1fr);
+gap: 3px;
+transform: rotate(-25deg);
+transform-origin: 100% 100%;
+}
+.speaker__hole {
+width: 100%;
+height: 100%;
+border-radius: 50%;
+background: radial-gradient(circle at 30% 30%,
+#03030500 0%,
+#02020480 30%,
+#000000ff 100%);
+box-shadow:
+inset 0 1px 1px rgba(0, 0, 0, 0.95),
+inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+0 1px 0 rgba(255, 255, 255, 0.025);
+}
+/* ============================================================
+Side wheels (volume right, contrast left)
+============================================================ */
+.wheel {
+position: absolute;
+width: 11px;
+height: 56px;
+border-radius: 3px;
+background: linear-gradient(90deg,
+#050608 0%,
+#383a3f 35%,
+#4a4d52 50%,
+#2a2c30 65%,
+#050608 100%);
+box-shadow:
+inset 0 2px 0 rgba(255, 255, 255, 0.28),
+inset 0 1px 0 rgba(255, 255, 255, 0.42),
+inset 0 -2px 1px rgba(0, 0, 0, 0.75),
+inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+0 -1px 0 rgba(255, 255, 255, 0.06),
+0 2px 4px rgba(0, 0, 0, 0.6),
+0 4px 8px rgba(0, 0, 0, 0.35);
+overflow: hidden;
+cursor: ns-resize;
+user-select: none;
+}
+.wheel__ribs {
+width: 100%;
+height: 200%;
+background-image: repeating-linear-gradient(0deg,
+rgba(255, 255, 255, 0.16) 0 1px,
+rgba(0, 0, 0, 0.55) 1px 3px,
+transparent 3px 5px);
+transition: transform 30ms linear;
+will-change: transform;
+}
+.wheel--vol {
+top: 110px;
+right: -5px;
+}
+.wheel--con {
+top: 200px;
+left: -5px;
+}
+.wheel__label {
+position: absolute;
+font-size: 6px;
+letter-spacing: 0.18em;
+color: var(--label-dim);
+white-space: nowrap;
+pointer-events: none;
+text-shadow:
+0 1px 0 var(--label-shadow-l),
+0 -1px 0 var(--label-shadow-d);
+}
+.wheel--vol .wheel__label {
+right: 16px;
+top: 50%;
+transform: translateY(-50%) rotate(-90deg);
+transform-origin: right center;
+}
+.wheel--con .wheel__label {
+left: 16px;
+top: 50%;
+transform: translateY(-50%) rotate(90deg);
+transform-origin: left center;
+}
+/* ============================================================
+Bottom labels (PHONES jack hint)
+============================================================ */
+.bottom-meta {
+position: absolute;
+bottom: 8px;
+left: 26px;
+right: 26px;
+display: flex;
+justify-content: space-between;
+align-items: center;
+font-size: 6px;
+letter-spacing: 0.18em;
+color: var(--label-dim);
+text-shadow:
+0 1px 0 var(--label-shadow-l),
+0 -1px 0 var(--label-shadow-d);
+}
+/* ============================================================
+Caption (corner — page level)
+============================================================ */
+.caption {
+position: fixed;
+bottom: 28px;
+left: 28px;
+font-size: 9px;
+letter-spacing: 0.22em;
+color: rgba(200, 206, 215, 0.32);
+font-weight: 500;
+text-transform: uppercase;
+display: flex;
+align-items: center;
+gap: 12px;
+}
+.caption__dot {
+width: 5px;
+height: 5px;
+border-radius: 50%;
+background: #ff3a3a;
+box-shadow: 0 0 6px rgba(255, 60, 60, 0.6),
+0 0 12px rgba(255, 60, 60, 0.3);
+animation: pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse {
+0%, 100% { opacity: 0.45; }
+50% { opacity: 1; }
+}
+.caption__right {
+position: fixed;
+bottom: 28px;
+right: 28px;
+font-size: 9px;
+letter-spacing: 0.22em;
+color: rgba(200, 206, 215, 0.18);
+font-weight: 500;
+text-transform: uppercase;
+}
+/* ============================================================
+Accessibility
+============================================================ */
+@media (prefers-reduced-motion: reduce) {
+*, *::before, *::after {
+animation: none !important;
+transition: none !important;
+}
+.gameboy { animation: none !important; }
+}
+/* Hide hover affordances on touch */
+@media (hover: none) {
+.gameboy { animation: none; }
+}
+</style>
+<script src="https://cdn.tailwindcss.com"></script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body>
+  <div class="stage">
+    <div class="gameboy" id="gb">
+
+      <!-- Power slider (top edge) -->
+      <div class="power" id="power">
+        <span class="power__label">OFF</span>
+        <span class="power__label">ON</span>
+        <div class="power__slot"></div>
+        <div class="power__knob" id="powerKnob"></div>
+      </div>
+
+      <!-- Screen bezel -->
+      <div class="screen">
+        <div class="screen__title">DOT MATRIX WITH STEREO SOUND</div>
+        <div class="battery">
+          <div class="battery__led" id="batteryLed"></div>
+          <div class="battery__label">BATTERY</div>
+        </div>
+        <div class="lcd" id="lcd"></div>
+      </div>
+
+      <!-- Game Boy wordmark (SVG, recolored to embossed off-white) -->
+      <div class="wordmark" aria-label="Nintendo Game Boy">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 446.41919 42.23269" version="1.1">
+          <g transform="translate(-16.7904,-158.88365)">
+            <g fill="currentColor" fill-rule="nonzero">
+              <path d="M356.15212,165.42839h-15.41859l-1.58485,11.3121h13.60275l-0.80205,5.72342h-13.60275l-1.66826,11.92807h20.29505l-0.80205,5.717h-26.0698l5.65284,-40.3976h21.19975z"/>
+              <path d="M456.05533,159.71137h7.15427l-15.50842,20.66078l-2.75263,19.71116h-5.78117l2.88096,-20.58378l-10.59988,-19.78815h6.49339l7.53926,14.08398z"/>
+              <path d="M319.55944,172.88423l-14.85395,28.17438l-7.18636,-29.21383l-9.22677,28.26421h-5.92875l13.17927,-40.3976h5.03687l6.13407,24.94051l13.1536,-24.94051h5.05612l1.59127,40.3976h-5.88383z"/>
+              <path d="M431.32656,179.76902c-1.03304,7.37243 -5.63359,21.34733 -19.26842,21.34733c-11.22868,0 -14.44971,-9.9839 -12.85845,-21.34733c1.46294,-10.47797 8.0269,-20.88536 19.21709,-20.88536c5.96724,0 15.09135,5.27428 12.90978,20.88536zM423.46006,167.0774c-1.57843,-1.80942 -3.64451,-2.45748 -5.0497,-2.45748c-8.93162,0 -12.71729,10.02882 -13.545,15.95115c-0.80205,5.74267 -0.077,10.55496 1.94417,12.8777c0.73147,0.83413 2.06608,1.94417 5.24219,1.94417c4.08083,0 7.13502,-1.71317 9.61817,-5.38977c2.8553,-4.2284 3.77284,-9.50268 3.98458,-11.02336c0.73788,-5.29994 -0.01925,-9.41285 -2.1944,-11.9024z"/>
+              <path d="M245.82227,196.41955c-1.8415,1.2897 -3.54826,2.25857 -5.15236,2.92588c-2.50881,1.03945 -4.42731,1.19987 -5.70417,1.19987c-0.32082,0 -0.60314,-0.01283 -0.84696,-0.01925c-0.08341,0 -0.20533,-0.00642 -0.24382,-0.00642c-0.00642,0 -0.01925,0 -0.02567,0c-6.70513,0 -10.67688,-2.93871 -12.81995,-5.40902c-3.30444,-3.79209 -4.7353,-9.3166 -3.92042,-15.1491c0.61598,-4.42731 2.1944,-8.28998 4.68397,-11.49176c2.07891,-2.66922 4.76096,-4.83154 7.97558,-6.43564c5.70417,-2.82963 11.51742,-3.04779 13.16002,-3.04779c3.94608,0 6.87837,0.43632 8.03974,0.64164l-0.80205,5.72984c-0.62881,-0.1155 -3.38144,-0.59031 -7.23769,-0.59031c-3.51618,0 -18.03006,1.21911 -20.10256,15.99606c-0.96246,6.87195 2.09174,13.98773 11.04903,13.9749c1.18062,0 2.96437,0.37857 6.66021,-1.77093l0.8213,-5.88383h-6.04424l0.78922,-5.64001h11.82541z"/>
+              <path d="M279.48265,200.11539h-5.72342l-1.86717,-11.01052h-11.58801l-5.02403,11.00411h-6.20465l18.45354,-40.3976h5.09461zM270.9296,183.46486l-2.18158,-12.85203l-5.87099,12.85203z"/>
+              <path d="M395.0162,188.00126c0,2.84246 -1.09079,5.76834 -2.99004,8.0269c-2.21365,2.63072 -5.36411,4.08083 -8.63646,4.08083v0h-12.47988v0h-2.11099l5.69134,-40.69275h2.24574v0h6.2239c3.83058,0 6.15973,1.46935 7.4366,2.75263c1.28328,1.28328 2.81038,3.62526 2.80396,7.4751c-0.00642,3.21461 -1.23194,6.16615 -3.4456,8.32847c0.33366,0.24382 0.66089,0.5069 0.97529,0.7828c2.77188,2.44465 4.29898,5.72984 4.28615,9.24602zM378.01918,175.50854h3.39427v0c3.34294,0 5.99932,-2.38048 6.00574,-5.87741c0.01283,-3.74717 -2.31632,-4.49148 -4.45939,-4.49148v0h-3.49052zM389.25428,188.0205c0,-4.04232 -3.90758,-6.71155 -6.62172,-6.78213h-5.40902l-1.8415,13.16002h8.02049v0c3.4456,-0.00642 5.85175,-3.42636 5.85175,-6.37789z"/>
+              <path d="M16.7904,199.82376l0.00307,-26.79024h8.34722l11.54683,18.68231l-0.00614,-18.68231h8.2828v26.79024h-8.27053l-11.60819,-18.68231v18.68231zM89.99192,199.82376l0.00307,-17.7804h-4.38068v-2.64436l4.38375,-0.00307l-0.00614,-3.60762h8.06192v3.60455h4.36227v2.65049h-4.36227l0.00614,17.7804zM49.57494,199.82376v-17.81721l8.05579,0.00307v17.81415zM49.55654,178.50324v-5.47585h8.07419v5.47585z"/>
+              <path d="M176.35508,173.0335v26.78988h-7.96369c0,0 -0.00316,-0.86485 -0.00316,-1.03048c-3.08294,1.93579 -6.56157,1.93245 -9.2703,0.66864c-0.72719,-0.33726 -5.50975,-2.63236 -5.50975,-8.83221c0,-4.70273 4.43611,-9.83762 10.24303,-9.3285c1.91131,0.16863 3.27038,0.86485 4.55867,1.58904c-0.00608,-4.12315 -0.00631,-9.85637 -0.00631,-9.85637zM202.52549,190.79536c0,5.52486 -5.27048,10.00346 -11.77387,10.00346c-6.50038,0 -11.77387,-4.47859 -11.77387,-10.00346c0,-5.52486 5.27025,-10.00391 11.77387,-10.00391c6.50338,0 11.77387,4.47905 11.77387,10.00391zM113.20681,180.88666c6.55259,0 11.88756,4.57695 11.88756,10.10181c0,0.00924 -15.17573,0.00316 -15.17573,0.00316c0,0 -0.00631,2.70246 -0.00631,3.67798c0,3.25781 2.18106,3.98207 3.37118,3.98207c1.19035,0 3.33509,-0.72426 3.33509,-3.98207c0,-1.00001 -0.00633,-1.07966 -0.00633,-1.07966l8.02505,-0.00633c-1.40195,4.20585 -5.9946,7.30768 -11.43052,7.30768c-6.55236,0 -11.8623,-4.47589 -11.8623,-10.00075c0,-5.52486 5.30994,-10.00391 11.8623,-10.00391zM76.49016,181.18442c3.01226,-0.08593 9.12332,1.88666 9.08035,8.93913c-0.00624,1.25156 -0.00316,9.69395 -0.00316,9.69395h-8.0034v-11.70033c0,-1.55233 -1.48478,-3.27914 -3.68114,-3.27914c-2.19336,0 -3.82551,1.72704 -3.82551,3.27914c0,0.76092 0.00903,11.70033 0.00903,11.70033h-7.99753l-0.0027,-17.8142l8.0034,-0.00587c0,0 -0.00924,1.43251 0,1.87418c1.53985,-1.4694 3.75792,-2.61051 6.42067,-2.6872zM141.96019,181.18442c3.01249,-0.08593 9.12332,1.88666 9.08035,8.93913c-0.00624,1.25156 -0.00316,9.69395 -0.00316,9.69395h-8.0034v-11.70033c0,-1.55233 -1.48455,-3.27914 -3.68114,-3.27914c-2.19336,0 -3.82551,1.72704 -3.82551,3.27914c0,0.76092 0.00903,11.70033 0.00903,11.70033h-7.99708l0.00587,-17.8142l7.99482,-0.00587c0,0 -0.00924,1.43251 0,1.87418c1.53986,-1.4694 3.76047,-2.61051 6.42022,-2.6872zM190.69342,183.0004c-1.60454,0 -3.29177,1.16248 -3.29177,3.9911c0,1.0797 -0.00631,3.71452 -0.00631,3.71452c0,0 -0.0027,2.76092 -0.0027,3.84086c0,2.84062 1.68425,4.01275 3.3008,4.01275c1.61354,0 3.29177,-1.17213 3.29177,-4.01275c0,-1.0797 0.0027,-3.77318 0.0027,-3.77318l0.00316,0.00903c-0.00924,-0.71449 -0.00587,-2.71152 -0.00587,-3.79122c0,-2.82861 -1.68447,-3.9911 -3.29177,-3.9911zM113.28531,183.09831c-1.04863,0.00666 -2.20441,0.52831 -2.83293,1.62603c-0.51237,0.88959 -0.54598,1.93256 -0.53374,3.4939l6.72116,0.00316c0.01247,-1.56134 -0.00897,-2.60447 -0.52156,-3.49706c-0.62844,-1.09757 -1.78419,-1.61922 -2.83293,-1.62603zM165.30807,184.18429c-1.28206,0 -3.15958,0.70266 -3.15958,3.45736c0,0.91407 0.00316,3.17492 0.00316,3.17492c0,0 -0.00316,2.22102 -0.00316,3.16905c0,2.75169 1.87759,3.47269 3.15687,3.47269c1.2548,0 3.15958,-0.721 3.15958,-3.47269c0,-1.14438 -0.00316,-3.15958 -0.00316,-3.15958v-3.18439c0,-2.75469 -1.90192,-3.45736 -3.15371,-3.45736z"/>
+            </g>
+          </g>
+        </svg>
+      </div>
+
+      <!-- D-pad + A/B -->
+      <div class="controls">
+        <div class="dpad">
+          <div class="dpad__cross" id="dpadCross">
+            <div class="dpad__v"></div>
+            <div class="dpad__h"></div>
+            <div class="dpad__center"></div>
+          </div>
+          <div class="dpad__btn dpad__btn--up"    data-dir="up"></div>
+          <div class="dpad__btn dpad__btn--down"  data-dir="down"></div>
+          <div class="dpad__btn dpad__btn--left"  data-dir="left"></div>
+          <div class="dpad__btn dpad__btn--right" data-dir="right"></div>
+        </div>
+
+        <div class="ab">
+          <div class="ab__btn ab__a" id="abA"></div>
+          <div class="ab__btn ab__b" id="abB"></div>
+          <span class="ab__label ab__label--a">A</span>
+          <span class="ab__label ab__label--b">B</span>
+        </div>
+      </div>
+
+      <!-- SELECT / START -->
+      <div class="ss">
+        <div class="ss__btn" id="ssSelect">
+          <span class="ss__label">SELECT</span>
+        </div>
+        <div class="ss__btn" id="ssStart">
+          <span class="ss__label">START</span>
+        </div>
+      </div>
+
+      <!-- Speaker grille -->
+      <div class="speaker">
+        <span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span>
+        <span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span>
+        <span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span>
+        <span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span>
+        <span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span>
+        <span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span><span class="speaker__hole"></span>
+      </div>
+
+      <!-- Side wheels -->
+      <div class="wheel wheel--vol" data-wheel="vol">
+        <div class="wheel__ribs"></div>
+        <span class="wheel__label">VOL</span>
+      </div>
+      <div class="wheel wheel--con" data-wheel="con">
+        <div class="wheel__ribs"></div>
+        <span class="wheel__label">CONTRAST</span>
+      </div>
+
+      <!-- Bottom meta -->
+      <div class="bottom-meta">
+        <span>PHONES</span>
+        <span>DMG-01 · NINTENDO</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="caption">
+    <span class="caption__dot"></span>
+    DMG-01 / SKEUOMORPHIC STUDY
+  </div>
+  <div class="caption__right">CLICK POWER TO TOGGLE</div>
+
+<script>
+  // ============================================================
+  //  Interactivity
+  // ============================================================
+
+  const gb = document.getElementById('gb');
+  const power = document.getElementById('power');
+
+  // Initial: powered on so the user sees the LCD glow
+  gb.classList.add('on');
+
+  // ---- Power toggle ----------------------------------------------------
+  power.addEventListener('click', (e) => {
+    e.stopPropagation();
+    gb.classList.toggle('on');
+  });
+
+  // ---- D-pad press feel -------------------------------------------------
+  const dpadCross = document.getElementById('dpadCross');
+  const dpadBtns = document.querySelectorAll('.dpad__btn');
+
+  dpadBtns.forEach((btn) => {
+    const dir = btn.dataset.dir;
+    const cls = `press-${dir}`;
+
+    const press = () => dpadCross.classList.add(cls);
+    const release = () => dpadCross.classList.remove(cls);
+
+    btn.addEventListener('mousedown', press);
+    btn.addEventListener('touchstart', press, { passive: true });
+    btn.addEventListener('mouseup', release);
+    btn.addEventListener('mouseleave', release);
+    btn.addEventListener('touchend', release);
+    btn.addEventListener('touchcancel', release);
+  });
+
+  // ---- A / B / SELECT / START feedback ---------------------------------
+  // CSS :active already handles visual; add keyboard support for fun.
+  const keyMap = {
+    'KeyZ': 'abB', 'KeyX': 'abA',
+    'Enter': 'ssStart', 'ShiftRight': 'ssSelect', 'ShiftLeft': 'ssSelect',
+    'ArrowUp': null, 'ArrowDown': null, 'ArrowLeft': null, 'ArrowRight': null,
+  };
+
+  const dpadKeyMap = {
+    'ArrowUp': 'up', 'ArrowDown': 'down', 'ArrowLeft': 'left', 'ArrowRight': 'right',
+  };
+
+  document.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    if (dpadKeyMap[e.code]) {
+      dpadCross.classList.add(`press-${dpadKeyMap[e.code]}`);
+      e.preventDefault();
+      return;
+    }
+    if (keyMap[e.code]) {
+      const el = document.getElementById(keyMap[e.code]);
+      if (el) el.classList.add('pressed');
+      e.preventDefault();
+    }
+    // Spacebar toggles power
+    if (e.code === 'Space') {
+      gb.classList.toggle('on');
+      e.preventDefault();
+    }
+  });
+
+  document.addEventListener('keyup', (e) => {
+    if (dpadKeyMap[e.code]) {
+      dpadCross.classList.remove(`press-${dpadKeyMap[e.code]}`);
+      return;
+    }
+    if (keyMap[e.code]) {
+      const el = document.getElementById(keyMap[e.code]);
+      if (el) el.classList.remove('pressed');
+    }
+  });
+
+  // ---- Wheels: drag and scroll to rotate -------------------------------
+  document.querySelectorAll('.wheel').forEach((wheel) => {
+    const ribs = wheel.querySelector('.wheel__ribs');
+    let offset = 0;
+    let dragging = false;
+    let lastY = 0;
+
+    const apply = () => {
+      // Limit so the rib pattern visually rotates but the offset wraps
+      ribs.style.transform = `translateY(${(offset % 4) - 2}px)`;
+    };
+
+    wheel.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      offset += e.deltaY * 0.4;
+      apply();
+    }, { passive: false });
+
+    wheel.addEventListener('mousedown', (e) => {
+      dragging = true;
+      lastY = e.clientY;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const dy = e.clientY - lastY;
+      lastY = e.clientY;
+      offset += dy;
+      apply();
+    });
+
+    document.addEventListener('mouseup', () => { dragging = false; });
+
+    // Touch support
+    wheel.addEventListener('touchstart', (e) => {
+      dragging = true;
+      lastY = e.touches[0].clientY;
+    }, { passive: true });
+
+    wheel.addEventListener('touchmove', (e) => {
+      if (!dragging) return;
+      const dy = e.touches[0].clientY - lastY;
+      lastY = e.touches[0].clientY;
+      offset += dy;
+      apply();
+    }, { passive: true });
+
+    wheel.addEventListener('touchend', () => { dragging = false; });
+  });
+</script>
+</body>
+</html>

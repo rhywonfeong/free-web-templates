@@ -1,0 +1,1738 @@
+<!DOCTYPE html>
+<html lang="lv">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>4Bizz — Publicē savu klātbūtni dienās</title>
+<meta
+name="description"
+content="4Bizz palīdz radīt mikrolapas, rezervācijas, portfolio un digitālu klātbūtni dažās minūtēs."
+/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link
+href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Inter:opsz,wght@14..32,100..900&amp;display=swap"
+rel="stylesheet"
+/>
+<script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script></head>
+
+  <body
+    class="min-h-screen bg-[#ECEDEE] text-[#232427] antialiased"
+    style="font-family:Inter,Arial,sans-serif;"
+  >
+    <div class="mx-auto max-w-[1440px] p-3 sm:p-5">
+      <main
+        class="relative overflow-hidden rounded-[28px] bg-[#ECEDEE] shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] sm:rounded-[40px]"
+      >
+        <canvas
+          id="meshGL"
+          class="pointer-events-none absolute right-0 top-0 z-0 h-full w-full opacity-80"
+        ></canvas>
+
+        <nav
+          id="nav"
+          class="fixed left-1/2 top-3 z-50 flex w-[calc(100%-1.5rem)] max-w-[1400px] -translate-x-1/2 items-center justify-between rounded-full px-4 py-3 transition-all duration-300 sm:top-5 sm:w-[calc(100%-2.5rem)] sm:px-6"
+        >
+          <a
+            href="#sakums"
+            class="group relative z-10 flex items-center gap-3"
+            aria-label="4Bizz sākumlapa"
+          >
+            <span class="relative flex h-7 w-8 items-center">
+              <span
+                class="absolute left-0 h-6 w-6 rounded-full bg-[#171719]"
+              ></span>
+              <span
+                class="absolute left-3.5 h-6 w-6 rounded-full bg-[#E0562A]"
+              ></span>
+            </span>
+            <span class="text-base font-semibold tracking-[-0.08em]">
+              4BIZZ
+            </span>
+          </a>
+
+          <div
+            class="hidden items-center gap-7 text-xs font-medium text-[#5B5D61] lg:flex"
+          >
+            <a href="#pakalpojumi" class="transition hover:text-[#171719]">
+              Pakalpojumi
+            </a>
+            <a href="#iespejas" class="transition hover:text-[#171719]">
+              Iespējas
+            </a>
+            <a href="#darbi" class="transition hover:text-[#171719]">Darbi</a>
+            <a href="#plani" class="transition hover:text-[#171719]">Plāni</a>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <a
+              href="#kontakts"
+              class="hidden rounded-full bg-[#171719] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#E0562A] sm:inline-flex"
+            >
+              Sākt bez maksas
+            </a>
+            <button
+              id="menuButton"
+              class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] lg:hidden"
+              aria-label="Atvērt izvēlni"
+            >
+              <iconify-icon
+                icon="solar:hamburger-menu-linear"
+                width="20"
+                stroke-width="1.5"
+              ></iconify-icon>
+            </button>
+          </div>
+        </nav>
+
+        <div
+          id="mobileMenu"
+          class="fixed inset-x-3 top-[4.75rem] z-40 hidden rounded-[24px] bg-[#171719] p-3 shadow-2xl sm:inset-x-5"
+        >
+          <a
+            href="#pakalpojumi"
+            class="flex items-center justify-between rounded-2xl px-4 py-4 text-sm text-white hover:bg-white/10"
+          >
+            Pakalpojumi
+            <iconify-icon
+              icon="solar:arrow-right-linear"
+              width="18"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </a>
+          <a
+            href="#iespejas"
+            class="flex items-center justify-between rounded-2xl px-4 py-4 text-sm text-white hover:bg-white/10"
+          >
+            Iespējas
+            <iconify-icon
+              icon="solar:arrow-right-linear"
+              width="18"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </a>
+          <a
+            href="#darbi"
+            class="flex items-center justify-between rounded-2xl px-4 py-4 text-sm text-white hover:bg-white/10"
+          >
+            Darbi
+            <iconify-icon
+              icon="solar:arrow-right-linear"
+              width="18"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </a>
+          <a
+            href="#plani"
+            class="flex items-center justify-between rounded-2xl px-4 py-4 text-sm text-white hover:bg-white/10"
+          >
+            Plāni
+            <iconify-icon
+              icon="solar:arrow-right-linear"
+              width="18"
+              stroke-width="1.5"
+            ></iconify-icon>
+          </a>
+        </div>
+
+        <section
+          id="sakums"
+          class="relative z-10 flex min-h-[48rem] items-center justify-center px-5 pb-20 pt-36 sm:min-h-[52rem] sm:px-10"
+        >
+          <div class="relative mx-auto max-w-5xl text-center">
+            <div
+              data-reveal=""
+              class="mb-7 inline-flex items-center gap-2 rounded-full border border-black/5 bg-white/80 px-3 py-2 text-xs font-medium text-[#5B5D61] shadow-[0_1px_0_rgba(255,255,255,0.9)_inset]"
+              style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease,transform .7s ease;"
+            >
+              <span class="h-2 w-2 rounded-full bg-[#E0562A]"></span>
+              Viena vieta tavai digitālajai klātbūtnei
+            </div>
+
+            <h1
+              data-wchar=""
+              data-reveal=""
+              class="relative text-5xl font-semibold leading-[0.95] tracking-[-0.055em] text-[#171719] sm:text-7xl lg:text-8xl"
+              style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .08s,transform .7s ease .08s;"
+            >
+              Publicē savu
+              <br />
+              klātbūtni
+              <span class="relative inline-block">minūtēs</span>
+            </h1>
+
+            <p
+              data-reveal=""
+              class="mx-auto mt-7 max-w-xl text-sm leading-6 text-[#5B5D61] sm:text-base"
+              style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .15s,transform .7s ease .15s;"
+            >
+              Izveido mikrolapu, pieņem rezervācijas un parādi savu darbu vienā
+              skaistā saitē — bez tehniskām galvassāpēm.
+            </p>
+
+            <div
+              data-reveal=""
+              class="mt-8 flex flex-col justify-center gap-3 sm:flex-row"
+              style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .22s,transform .7s ease .22s;"
+            >
+              <a
+                href="#kontakts"
+                class="inline-flex items-center justify-center gap-2 rounded-full bg-[#171719] px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-[#E0562A]"
+              >
+                Izveidot savu lapu
+                <iconify-icon
+                  icon="solar:arrow-right-linear"
+                  width="18"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </a>
+              <a
+                href="#darbi"
+                class="inline-flex items-center justify-center gap-2 rounded-full border border-black/10 bg-white/75 px-5 py-3 text-sm font-semibold transition hover:bg-white"
+              >
+                Apskatīt piemērus
+                <iconify-icon
+                  icon="solar:play-circle-linear"
+                  width="18"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </a>
+            </div>
+            <div
+              class="mx-auto mt-10 grid max-w-3xl grid-cols-2 gap-x-6 gap-y-6 text-left sm:mt-12 sm:grid-cols-4 sm:gap-x-5"
+            >
+              <div class="border-l border-black/10 pl-3">
+                <span class="text-xs font-semibold text-[#E0562A]">01</span>
+                <p
+                  class="mt-2 text-sm font-semibold tracking-[-0.03em] text-[#171719]"
+                >
+                  Reģistrējies
+                </p>
+                <p class="mt-1 text-xs leading-5 text-[#5B5D61]">
+                  Konts bez saistībām
+                </p>
+              </div>
+              <div class="border-l border-black/10 pl-3">
+                <span class="text-xs font-semibold text-[#E0562A]">02</span>
+                <p
+                  class="mt-2 text-sm font-semibold tracking-[-0.03em] text-[#171719]"
+                >
+                  Izvēlies nozari
+                </p>
+                <p class="mt-1 text-xs leading-5 text-[#5B5D61]">
+                  No 7 kategorijām vai “Cits”
+                </p>
+              </div>
+              <div class="border-l border-black/10 pl-3">
+                <span class="text-xs font-semibold text-[#E0562A]">03</span>
+                <p
+                  class="mt-2 text-sm font-semibold tracking-[-0.03em] text-[#171719]"
+                >
+                  Aizpildi mikrolapu
+                </p>
+                <p class="mt-1 text-xs leading-5 text-[#5B5D61]">
+                  Foto, cena, kontakti
+                </p>
+              </div>
+              <div class="border-l border-black/10 pl-3">
+                <span class="text-xs font-semibold text-[#E0562A]">04</span>
+                <p
+                  class="mt-2 text-sm font-semibold tracking-[-0.03em] text-[#171719]"
+                >
+                  Publicē un dalies
+                </p>
+                <p class="mt-1 text-xs leading-5 text-[#5B5D61]">
+                  Sava saite jebkur
+                </p>
+              </div>
+            </div>
+
+            <div class="relative mx-auto mt-14 h-32 max-w-lg sm:mt-16">
+              <div
+                class="hero-tile absolute left-4 top-7 w-44 rounded-2xl bg-white p-3 text-left shadow-xl shadow-black/10 sm:left-10 sm:w-52"
+                style="transform:rotate(-6deg);"
+              >
+                <div class="mb-3 flex items-center justify-between">
+                  <span class="h-6 w-6 rounded-full bg-[#E0562A]"></span>
+                  <iconify-icon
+                    icon="solar:menu-dots-linear"
+                    width="17"
+                    stroke-width="1.5"
+                  ></iconify-icon>
+                </div>
+                <div class="h-2 w-20 rounded-full bg-[#171719]"></div>
+                <div class="mt-2 h-1.5 w-28 rounded-full bg-black/10"></div>
+              </div>
+              <div
+                class="hero-tile absolute left-1/2 top-0 z-10 w-48 -translate-x-1/2 rounded-2xl bg-[#171719] p-4 text-left text-white shadow-2xl shadow-black/20 sm:w-56"
+                style="transform:translateX(-50%) rotate(1deg);"
+              >
+                <div
+                  class="flex items-center justify-between text-xs text-white/60"
+                >
+                  <span>4Bizz</span>
+                  <span>01</span>
+                </div>
+                <div class="mt-5 h-2 w-28 rounded-full bg-white"></div>
+                <div class="mt-2 h-1.5 w-36 rounded-full bg-white/25"></div>
+                <div class="mt-5 flex gap-2">
+                  <span class="h-6 w-16 rounded-full bg-[#E0562A]"></span>
+                  <span class="h-6 w-6 rounded-full bg-white/15"></span>
+                </div>
+              </div>
+              <div
+                class="hero-tile absolute right-3 top-8 w-40 rounded-2xl bg-white p-3 text-left shadow-xl shadow-black/10 sm:right-8 sm:w-48"
+                style="transform:rotate(6deg);"
+              >
+                <div class="flex items-center gap-2">
+                  <span class="h-7 w-7 rounded-full bg-[#E0562A]/20"></span>
+                  <div class="h-2 w-20 rounded-full bg-[#171719]"></div>
+                </div>
+                <div class="mt-4 flex gap-1">
+                  <span class="h-9 flex-1 rounded-lg bg-[#E0562A]"></span>
+                  <span class="h-9 flex-1 rounded-lg bg-[#ECEDEE]"></span>
+                  <span class="h-9 flex-1 rounded-lg bg-[#ECEDEE]"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="kategorijas"
+          class="relative z-10 px-5 py-16 sm:px-10 sm:py-24"
+        >
+          <div class="mx-auto max-w-6xl">
+            <div class="mb-10 text-center">
+              <p
+                class="text-xs font-semibold uppercase tracking-[0.16em] text-[#E0562A]"
+              >
+                Vienā vietā dažādām nozarēm
+              </p>
+              <h2
+                data-wchar=""
+                class="mt-3 text-4xl font-semibold leading-none tracking-[-0.05em] sm:text-5xl"
+              >
+                Tava nozare. Tava saite.
+              </h2>
+            </div>
+            <div
+              id="categoryScroller"
+              class="flex snap-x snap-mandatory gap-4 overflow-x-auto px-[8vw] pb-5 pt-2 [-ms-overflow-style:none] [scrollbar-width:none] sm:px-2"
+              style="scroll-behavior:smooth;"
+            >
+              <article class="w-[13.5rem] shrink-0 snap-center sm:w-56">
+                <div
+                  class="overflow-hidden rounded-[28px] bg-white p-2 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)]"
+                >
+                  <div
+                    class="relative h-64 overflow-hidden rounded-[22px] bg-[#ECEDEE] sm:h-72"
+                  >
+                    <img
+                      src="https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&amp;fit=crop&amp;w=600&amp;q=85"
+                      alt="Skaistumkopšana un Beauty"
+                      class="h-full w-full object-cover"
+                    />
+                    <span
+                      class="absolute -bottom-3 left-3 rounded-full bg-[#E0562A] px-3 py-1.5 text-xs font-semibold text-white shadow-lg"
+                    >
+                      Manikīrs · 25€
+                    </span>
+                  </div>
+                  <div class="px-3 pb-3 pt-6">
+                    <span class="text-xs font-medium text-[#E0562A]">01</span>
+                    <h3
+                      class="mt-1 min-h-[2.6rem] text-base font-semibold leading-tight tracking-[-0.03em] text-[#171719]"
+                    >
+                      Skaistumkopšana un Beauty
+                    </h3>
+                    <div
+                      class="mt-4 flex items-center gap-2 border-t border-black/5 pt-3"
+                    >
+                      <span class="h-5 w-5 rounded-full bg-[#d2a38b]"></span>
+                      <span class="text-xs text-[#5B5D61]">Studio Lapa</span>
+                    </div>
+                  </div>
+                </div>
+                <p class="mt-3 text-center text-xs font-medium text-[#5B5D61]">
+                  Skaistumkopšana
+                </p>
+              </article>
+              <article class="w-[13.5rem] shrink-0 snap-center sm:w-56">
+                <div
+                  class="overflow-hidden rounded-[28px] bg-white p-2 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)]"
+                >
+                  <div
+                    class="relative h-64 overflow-hidden rounded-[22px] bg-[#ECEDEE] sm:h-72"
+                  >
+                    <img
+                      src="https://images.unsplash.com/photo-1515377905703-c4788e51af15?auto=format&amp;fit=crop&amp;w=600&amp;q=85"
+                      alt="Estētiskā medicīna"
+                      class="h-full w-full object-cover"
+                    />
+                    <span
+                      class="absolute -bottom-3 left-3 rounded-full bg-[#E0562A] px-3 py-1.5 text-xs font-semibold text-white shadow-lg"
+                    >
+                      Konsultācija · 65€
+                    </span>
+                  </div>
+                  <div class="px-3 pb-3 pt-6">
+                    <span class="text-xs font-medium text-[#E0562A]">02</span>
+                    <h3
+                      class="mt-1 min-h-[2.6rem] text-base font-semibold leading-tight tracking-[-0.03em] text-[#171719]"
+                    >
+                      Estētiskā medicīna
+                    </h3>
+                    <div
+                      class="mt-4 flex items-center gap-2 border-t border-black/5 pt-3"
+                    >
+                      <span class="h-5 w-5 rounded-full bg-[#c8b7a9]"></span>
+                      <span class="text-xs text-[#5B5D61]">Estētika</span>
+                    </div>
+                  </div>
+                </div>
+                <p class="mt-3 text-center text-xs font-medium text-[#5B5D61]">
+                  Medicīna
+                </p>
+              </article>
+              <article class="w-[13.5rem] shrink-0 snap-center sm:w-56">
+                <div
+                  class="overflow-hidden rounded-[28px] bg-white p-2 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)]"
+                >
+                  <div
+                    class="relative h-64 overflow-hidden rounded-[22px] bg-[#ECEDEE] sm:h-72"
+                  >
+                    <img
+                      src="https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&amp;fit=crop&amp;w=600&amp;q=85"
+                      alt="Būvniecība un dizains"
+                      class="h-full w-full object-cover"
+                    />
+                    <span
+                      class="absolute -bottom-3 left-3 rounded-full bg-[#E0562A] px-3 py-1.5 text-xs font-semibold text-white shadow-lg"
+                    >
+                      Renovācija · pēc tāmes
+                    </span>
+                  </div>
+                  <div class="px-3 pb-3 pt-6">
+                    <span class="text-xs font-medium text-[#E0562A]">03</span>
+                    <h3
+                      class="mt-1 min-h-[2.6rem] text-base font-semibold leading-tight tracking-[-0.03em] text-[#171719]"
+                    >
+                      Būvniecība un dizains
+                    </h3>
+                    <div
+                      class="mt-4 flex items-center gap-2 border-t border-black/5 pt-3"
+                    >
+                      <span class="h-5 w-5 rounded-full bg-[#8d795e]"></span>
+                      <span class="text-xs text-[#5B5D61]">Forma Studio</span>
+                    </div>
+                  </div>
+                </div>
+                <p class="mt-3 text-center text-xs font-medium text-[#5B5D61]">
+                  Būvniecība
+                </p>
+              </article>
+              <article class="w-[13.5rem] shrink-0 snap-center sm:w-56">
+                <div
+                  class="overflow-hidden rounded-[28px] bg-white p-2 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)]"
+                >
+                  <div
+                    class="relative h-64 overflow-hidden rounded-[22px] bg-[#ECEDEE] sm:h-72"
+                  >
+                    <img
+                      src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg"
+                      alt="Amatniecība un ražošana"
+                      class="h-full w-full object-cover"
+                    />
+                    <span
+                      class="absolute -bottom-3 left-3 rounded-full bg-[#E0562A] px-3 py-1.5 text-xs font-semibold text-white shadow-lg"
+                    >
+                      Keramika · 45€
+                    </span>
+                  </div>
+                  <div class="px-3 pb-3 pt-6">
+                    <span class="text-xs font-medium text-[#E0562A]">04</span>
+                    <h3
+                      class="mt-1 min-h-[2.6rem] text-base font-semibold leading-tight tracking-[-0.03em] text-[#171719]"
+                    >
+                      Amatniecība un ražošana
+                    </h3>
+                    <div
+                      class="mt-4 flex items-center gap-2 border-t border-black/5 pt-3"
+                    >
+                      <span class="h-5 w-5 rounded-full bg-[#a87354]"></span>
+                      <span class="text-xs text-[#5B5D61]">Māla māja</span>
+                    </div>
+                  </div>
+                </div>
+                <p class="mt-3 text-center text-xs font-medium text-[#5B5D61]">
+                  Amatniecība
+                </p>
+              </article>
+              <article class="w-[13.5rem] shrink-0 snap-center sm:w-56">
+                <div
+                  class="overflow-hidden rounded-[28px] bg-white p-2 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)]"
+                >
+                  <div
+                    class="relative h-64 overflow-hidden rounded-[22px] bg-[#ECEDEE] sm:h-72"
+                  >
+                    <img
+                      src="https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&amp;fit=crop&amp;w=600&amp;q=85"
+                      alt="Transports tirdzniecība"
+                      class="h-full w-full object-cover"
+                    />
+                    <span
+                      class="absolute -bottom-3 left-3 rounded-full bg-[#E0562A] px-3 py-1.5 text-xs font-semibold text-white shadow-lg"
+                    >
+                      BMW 320d · 15 000€
+                    </span>
+                  </div>
+                  <div class="px-3 pb-3 pt-6">
+                    <span class="text-xs font-medium text-[#E0562A]">05</span>
+                    <h3
+                      class="mt-1 min-h-[2.6rem] text-base font-semibold leading-tight tracking-[-0.03em] text-[#171719]"
+                    >
+                      Transports — tirdzniecība
+                    </h3>
+                    <div
+                      class="mt-4 flex items-center gap-2 border-t border-black/5 pt-3"
+                    >
+                      <span class="h-5 w-5 rounded-full bg-[#46494d]"></span>
+                      <span class="text-xs text-[#5B5D61]">Auto punkts</span>
+                    </div>
+                  </div>
+                </div>
+                <p class="mt-3 text-center text-xs font-medium text-[#5B5D61]">
+                  Transports
+                </p>
+              </article>
+              <article class="w-[13.5rem] shrink-0 snap-center sm:w-56">
+                <div
+                  class="overflow-hidden rounded-[28px] bg-white p-2 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)]"
+                >
+                  <div
+                    class="relative h-64 overflow-hidden rounded-[22px] bg-[#ECEDEE] sm:h-72"
+                  >
+                    <img
+                      src="https://images.unsplash.com/photo-1487754180451-c456f719a1fc?auto=format&amp;fit=crop&amp;w=600&amp;q=85"
+                      alt="Transporta remonts"
+                      class="h-full w-full object-cover"
+                    />
+                    <span
+                      class="absolute -bottom-3 left-3 rounded-full bg-[#E0562A] px-3 py-1.5 text-xs font-semibold text-white shadow-lg"
+                    >
+                      Diagnostika · 40€
+                    </span>
+                  </div>
+                  <div class="px-3 pb-3 pt-6">
+                    <span class="text-xs font-medium text-[#E0562A]">06</span>
+                    <h3
+                      class="mt-1 min-h-[2.6rem] text-base font-semibold leading-tight tracking-[-0.03em] text-[#171719]"
+                    >
+                      Transporta remonts
+                    </h3>
+                    <div
+                      class="mt-4 flex items-center gap-2 border-t border-black/5 pt-3"
+                    >
+                      <span class="h-5 w-5 rounded-full bg-[#566270]"></span>
+                      <span class="text-xs text-[#5B5D61]">Garāža 24</span>
+                    </div>
+                  </div>
+                </div>
+                <p class="mt-3 text-center text-xs font-medium text-[#5B5D61]">
+                  Remonts
+                </p>
+              </article>
+              <article class="w-[13.5rem] shrink-0 snap-center sm:w-56">
+                <div
+                  class="overflow-hidden rounded-[28px] bg-white p-2 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_14px_30px_-18px_rgba(35,36,39,0.25)]"
+                >
+                  <div
+                    class="relative h-64 overflow-hidden rounded-[22px] bg-[#ECEDEE] sm:h-72"
+                  >
+                    <img
+                      src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&amp;fit=crop&amp;w=600&amp;q=85"
+                      alt="Real Estate"
+                      class="h-full w-full object-cover"
+                    />
+                    <span
+                      class="absolute -bottom-3 left-3 rounded-full bg-[#E0562A] px-3 py-1.5 text-xs font-semibold text-white shadow-lg"
+                    >
+                      3-ist. dzīvoklis · 185 000€
+                    </span>
+                  </div>
+                  <div class="px-3 pb-3 pt-6">
+                    <span class="text-xs font-medium text-[#E0562A]">07</span>
+                    <h3
+                      class="mt-1 min-h-[2.6rem] text-base font-semibold leading-tight tracking-[-0.03em] text-[#171719]"
+                    >
+                      Real Estate
+                    </h3>
+                    <div
+                      class="mt-4 flex items-center gap-2 border-t border-black/5 pt-3"
+                    >
+                      <span class="h-5 w-5 rounded-full bg-[#b89578]"></span>
+                      <span class="text-xs text-[#5B5D61]">Rīga mājokļi</span>
+                    </div>
+                  </div>
+                </div>
+                <p class="mt-3 text-center text-xs font-medium text-[#5B5D61]">
+                  Nekustamie īpašumi
+                </p>
+              </article>
+            </div>
+            <div id="categoryDots" class="mt-3 flex justify-center gap-2">
+              <span class="h-1.5 w-5 rounded-full bg-[#E0562A]"></span>
+              <span class="h-1.5 w-1.5 rounded-full bg-black/15"></span>
+              <span class="h-1.5 w-1.5 rounded-full bg-black/15"></span>
+              <span class="h-1.5 w-1.5 rounded-full bg-black/15"></span>
+              <span class="h-1.5 w-1.5 rounded-full bg-black/15"></span>
+              <span class="h-1.5 w-1.5 rounded-full bg-black/15"></span>
+              <span class="h-1.5 w-1.5 rounded-full bg-black/15"></span>
+            </div>
+            <div class="mt-10 text-center">
+              <a
+                href="#kontakts"
+                class="inline-flex items-center justify-center gap-2 rounded-full bg-[#171719] px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-[#E0562A]"
+              >
+                Izveidot savu mikrolapu
+                <iconify-icon
+                  icon="solar:arrow-right-linear"
+                  width="18"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </a>
+              <p class="mt-3 text-xs text-[#5B5D61]">
+                Bezmaksas sākt · Bez saistībām
+              </p>
+            </div>
+          </div>
+        </section>
+        <section
+          id="pakalpojumi"
+          class="relative z-10 px-5 py-20 sm:px-10 sm:py-28"
+        >
+          <div class="mx-auto max-w-6xl">
+            <div
+              data-reveal=""
+              class="mb-10 flex flex-col justify-between gap-5 md:flex-row md:items-end"
+              style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease,transform .7s ease;"
+            >
+              <div>
+                <p
+                  class="text-xs font-semibold uppercase tracking-[0.16em] text-[#E0562A]"
+                >
+                  Pakalpojumi
+                </p>
+                <h2
+                  data-wchar=""
+                  class="mt-3 max-w-xl text-4xl font-semibold leading-none tracking-[-0.05em] sm:text-5xl"
+                >
+                  Viss vajadzīgais, lai sāktu.
+                </h2>
+              </div>
+              <p class="max-w-xs text-sm leading-6 text-[#5B5D61]">
+                Sakārto savu piedāvājumu vienā vietā un ļauj cilvēkiem viegli
+                atrast nākamo soli.
+              </p>
+            </div>
+
+            <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              <article
+                data-reveal=""
+                class="group rounded-[24px] bg-[#171719] p-5 text-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] transition duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/5"
+                style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .03s,transform .7s ease .03s;"
+              >
+                <div class="flex items-start justify-between">
+                  <img
+                    src="https://images.unsplash.com/photo-1467232004584-a241de8bcf5d?auto=format&amp;fit=crop&amp;w=240&amp;q=80"
+                    alt="Mikrolapas dizains"
+                    class="h-24 w-24 rounded-xl object-cover"
+                  />
+                  <span
+                    class="rounded-full bg-white/10 px-2.5 py-1 text-xs text-white/60"
+                  >
+                    gatavs pēc 5 min
+                  </span>
+                </div>
+                <h3 class="text-lg font-semibold tracking-[-0.03em] mt-5">
+                  Mikrolapas izveide
+                </h3>
+                <p class="mt-2 text-sm leading-6 text-white/60">
+                  Skaidra, moderna lapa tavam pakalpojumam vai zīmolam.
+                </p>
+              </article>
+              <article
+                data-reveal=""
+                class="group rounded-[24px] bg-[#171719] p-5 text-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] transition duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/5"
+                style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .08s,transform .7s ease .08s;"
+              >
+                <div class="flex items-start justify-between">
+                  <img
+                    src="https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&amp;fit=crop&amp;w=240&amp;q=80"
+                    alt="Rezervāciju plānošana"
+                    class="h-24 w-24 rounded-xl object-cover"
+                  />
+                  <span
+                    class="rounded-full bg-white/10 px-2.5 py-1 text-xs text-white/60"
+                  >
+                    gatavs pēc 10 min
+                  </span>
+                </div>
+                <h3 class="text-lg font-semibold tracking-[-0.03em] mt-5">
+                  Rezervācijas sistēma
+                </h3>
+                <p class="mt-2 text-sm leading-6 text-white/60">
+                  Dod klientam ērtu laiku pieteikties pašam.
+                </p>
+              </article>
+              <article
+                data-reveal=""
+                class="group rounded-[24px] bg-[#171719] p-5 text-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] transition duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/5"
+                style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .13s,transform .7s ease .13s;"
+              >
+                <div class="flex items-start justify-between">
+                  <img
+                    src="https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&amp;fit=crop&amp;w=240&amp;q=80"
+                    alt="Tiešsaistes maksājums"
+                    class="h-24 w-24 rounded-xl object-cover"
+                  />
+                  <span
+                    class="rounded-full bg-white/10 px-2.5 py-1 text-xs text-white/60"
+                  >
+                    gatavs pēc 15 min
+                  </span>
+                </div>
+                <h3 class="text-lg font-semibold tracking-[-0.03em] mt-5">
+                  Stripe maksājumi
+                </h3>
+                <p class="mt-2 text-sm leading-6 text-white/60">
+                  Pieņem apmaksu par pakalpojumu vai produktu tiešsaistē.
+                </p>
+              </article>
+              <article
+                data-reveal=""
+                class="group rounded-[24px] bg-[#171719] p-5 text-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] transition duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/5"
+                style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .18s,transform .7s ease .18s;"
+              >
+                <div class="flex items-start justify-between">
+                  <img
+                    src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&amp;fit=crop&amp;w=240&amp;q=80"
+                    alt="Pārskatāma kolekcija"
+                    class="h-24 w-24 rounded-xl object-cover"
+                  />
+                  <span
+                    class="rounded-full bg-white/10 px-2.5 py-1 text-xs text-white/60"
+                  >
+                    gatavs pēc 3 min
+                  </span>
+                </div>
+                <h3 class="text-lg font-semibold tracking-[-0.03em] mt-5">
+                  Kolekciju grupēšana
+                </h3>
+                <p class="mt-2 text-sm leading-6 text-white/60">
+                  Saliec produktus, objektus vai pakalpojumus pārskatāmi.
+                </p>
+              </article>
+              <article
+                data-reveal=""
+                class="group rounded-[24px] bg-[#171719] p-5 text-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] transition duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/5"
+                style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .23s,transform .7s ease .23s;"
+              >
+                <div class="flex items-start justify-between">
+                  <img
+                    src="https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&amp;fit=crop&amp;w=240&amp;q=80"
+                    alt="Portfolio projekts"
+                    class="h-24 w-24 rounded-xl object-cover"
+                  />
+                  <span
+                    class="rounded-full bg-white/10 px-2.5 py-1 text-xs text-white/60"
+                  >
+                    gatavs pēc 10 min
+                  </span>
+                </div>
+                <h3 class="text-lg font-semibold tracking-[-0.03em] mt-5">
+                  Portfolio projekti
+                </h3>
+                <p class="mt-2 text-sm leading-6 text-white/60">
+                  Parādi paveikto tā, lai darbs runā tavā vietā.
+                </p>
+              </article>
+              <article
+                data-reveal=""
+                class="group rounded-[24px] bg-[#171719] p-5 text-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] transition duration-300 hover:-translate-y-1"
+                style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .28s,transform .7s ease .28s;"
+              >
+                <div class="flex items-start justify-between">
+                  <img
+                    src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&amp;fit=crop&amp;w=240&amp;q=80"
+                    alt="AI asistents darbā"
+                    class="h-24 w-24 rounded-xl object-cover"
+                  />
+                  <span
+                    class="rounded-full bg-white/10 px-2.5 py-1 text-xs text-white/60"
+                  >
+                    drīzumā
+                  </span>
+                </div>
+                <h3 class="text-lg font-semibold tracking-[-0.03em] mt-5">
+                  AI asistents
+                </h3>
+                <p class="mt-2 text-sm leading-6 text-white/60">
+                  Palīgs tekstiem, idejām un tava profila pirmajai versijai.
+                </p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="relative z-10 px-5 py-16 sm:px-10">
+          <div class="mx-auto max-w-6xl">
+            <p
+              data-reveal=""
+              class="mb-7 text-center text-xs font-semibold uppercase tracking-[0.16em] text-[#5B5D61]"
+              style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease,transform .7s ease;"
+            >
+              Radīts dažādiem darbiem
+            </p>
+            <div
+              class="flex flex-col items-center justify-center sm:flex-row sm:-space-x-6"
+            >
+              <div
+                data-reveal=""
+                class="w-full max-w-sm rounded-full bg-white px-7 py-7 text-center shadow-lg shadow-black/5 sm:rotate-[-1deg]"
+                style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .05s,transform .7s ease .05s;"
+              >
+                <strong
+                  class="text-5xl font-semibold tracking-[-0.06em] text-[#2E3034]"
+                >
+                  7
+                </strong>
+                <span class="ml-2 text-sm font-medium text-[#E0562A]">
+                  nozares
+                </span>
+              </div>
+              <div
+                data-reveal=""
+                class="relative z-10 mt-2 w-full max-w-sm rounded-full bg-[#171719] px-7 py-7 text-center text-white shadow-xl sm:mt-0 sm:rotate-0"
+                style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .1s,transform .7s ease .1s;"
+              >
+                <strong class="text-5xl font-semibold tracking-[-0.06em]">
+                  36+
+                </strong>
+                <span class="ml-2 text-sm font-medium text-[#F0754E]">
+                  dizaina kombinācijas
+                </span>
+              </div>
+              <div
+                data-reveal=""
+                class="w-full max-w-sm rounded-full bg-white px-7 py-7 text-center shadow-lg shadow-black/5 sm:rotate-[1deg]"
+                style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .15s,transform .7s ease .15s;"
+              >
+                <strong
+                  class="text-5xl font-semibold tracking-[-0.06em] text-[#2E3034]"
+                >
+                  0€
+                </strong>
+                <span class="ml-2 text-sm font-medium text-[#E0562A]">
+                  sākt
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="iespejas"
+          class="relative z-10 px-3 py-16 sm:px-5 sm:py-24"
+        >
+          <div
+            class="mx-auto max-w-6xl rounded-[28px] bg-[#171719] p-5 text-white sm:rounded-[40px] sm:p-10"
+          >
+            <div class="mb-10 max-w-2xl">
+              <p
+                class="text-xs font-semibold uppercase tracking-[0.16em] text-[#F0754E]"
+              >
+                Precēm, objektiem un nekustamajam īpašumam
+              </p>
+              <h2
+                class="mt-3 text-4xl font-semibold leading-none tracking-[-0.05em] sm:text-5xl"
+              >
+                Parādi savu īpašumu vai preci visā krāšņumā — bez
+                ierobežojumiem.
+              </h2>
+              <p class="mt-5 max-w-xl text-sm leading-6 text-white/60">
+                Izveido bagātīgāku apskates pieredzi, nekā spēj piedāvāt jebkurš
+                sludinājumu portāls. Ļauj pircējiem izpētīt katru leņķi,
+                specifikāciju, dokumentu un detaļu.
+              </p>
+            </div>
+            <div class="grid gap-6 lg:grid-cols-[1.35fr_.65fr] lg:items-start">
+              <article
+                class="overflow-hidden rounded-[24px] bg-[#202024] p-4 sm:p-5"
+              >
+                <div class="mb-4 flex items-center justify-between gap-3">
+                  <div
+                    class="flex rounded-full bg-white/10 p-1 text-xs font-medium"
+                  >
+                    <span
+                      class="rounded-full bg-white px-3 py-2 text-[#171719]"
+                    >
+                      Foto
+                    </span>
+                    <span class="px-3 py-2 text-white/60">360° tūre</span>
+                    <span class="px-3 py-2 text-white/60">Video</span>
+                  </div>
+                  <span class="text-xs text-white/50">
+                    Grezns mājokļa interjers
+                  </span>
+                </div>
+                <div class="relative overflow-hidden rounded-2xl">
+                  <img
+                    src="https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&amp;fit=crop&amp;w=1200&amp;q=85"
+                    alt="Grezns mājokļa interjers"
+                    class="h-64 w-full object-cover sm:h-80"
+                  />
+                  <div
+                    class="absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-black/70 to-transparent p-5"
+                  >
+                    <span
+                      class="rounded-full bg-white/90 px-3 py-2 text-xs font-semibold text-[#171719]"
+                    >
+                      Velc, lai apskatītu 360°
+                    </span>
+                    <span
+                      class="flex h-10 w-10 items-center justify-center rounded-full bg-[#E0562A] text-white"
+                    >
+                      <iconify-icon
+                        icon="solar:arrow-right-linear"
+                        width="18"
+                        stroke-width="1.5"
+                      ></iconify-icon>
+                    </span>
+                  </div>
+                </div>
+                <div class="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
+                  <div class="rounded-xl bg-white/10 px-3 py-3">
+                    <span class="block text-white/45">Kopējā platība</span>
+                    <strong class="mt-1 block text-sm font-semibold">
+                      164 m²
+                    </strong>
+                  </div>
+                  <div class="rounded-xl bg-white/10 px-3 py-3">
+                    <span class="block text-white/45">Guļamistabas</span>
+                    <strong class="mt-1 block text-sm font-semibold">3</strong>
+                  </div>
+                  <div class="rounded-xl bg-white/10 px-3 py-3">
+                    <span class="block text-white/45">Energo klase</span>
+                    <strong class="mt-1 block text-sm font-semibold">A+</strong>
+                  </div>
+                </div>
+              </article>
+              <div class="space-y-3">
+                <div class="rounded-[20px] bg-[#202024] p-5">
+                  <span
+                    class="text-xs font-semibold uppercase tracking-[0.16em] text-[#F0754E]"
+                  >
+                    01
+                  </span>
+                  <h3 class="mt-3 text-xl font-semibold tracking-[-0.04em]">
+                    Interaktīvs 360° logrīks
+                  </h3>
+                  <p class="mt-2 text-sm leading-6 text-white/55">
+                    Dabiski pārvietojies starp fotoattēliem, 360° un video.
+                  </p>
+                </div>
+                <div class="rounded-[20px] bg-[#202024] p-5">
+                  <span
+                    class="text-xs font-semibold uppercase tracking-[0.16em] text-[#F0754E]"
+                  >
+                    02
+                  </span>
+                  <h3 class="mt-3 text-xl font-semibold tracking-[-0.04em]">
+                    Tehniskās specifikācijas
+                  </h3>
+                  <p class="mt-2 text-sm leading-6 text-white/55">
+                    Specifikācijas, stāvu plāni, faili un atrašanās vieta
+                    vienuviet.
+                  </p>
+                </div>
+                <div class="rounded-[20px] bg-[#202024] p-5">
+                  <p
+                    class="text-xs font-semibold uppercase tracking-[0.16em] text-white/45"
+                  >
+                    Objekta faili
+                  </p>
+                  <div
+                    class="mt-3 flex items-center gap-3 rounded-xl bg-white/10 p-2"
+                  >
+                    <img
+                      src="https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&amp;fit=crop&amp;w=160&amp;q=80"
+                      alt="Stāvu plāna priekšskatījums"
+                      class="h-12 w-14 rounded-lg object-cover"
+                    />
+                    <div class="min-w-0 flex-1">
+                      <p class="text-sm font-semibold">Stāvu plāna PDF</p>
+                      <p class="mt-1 text-xs text-white/45">
+                        Pievienots objekta fails
+                      </p>
+                    </div>
+                    <iconify-icon
+                      icon="solar:document-text-linear"
+                      class="text-[#F0754E]"
+                      width="20"
+                      stroke-width="1.5"
+                    ></iconify-icon>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="darbi" class="relative z-10 px-5 py-20 sm:px-10 sm:py-28">
+          <div
+            class="mx-auto grid max-w-6xl gap-8 lg:grid-cols-5 lg:items-center"
+          >
+            <div
+              data-reveal=""
+              class="lg:col-span-3"
+              style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease,transform .7s ease;"
+            >
+              <p
+                class="text-xs font-semibold uppercase tracking-[0.16em] text-[#E0562A]"
+              >
+                Darbi
+              </p>
+              <h2
+                data-wchar=""
+                class="mt-3 text-4xl font-semibold leading-none tracking-[-0.05em] sm:text-5xl"
+              >
+                Mazāk klikšķu. Vairāk skaidrības.
+              </h2>
+              <div class="mt-9 space-y-1">
+                <article
+                  class="group rounded-2xl p-4 transition hover:bg-white"
+                >
+                  <div class="flex items-start gap-4">
+                    <span class="mt-1 text-[#E0562A]">01</span>
+                    <div>
+                      <h3 class="font-semibold tracking-[-0.03em]">
+                        Auto pārdošana 3 dienās
+                      </h3>
+                      <p class="mt-1 text-sm leading-6 text-[#5B5D61]">
+                        Pilns 360° apskats vietā, kur agrāk bija tikai 5 foto.
+                      </p>
+                    </div>
+                  </div>
+                </article>
+                <article
+                  class="group rounded-2xl p-4 transition hover:bg-white"
+                >
+                  <div class="flex items-start gap-4">
+                    <span class="mt-1 text-[#E0562A]">02</span>
+                    <div>
+                      <h3 class="font-semibold tracking-[-0.03em]">
+                        NĪ aģente ar 24 aktīviem objektiem
+                      </h3>
+                      <p class="mt-1 text-sm leading-6 text-[#5B5D61]">
+                        Visi piedāvājumi zem vienas personīgas un viegli dalāmas
+                        saites.
+                      </p>
+                    </div>
+                  </div>
+                </article>
+                <article
+                  class="group rounded-2xl p-4 transition hover:bg-white"
+                >
+                  <div class="flex items-start gap-4">
+                    <span class="mt-1 text-[#E0562A]">03</span>
+                    <div>
+                      <h3 class="font-semibold tracking-[-0.03em]">
+                        Flīzētājs ar pilnu portfolio
+                      </h3>
+                      <p class="mt-1 text-sm leading-6 text-[#5B5D61]">
+                        Pirms un pēc katram projektam — ne tikai solījumi
+                        vārdos.
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <div
+              data-reveal=""
+              class="relative min-h-[25rem] overflow-hidden rounded-[28px] bg-[#171719] p-6 text-white lg:col-span-2 lg:rotate-[1deg]"
+              style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .12s,transform .7s ease .12s;"
+            >
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-semibold">Klātbūtnes pieaugums</span>
+                <iconify-icon
+                  icon="solar:chart-2-linear"
+                  width="22"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </div>
+              <div
+                class="mt-12 flex h-44 items-end justify-between gap-3 border-b border-white/10 px-2"
+              >
+                <div
+                  class="w-full rounded-t-full bg-white/15"
+                  style="height:22%"
+                ></div>
+                <div
+                  class="w-full rounded-t-full bg-white/20"
+                  style="height:36%"
+                ></div>
+                <div
+                  class="w-full rounded-t-full bg-white/30"
+                  style="height:48%"
+                ></div>
+                <div
+                  class="w-full rounded-t-full bg-[#F0754E]"
+                  style="height:66%"
+                ></div>
+                <div
+                  class="w-full rounded-t-full bg-[#E0562A]"
+                  style="height:84%"
+                ></div>
+                <div
+                  class="w-full rounded-t-full bg-[#E0562A]"
+                  style="height:96%"
+                ></div>
+              </div>
+              <div class="mt-5 flex justify-between text-xs text-white/40">
+                <span>Jan</span>
+                <span>Feb</span>
+                <span>Mar</span>
+                <span>Apr</span>
+                <span>Mai</span>
+                <span>Jun</span>
+              </div>
+              <h3 class="mt-8 text-xl font-semibold tracking-[-0.04em]">
+                Vieta, kur tava auditorija aug.
+              </h3>
+              <p class="mt-2 max-w-md text-sm leading-6 text-white/55">
+                Viena saite sociālajiem tīkliem, reklāmām un ikvienam, kurš
+                meklē tieši tevi.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section id="plani" class="relative z-10 px-5 py-20 sm:px-10">
+          <div class="mx-auto max-w-6xl">
+            <div
+              data-reveal=""
+              class="mb-11 text-center"
+              style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease,transform .7s ease;"
+            >
+              <p
+                class="text-xs font-semibold uppercase tracking-[0.16em] text-[#E0562A]"
+              >
+                Plāni
+              </p>
+              <h2
+                data-wchar=""
+                class="mt-3 text-4xl font-semibold leading-none tracking-[-0.05em] sm:text-5xl"
+              >
+                Sāc mazā apjomā. Aug, kad esi gatavs.
+              </h2>
+            </div>
+
+            <div class="grid gap-4 lg:grid-cols-3 lg:items-center">
+              <article
+                data-reveal=""
+                class="rounded-[24px] bg-white p-6 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] lg:rotate-[-1deg]"
+                style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .05s,transform .7s ease .05s;"
+              >
+                <p class="text-sm font-semibold">Individual</p>
+                <p class="mt-5 text-4xl font-semibold tracking-[-0.06em]">
+                  9€
+                  <span class="text-sm font-medium text-[#5B5D61]">/ mēn.</span>
+                </p>
+                <p class="mt-4 text-sm leading-6 text-[#5B5D61]">
+                  Personīgai lapai, pakalpojumam vai pirmajam portfolio.
+                </p>
+                <ul class="mt-7 space-y-3 text-sm">
+                  <li class="flex gap-2">
+                    <iconify-icon
+                      icon="solar:check-circle-linear"
+                      class="text-[#E0562A]"
+                      width="18"
+                      stroke-width="1.5"
+                    ></iconify-icon>
+                    Viena mikrolapa
+                  </li>
+                  <li class="flex gap-2">
+                    <iconify-icon
+                      icon="solar:check-circle-linear"
+                      class="text-[#E0562A]"
+                      width="18"
+                      stroke-width="1.5"
+                    ></iconify-icon>
+                    Pamata analītika
+                  </li>
+                </ul>
+                <a
+                  href="#kontakts"
+                  class="mt-8 flex justify-center rounded-full border border-black/10 py-3 text-sm font-semibold"
+                >
+                  Izvēlēties
+                </a>
+              </article>
+
+              <article
+                data-reveal=""
+                class="relative rounded-[24px] bg-[#171719] p-7 text-white shadow-2xl shadow-black/20 lg:scale-[1.04]"
+                style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .1s,transform .7s ease .1s;"
+              >
+                <span
+                  class="absolute right-5 top-5 rounded-full bg-[#E0562A] px-2.5 py-1 text-xs font-semibold"
+                >
+                  Populārākais
+                </span>
+                <p class="text-sm font-semibold">Business</p>
+                <p class="mt-5 text-4xl font-semibold tracking-[-0.06em]">
+                  29€
+                  <span class="text-sm font-medium text-white/50">/ mēn.</span>
+                </p>
+                <p class="mt-4 text-sm leading-6 text-white/60">
+                  Uzņēmumam, kam svarīgi saņemt pieprasījumus un rezervācijas.
+                </p>
+                <ul class="mt-7 space-y-3 text-sm">
+                  <li class="flex gap-2">
+                    <iconify-icon
+                      icon="solar:check-circle-linear"
+                      class="text-[#F0754E]"
+                      width="18"
+                      stroke-width="1.5"
+                    ></iconify-icon>
+                    Neierobežoti projekti
+                  </li>
+                  <li class="flex gap-2">
+                    <iconify-icon
+                      icon="solar:check-circle-linear"
+                      class="text-[#F0754E]"
+                      width="18"
+                      stroke-width="1.5"
+                    ></iconify-icon>
+                    Rezervācijas un maksājumi
+                  </li>
+                  <li class="flex gap-2">
+                    <iconify-icon
+                      icon="solar:check-circle-linear"
+                      class="text-[#F0754E]"
+                      width="18"
+                      stroke-width="1.5"
+                    ></iconify-icon>
+                    Prioritārs atbalsts
+                  </li>
+                </ul>
+                <a
+                  href="#kontakts"
+                  class="mt-8 flex justify-center rounded-full bg-[#E0562A] py-3 text-sm font-semibold transition hover:bg-[#F0754E]"
+                >
+                  Sākt ar Business
+                </a>
+              </article>
+
+              <article
+                data-reveal=""
+                class="rounded-[24px] bg-white p-6 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] lg:rotate-[1deg]"
+                style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .15s,transform .7s ease .15s;"
+              >
+                <p class="text-sm font-semibold">Pro</p>
+                <p class="mt-5 text-4xl font-semibold tracking-[-0.06em]">
+                  19€
+                  <span class="text-sm font-medium text-[#5B5D61]">/ mēn.</span>
+                </p>
+                <p class="mt-4 text-sm leading-6 text-[#5B5D61]">
+                  Vairāk saturam, kolekcijām un aktīvai klientu plūsmai.
+                </p>
+                <ul class="mt-7 space-y-3 text-sm">
+                  <li class="flex gap-2">
+                    <iconify-icon
+                      icon="solar:check-circle-linear"
+                      class="text-[#E0562A]"
+                      width="18"
+                      stroke-width="1.5"
+                    ></iconify-icon>
+                    Portfolio un kolekcijas
+                  </li>
+                  <li class="flex gap-2">
+                    <iconify-icon
+                      icon="solar:check-circle-linear"
+                      class="text-[#E0562A]"
+                      width="18"
+                      stroke-width="1.5"
+                    ></iconify-icon>
+                    Pielāgots domēns
+                  </li>
+                </ul>
+                <a
+                  href="#kontakts"
+                  class="mt-8 flex justify-center rounded-full border border-black/10 py-3 text-sm font-semibold"
+                >
+                  Izvēlēties
+                </a>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="relative z-10 px-5 py-20 sm:px-10">
+          <div class="mx-auto grid max-w-6xl gap-3 lg:grid-cols-3">
+            <article
+              data-reveal=""
+              class="relative min-h-[27.5rem] overflow-hidden rounded-[28px] bg-gradient-to-br from-[#7D8791] to-[#22252A] p-6 text-white"
+              style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease,transform .7s ease;"
+            >
+              <div
+                class="absolute inset-0 bg-[radial-gradient(circle_at_70%_25%,rgba(224,86,42,.8),transparent_20%),linear-gradient(to_top,rgba(0,0,0,.75),transparent_65%)]"
+              ></div>
+              <div class="absolute bottom-6 left-6 right-6">
+                <p
+                  class="text-xs font-semibold uppercase tracking-[0.16em] text-white/60"
+                >
+                  Tavs stāsts
+                </p>
+                <h3
+                  class="mt-2 text-3xl font-semibold leading-none tracking-[-0.05em]"
+                >
+                  Darbs, kas izskatās tikpat labi kā dzīvē.
+                </h3>
+              </div>
+            </article>
+            <article
+              data-reveal=""
+              class="relative min-h-[27.5rem] overflow-hidden rounded-[28px] bg-[#C9C9C7]"
+              style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .08s,transform .7s ease .08s;"
+            >
+              <div
+                class="absolute inset-0 bg-[linear-gradient(135deg,#8a8a87,#dededb_44%,#777773)]"
+                style="filter:grayscale(1)"
+              ></div>
+              <div
+                class="absolute inset-x-10 top-10 h-72 rounded-t-[50%] bg-black/25"
+              ></div>
+              <div
+                class="absolute bottom-6 left-6 right-6 rounded-2xl bg-white/85 p-4 backdrop-blur"
+              >
+                <p
+                  class="text-xs font-semibold uppercase tracking-[0.16em] text-[#5B5D61]"
+                >
+                  Par mums
+                </p>
+                <p class="mt-2 text-sm leading-6">
+                  Mēs ticam, ka profesionālai klātbūtnei internetā jābūt
+                  pieejamai ikvienam.
+                </p>
+              </div>
+            </article>
+            <article
+              data-reveal=""
+              class="flex min-h-[27.5rem] flex-col justify-between rounded-[28px] bg-[#171719] p-6 text-white"
+              style="opacity:0;transform:translateY(1rem);transition:opacity .7s ease .15s,transform .7s ease .15s;"
+            >
+              <div>
+                <p
+                  class="text-xs font-semibold uppercase tracking-[0.16em] text-[#F0754E]"
+                >
+                  4Bizz studija
+                </p>
+                <h3
+                  class="mt-4 text-3xl font-semibold leading-none tracking-[-0.05em]"
+                >
+                  Mazāk sarežģījumu. Vairāk tava darba.
+                </h3>
+              </div>
+              <div>
+                <p class="max-w-xs text-sm leading-6 text-white/60">
+                  Raksti mums ar ideju, kas šobrīd vēl dzīvo piezīmēs, galvā vai
+                  WhatsApp sarakstē.
+                </p>
+                <a
+                  href="mailto:hello@4bizz.lv"
+                  class="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-white"
+                >
+                  hello@4bizz.lv
+                  <iconify-icon
+                    icon="solar:arrow-right-linear"
+                    width="18"
+                    stroke-width="1.5"
+                  ></iconify-icon>
+                </a>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <footer id="kontakts" class="relative z-10 px-3 pb-3 sm:px-5 sm:pb-5">
+          <div
+            class="rounded-[28px] bg-white px-5 py-14 sm:rounded-[40px] sm:px-10 sm:py-20"
+          >
+            <div class="mx-auto max-w-4xl text-center">
+              <p
+                class="text-xs font-semibold uppercase tracking-[0.16em] text-[#E0562A]"
+              >
+                Sāc sarunu
+              </p>
+              <h2
+                data-wchar=""
+                class="mt-4 text-4xl font-semibold leading-[0.98] tracking-[-0.055em] text-[#171719] sm:text-6xl"
+              >
+                Parādi mums, kas tevi kavē publicēties tiešsaistē. Mēs to
+                pārvērtīsim par
+                <span
+                  style="font-family:'Instrument Serif',serif;font-style:italic;font-weight:400;letter-spacing:-0.01em;"
+                >
+                  mikrolapu.
+                </span>
+              </h2>
+
+              <form
+                id="leadForm"
+                class="mx-auto mt-9 flex max-w-xl flex-col gap-2 rounded-[20px] bg-[#ECEDEE] p-2 sm:flex-row"
+                action="/api/contact"
+                method="post"
+              >
+                <label class="sr-only" for="email">E-pasta adrese</label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required=""
+                  placeholder="Tava e-pasta adrese"
+                  class="min-w-0 flex-1 rounded-2xl bg-transparent px-4 py-3 text-sm outline-none placeholder:text-[#7B7D82]"
+                />
+                <button
+                  type="submit"
+                  class="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#171719] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#E0562A]"
+                >
+                  Sazināties
+                  <iconify-icon
+                    icon="solar:arrow-right-linear"
+                    width="18"
+                    stroke-width="1.5"
+                  ></iconify-icon>
+                </button>
+              </form>
+              <p id="formMessage" class="mt-3 hidden text-xs text-[#5B5D61]">
+                Paldies! Drīz būsim ar tevi saziņā.
+              </p>
+            </div>
+
+            <div
+              class="mx-auto mt-14 flex max-w-6xl flex-col gap-5 border-t border-black/8 pt-6 text-xs text-[#6B6D72] sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div class="flex items-center gap-3">
+                <span class="relative flex h-5 w-6 items-center">
+                  <span
+                    class="absolute h-5 w-5 rounded-full bg-[#171719]"
+                  ></span>
+                  <span
+                    class="absolute left-2.5 h-5 w-5 rounded-full bg-[#E0562A]"
+                  ></span>
+                </span>
+                <span class="font-semibold tracking-[-0.07em] text-[#171719]">
+                  4BIZZ
+                </span>
+              </div>
+              <div class="flex gap-4">
+                <a href="#" class="hover:text-[#171719]">Privātums</a>
+                <a href="#" class="hover:text-[#171719]">Noteikumi</a>
+                <a href="mailto:hello@4bizz.lv" class="hover:text-[#171719]">
+                  Kontakti
+                </a>
+              </div>
+              <span>© 2026 4Bizz. Visas tiesības aizsargātas.</span>
+            </div>
+          </div>
+        </footer>
+      </main>
+    </div>
+
+    <script>
+      const menuButton = document.getElementById('menuButton');
+      const mobileMenu = document.getElementById('mobileMenu');
+      const nav = document.getElementById('nav');
+
+      menuButton.addEventListener('click', () => {
+        mobileMenu.classList.toggle('hidden');
+        menuButton.innerHTML = mobileMenu.classList.contains('hidden')
+          ? '<iconify-icon icon="solar:hamburger-menu-linear" width="20" stroke-width="1.5"></iconify-icon>'
+          : '<iconify-icon icon="solar:close-circle-linear" width="20" stroke-width="1.5"></iconify-icon>';
+      });
+
+      document.querySelectorAll('#mobileMenu a').forEach(link => {
+        link.addEventListener('click', () => {
+          mobileMenu.classList.add('hidden');
+          menuButton.innerHTML = '<iconify-icon icon="solar:hamburger-menu-linear" width="20" stroke-width="1.5"></iconify-icon>';
+        });
+      });
+
+      window.addEventListener('scroll', () => {
+        if (window.scrollY > 24) {
+          nav.classList.add('bg-white/85', 'backdrop-blur-xl', 'shadow-lg', 'shadow-black/5');
+        } else {
+          nav.classList.remove('bg-white/85', 'backdrop-blur-xl', 'shadow-lg', 'shadow-black/5');
+        }
+      });
+
+      const revealObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.style.opacity = '1';
+            entry.target.style.transform = 'translateY(0)';
+            revealObserver.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.12 });
+
+      document.querySelectorAll('[data-reveal]').forEach(element => revealObserver.observe(element));
+
+      document.querySelectorAll('[data-wchar]').forEach(element => {
+        const textNodes = [];
+        const walk = node => {
+          [...node.childNodes].forEach(child => {
+            if (child.nodeType === Node.TEXT_NODE && child.textContent.trim()) textNodes.push(child);
+            else if (child.nodeType === Node.ELEMENT_NODE && child.tagName !== 'BR') walk(child);
+          });
+        };
+        walk(element);
+
+        textNodes.forEach(node => {
+          const fragment = document.createDocumentFragment();
+          [...node.textContent].forEach(char => {
+            const span = document.createElement('span');
+            span.textContent = char;
+            span.style.fontVariationSettings = "'wght' 600";
+            span.style.transition = "font-variation-settings .15s linear";
+            span.style.display = char === ' ' ? 'inline' : 'inline-block';
+            fragment.appendChild(span);
+          });
+          node.parentNode.replaceChild(fragment, node);
+        });
+
+        element.addEventListener('mousemove', event => {
+          element.querySelectorAll('span').forEach(span => {
+            const rect = span.getBoundingClientRect();
+            const dx = event.clientX - (rect.left + rect.width / 2);
+            const dy = event.clientY - (rect.top + rect.height / 2);
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const weight = Math.max(600, Math.min(900, 900 - distance * 3));
+            span.style.fontVariationSettings = `'wght' ${weight}`;
+          });
+        });
+
+        element.addEventListener('mouseleave', () => {
+          element.querySelectorAll('span').forEach(span => span.style.fontVariationSettings = "'wght' 600");
+        });
+      });
+
+      const heroTiles = document.querySelectorAll('.hero-tile');
+      const chartBars = document.querySelectorAll('.chart-bar');
+      let started = performance.now();
+
+      function animateDetails(time) {
+        const t = (time - started) / 1000;
+        heroTiles.forEach((tile, index) => {
+          const base = index === 0 ? 'rotate(-6deg)' : index === 1 ? 'translateX(-50%) rotate(1deg)' : 'rotate(6deg)';
+          tile.style.marginTop = `${Math.sin(t + index * 2) * 0.35}rem`;
+          if (index === 1) tile.style.transform = base;
+        });
+        chartBars.forEach((bar, index) => {
+          bar.style.transform = `scaleY(${0.92 + Math.sin(t * 1.5 + index) * 0.08})`;
+          bar.style.transformOrigin = 'bottom';
+        });
+        requestAnimationFrame(animateDetails);
+      }
+      requestAnimationFrame(animateDetails);
+
+      const canvas = document.getElementById('meshGL');
+      const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+      const lightOne = new THREE.DirectionalLight(0xffffff, 2.2);
+      const lightTwo = new THREE.PointLight(0xF0754E, 1.5, 30);
+      const geometry = new THREE.IcosahedronGeometry(3, 0);
+      const material = new THREE.MeshStandardMaterial({
+        color: 0xE0562A,
+        roughness: 0.3,
+        metalness: 0.6,
+        flatShading: true
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+
+      camera.position.z = 10;
+      lightOne.position.set(4, 6, 7);
+      lightTwo.position.set(-4, -2, 4);
+      scene.add(lightOne, lightTwo, mesh);
+
+      function resizeMesh() {
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        mesh.position.x = window.innerWidth >= 1024 ? 4.5 : 0;
+        mesh.position.y = window.innerWidth >= 1024 ? 3.8 : 5.2;
+        mesh.scale.setScalar(window.innerWidth >= 1024 ? 1 : 0.7);
+      }
+
+      function renderMesh(time) {
+        const t = time * 0.001;
+        mesh.rotation.x = t * 0.18;
+        mesh.rotation.y = t * 0.25;
+        mesh.position.y = (window.innerWidth >= 1024 ? 3.8 : 5.2) + Math.sin(t * 1.2) * 0.3;
+        renderer.render(scene, camera);
+        requestAnimationFrame(renderMesh);
+      }
+
+      window.addEventListener('resize', resizeMesh);
+      resizeMesh();
+      requestAnimationFrame(renderMesh);
+
+      document.getElementById('leadForm').addEventListener('submit', event => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const button = form.querySelector('button');
+        button.textContent = 'Nosūtīts';
+        button.disabled = true;
+        document.getElementById('formMessage').classList.remove('hidden');
+        setTimeout(() => {
+          button.innerHTML = 'Sazināties <iconify-icon icon="solar:arrow-right-linear" width="18" stroke-width="1.5"></iconify-icon>';
+          button.disabled = false;
+          form.reset();
+        }, 2500);
+      });
+    </script>
+    <script>
+      const stackCards=document.querySelectorAll('.stack-card');function stackScroll(){stackCards.forEach(card=>{const r=card.getBoundingClientRect();const progress=Math.min(1,Math.max(0,(-r.top)/(r.height-window.innerHeight*.8)));const belowCenterProgress=Math.min(1,Math.max(0,(r.top-window.innerHeight*.5)/(window.innerHeight*.5)));const scale=1-progress*.08;const blur=belowCenterProgress*2.04;const rotation=card.dataset.rotation||'0';card.style.transform=`rotate(${rotation}deg) scale(${scale})`;card.style.filter=`blur(${blur}px)`;card.style.opacity=`${1-belowCenterProgress*.18}`;});}window.addEventListener('scroll',stackScroll,{passive:true});window.addEventListener('resize',stackScroll);stackScroll();
+    </script>
+
+    <script>
+      document.querySelector('#sakums h1[data-wchar]').addEventListener('mousemove', event => { event.currentTarget.querySelectorAll('span').forEach(span => { const rect = span.getBoundingClientRect(); const dx = event.clientX - (rect.left + rect.width / 2); const dy = event.clientY - (rect.top + rect.height / 2); const distance = Math.sqrt(dx * dx + dy * dy); const weight = Math.max(600, Math.min(900, 900 - distance * 5)); span.style.fontVariationSettings = `'wght' ${weight}`; }); });
+    </script>
+
+    <script>
+      (function () {
+        const scroller = document.getElementById('categoryScroller');
+        const dots = Array.from(document.querySelectorAll('#categoryDots span'));
+        if (!scroller) return;
+        const updateDots = () => {
+          const cards = Array.from(scroller.querySelectorAll('article'));
+          const center = scroller.scrollLeft + scroller.clientWidth / 2;
+          let active = 0, distance = Infinity;
+          cards.forEach((card, index) => {
+            const cardCenter = card.offsetLeft + card.offsetWidth / 2;
+            if (Math.abs(cardCenter - center) < distance) { distance = Math.abs(cardCenter - center); active = index; }
+          });
+          dots.forEach((dot, index) => {
+            dot.className = index === active ? 'h-1.5 w-5 rounded-full bg-[#E0562A] transition-all' : 'h-1.5 w-1.5 rounded-full bg-black/15 transition-all';
+          });
+        };
+        scroller.addEventListener('scroll', updateDots, { passive: true });
+        scroller.addEventListener('wheel', event => {
+          if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) { event.preventDefault(); scroller.scrollLeft += event.deltaY; }
+        }, { passive: false });
+        updateDots();
+      })();
+    </script>
+  </body>
+</html>

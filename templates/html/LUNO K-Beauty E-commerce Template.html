@@ -1,0 +1,1487 @@
+<!DOCTYPE html>
+<html lang="pt"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>LUNO</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,200;0,300;0,400;1,200;1,300&display=swap" rel="stylesheet">
+<style>
+/* Essential Keyframes & Custom Cursor Logic */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes barGrow { from { width: 0; } to { width: 100%; } }
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes spinRing { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes starPulse { 0%, 100% { opacity: 0.5; transform: scale(1) rotate(0deg); } 50% { opacity: 1; transform: scale(1.2) rotate(15deg); } }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(242,242,241,0.1); border-radius: 4px; }
+body { cursor: none; font-family: 'Poppins', sans-serif; }
+@media (max-width: 768px) { body { cursor: auto; } }
+.c-dot, .c-ring { position: fixed; pointer-events: none; z-index: 9999; border-radius: 50%; transform: translate(-50%, -50%); }
+.c-dot { width: 4px; height: 4px; background: #F2F2F1; top: 0; left: 0; transition: width 0.1s, height 0.1s, background 0.1s; }
+.c-ring { width: 32px; height: 32px; border: 1px solid rgba(242,242,241,0.3); top: 0; left: 0; transition: width 0.2s cubic-bezier(.25,.46,.45,.94), height 0.2s cubic-bezier(.25,.46,.45,.94), background 0.2s, border-color 0.2s; }
+.c-ring.h { width: 48px; height: 48px; background: rgba(242,242,241,0.05); border-color: rgba(242,242,241,0.2); }
+.c-dot.h { background: #B4B5DF; }
+/* Scroll Reveal Base Classes */
+.reveal { opacity: 0; transform: translateY(20px); filter: blur(4px); transition: opacity 0.8s cubic-bezier(.25,.46,.45,.94), transform 0.8s cubic-bezier(.25,.46,.45,.94), filter 0.8s cubic-bezier(.25,.46,.45,.94); }
+.reveal.visible { opacity: 1; transform: none; filter: blur(0); }
+.delay-100 { transition-delay: 100ms; }
+.delay-200 { transition-delay: 200ms; }
+.delay-300 { transition-delay: 300ms; }
+/* Utilities */
+.hide-scroll::-webkit-scrollbar { display: none; }
+.hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+</style></head>
+<body class="bg-[#212322] text-[#F2F2F1] font-light text-base overflow-x-hidden antialiased selection:bg-[#B4B5DF] selection:text-[#212322]">
+
+<div class="c-dot hidden md:block" id="cd"></div>
+<div class="c-ring hidden md:block" id="cr"></div>
+
+<!-- LOADER -->
+<div class="fixed flex flex-col transition-all duration-1000 bg-[#212322] z-[9900] top-0 right-0 bottom-0 left-0 gap-x-8 gap-y-8 items-center justify-center" id="loader">
+  <div class="opacity-0" style="animation: fadeUp 0.7s ease-out 0.2s forwards">
+    <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg" alt="LUNO" class="h-10 lg:h-14 w-auto object-contain">
+  </div>
+  <div class="w-48 h-px bg-[#F2F2F1]/10 overflow-hidden">
+    <div class="h-full bg-gradient-to-r from-[#B4B5DF] to-[#B5E3D8]" style="animation: barGrow 1.6s cubic-bezier(.25,.46,.45,.94) forwards"></div>
+  </div>
+  <div class="text-xs tracking-widest uppercase text-[#F2F2F1]/50 opacity-0" style="animation: fadeUp 0.5s ease-out 0.5s forwards">Seja a sua melhor versão</div>
+</div>
+
+<!-- TOAST -->
+<div class="fixed bottom-24 right-6 z-[600] bg-[#252726] border border-[#F2F2F1]/10 rounded-lg px-5 py-3 text-sm font-normal text-[#F2F2F1] flex items-center gap-3 opacity-0 translate-y-4 transition-all duration-300 pointer-events-none" id="toast">
+  <div class="w-2 h-2 rounded-full bg-[#B5E3D8] shrink-0"></div>
+  <span id="toast-msg"></span>
+</div>
+
+<!-- NAV -->
+<nav id="nav" class="fixed top-0 inset-x-0 z-[500] grid grid-cols-2 lg:grid-cols-3 items-center px-6 lg:px-12 h-[68px] transition-all duration-500 bg-[#212322]/80 backdrop-blur-xl border-b border-[#F2F2F1]/10">
+  <div class="hidden lg:flex gap-8 items-center">
+    <a href="#" class="text-xs font-normal tracking-widest uppercase text-[#F2F2F1]/60 hover:text-[#F2F2F1] transition-colors relative group py-1" data-cursor-bound="true">Rosto<span class="absolute bottom-0 left-0 w-0 h-px bg-[#B4B5DF] transition-all group-hover:w-full"></span></a>
+    <a href="#" class="text-xs font-normal tracking-widest uppercase text-[#F2F2F1]/60 hover:text-[#F2F2F1] transition-colors relative group py-1" data-cursor-bound="true">Corpo<span class="absolute bottom-0 left-0 w-0 h-px bg-[#B4B5DF] transition-all group-hover:w-full"></span></a>
+    <a href="#" class="text-xs font-normal tracking-widest uppercase text-[#F2F2F1]/60 hover:text-[#F2F2F1] transition-colors relative group py-1" data-cursor-bound="true">Cabelo<span class="absolute bottom-0 left-0 w-0 h-px bg-[#B4B5DF] transition-all group-hover:w-full"></span></a>
+    <a href="#" class="text-xs font-normal tracking-widest uppercase text-[#F2F2F1]/60 hover:text-[#F2F2F1] transition-colors relative group py-1" data-cursor-bound="true">Marcas<span class="absolute bottom-0 left-0 w-0 h-px bg-[#B4B5DF] transition-all group-hover:w-full"></span></a>
+  </div>
+  
+  <a href="#" class="flex items-center lg:justify-center hover:opacity-70 transition-opacity" data-cursor-bound="true">
+    <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg" alt="LUNO" class="h-6 lg:h-7 w-auto object-contain">
+  </a>
+  
+  <div class="flex gap-4 items-center justify-end">
+    <button class="hidden lg:flex w-9 h-9 items-center justify-center text-[#F2F2F1]/60 hover:text-[#F2F2F1] hover:bg-[#F2F2F1]/5 rounded-full transition-colors" data-cursor-bound="true">
+      <iconify-icon icon="solar:magnifer-linear" width="1.2em" stroke-width="1.5"></iconify-icon>
+    </button>
+    <button class="hidden lg:flex w-9 h-9 items-center justify-center text-[#F2F2F1]/60 hover:text-[#F2F2F1] hover:bg-[#F2F2F1]/5 rounded-full transition-colors" data-cursor-bound="true">
+      <iconify-icon icon="solar:heart-linear" width="1.2em" stroke-width="1.5"></iconify-icon>
+    </button>
+    <button class="relative w-9 h-9 flex items-center justify-center text-[#F2F2F1]/60 hover:text-[#F2F2F1] hover:bg-[#F2F2F1]/5 rounded-full transition-colors" data-cursor-bound="true">
+      <iconify-icon icon="solar:bag-2-linear" width="1.2em" stroke-width="1.5"></iconify-icon>
+      <div id="cartBadge" class="absolute -top-1 -right-1 w-4 h-4 bg-[#B4B5DF] text-[#212322] rounded-full text-xs font-normal flex items-center justify-center">0</div>
+    </button>
+    
+    <div class="relative hidden lg:block">
+      <button id="navAccount" class="w-9 h-9 flex items-center justify-center text-[#F2F2F1]/60 hover:text-[#F2F2F1] hover:bg-[#F2F2F1]/5 rounded-full transition-colors" onclick="handleAccountClick()" data-cursor-bound="true">
+        <iconify-icon icon="solar:user-circle-linear" width="1.2em" stroke-width="1.5"></iconify-icon>
+      </button>
+      <div id="userMenu" class="absolute top-12 right-0 bg-[#252726]/95 backdrop-blur-xl border border-[#F2F2F1]/10 rounded-xl p-2 min-w-[220px] opacity-0 invisible translate-y-2 transition-all duration-200 z-[600]">
+        <div class="flex items-center gap-3 p-3 border-b border-[#F2F2F1]/10 mb-1">
+          <div id="userAvatar" class="w-8 h-8 rounded-full bg-gradient-to-br from-[#B4B5DF] to-[#B5E3D8] flex items-center justify-center text-xs font-normal text-[#212322]">?</div>
+          <div>
+            <div id="userName" class="text-sm font-normal text-[#F2F2F1]">Utilizador</div>
+            <div id="userEmail" class="text-xs text-[#F2F2F1]/50">—</div>
+          </div>
+        </div>
+        <button class="w-full text-left flex items-center gap-3 p-2.5 rounded-lg text-sm text-[#F2F2F1]/70 hover:bg-[#F2F2F1]/5 hover:text-[#F2F2F1] transition-colors" onclick="logoutUser()" data-cursor-bound="true">
+          <iconify-icon icon="solar:logout-2-linear" width="1.2em"></iconify-icon> Sair
+        </button>
+      </div>
+    </div>
+
+    <button id="navHam" class="lg:hidden flex flex-col justify-center gap-1.5 w-9 h-9 text-[#F2F2F1]" data-cursor-bound="true">
+      <span class="w-5 h-px bg-current transition-transform origin-center"></span>
+      <span class="w-5 h-px bg-current transition-opacity"></span>
+    </button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section id="hero" class="relative w-full h-screen min-h-[600px] flex items-center overflow-hidden">
+  <div id="heroSlides" class="absolute inset-0"><div class="absolute inset-0 bg-cover bg-center transition-opacity duration-1000 opacity-100" style="background-image: url(&quot;https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=1920,q=85&quot;);"><div class="absolute inset-0 bg-gradient-to-r from-[#212322]/95 via-[#212322]/60 to-transparent"></div></div><div class="absolute inset-0 bg-cover bg-center transition-opacity duration-1000 opacity-0" style="background-image: url(&quot;https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-do-corpo-luno-ao.jpg/w=1920,q=85&quot;);"><div class="absolute inset-0 bg-gradient-to-r from-[#212322]/95 via-[#212322]/60 to-transparent"></div></div><div class="absolute inset-0 bg-cover bg-center transition-opacity duration-1000 opacity-0" style="background-image: url(&quot;https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/protetor-solar-luno-ao.jpg/w=1920,q=85&quot;);"><div class="absolute inset-0 bg-gradient-to-r from-[#212322]/95 via-[#212322]/60 to-transparent"></div></div></div>
+  
+  <div class="relative z-10 px-8 lg:px-20 max-w-2xl">
+    <div id="hEyebrow" class="flex items-center gap-3 text-xs tracking-widest uppercase text-[#B4B5DF] font-normal mb-6 transition-all duration-700">
+      <iconify-icon icon="solar:stars-linear"></iconify-icon> K-Beauty Angola
+    </div>
+    <h1 id="hTitle" class="text-5xl lg:text-7xl font-extralight tracking-tight leading-[1.1] mb-6 text-[#F2F2F1] transition-all duration-700 delay-100">
+      Rosto<br><em class="text-[#ECBAA8] not-italic font-extralight">Luminoso</em>
+    </h1>
+    <p id="hSub" class="text-sm lg:text-base text-[#F2F2F1]/60 leading-relaxed max-w-sm mb-10 font-light transition-all duration-700 delay-200">
+      Skincare coreano autêntico para uma pele radiante. A ciência de Seul ao teu serviço.
+    </p>
+    <div id="heroCtas" class="flex flex-wrap gap-4 items-center transition-all duration-700 delay-300">
+      <button id="hBtn" class="inline-flex items-center gap-2 px-8 py-4 bg-[#F2F2F1] text-[#212322] text-xs font-normal tracking-widest uppercase rounded hover:bg-[#B4B5DF] hover:-translate-y-0.5 transition-all duration-300" data-cursor-bound="true">
+        Explorar Skincare
+      </button>
+      <a href="#ritual" class="inline-flex items-center gap-2 text-xs font-normal tracking-widest uppercase text-[#F2F2F1]/60 hover:text-[#F2F2F1] transition-colors group" data-cursor-bound="true">
+        Ver Rituais <iconify-icon icon="solar:arrow-right-linear" class="transition-transform group-hover:translate-x-1"></iconify-icon>
+      </a>
+    </div>
+  </div>
+
+  <div id="heroTabs" class="absolute right-12 top-1/2 -translate-y-1/2 z-10 hidden lg:flex flex-col gap-4 transition-opacity duration-1000 delay-500"><button class="text-[10px] tracking-widest uppercase font-normal py-1 px-3 border-l-2 transition-all border-[#B4B5DF] text-[#F2F2F1]" data-cursor-bound="true">Skincare Facial</button><button class="text-[10px] tracking-widest uppercase font-normal py-1 px-3 border-l-2 transition-all border-transparent text-[#F2F2F1]/30 hover:text-[#F2F2F1]/70" data-cursor-bound="true">Cuidados Corporais</button><button class="text-[10px] tracking-widest uppercase font-normal py-1 px-3 border-l-2 transition-all border-transparent text-[#F2F2F1]/30 hover:text-[#F2F2F1]/70" data-cursor-bound="true">Protetores Solares</button></div>
+  <div id="heroDots" class="absolute bottom-12 left-8 lg:left-20 z-10 flex gap-2 items-center"><button class="h-0.5 rounded-full transition-all duration-300 w-8 bg-[#B4B5DF]" data-cursor-bound="true"></button><button class="h-0.5 rounded-full transition-all duration-300 w-4 bg-[#F2F2F1]/20" data-cursor-bound="true"></button><button class="h-0.5 rounded-full transition-all duration-300 w-4 bg-[#F2F2F1]/20" data-cursor-bound="true"></button></div>
+</section>
+
+<!-- MARCAS MARQUEE -->
+<div class="relative bg-[#1a1b1a] border-y border-[#F2F2F1]/10 overflow-hidden reveal">
+  <div class="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-[#1a1b1a] to-transparent z-10 pointer-events-none"></div>
+  <div class="absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-[#1a1b1a] to-transparent z-10 pointer-events-none"></div>
+  <div class="flex w-max py-8 hover:[animation-play-state:paused]" style="animation: marquee 40s linear infinite">
+    <!-- Marquee items duplicated for seamless loop -->
+    <div class="flex items-center">
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">COSRX</div>
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">BEAUTY OF JOSEON</div>
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">LANEIGE</div>
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">SOME BY MI</div>
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">SKIN1004</div>
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">PURITO</div>
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">ANUA</div>
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">VT COSMETICS</div>
+      
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">COSRX</div>
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">BEAUTY OF JOSEON</div>
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">LANEIGE</div>
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">SOME BY MI</div>
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">SKIN1004</div>
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">PURITO</div>
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">ANUA</div>
+      <div class="px-10 text-xl tracking-tighter text-[#F2F2F1]/30 hover:text-[#F2F2F1] transition-colors cursor-pointer border-r border-[#F2F2F1]/10">VT COSMETICS</div>
+    </div>
+  </div>
+</div>
+
+<!-- CATEGORIAS -->
+<section class="py-24 px-8 lg:px-20 max-w-[1600px] mx-auto relative">
+  <div class="flex flex-col md:flex-row md:items-end justify-between mb-12 reveal">
+    <div>
+      <div class="flex items-center gap-2 text-xs tracking-widest uppercase text-[#B4B5DF] font-normal mb-3">
+        <iconify-icon icon="solar:stars-linear"></iconify-icon> Categorias
+      </div>
+      <h2 class="text-3xl md:text-4xl lg:text-5xl font-extralight tracking-tight text-[#F2F2F1]">
+        O teu ritual,<br><em class="text-[#ECBAA8] not-italic">começa aqui.</em>
+      </h2>
+    </div>
+    <a href="#" class="mt-6 md:mt-0 text-xs tracking-widest uppercase font-normal text-[#F2F2F1]/50 hover:text-[#F2F2F1] flex items-center gap-2 transition-colors group" data-cursor-bound="true">
+      Ver todas <iconify-icon icon="solar:arrow-right-linear" class="transition-transform group-hover:translate-x-1"></iconify-icon>
+    </a>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <a href="#" class="group relative rounded-xl overflow-hidden aspect-[3/4] bg-[#252726] border border-[#F2F2F1]/10 hover:border-[#B4B5DF]/30 hover:-translate-y-1 transition-all duration-500 reveal delay-100" data-cursor-bound="true">
+      <img src="https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=640,h=961" alt="Skincare Facial" class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-80 group-hover:opacity-100">
+      <div class="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-[#212322] to-transparent">
+        <div class="text-[10px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-1">+80 produtos</div>
+        <div class="text-lg font-light text-[#F2F2F1]">Skincare Facial</div>
+      </div>
+    </a>
+    <a href="#" class="group relative rounded-xl overflow-hidden aspect-[3/4] bg-[#252726] border border-[#F2F2F1]/10 hover:border-[#B4B5DF]/30 hover:-translate-y-1 transition-all duration-500 reveal delay-200" data-cursor-bound="true">
+      <img src="https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/limpeza-facial.jpg/w=640,h=961" alt="Limpeza Facial" class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-80 group-hover:opacity-100">
+      <div class="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-[#212322] to-transparent">
+        <div class="text-[10px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-1">+30 produtos</div>
+        <div class="text-lg font-light text-[#F2F2F1]">Limpeza Facial</div>
+      </div>
+    </a>
+    <a href="#" class="group relative rounded-xl overflow-hidden aspect-[3/4] bg-[#252726] border border-[#F2F2F1]/10 hover:border-[#B4B5DF]/30 hover:-translate-y-1 transition-all duration-500 reveal delay-300" data-cursor-bound="true">
+      <img src="https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/marcaras-faciais.jpg/w=640,h=961" alt="Máscaras" class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-80 group-hover:opacity-100">
+      <div class="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-[#212322] to-transparent">
+        <div class="text-[10px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-1">+25 produtos</div>
+        <div class="text-lg font-light text-[#F2F2F1]">Máscaras Faciais</div>
+      </div>
+    </a>
+  </div>
+</section>
+
+<!-- MAIS VENDIDOS (PRODUCTS) -->
+<section class="py-24 px-8 lg:px-20 bg-[#1a1b1a] relative border-y border-[#F2F2F1]/5">
+  <div class="max-w-[1600px] mx-auto">
+    <div class="flex flex-col md:flex-row md:items-end justify-between mb-10 reveal">
+      <div>
+        <div class="flex items-center gap-2 text-xs tracking-widest uppercase text-[#B4B5DF] font-normal mb-3">
+          <iconify-icon icon="solar:stars-linear"></iconify-icon> Mais Vendidos
+        </div>
+        <h2 class="text-3xl md:text-4xl lg:text-5xl font-extralight tracking-tight text-[#F2F2F1]">
+          Favoritos da<br><em class="text-[#ECBAA8] not-italic">comunidade LUNO</em>
+        </h2>
+      </div>
+    </div>
+
+    <!-- Custom Tailwind Filter Tabs -->
+    <div class="flex flex-wrap gap-2 mb-10 reveal" id="prodFilters">
+      <button class="px-5 py-2 rounded-full text-xs tracking-widest uppercase font-normal border transition-colors bg-[#B4B5DF] text-[#212322] border-[#B4B5DF] prod-filter" data-filter="all" data-cursor-bound="true">Todos</button>
+      <button class="px-5 py-2 rounded-full text-xs tracking-widest uppercase font-normal border border-[#F2F2F1]/20 text-[#F2F2F1]/50 hover:border-[#F2F2F1]/50 hover:text-[#F2F2F1] transition-colors prod-filter" data-filter="oleosa" data-cursor-bound="true">Pele Oleosa</button>
+      <button class="px-5 py-2 rounded-full text-xs tracking-widest uppercase font-normal border border-[#F2F2F1]/20 text-[#F2F2F1]/50 hover:border-[#F2F2F1]/50 hover:text-[#F2F2F1] transition-colors prod-filter" data-filter="seca" data-cursor-bound="true">Pele Seca</button>
+      <button class="px-5 py-2 rounded-full text-xs tracking-widest uppercase font-normal border border-[#F2F2F1]/20 text-[#F2F2F1]/50 hover:border-[#F2F2F1]/50 hover:text-[#F2F2F1] transition-colors prod-filter" data-filter="sensivel" data-cursor-bound="true">Sensível</button>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="productsGrid">
+    <div class="group bg-[#252726]/60 backdrop-blur-md border border-[#F2F2F1]/10 rounded-xl overflow-hidden cursor-pointer hover:-translate-y-2 hover:border-[#B4B5DF]/30 hover:bg-[#252726] hover:shadow-2xl transition-all duration-500 flex flex-col reveal" data-tags="oleosa,todas" style="transition-delay: 0ms">
+      <div class="relative aspect-square overflow-hidden bg-[#1a1b1a] flex items-center justify-center" onclick="openQV('vt_reedle')">
+        <img src="https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=600,q=80" alt="Reedle Shot 300" loading="lazy" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105">
+        <div class="absolute top-3 left-3 text-[#212322] bg-[#ECBAA8] text-[9px] font-normal tracking-widest uppercase px-2 py-1 rounded-sm z-10">Top Vendas</div>
+        <button class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#212322]/60 border border-[#F2F2F1]/10 text-[#F2F2F1]/70 flex items-center justify-center opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-[#F1BDC8]/20 hover:text-[#F1BDC8] hover:border-[#F1BDC8] transition-all z-10" onclick="event.stopPropagation();this.classList.toggle('text-[#F1BDC8]')">
+          <iconify-icon icon="solar:heart-linear"></iconify-icon>
+        </button>
+      </div>
+      <div class="p-5 flex flex-col flex-1" onclick="openQV('vt_reedle')">
+        <div class="text-[9px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-1">VT Cosmetics</div>
+        <div class="text-sm font-light text-[#F2F2F1] mb-1 leading-snug line-clamp-1">Reedle Shot 300</div>
+        <div class="text-[11px] text-[#F2F2F1]/40 mb-3 font-extralight line-clamp-1">Renovação celular com 237.500 Cica Reedles.</div>
+        <div class="flex items-center gap-1 mb-4">
+          <div class="text-[#ECBAA8] text-[10px] flex items-center tracking-widest">★★★★★</div>
+          <span class="text-[10px] text-[#F2F2F1]/40">(312)</span>
+        </div>
+        <div class="mt-auto flex items-end justify-between">
+          <div>
+            
+            <div class="text-base font-light text-[#F2F2F1]">52&nbsp;448 <span class="text-[10px] text-[#F2F2F1]/40">Kz</span></div>
+          </div>
+          <button class="w-8 h-8 rounded-full bg-[#F2F2F1] text-[#212322] flex items-center justify-center hover:bg-[#B4B5DF] hover:scale-110 transition-all duration-300" onclick="event.stopPropagation();addToCart(this, 52448, 'Reedle Shot 300')">
+            <iconify-icon icon="solar:add-circle-linear" width="1.2em"></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+  
+    <div class="group bg-[#252726]/60 backdrop-blur-md border border-[#F2F2F1]/10 rounded-xl overflow-hidden cursor-pointer hover:-translate-y-2 hover:border-[#B4B5DF]/30 hover:bg-[#252726] hover:shadow-2xl transition-all duration-500 flex flex-col reveal" data-tags="oleosa,limpeza" style="transition-delay: 100ms">
+      <div class="relative aspect-square overflow-hidden bg-[#1a1b1a] flex items-center justify-center" onclick="openQV('anua_cleanser')">
+        <img src="https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=600,q=80" alt="Heartleaf BHA Deep Cleansing Foam" loading="lazy" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105">
+        <div class="absolute top-3 left-3 text-[#212322] bg-[#B5E3D8] text-[9px] font-normal tracking-widest uppercase px-2 py-1 rounded-sm z-10">Novo</div>
+        <button class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#212322]/60 border border-[#F2F2F1]/10 text-[#F2F2F1]/70 flex items-center justify-center opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-[#F1BDC8]/20 hover:text-[#F1BDC8] hover:border-[#F1BDC8] transition-all z-10" onclick="event.stopPropagation();this.classList.toggle('text-[#F1BDC8]')">
+          <iconify-icon icon="solar:heart-linear"></iconify-icon>
+        </button>
+      </div>
+      <div class="p-5 flex flex-col flex-1" onclick="openQV('anua_cleanser')">
+        <div class="text-[9px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-1">Anua</div>
+        <div class="text-sm font-light text-[#F2F2F1] mb-1 leading-snug line-clamp-1">Heartleaf BHA Deep Cleansing Foam</div>
+        <div class="text-[11px] text-[#F2F2F1]/40 mb-3 font-extralight line-clamp-1">Limpeza profunda dos poros com BHA.</div>
+        <div class="flex items-center gap-1 mb-4">
+          <div class="text-[#ECBAA8] text-[10px] flex items-center tracking-widest">★★★★★</div>
+          <span class="text-[10px] text-[#F2F2F1]/40">(248)</span>
+        </div>
+        <div class="mt-auto flex items-end justify-between">
+          <div>
+            
+            <div class="text-base font-light text-[#F2F2F1]">27&nbsp;355 <span class="text-[10px] text-[#F2F2F1]/40">Kz</span></div>
+          </div>
+          <button class="w-8 h-8 rounded-full bg-[#F2F2F1] text-[#212322] flex items-center justify-center hover:bg-[#B4B5DF] hover:scale-110 transition-all duration-300" onclick="event.stopPropagation();addToCart(this, 27355, 'Heartleaf BHA Deep Cleansing Foam')">
+            <iconify-icon icon="solar:add-circle-linear" width="1.2em"></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+  
+    <div class="group bg-[#252726]/60 backdrop-blur-md border border-[#F2F2F1]/10 rounded-xl overflow-hidden cursor-pointer hover:-translate-y-2 hover:border-[#B4B5DF]/30 hover:bg-[#252726] hover:shadow-2xl transition-all duration-500 flex flex-col reveal" data-tags="seca,sensivel" style="transition-delay: 200ms">
+      <div class="relative aspect-square overflow-hidden bg-[#1a1b1a] flex items-center justify-center" onclick="openQV('ksecret_seoul1988')">
+        <img src="https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=600,q=80" alt="Seoul 1988 Cream Snail Mucin" loading="lazy" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105">
+        <div class="absolute top-3 left-3 text-[#212322] bg-[#F1BDC8] text-[9px] font-normal tracking-widest uppercase px-2 py-1 rounded-sm z-10">−15%</div>
+        <button class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#212322]/60 border border-[#F2F2F1]/10 text-[#F2F2F1]/70 flex items-center justify-center opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-[#F1BDC8]/20 hover:text-[#F1BDC8] hover:border-[#F1BDC8] transition-all z-10" onclick="event.stopPropagation();this.classList.toggle('text-[#F1BDC8]')">
+          <iconify-icon icon="solar:heart-linear"></iconify-icon>
+        </button>
+      </div>
+      <div class="p-5 flex flex-col flex-1" onclick="openQV('ksecret_seoul1988')">
+        <div class="text-[9px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-1">K-SECRET</div>
+        <div class="text-sm font-light text-[#F2F2F1] mb-1 leading-snug line-clamp-1">Seoul 1988 Cream Snail Mucin</div>
+        <div class="text-[11px] text-[#F2F2F1]/40 mb-3 font-extralight line-clamp-1">Regeneração com baba de caracol 93%.</div>
+        <div class="flex items-center gap-1 mb-4">
+          <div class="text-[#ECBAA8] text-[10px] flex items-center tracking-widest">★★★★★</div>
+          <span class="text-[10px] text-[#F2F2F1]/40">(521)</span>
+        </div>
+        <div class="mt-auto flex items-end justify-between">
+          <div>
+            <div class="text-[10px] text-[#F2F2F1]/30 line-through">33&nbsp;922</div>
+            <div class="text-base font-light text-[#F2F2F1]">28&nbsp;499 <span class="text-[10px] text-[#F2F2F1]/40">Kz</span></div>
+          </div>
+          <button class="w-8 h-8 rounded-full bg-[#F2F2F1] text-[#212322] flex items-center justify-center hover:bg-[#B4B5DF] hover:scale-110 transition-all duration-300" onclick="event.stopPropagation();addToCart(this, 28499, 'Seoul 1988 Cream Snail Mucin')">
+            <iconify-icon icon="solar:add-circle-linear" width="1.2em"></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+  
+    <div class="group bg-[#252726]/60 backdrop-blur-md border border-[#F2F2F1]/10 rounded-xl overflow-hidden cursor-pointer hover:-translate-y-2 hover:border-[#B4B5DF]/30 hover:bg-[#252726] hover:shadow-2xl transition-all duration-500 flex flex-col reveal" data-tags="solar,todas" style="transition-delay: 300ms">
+      <div class="relative aspect-square overflow-hidden bg-[#1a1b1a] flex items-center justify-center" onclick="openQV('beauty_joseon_sun')">
+        <img src="https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=600,q=80" alt="Relief Sun Aqua Fresh SPF50+" loading="lazy" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105">
+        <div class="absolute top-3 left-3 text-[#212322] bg-[#ECBAA8] text-[9px] font-normal tracking-widest uppercase px-2 py-1 rounded-sm z-10">Top Vendas</div>
+        <button class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#212322]/60 border border-[#F2F2F1]/10 text-[#F2F2F1]/70 flex items-center justify-center opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-[#F1BDC8]/20 hover:text-[#F1BDC8] hover:border-[#F1BDC8] transition-all z-10" onclick="event.stopPropagation();this.classList.toggle('text-[#F1BDC8]')">
+          <iconify-icon icon="solar:heart-linear"></iconify-icon>
+        </button>
+      </div>
+      <div class="p-5 flex flex-col flex-1" onclick="openQV('beauty_joseon_sun')">
+        <div class="text-[9px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-1">Beauty of Joseon</div>
+        <div class="text-sm font-light text-[#F2F2F1] mb-1 leading-snug line-clamp-1">Relief Sun Aqua Fresh SPF50+</div>
+        <div class="text-[11px] text-[#F2F2F1]/40 mb-3 font-extralight line-clamp-1">Textura aquosa para clima quente.</div>
+        <div class="flex items-center gap-1 mb-4">
+          <div class="text-[#ECBAA8] text-[10px] flex items-center tracking-widest">★★★★★</div>
+          <span class="text-[10px] text-[#F2F2F1]/40">(186)</span>
+        </div>
+        <div class="mt-auto flex items-end justify-between">
+          <div>
+            
+            <div class="text-base font-light text-[#F2F2F1]">30&nbsp;779 <span class="text-[10px] text-[#F2F2F1]/40">Kz</span></div>
+          </div>
+          <button class="w-8 h-8 rounded-full bg-[#F2F2F1] text-[#212322] flex items-center justify-center hover:bg-[#B4B5DF] hover:scale-110 transition-all duration-300" onclick="event.stopPropagation();addToCart(this, 30779, 'Relief Sun Aqua Fresh SPF50+')">
+            <iconify-icon icon="solar:add-circle-linear" width="1.2em"></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+  
+    <div class="group bg-[#252726]/60 backdrop-blur-md border border-[#F2F2F1]/10 rounded-xl overflow-hidden cursor-pointer hover:-translate-y-2 hover:border-[#B4B5DF]/30 hover:bg-[#252726] hover:shadow-2xl transition-all duration-500 flex flex-col reveal" data-tags="sensivel,mista" style="transition-delay: 400ms">
+      <div class="relative aspect-square overflow-hidden bg-[#1a1b1a] flex items-center justify-center" onclick="openQV('skin1004_centella')">
+        <img src="https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=600,q=80" alt="Madagascar Centella Capsule" loading="lazy" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105">
+        <div class="absolute top-3 left-3 text-[#212322] bg-[#B5E3D8] text-[9px] font-normal tracking-widest uppercase px-2 py-1 rounded-sm z-10">Novo</div>
+        <button class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#212322]/60 border border-[#F2F2F1]/10 text-[#F2F2F1]/70 flex items-center justify-center opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-[#F1BDC8]/20 hover:text-[#F1BDC8] hover:border-[#F1BDC8] transition-all z-10" onclick="event.stopPropagation();this.classList.toggle('text-[#F1BDC8]')">
+          <iconify-icon icon="solar:heart-linear"></iconify-icon>
+        </button>
+      </div>
+      <div class="p-5 flex flex-col flex-1" onclick="openQV('skin1004_centella')">
+        <div class="text-[9px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-1">SKIN1004</div>
+        <div class="text-sm font-light text-[#F2F2F1] mb-1 leading-snug line-clamp-1">Madagascar Centella Capsule</div>
+        <div class="text-[11px] text-[#F2F2F1]/40 mb-3 font-extralight line-clamp-1">Centella pura. Calmante e reparador.</div>
+        <div class="flex items-center gap-1 mb-4">
+          <div class="text-[#ECBAA8] text-[10px] flex items-center tracking-widest">★★★★★</div>
+          <span class="text-[10px] text-[#F2F2F1]/40">(189)</span>
+        </div>
+        <div class="mt-auto flex items-end justify-between">
+          <div>
+            
+            <div class="text-base font-light text-[#F2F2F1]">23&nbsp;940 <span class="text-[10px] text-[#F2F2F1]/40">Kz</span></div>
+          </div>
+          <button class="w-8 h-8 rounded-full bg-[#F2F2F1] text-[#212322] flex items-center justify-center hover:bg-[#B4B5DF] hover:scale-110 transition-all duration-300" onclick="event.stopPropagation();addToCart(this, 23940, 'Madagascar Centella Capsule')">
+            <iconify-icon icon="solar:add-circle-linear" width="1.2em"></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+  
+    <div class="group bg-[#252726]/60 backdrop-blur-md border border-[#F2F2F1]/10 rounded-xl overflow-hidden cursor-pointer hover:-translate-y-2 hover:border-[#B4B5DF]/30 hover:bg-[#252726] hover:shadow-2xl transition-all duration-500 flex flex-col reveal" data-tags="sensivel,seca" style="transition-delay: 500ms">
+      <div class="relative aspect-square overflow-hidden bg-[#1a1b1a] flex items-center justify-center" onclick="openQV('purito_centella')">
+        <img src="https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=600,q=80" alt="Wonder Releaf Centella Cream" loading="lazy" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105">
+        <div class="absolute top-3 left-3 text-[#212322] bg-[#ECBAA8] text-[9px] font-normal tracking-widest uppercase px-2 py-1 rounded-sm z-10">Top Vendas</div>
+        <button class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#212322]/60 border border-[#F2F2F1]/10 text-[#F2F2F1]/70 flex items-center justify-center opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-[#F1BDC8]/20 hover:text-[#F1BDC8] hover:border-[#F1BDC8] transition-all z-10" onclick="event.stopPropagation();this.classList.toggle('text-[#F1BDC8]')">
+          <iconify-icon icon="solar:heart-linear"></iconify-icon>
+        </button>
+      </div>
+      <div class="p-5 flex flex-col flex-1" onclick="openQV('purito_centella')">
+        <div class="text-[9px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-1">Purito Seoul</div>
+        <div class="text-sm font-light text-[#F2F2F1] mb-1 leading-snug line-clamp-1">Wonder Releaf Centella Cream</div>
+        <div class="text-[11px] text-[#F2F2F1]/40 mb-3 font-extralight line-clamp-1">Barreira cutânea reforçada.</div>
+        <div class="flex items-center gap-1 mb-4">
+          <div class="text-[#ECBAA8] text-[10px] flex items-center tracking-widest">★★★★★</div>
+          <span class="text-[10px] text-[#F2F2F1]/40">(412)</span>
+        </div>
+        <div class="mt-auto flex items-end justify-between">
+          <div>
+            
+            <div class="text-base font-light text-[#F2F2F1]">25&nbsp;075 <span class="text-[10px] text-[#F2F2F1]/40">Kz</span></div>
+          </div>
+          <button class="w-8 h-8 rounded-full bg-[#F2F2F1] text-[#212322] flex items-center justify-center hover:bg-[#B4B5DF] hover:scale-110 transition-all duration-300" onclick="event.stopPropagation();addToCart(this, 25075, 'Wonder Releaf Centella Cream')">
+            <iconify-icon icon="solar:add-circle-linear" width="1.2em"></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+  
+    <div class="group bg-[#252726]/60 backdrop-blur-md border border-[#F2F2F1]/10 rounded-xl overflow-hidden cursor-pointer hover:-translate-y-2 hover:border-[#B4B5DF]/30 hover:bg-[#252726] hover:shadow-2xl transition-all duration-500 flex flex-col reveal" data-tags="oleosa,todas" style="transition-delay: 600ms">
+      <div class="relative aspect-square overflow-hidden bg-[#1a1b1a] flex items-center justify-center" onclick="openQV('apricot_peeling')">
+        <img src="https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=600,q=80" alt="Apricot Blossom Peeling Gel" loading="lazy" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105">
+        <div class="absolute top-3 left-3 text-[#212322] bg-[#B5E3D8] text-[9px] font-normal tracking-widest uppercase px-2 py-1 rounded-sm z-10">Novo</div>
+        <button class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#212322]/60 border border-[#F2F2F1]/10 text-[#F2F2F1]/70 flex items-center justify-center opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-[#F1BDC8]/20 hover:text-[#F1BDC8] hover:border-[#F1BDC8] transition-all z-10" onclick="event.stopPropagation();this.classList.toggle('text-[#F1BDC8]')">
+          <iconify-icon icon="solar:heart-linear"></iconify-icon>
+        </button>
+      </div>
+      <div class="p-5 flex flex-col flex-1" onclick="openQV('apricot_peeling')">
+        <div class="text-[9px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-1">SOME BY MI</div>
+        <div class="text-sm font-light text-[#F2F2F1] mb-1 leading-snug line-clamp-1">Apricot Blossom Peeling Gel</div>
+        <div class="text-[11px] text-[#F2F2F1]/40 mb-3 font-extralight line-clamp-1">Esfoliante suave enzimático.</div>
+        <div class="flex items-center gap-1 mb-4">
+          <div class="text-[#ECBAA8] text-[10px] flex items-center tracking-widest">★★★★★</div>
+          <span class="text-[10px] text-[#F2F2F1]/40">(97)</span>
+        </div>
+        <div class="mt-auto flex items-end justify-between">
+          <div>
+            
+            <div class="text-base font-light text-[#F2F2F1]">21&nbsp;660 <span class="text-[10px] text-[#F2F2F1]/40">Kz</span></div>
+          </div>
+          <button class="w-8 h-8 rounded-full bg-[#F2F2F1] text-[#212322] flex items-center justify-center hover:bg-[#B4B5DF] hover:scale-110 transition-all duration-300" onclick="event.stopPropagation();addToCart(this, 21660, 'Apricot Blossom Peeling Gel')">
+            <iconify-icon icon="solar:add-circle-linear" width="1.2em"></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+  
+    <div class="group bg-[#252726]/60 backdrop-blur-md border border-[#F2F2F1]/10 rounded-xl overflow-hidden cursor-pointer hover:-translate-y-2 hover:border-[#B4B5DF]/30 hover:bg-[#252726] hover:shadow-2xl transition-all duration-500 flex flex-col reveal" data-tags="todas" style="transition-delay: 700ms">
+      <div class="relative aspect-square overflow-hidden bg-[#1a1b1a] flex items-center justify-center" onclick="openQV('abib_eye')">
+        <img src="https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=600,q=80" alt="Collagen Eye Patch Jericho Rose" loading="lazy" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105">
+        <div class="absolute top-3 left-3 text-[#212322] bg-[#ECBAA8] text-[9px] font-normal tracking-widest uppercase px-2 py-1 rounded-sm z-10">Top Vendas</div>
+        <button class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#212322]/60 border border-[#F2F2F1]/10 text-[#F2F2F1]/70 flex items-center justify-center opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-[#F1BDC8]/20 hover:text-[#F1BDC8] hover:border-[#F1BDC8] transition-all z-10" onclick="event.stopPropagation();this.classList.toggle('text-[#F1BDC8]')">
+          <iconify-icon icon="solar:heart-linear"></iconify-icon>
+        </button>
+      </div>
+      <div class="p-5 flex flex-col flex-1" onclick="openQV('abib_eye')">
+        <div class="text-[9px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-1">Abib</div>
+        <div class="text-sm font-light text-[#F2F2F1] mb-1 leading-snug line-clamp-1">Collagen Eye Patch Jericho Rose</div>
+        <div class="text-[11px] text-[#F2F2F1]/40 mb-3 font-extralight line-clamp-1">Contorno de olhos com colagénio.</div>
+        <div class="flex items-center gap-1 mb-4">
+          <div class="text-[#ECBAA8] text-[10px] flex items-center tracking-widest">★★★★★</div>
+          <span class="text-[10px] text-[#F2F2F1]/40">(143)</span>
+        </div>
+        <div class="mt-auto flex items-end justify-between">
+          <div>
+            
+            <div class="text-base font-light text-[#F2F2F1]">35&nbsp;347 <span class="text-[10px] text-[#F2F2F1]/40">Kz</span></div>
+          </div>
+          <button class="w-8 h-8 rounded-full bg-[#F2F2F1] text-[#212322] flex items-center justify-center hover:bg-[#B4B5DF] hover:scale-110 transition-all duration-300" onclick="event.stopPropagation();addToCart(this, 35347, 'Collagen Eye Patch Jericho Rose')">
+            <iconify-icon icon="solar:add-circle-linear" width="1.2em"></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+</section>
+
+<!-- RITUAL K-BEAUTY (INTERACTIVE) -->
+<section id="ritual" class="py-24 px-8 lg:px-20 bg-[#1e1f1e] relative overflow-hidden">
+  <div class="absolute -top-48 -right-48 w-[600px] h-[600px] bg-[radial-gradient(circle,rgba(180,181,223,0.04)_0%,transparent_70%)] pointer-events-none"></div>
+  <div class="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-24 items-center">
+    
+    <div class="relative flex justify-center reveal">
+      <div class="relative w-[280px] h-[280px] lg:w-[380px] lg:h-[380px] rounded-full border border-[#F2F2F1]/10 flex items-center justify-center before:absolute before:inset-[-20px] before:rounded-full before:border before:border-[#F2F2F1]/5 before:animate-[spinRing_30s_linear_infinite]">
+        <div class="w-32 h-32 rounded-full bg-[#F2F2F1]/5 flex items-center justify-center text-5xl transition-all duration-500" id="ritualIcon">🌙</div>
+        
+        <div id="pill-top" class="absolute top-[10%] -left-4 lg:-left-8 bg-[#212322]/80 backdrop-blur-xl border border-[#F2F2F1]/10 rounded-xl px-4 py-2.5 transition-all duration-400 shadow-2xl">
+          <div class="text-[10px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-0.5 p-label">Passo 05</div>
+          <div class="text-xs font-normal text-[#F2F2F1] p-name">Sleeping Mask</div>
+        </div>
+        <div id="pill-bot" class="absolute bottom-[10%] -right-4 lg:-right-8 bg-[#212322]/80 backdrop-blur-xl border border-[#F2F2F1]/10 rounded-xl px-4 py-2.5 transition-all duration-400 shadow-2xl">
+          <div class="text-[10px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-0.5 p-label">Passo 02</div>
+          <div class="text-xs font-normal text-[#F2F2F1] p-name">Esfoliação Suave</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal delay-200">
+      <div class="flex items-center gap-2 text-xs tracking-widest uppercase text-[#B4B5DF] font-normal mb-3">
+        <iconify-icon icon="solar:stars-linear"></iconify-icon> O Segredo
+      </div>
+      <h2 class="text-3xl md:text-4xl lg:text-5xl font-extralight tracking-tight text-[#F2F2F1] mb-10">
+        Ritual Coreano<br><em class="text-[#ECBAA8] not-italic">Passo a Passo.</em>
+      </h2>
+      
+      <div id="ritualTabs" class="flex flex-wrap gap-2 mb-8">
+    <button class="px-4 py-2 rounded-full border text-[11px] font-normal tracking-widest uppercase transition-colors border-[#F2F2F1]/20 text-[#F2F2F1]/50 hover:border-[#F2F2F1]/50 hover:text-[#F2F2F1]" data-type="oleosa" onclick="loadRitual('oleosa', this)">Ritual Pele Oleosa</button>
+  
+    <button class="px-4 py-2 rounded-full border text-[11px] font-normal tracking-widest uppercase transition-colors border-[#F2F2F1]/20 text-[#F2F2F1]/50 hover:border-[#F2F2F1]/50 hover:text-[#F2F2F1]" data-type="seca" onclick="loadRitual('seca', this)">Ritual Pele Seca</button>
+  
+    <button class="px-4 py-2 rounded-full border text-[11px] font-normal tracking-widest uppercase transition-colors border-[#F2F2F1]/20 text-[#F2F2F1]/50 hover:border-[#F2F2F1]/50 hover:text-[#F2F2F1]" data-type="sensivel" onclick="loadRitual('sensivel', this)">Ritual Pele Sensível</button>
+  
+    <button class="px-4 py-2 rounded-full border text-[11px] font-normal tracking-widest uppercase transition-colors bg-[#F2F2F1] text-[#212322] border-[#F2F2F1]" data-type="noturno" onclick="loadRitual('noturno', this)">Ritual Noturno</button>
+  </div>
+
+      <div id="ritualSteps" class="flex flex-col border-t border-[#F2F2F1]/10 pt-2">
+      <div class="group flex gap-5 py-5 border-b border-[#F2F2F1]/10 cursor-pointer transition-all px-3 rounded-lg bg-[#F2F2F1]/5 pl-5" onclick="setActiveRitualStep(0, 'noturno')">
+        <div class="text-sm font-light text-[#B4B5DF] transition-colors">01</div>
+        <div>
+          <div class="text-sm font-normal mb-1 text-[#B4B5DF] transition-colors">Double Cleanse</div>
+          <div class="text-xs font-light text-[#F2F2F1]/50 overflow-hidden transition-all duration-400 max-h-20 opacity-100 mt-2">Remove SPF e poluição.</div>
+        </div>
+      </div>
+    
+      <div class="group flex gap-5 py-5 border-b border-[#F2F2F1]/10 cursor-pointer transition-all px-3 rounded-lg hover:bg-[#F2F2F1]/5" onclick="setActiveRitualStep(1, 'noturno')">
+        <div class="text-sm font-light text-[#F2F2F1]/30 transition-colors">02</div>
+        <div>
+          <div class="text-sm font-normal mb-1 text-[#F2F2F1] group-hover:text-[#F2F2F1]/80 transition-colors">Esfoliação Suave</div>
+          <div class="text-xs font-light text-[#F2F2F1]/50 overflow-hidden transition-all duration-400 max-h-0 opacity-0">AHA/BHA 2x semana.</div>
+        </div>
+      </div>
+    
+      <div class="group flex gap-5 py-5 border-b border-[#F2F2F1]/10 cursor-pointer transition-all px-3 rounded-lg hover:bg-[#F2F2F1]/5" onclick="setActiveRitualStep(2, 'noturno')">
+        <div class="text-sm font-light text-[#F2F2F1]/30 transition-colors">03</div>
+        <div>
+          <div class="text-sm font-normal mb-1 text-[#F2F2F1] group-hover:text-[#F2F2F1]/80 transition-colors">Sérum Activo</div>
+          <div class="text-xs font-light text-[#F2F2F1]/50 overflow-hidden transition-all duration-400 max-h-0 opacity-0">Retinol ou péptidos.</div>
+        </div>
+      </div>
+    
+      <div class="group flex gap-5 py-5 border-b border-[#F2F2F1]/10 cursor-pointer transition-all px-3 rounded-lg hover:bg-[#F2F2F1]/5" onclick="setActiveRitualStep(3, 'noturno')">
+        <div class="text-sm font-light text-[#F2F2F1]/30 transition-colors">04</div>
+        <div>
+          <div class="text-sm font-normal mb-1 text-[#F2F2F1] group-hover:text-[#F2F2F1]/80 transition-colors">Eye Cream</div>
+          <div class="text-xs font-light text-[#F2F2F1]/50 overflow-hidden transition-all duration-400 max-h-0 opacity-0">Prevenção de rugas.</div>
+        </div>
+      </div>
+    
+      <div class="group flex gap-5 py-5 border-b border-[#F2F2F1]/10 cursor-pointer transition-all px-3 rounded-lg hover:bg-[#F2F2F1]/5" onclick="setActiveRitualStep(4, 'noturno')">
+        <div class="text-sm font-light text-[#F2F2F1]/30 transition-colors">05</div>
+        <div>
+          <div class="text-sm font-normal mb-1 text-[#F2F2F1] group-hover:text-[#F2F2F1]/80 transition-colors">Sleeping Mask</div>
+          <div class="text-xs font-light text-[#F2F2F1]/50 overflow-hidden transition-all duration-400 max-h-0 opacity-0">Hidratação durante sono.</div>
+        </div>
+      </div>
+    </div>
+    </div>
+  </div>
+</section>
+
+<!-- AI QUIZ -->
+<section id="quiz" class="py-24 px-6 lg:px-20 bg-[#1e1f1e] relative border-t border-[#F2F2F1]/5">
+  <div class="absolute -top-32 left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-[radial-gradient(circle,rgba(180,181,223,0.04)_0%,transparent_65%)] pointer-events-none"></div>
+  <div class="max-w-3xl mx-auto reveal">
+    <div class="text-center mb-12">
+      <div class="flex items-center justify-center gap-2 text-xs tracking-widest uppercase text-[#B4B5DF] font-normal mb-3">
+        <iconify-icon icon="solar:magic-stick-3-linear"></iconify-icon> IA-Powered Gemini
+      </div>
+      <h2 class="text-3xl md:text-4xl font-extralight tracking-tight text-[#F2F2F1]">O teu ritual <em class="text-[#ECBAA8] not-italic">personalizado</em></h2>
+      <p class="text-sm text-[#F2F2F1]/50 mt-4 max-w-lg mx-auto font-light">Responde a 3 perguntas. A nossa IA gera o teu ritual K-Beauty completo com produtos específicos para o teu perfil.</p>
+    </div>
+    
+    <div id="quizBox" class="bg-[#252726]/50 backdrop-blur-xl border border-[#F2F2F1]/10 rounded-2xl p-8 lg:p-12 min-h-[360px] flex flex-col justify-center transition-all duration-500">
+    <div class="flex justify-center gap-2 mb-10">
+      <div class="h-1 rounded-full transition-all duration-300 w-10 bg-[#B4B5DF]"></div><div class="h-1 rounded-full transition-all duration-300 w-6 bg-[#F2F2F1]/10"></div><div class="h-1 rounded-full transition-all duration-300 w-6 bg-[#F2F2F1]/10"></div>
+    </div>
+    <div class="text-2xl lg:text-3xl font-light tracking-tight text-center text-[#F2F2F1] mb-10">Qual é o teu tipo de pele?</div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
+      <button class="p-4 md:p-6 rounded-xl border flex flex-col items-center justify-center gap-3 transition-all duration-300 font-light text-sm bg-[#F2F2F1]/5 border-[#F2F2F1]/10 text-[#F2F2F1]/70 hover:bg-[#F2F2F1]/10 hover:border-[#F2F2F1]/30" onclick="selectQuizOpt('Oleosa', true)">
+          <span class="text-2xl">✨</span>
+          Oleosa
+        </button><button class="p-4 md:p-6 rounded-xl border flex flex-col items-center justify-center gap-3 transition-all duration-300 font-light text-sm bg-[#F2F2F1]/5 border-[#F2F2F1]/10 text-[#F2F2F1]/70 hover:bg-[#F2F2F1]/10 hover:border-[#F2F2F1]/30" onclick="selectQuizOpt('Seca', true)">
+          <span class="text-2xl">💧</span>
+          Seca
+        </button><button class="p-4 md:p-6 rounded-xl border flex flex-col items-center justify-center gap-3 transition-all duration-300 font-light text-sm bg-[#F2F2F1]/5 border-[#F2F2F1]/10 text-[#F2F2F1]/70 hover:bg-[#F2F2F1]/10 hover:border-[#F2F2F1]/30" onclick="selectQuizOpt('Mista', true)">
+          <span class="text-2xl">🌿</span>
+          Mista
+        </button><button class="p-4 md:p-6 rounded-xl border flex flex-col items-center justify-center gap-3 transition-all duration-300 font-light text-sm bg-[#F2F2F1]/5 border-[#F2F2F1]/10 text-[#F2F2F1]/70 hover:bg-[#F2F2F1]/10 hover:border-[#F2F2F1]/30" onclick="selectQuizOpt('Sensível', true)">
+          <span class="text-2xl">🌸</span>
+          Sensível
+        </button>
+    </div>
+    <div class="flex justify-between items-center mt-auto">
+      <button class="text-xs font-normal tracking-widest uppercase text-[#F2F2F1]/40 hover:text-[#F2F2F1] transition-colors px-4 py-2 invisible" onclick="qStep--;renderQuizStep()">← Voltar</button>
+      <button class="text-xs font-normal tracking-widest uppercase rounded-lg px-8 py-4 transition-all duration-300 bg-[#F2F2F1]/5 text-[#F2F2F1]/30 pointer-events-none" onclick="qStep++;renderQuizStep()">Seguinte →</button>
+    </div>
+  </div>
+  </div>
+</section>
+
+<!-- KIT BUILDER -->
+<section id="kit" class="py-24 px-6 lg:px-20 bg-[#1a1b1a] relative border-t border-[#F2F2F1]/5">
+  <div class="max-w-[1200px] mx-auto">
+    <div class="text-center mb-12 reveal">
+      <div class="flex items-center justify-center gap-2 text-xs tracking-widest uppercase text-[#B5E3D8] font-normal mb-3">
+        <iconify-icon icon="solar:box-minimalistic-linear"></iconify-icon> Kit Personalizado
+      </div>
+      <h2 class="text-3xl md:text-4xl font-extralight tracking-tight text-[#F2F2F1]">Monta o teu <em class="text-[#B5E3D8] not-italic">ritual completo</em></h2>
+      <p class="text-sm text-[#F2F2F1]/50 mt-4 max-w-lg mx-auto font-light">Escolhe 3, 4 ou 5 produtos e ganha desconto progressivo.</p>
+    </div>
+
+    <div class="bg-[#252726]/50 backdrop-blur-xl border border-[#F2F2F1]/10 rounded-2xl p-8 lg:p-12 reveal delay-100">
+      
+      <!-- Discounts -->
+      <div class="flex justify-center gap-3 mb-10">
+        <div id="tier3" class="flex-1 max-w-[160px] border border-[#F2F2F1]/10 rounded-xl p-4 text-center transition-colors">
+          <div class="text-3xl font-extralight text-[#F2F2F1] mb-1">8<span class="text-base text-[#B5E3D8]">%</span></div>
+          <div class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/50">3 Produtos</div>
+        </div>
+        <div id="tier4" class="flex-1 max-w-[160px] border border-[#F2F2F1]/10 rounded-xl p-4 text-center transition-colors">
+          <div class="text-3xl font-extralight text-[#F2F2F1] mb-1">12<span class="text-base text-[#B5E3D8]">%</span></div>
+          <div class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/50">4 Produtos</div>
+        </div>
+        <div id="tier5" class="flex-1 max-w-[160px] border border-[#F2F2F1]/10 rounded-xl p-4 text-center transition-colors">
+          <div class="text-3xl font-extralight text-[#F2F2F1] mb-1">15<span class="text-base text-[#B5E3D8]">%</span></div>
+          <div class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/50">5 Produtos</div>
+        </div>
+      </div>
+
+      <!-- Slots -->
+      <div id="kitSlots" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8"><div class="aspect-[3/4] rounded-xl border border-dashed border-[#F2F2F1]/20 bg-[#F2F2F1]/5 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-[#F2F2F1]/10 hover:border-[#B4B5DF]/50 transition-all group" onclick="openKitPicker(0)">
+      <div class="text-3xl opacity-40 group-hover:opacity-100 transition-opacity group-hover:scale-110 duration-300">🧴</div>
+      <div class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/50 text-center px-2">Limpeza</div>
+    </div><div class="aspect-[3/4] rounded-xl border border-dashed border-[#F2F2F1]/20 bg-[#F2F2F1]/5 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-[#F2F2F1]/10 hover:border-[#B4B5DF]/50 transition-all group" onclick="openKitPicker(1)">
+      <div class="text-3xl opacity-40 group-hover:opacity-100 transition-opacity group-hover:scale-110 duration-300">💧</div>
+      <div class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/50 text-center px-2">Tónico</div>
+    </div><div class="aspect-[3/4] rounded-xl border border-dashed border-[#F2F2F1]/20 bg-[#F2F2F1]/5 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-[#F2F2F1]/10 hover:border-[#B4B5DF]/50 transition-all group" onclick="openKitPicker(2)">
+      <div class="text-3xl opacity-40 group-hover:opacity-100 transition-opacity group-hover:scale-110 duration-300">✨</div>
+      <div class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/50 text-center px-2">Sérum</div>
+    </div><div class="aspect-[3/4] rounded-xl border border-dashed border-[#F2F2F1]/20 bg-[#F2F2F1]/5 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-[#F2F2F1]/10 hover:border-[#B4B5DF]/50 transition-all group" onclick="openKitPicker(3)">
+      <div class="text-3xl opacity-40 group-hover:opacity-100 transition-opacity group-hover:scale-110 duration-300">🌿</div>
+      <div class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/50 text-center px-2">Creme</div>
+    </div><div class="aspect-[3/4] rounded-xl border border-dashed border-[#F2F2F1]/20 bg-[#F2F2F1]/5 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-[#F2F2F1]/10 hover:border-[#B4B5DF]/50 transition-all group" onclick="openKitPicker(4)">
+      <div class="text-3xl opacity-40 group-hover:opacity-100 transition-opacity group-hover:scale-110 duration-300">☀️</div>
+      <div class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/50 text-center px-2">Protetor Solar</div>
+    </div></div>
+      
+      <p class="text-xs text-[#F2F2F1]/40 text-center mb-8 font-light">Clica num slot vazio para seleccionar o produto ideal para esse passo.</p>
+
+      <!-- Picker area -->
+      <div id="kitPickerWrap" class="hidden mb-8 border-t border-[#F2F2F1]/10 pt-8">
+        <div id="kitPickerTitle" class="text-xl font-light text-[#F2F2F1] mb-6"></div>
+        <div id="kitPicker" class="grid grid-cols-2 md:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto hide-scroll pr-2"></div>
+      </div>
+
+      <!-- Summary -->
+      <div id="kitSummary" class="flex flex-col md:flex-row md:items-center justify-between gap-6 p-6 lg:p-8 bg-[#212322] border border-[#F2F2F1]/5 rounded-xl">
+        <!-- Rendered by JS -->
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- NEWSLETTER -->
+<section class="py-32 px-6 lg:px-20 bg-gradient-to-br from-[#252726] to-[#1a1b1a] text-center relative overflow-hidden">
+  <iconify-icon icon="solar:stars-bold" class="text-3xl text-[#B4B5DF] mb-6 block mx-auto animate-[starPulse_3s_ease-in-out_infinite]"></iconify-icon>
+  <h2 class="text-3xl md:text-5xl font-extralight tracking-tight text-[#F2F2F1] mb-4 reveal">A tua pele merece<br><em class="text-[#ECBAA8] not-italic">o melhor da Coreia.</em></h2>
+  <p class="text-sm text-[#F2F2F1]/50 font-light max-w-md mx-auto mb-10 reveal delay-100">Recebe o nosso Guia de Rotinas K-Beauty e as novidades exclusivas antes de chegarem à loja.</p>
+  
+  <div class="max-w-md mx-auto flex flex-col sm:flex-row gap-2 reveal delay-200">
+    <input type="email" placeholder="O teu melhor e-mail" class="flex-1 bg-[#F2F2F1]/5 border border-[#F2F2F1]/10 rounded-lg px-5 py-4 text-sm text-[#F2F2F1] focus:outline-none focus:border-[#B4B5DF]/50 transition-colors placeholder:text-[#F2F2F1]/30" data-cursor-bound="true">
+    <button class="bg-[#B4B5DF] text-[#212322] text-xs font-normal tracking-widest uppercase rounded-lg px-8 py-4 hover:bg-[#F2F2F1] transition-colors whitespace-nowrap" data-cursor-bound="true">Subscrever</button>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="bg-[#1a1b1a] border-t border-[#F2F2F1]/10 pt-20 pb-8 px-8 lg:px-20 text-[#F2F2F1]">
+  <div class="max-w-[1600px] mx-auto">
+    
+    <!-- Trust Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-8 pb-16 mb-16 border-b border-[#F2F2F1]/10">
+      <div class="text-center">
+        <div class="text-4xl font-extralight tracking-tight mb-2">3800<span class="text-lg text-[#B4B5DF]">+</span></div>
+        <div class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/40">Produtos Vendidos</div>
+      </div>
+      <div class="text-center">
+        <div class="text-4xl font-extralight tracking-tight mb-2">98<span class="text-lg text-[#B4B5DF]">%</span></div>
+        <div class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/40">Clientes Satisfeitas</div>
+      </div>
+      <div class="text-center">
+        <div class="text-4xl font-extralight tracking-tight mb-2">16</div>
+        <div class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/40">Marcas Originais</div>
+      </div>
+      <div class="text-center">
+        <div class="text-4xl font-extralight tracking-tight mb-2">2400<span class="text-lg text-[#B4B5DF]">+</span></div>
+        <div class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/40">Avaliações 5 Estrelas</div>
+      </div>
+    </div>
+
+    <!-- Links -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12 mb-16">
+      <div class="lg:col-span-2">
+        <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg" alt="LUNO" class="h-8 w-auto object-contain mb-6">
+        <p class="text-sm text-[#F2F2F1]/50 font-light leading-relaxed max-w-xs mb-8">Curadoria exclusiva de K-Beauty para Angola e a CPLP. Produtos autênticos, resultados reais.</p>
+        <div class="flex gap-3 text-[#F2F2F1]/50">
+          <a href="#" class="w-10 h-10 rounded-full border border-[#F2F2F1]/10 flex items-center justify-center hover:bg-[#F2F2F1]/5 hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true"><iconify-icon icon="solar:gallery-minimalistic-linear" width="1.2em"></iconify-icon></a>
+          <a href="#" class="w-10 h-10 rounded-full border border-[#F2F2F1]/10 flex items-center justify-center hover:bg-[#F2F2F1]/5 hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true"><iconify-icon icon="solar:letter-linear" width="1.2em"></iconify-icon></a>
+        </div>
+      </div>
+      <div>
+        <h4 class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/30 font-normal mb-6">Loja</h4>
+        <ul class="flex flex-col gap-4 text-sm font-light text-[#F2F2F1]/60">
+          <li><a href="#" class="hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true">Skincare Facial</a></li>
+          <li><a href="#" class="hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true">Cuidados Corporais</a></li>
+          <li><a href="#" class="hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true">Protetores Solares</a></li>
+          <li><a href="#" class="hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true">Marcas</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/30 font-normal mb-6">Apoio</h4>
+        <ul class="flex flex-col gap-4 text-sm font-light text-[#F2F2F1]/60">
+          <li><a href="#" class="hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true">Apoio ao Cliente</a></li>
+          <li><a href="#" class="hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true">Envios e Entregas</a></li>
+          <li><a href="#" class="hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true">Devoluções</a></li>
+          <li><a href="#" class="hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true">FAQ</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/30 font-normal mb-6">Conta</h4>
+        <ul class="flex flex-col gap-4 text-sm font-light text-[#F2F2F1]/60">
+          <li><a href="#" class="hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true">Minha Conta</a></li>
+          <li><a href="#" class="hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true">Wishlist</a></li>
+          <li><a href="#" class="hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true">Encomendas</a></li>
+          <li><a href="#" class="hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true">Programa VIP</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Bottom -->
+    <div class="flex flex-col md:flex-row items-center justify-between gap-6 pt-8 border-t border-[#F2F2F1]/10 text-xs text-[#F2F2F1]/30 font-light">
+      <div>© 2025 LUNO · Pixel Infinito, Lda · Luanda, Angola</div>
+      <div class="flex gap-2">
+        <span class="px-2.5 py-1 bg-[#F2F2F1]/5 border border-[#F2F2F1]/10 rounded">Multicaixa</span>
+        <span class="px-2.5 py-1 bg-[#F2F2F1]/5 border border-[#F2F2F1]/10 rounded">Visa</span>
+        <span class="px-2.5 py-1 bg-[#F2F2F1]/5 border border-[#F2F2F1]/10 rounded">Mastercard</span>
+      </div>
+      <div class="flex gap-6">
+        <a href="#" class="hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true">Privacidade</a>
+        <a href="#" class="hover:text-[#F2F2F1] transition-colors" data-cursor-bound="true">Termos</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- Modals & Overlays -->
+<div id="qvOverlay" class="fixed inset-0 z-[800] bg-black/80 backdrop-blur-sm opacity-0 invisible transition-all duration-300 flex items-center justify-center p-4 lg:p-12">
+  <div id="qvModal" class="bg-[#252726] border border-[#F2F2F1]/10 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto grid grid-cols-1 md:grid-cols-2 relative scale-95 transition-transform duration-400 ease-out">
+    <button class="absolute top-4 right-4 w-8 h-8 bg-[#F2F2F1]/10 hover:bg-[#F2F2F1]/20 rounded-full flex items-center justify-center transition-colors z-20" onclick="closeQV()" data-cursor-bound="true"><iconify-icon icon="solar:close-circle-linear" width="1.2em"></iconify-icon></button>
+    <div class="aspect-square md:aspect-auto bg-[#1a1b1a] relative"><img id="qvImg" src="" class="absolute inset-0 w-full h-full object-cover"></div>
+    <div id="qvInfo" class="p-8 lg:p-12 flex flex-col gap-4"></div>
+  </div>
+</div>
+
+<div id="authOverlay" class="fixed inset-0 z-[900] bg-black/80 backdrop-blur-sm opacity-0 invisible transition-all duration-300 flex items-center justify-center p-4">
+  <div class="bg-[#252726] border border-[#F2F2F1]/10 rounded-2xl w-full max-w-md p-10 relative scale-95 transition-transform duration-400 ease-out">
+    <button class="absolute top-4 right-4 w-8 h-8 bg-[#F2F2F1]/10 hover:bg-[#F2F2F1]/20 rounded-full flex items-center justify-center transition-colors" onclick="closeAuth()" data-cursor-bound="true"><iconify-icon icon="solar:close-circle-linear" width="1.2em"></iconify-icon></button>
+    <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg" alt="LUNO" class="h-8 w-auto object-contain mx-auto mb-4">
+    <h3 id="authTitle" class="text-2xl font-light tracking-tight text-center mb-2 text-[#F2F2F1]">Entrar na LUNO</h3>
+    <p id="authSub" class="text-sm font-light text-[#F2F2F1]/50 text-center mb-8">Acede à tua conta para gerir encomendas, wishlist e rituais.</p>
+    
+    <button class="w-full py-3.5 px-4 bg-[#F2F2F1]/5 border border-[#F2F2F1]/10 rounded-lg flex items-center justify-center gap-3 text-sm font-normal hover:bg-[#F2F2F1]/10 transition-colors mb-6" onclick="loginGoogle()" data-cursor-bound="true">
+      <iconify-icon icon="logos:google-icon"></iconify-icon> Continuar com Google
+    </button>
+    
+    <div class="flex items-center gap-4 text-xs font-normal tracking-widest uppercase text-[#F2F2F1]/20 mb-6">
+      <div class="flex-1 h-px bg-[#F2F2F1]/10"></div>ou<div class="flex-1 h-px bg-[#F2F2F1]/10"></div>
+    </div>
+    
+    <div id="authInputs" class="flex flex-col gap-3 mb-6">
+      <input type="email" id="authEmail" placeholder="O teu e-mail" class="w-full bg-[#F2F2F1]/5 border border-[#F2F2F1]/10 rounded-lg px-4 py-3.5 text-sm font-light text-[#F2F2F1] focus:outline-none focus:border-[#B4B5DF]/50 placeholder:text-[#F2F2F1]/30" data-cursor-bound="true">
+      <input type="password" id="authPass" placeholder="Palavra-passe" class="w-full bg-[#F2F2F1]/5 border border-[#F2F2F1]/10 rounded-lg px-4 py-3.5 text-sm font-light text-[#F2F2F1] focus:outline-none focus:border-[#B4B5DF]/50 placeholder:text-[#F2F2F1]/30" data-cursor-bound="true">
+    </div>
+    
+    <button class="w-full bg-[#F2F2F1] text-[#212322] text-xs font-normal tracking-widest uppercase rounded-lg px-4 py-4 hover:bg-[#B4B5DF] transition-colors mb-4" onclick="loginEmail()" data-cursor-bound="true">Entrar</button>
+    <div class="text-center text-xs font-light text-[#F2F2F1]/50" id="authSwitch">Não tens conta? <a href="#" class="text-[#B4B5DF] hover:text-[#F2F2F1]" onclick="switchToRegister(event)" data-cursor-bound="true">Criar conta grátis</a></div>
+  </div>
+</div>
+
+<div id="cartProgress" class="fixed bottom-0 inset-x-0 z-[450] bg-[#1a1b1a]/95 backdrop-blur-xl border-t border-[#F2F2F1]/10 py-3 px-6 lg:px-12 flex items-center gap-6 translate-y-full transition-transform duration-500 ease-out">
+  <div id="cartProgText" class="text-xs font-light text-[#F2F2F1]/70 whitespace-nowrap"><strong>Carrinho vazio</strong></div>
+  <div class="flex-1 h-1 bg-[#F2F2F1]/10 rounded-full overflow-hidden">
+    <div id="cartProgFill" class="h-full bg-gradient-to-r from-[#B4B5DF] to-[#B5E3D8] transition-all duration-500 w-0"></div>
+  </div>
+  <div class="text-[10px] text-[#B5E3D8] font-normal whitespace-nowrap hidden sm:block">Entrega grátis a 50.000 Kz</div>
+</div>
+
+<div class="fixed bottom-8 right-8 z-[400] flex flex-col items-end gap-3 group">
+  <div class="bg-[#252726]/95 backdrop-blur-md border border-[#F2F2F1]/10 rounded-lg px-3 py-2 text-xs font-normal text-[#F2F2F1] opacity-0 translate-x-2 transition-all duration-200 pointer-events-none group-hover:opacity-100 group-hover:translate-x-0">Apoio ao Cliente</div>
+  <button class="w-14 h-14 rounded-full bg-[#252726]/90 backdrop-blur-md border border-[#B5E3D8]/30 shadow-2xl flex items-center justify-center text-[#B5E3D8] hover:bg-[#B5E3D8]/10 hover:border-[#B5E3D8]/60 hover:scale-110 transition-all duration-300" onclick="window.open('https://wa.me/244900000000', '_blank')" data-cursor-bound="true">
+    <iconify-icon icon="solar:chat-round-dots-linear" width="24"></iconify-icon>
+  </button>
+</div>
+
+<!-- SCRIPTS -->
+<script>
+// --- Data & State ---
+const PRODUCT_CATALOG = [
+  { id: "vt_reedle", brand: "VT Cosmetics", name: "Reedle Shot 300", desc: "Renovação celular com 237.500 Cica Reedles.", price: 52448, oldPrice: null, stars: 5, reviews: 312, badge: "Top Vendas", badgeClass: "text-[#212322] bg-[#ECBAA8]", filter: ["oleosa", "todas"], img: "https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=600,q=80", ingredients: ["CICA Reedle 300", "Centella", "Peptídeos"], why: { default: "Tecnologia de micro-agulhas coreana para renovação intensa." } },
+  { id: "anua_cleanser", brand: "Anua", name: "Heartleaf BHA Deep Cleansing Foam", desc: "Limpeza profunda dos poros com BHA.", price: 27355, oldPrice: null, stars: 5, reviews: 248, badge: "Novo", badgeClass: "text-[#212322] bg-[#B5E3D8]", filter: ["oleosa", "limpeza"], img: "https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/limpeza-facial.jpg/w=600,q=80", ingredients: ["BHA", "Heartleaf", "Centella"], why: { default: "Limpeza suave e botânica para pele limpa e calma." } },
+  { id: "ksecret_seoul1988", brand: "K-SECRET", name: "Seoul 1988 Cream Snail Mucin", desc: "Regeneração com baba de caracol 93%.", price: 28499, oldPrice: 33922, stars: 5, reviews: 521, badge: "−15%", badgeClass: "text-[#212322] bg-[#F1BDC8]", filter: ["seca", "sensivel"], img: "https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=600,q=80", ingredients: ["Snail Mucin 93%", "Ginseng"], why: { default: "Hidrata, regenera e ilumina com alta concentração." } },
+  { id: "beauty_joseon_sun", brand: "Beauty of Joseon", name: "Relief Sun Aqua Fresh SPF50+", desc: "Textura aquosa para clima quente.", price: 30779, oldPrice: null, stars: 5, reviews: 186, badge: "Top Vendas", badgeClass: "text-[#212322] bg-[#ECBAA8]", filter: ["solar", "todas"], img: "https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/protetor-solar-luno-ao.jpg/w=600,q=80", ingredients: ["SPF50+ PA++++", "Rice Extract", "Vitamin B5"], why: { default: "Ideal para Angola, não deixa resíduo branco." } },
+  { id: "skin1004_centella", brand: "SKIN1004", name: "Madagascar Centella Capsule", desc: "Centella pura. Calmante e reparador.", price: 23940, oldPrice: null, stars: 4, reviews: 189, badge: "Novo", badgeClass: "text-[#212322] bg-[#B5E3D8]", filter: ["sensivel", "mista"], img: "https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=600,q=80", ingredients: ["Centella 100%", "Madecassoside"], why: { default: "Reduz a reactividade em peles sensíveis." } },
+  { id: "purito_centella", brand: "Purito Seoul", name: "Wonder Releaf Centella Cream", desc: "Barreira cutânea reforçada.", price: 25075, oldPrice: null, stars: 5, reviews: 412, badge: "Top Vendas", badgeClass: "text-[#212322] bg-[#ECBAA8]", filter: ["sensivel", "seca"], img: "https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/marcaras-faciais.jpg/w=600,q=80", ingredients: ["Centella 49%", "Ceramidas"], why: { default: "Sinergia de ingredientes para restaurar barreira." } },
+  { id: "apricot_peeling", brand: "SOME BY MI", name: "Apricot Blossom Peeling Gel", desc: "Esfoliante suave enzimático.", price: 21660, oldPrice: null, stars: 4, reviews: 97, badge: "Novo", badgeClass: "text-[#212322] bg-[#B5E3D8]", filter: ["oleosa", "todas"], img: "https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/limpeza-facial.jpg/w=600,q=80", ingredients: ["Apricot Extract", "AHA", "Papain"], why: { default: "Esfoliação sem irritação para textura uniforme." } },
+  { id: "abib_eye", brand: "Abib", name: "Collagen Eye Patch Jericho Rose", desc: "Contorno de olhos com colagénio.", price: 35347, oldPrice: null, stars: 5, reviews: 143, badge: "Top Vendas", badgeClass: "text-[#212322] bg-[#ECBAA8]", filter: ["todas"], img: "https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/marcaras-faciais.jpg/w=600,q=80", ingredients: ["Colágeno", "Rosa de Jericó", "Cafeína"], why: { default: "Combate sinais de idade na área mais delicada." } }
+];
+
+const RITUAL_BY_TYPE = {
+  oleosa: { icon: "✨", title: "Ritual Pele Oleosa", steps: [{n:"01", title:"Double Cleanse", desc:"Óleo + espuma BHA para poros."}, {n:"02", title:"Tónico Balanceador", desc:"Regula oleosidade."}, {n:"03", title:"Sérum Niacinamida", desc:"Minimiza poros e manchas."}, {n:"04", title:"Gel Hidratante", desc:"Fórmula oil-free."}, {n:"05", title:"SPF50+ Seco", desc:"Obrigatório de manhã."}] },
+  seca: { icon: "💧", title: "Ritual Pele Seca", steps: [{n:"01", title:"Cleanse Suave", desc:"Preserva lípidos naturais."}, {n:"02", title:"Tónico Hidratante", desc:"1ª camada hialurónica."}, {n:"03", title:"Essência Snail", desc:"Repara e regenera."}, {n:"04", title:"Creme Rico", desc:"Sela hidratação (ceramidas)."}, {n:"05", title:"SPF50+ Hidratante", desc:"Não resseca."}] },
+  sensivel: { icon: "🌸", title: "Ritual Pele Sensível", steps: [{n:"01", title:"Limpeza Calmante", desc:"Sem álcool ou fragrâncias."}, {n:"02", title:"Tónico Centella", desc:"Reduz vermelhidão."}, {n:"03", title:"Sérum CICA", desc:"Acalma reactividade."}, {n:"04", title:"Creme Barreira", desc:"Restaura a pele."}, {n:"05", title:"SPF50+ Mineral", desc:"Mais gentil para reactivas."}] },
+  noturno: { icon: "🌙", title: "Ritual Noturno", steps: [{n:"01", title:"Double Cleanse", desc:"Remove SPF e poluição."}, {n:"02", title:"Esfoliação Suave", desc:"AHA/BHA 2x semana."}, {n:"03", title:"Sérum Activo", desc:"Retinol ou péptidos."}, {n:"04", title:"Eye Cream", desc:"Prevenção de rugas."}, {n:"05", title:"Sleeping Mask", desc:"Hidratação durante sono."}] }
+};
+
+// --- Initialization ---
+window.addEventListener('load', () => {
+  setTimeout(() => document.getElementById('loader').classList.add('opacity-0', 'invisible'), 1900);
+  initProducts();
+  initRituals();
+  initQuiz();
+  renderKitSlots();
+  
+  // Scroll reveal setup
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => { if(entry.isIntersecting) entry.target.classList.add('visible'); });
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+});
+
+// --- Nav & Scroll ---
+window.addEventListener('scroll', () => {
+  const nav = document.getElementById('nav');
+  if(window.scrollY > 40) {
+    nav.classList.add('bg-[#1a1b1a]/95', 'shadow-2xl'); nav.classList.remove('bg-[#212322]/80');
+  } else {
+    nav.classList.add('bg-[#212322]/80'); nav.classList.remove('bg-[#1a1b1a]/95', 'shadow-2xl');
+  }
+});
+
+// --- Hero Slider ---
+const slidesData = [
+  { title: "Rosto", em: "Luminoso", sub: "Skincare coreano autêntico.", img: "https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=1920,q=85", cat: "Skincare Facial" },
+  { title: "Corpo", em: "Nutrido", sub: "Rituais corporais botânicos.", img: "https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-do-corpo-luno-ao.jpg/w=1920,q=85", cat: "Cuidados Corporais" },
+  { title: "Protecção", em: "Total", sub: "SPF50+ formulados para Luanda.", img: "https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/protetor-solar-luno-ao.jpg/w=1920,q=85", cat: "Protetores Solares" }
+];
+let curSlide = 0;
+const slidesContainer = document.getElementById('heroSlides');
+const dotsContainer = document.getElementById('heroDots');
+const tabsContainer = document.getElementById('heroTabs');
+
+slidesData.forEach((s, i) => {
+  const bg = document.createElement('div');
+  bg.className = `absolute inset-0 bg-cover bg-center transition-opacity duration-1000 ${i === 0 ? 'opacity-100' : 'opacity-0'}`;
+  bg.style.backgroundImage = `url(${s.img})`;
+  const overlay = document.createElement('div');
+  overlay.className = 'absolute inset-0 bg-gradient-to-r from-[#212322]/95 via-[#212322]/60 to-transparent';
+  bg.appendChild(overlay);
+  slidesContainer.appendChild(bg);
+  
+  const dot = document.createElement('button');
+  dot.className = `h-0.5 rounded-full transition-all duration-300 ${i === 0 ? 'w-8 bg-[#B4B5DF]' : 'w-4 bg-[#F2F2F1]/20'}`;
+  dot.onclick = () => goToSlide(i);
+  dotsContainer.appendChild(dot);
+  
+  const tab = document.createElement('button');
+  tab.className = `text-[10px] tracking-widest uppercase font-normal py-1 px-3 border-l-2 transition-all ${i===0 ? 'border-[#B4B5DF] text-[#F2F2F1]' : 'border-transparent text-[#F2F2F1]/30 hover:text-[#F2F2F1]/70'}`;
+  tab.textContent = s.cat;
+  tab.onclick = () => goToSlide(i);
+  tabsContainer.appendChild(tab);
+});
+
+function goToSlide(idx) {
+  curSlide = idx;
+  const s = slidesData[idx];
+  Array.from(slidesContainer.children).forEach((el, i) => el.classList.toggle('opacity-100', i === idx));
+  Array.from(slidesContainer.children).forEach((el, i) => el.classList.toggle('opacity-0', i !== idx));
+  Array.from(dotsContainer.children).forEach((el, i) => el.className = `h-0.5 rounded-full transition-all duration-300 ${i === idx ? 'w-8 bg-[#B4B5DF]' : 'w-4 bg-[#F2F2F1]/20'}`);
+  Array.from(tabsContainer.children).forEach((el, i) => el.className = `text-[10px] tracking-widest uppercase font-normal py-1 px-3 border-l-2 transition-all text-left whitespace-nowrap ${i===idx ? 'border-[#B4B5DF] text-[#F2F2F1]' : 'border-transparent text-[#F2F2F1]/30'}`);
+  
+  const els = ['hTitle', 'hSub'];
+  els.forEach(id => {
+    const el = document.getElementById(id);
+    el.classList.remove('opacity-100', 'translate-y-0'); el.classList.add('opacity-0', 'translate-y-4');
+  });
+  setTimeout(() => {
+    document.getElementById('hTitle').innerHTML = `${s.title}<br><em class="text-[#ECBAA8] not-italic font-extralight">${s.em}</em>`;
+    document.getElementById('hSub').textContent = s.sub;
+    els.forEach(id => {
+      const el = document.getElementById(id);
+      el.classList.add('opacity-100', 'translate-y-0'); el.classList.remove('opacity-0', 'translate-y-4');
+    });
+  }, 300);
+}
+setInterval(() => goToSlide((curSlide + 1) % slidesData.length), 6000);
+
+// Initial hero reveal
+setTimeout(() => {
+  ['hEyebrow', 'hTitle', 'hSub', 'heroCtas'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) { el.classList.remove('opacity-0', 'translate-y-4'); el.classList.add('opacity-100', 'translate-y-0'); }
+  });
+  const tabs = document.getElementById('heroTabs');
+  if(tabs) { tabs.classList.remove('opacity-0'); tabs.classList.add('opacity-100'); }
+}, 2000);
+
+// --- Products Rendering ---
+function initProducts() {
+  const grid = document.getElementById('productsGrid');
+  grid.innerHTML = PRODUCT_CATALOG.map((p, i) => `
+    <div class="group bg-[#252726]/60 backdrop-blur-md border border-[#F2F2F1]/10 rounded-xl overflow-hidden cursor-pointer hover:-translate-y-2 hover:border-[#B4B5DF]/30 hover:bg-[#252726] hover:shadow-2xl transition-all duration-500 flex flex-col reveal" data-tags="${p.filter.join(',')}" style="transition-delay: ${i*100}ms">
+      <div class="relative aspect-square overflow-hidden bg-[#1a1b1a] flex items-center justify-center" onclick="openQV('${p.id}')">
+        <img src="https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=600,q=80" alt="${p.name}" loading="lazy" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105">
+        <div class="absolute top-3 left-3 ${p.badgeClass} text-[9px] font-normal tracking-widest uppercase px-2 py-1 rounded-sm z-10">${p.badge}</div>
+        <button class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#212322]/60 border border-[#F2F2F1]/10 text-[#F2F2F1]/70 flex items-center justify-center opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-[#F1BDC8]/20 hover:text-[#F1BDC8] hover:border-[#F1BDC8] transition-all z-10" onclick="event.stopPropagation();this.classList.toggle('text-[#F1BDC8]')">
+          <iconify-icon icon="solar:heart-linear"></iconify-icon>
+        </button>
+      </div>
+      <div class="p-5 flex flex-col flex-1" onclick="openQV('${p.id}')">
+        <div class="text-[9px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-1">${p.brand}</div>
+        <div class="text-sm font-light text-[#F2F2F1] mb-1 leading-snug line-clamp-1">${p.name}</div>
+        <div class="text-[11px] text-[#F2F2F1]/40 mb-3 font-extralight line-clamp-1">${p.desc}</div>
+        <div class="flex items-center gap-1 mb-4">
+          <div class="text-[#ECBAA8] text-[10px] flex items-center tracking-widest">★★★★★</div>
+          <span class="text-[10px] text-[#F2F2F1]/40">(${p.reviews})</span>
+        </div>
+        <div class="mt-auto flex items-end justify-between">
+          <div>
+            ${p.oldPrice ? `<div class="text-[10px] text-[#F2F2F1]/30 line-through">${p.oldPrice.toLocaleString('pt-PT')}</div>` : ''}
+            <div class="text-base font-light text-[#F2F2F1]">${p.price.toLocaleString('pt-PT')} <span class="text-[10px] text-[#F2F2F1]/40">Kz</span></div>
+          </div>
+          <button class="w-8 h-8 rounded-full bg-[#F2F2F1] text-[#212322] flex items-center justify-center hover:bg-[#B4B5DF] hover:scale-110 transition-all duration-300" onclick="event.stopPropagation();addToCart(this, ${p.price}, '${p.name}')">
+            <iconify-icon icon="solar:add-circle-linear" width="1.2em"></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+  
+  // Filtering
+  document.querySelectorAll('.prod-filter').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.prod-filter').forEach(b => { b.classList.remove('bg-[#B4B5DF]', 'text-[#212322]', 'border-[#B4B5DF]'); b.classList.add('text-[#F2F2F1]/50', 'border-[#F2F2F1]/20'); });
+      btn.classList.add('bg-[#B4B5DF]', 'text-[#212322]', 'border-[#B4B5DF]'); btn.classList.remove('text-[#F2F2F1]/50', 'border-[#F2F2F1]/20');
+      const filter = btn.dataset.filter;
+      document.querySelectorAll('#productsGrid > div').forEach(card => {
+        const tags = card.dataset.tags.split(',');
+        card.style.display = (filter === 'all' || tags.includes(filter)) ? 'flex' : 'none';
+      });
+    });
+  });
+}
+
+// --- Ritual Section ---
+let activeRitualStep = 0;
+let ritualTimer;
+function initRituals() {
+  const tabs = document.getElementById('ritualTabs');
+  const types = Object.keys(RITUAL_BY_TYPE);
+  tabs.innerHTML = types.map((k, i) => `
+    <button class="px-4 py-2 rounded-full border text-[11px] font-normal tracking-widest uppercase transition-colors ${i===3 ? 'bg-[#F2F2F1] text-[#212322] border-[#F2F2F1]' : 'border-[#F2F2F1]/20 text-[#F2F2F1]/50 hover:border-[#F2F2F1]/50 hover:text-[#F2F2F1]'}" data-type="${k}" onclick="loadRitual('${k}', this)">${RITUAL_BY_TYPE[k].title}</button>
+  `).join('');
+  loadRitual('noturno', tabs.children[3]);
+}
+
+function loadRitual(typeKey, btnElement) {
+  if(btnElement) {
+    document.querySelectorAll('#ritualTabs button').forEach(b => { b.classList.remove('bg-[#F2F2F1]', 'text-[#212322]', 'border-[#F2F2F1]'); b.classList.add('border-[#F2F2F1]/20', 'text-[#F2F2F1]/50'); });
+    btnElement.classList.add('bg-[#F2F2F1]', 'text-[#212322]', 'border-[#F2F2F1]'); btnElement.classList.remove('border-[#F2F2F1]/20', 'text-[#F2F2F1]/50');
+  }
+  const data = RITUAL_BY_TYPE[typeKey];
+  document.getElementById('ritualIcon').textContent = data.icon;
+  const stepsContainer = document.getElementById('ritualSteps');
+  activeRitualStep = 0;
+  
+  const updateSteps = () => {
+    stepsContainer.innerHTML = data.steps.map((s, i) => `
+      <div class="group flex gap-5 py-5 border-b border-[#F2F2F1]/10 cursor-pointer transition-all px-3 rounded-lg ${i === activeRitualStep ? 'bg-[#F2F2F1]/5 pl-5' : 'hover:bg-[#F2F2F1]/5'}" onclick="setActiveRitualStep(${i}, '${typeKey}')">
+        <div class="text-sm font-light ${i === activeRitualStep ? 'text-[#B4B5DF]' : 'text-[#F2F2F1]/30'} transition-colors">${s.n}</div>
+        <div>
+          <div class="text-sm font-normal mb-1 ${i === activeRitualStep ? 'text-[#B4B5DF]' : 'text-[#F2F2F1] group-hover:text-[#F2F2F1]/80'} transition-colors">${s.title}</div>
+          <div class="text-xs font-light text-[#F2F2F1]/50 overflow-hidden transition-all duration-400 ${i === activeRitualStep ? 'max-h-20 opacity-100 mt-2' : 'max-h-0 opacity-0'}">${s.desc}</div>
+        </div>
+      </div>
+    `).join('');
+    
+    const prev = data.steps[(activeRitualStep - 1 + data.steps.length) % data.steps.length];
+    const next = data.steps[(activeRitualStep + 1) % data.steps.length];
+    document.querySelector('#pill-top .p-label').textContent = 'Passo ' + prev.n; document.querySelector('#pill-top .p-name').textContent = prev.title;
+    document.querySelector('#pill-bot .p-label').textContent = 'Passo ' + next.n; document.querySelector('#pill-bot .p-name').textContent = next.title;
+  };
+  
+  window.setActiveRitualStep = (i, typeKey) => { activeRitualStep = i; loadRitual(typeKey); clearInterval(ritualTimer); startRitualTimer(typeKey); };
+  updateSteps();
+  clearInterval(ritualTimer); startRitualTimer(typeKey);
+}
+
+function startRitualTimer(typeKey) {
+  ritualTimer = setInterval(() => {
+    activeRitualStep = (activeRitualStep + 1) % RITUAL_BY_TYPE[typeKey].steps.length;
+    loadRitual(typeKey);
+  }, 4000);
+}
+
+// --- Quiz UI ---
+const QUIZ_DATA = [
+  { q: "Qual é o teu tipo de pele?", type: "single", opts: [{i:"✨",l:"Oleosa"}, {i:"💧",l:"Seca"}, {i:"🌿",l:"Mista"}, {i:"🌸",l:"Sensível"}] },
+  { q: "Quais as preocupações principais?", type: "multi", opts: [{l:"Acne"}, {l:"Manchas"}, {l:"Rugas"}, {l:"Desidratação"}, {l:"Poros"}] },
+  { q: "Que resultados desejas?", type: "multi", opts: [{l:"Pele Iluminada"}, {l:"Textura Suave"}, {l:"Anti-idade"}, {l:"Tom Uniforme"}] }
+];
+let qStep = 0, qAnswers = {};
+
+function initQuiz() { renderQuizStep(); }
+function renderQuizStep() {
+  const box = document.getElementById('quizBox');
+  if(qStep >= QUIZ_DATA.length) {
+    box.innerHTML = `<div class="flex flex-col items-center justify-center text-center"><div class="text-4xl text-[#B4B5DF] mb-4 animate-[spinRing_1.5s_linear_infinite]"><iconify-icon icon="solar:stars-line-duotone"></iconify-icon></div><div class="text-lg font-light text-[#F2F2F1]">A criar o teu ritual...</div><div class="text-xs text-[#F2F2F1]/50 mt-2">A analisar o teu perfil dermatológico</div></div>`;
+    setTimeout(renderQuizResult, 2000);
+    return;
+  }
+  
+  const d = QUIZ_DATA[qStep];
+  const isS = d.type === 'single';
+  const sel = qAnswers[qStep] || [];
+  
+  box.innerHTML = `
+    <div class="flex justify-center gap-2 mb-10">
+      ${QUIZ_DATA.map((_, i) => `<div class="h-1 rounded-full transition-all duration-300 ${i < qStep ? 'w-6 bg-[#B5E3D8]' : i === qStep ? 'w-10 bg-[#B4B5DF]' : 'w-6 bg-[#F2F2F1]/10'}"></div>`).join('')}
+    </div>
+    <div class="text-2xl lg:text-3xl font-light tracking-tight text-center text-[#F2F2F1] mb-10">${d.q}</div>
+    <div class="grid ${isS ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3'} gap-3 mb-10">
+      ${d.opts.map(o => {
+        const isSelected = sel.includes(o.l);
+        return `<button class="p-4 md:p-6 rounded-xl border flex flex-col items-center justify-center gap-3 transition-all duration-300 font-light text-sm ${isSelected ? 'bg-[#B4B5DF]/10 border-[#B4B5DF] text-[#B4B5DF]' : 'bg-[#F2F2F1]/5 border-[#F2F2F1]/10 text-[#F2F2F1]/70 hover:bg-[#F2F2F1]/10 hover:border-[#F2F2F1]/30'}" onclick="selectQuizOpt('${o.l}', ${isS})">
+          ${o.i ? `<span class="text-2xl">${o.i}</span>` : ''}
+          ${o.l}
+        </button>`;
+      }).join('')}
+    </div>
+    <div class="flex justify-between items-center mt-auto">
+      <button class="text-xs font-normal tracking-widest uppercase text-[#F2F2F1]/40 hover:text-[#F2F2F1] transition-colors px-4 py-2 ${qStep===0?'invisible':''}" onclick="qStep--;renderQuizStep()">← Voltar</button>
+      <button class="text-xs font-normal tracking-widest uppercase rounded-lg px-8 py-4 transition-all duration-300 ${sel.length ? 'bg-[#F2F2F1] text-[#212322] hover:bg-[#B4B5DF] hover:-translate-y-0.5 shadow-lg' : 'bg-[#F2F2F1]/5 text-[#F2F2F1]/30 pointer-events-none'}" onclick="qStep++;renderQuizStep()">${qStep === QUIZ_DATA.length-1 ? 'Gerar Ritual ✦' : 'Seguinte →'}</button>
+    </div>
+  `;
+}
+window.selectQuizOpt = (val, isSingle) => {
+  if(!qAnswers[qStep]) qAnswers[qStep] = [];
+  if(isSingle) qAnswers[qStep] = [val];
+  else {
+    if(qAnswers[qStep].includes(val)) qAnswers[qStep] = qAnswers[qStep].filter(v => v !== val);
+    else qAnswers[qStep].push(val);
+  }
+  renderQuizStep();
+};
+
+function renderQuizResult() {
+  const box = document.getElementById('quizBox');
+  const type = qAnswers[0][0].toLowerCase() === 'oleosa' ? 'oleosa' : 'seca';
+  const rit = RITUAL_BY_TYPE[type];
+  
+  box.innerHTML = `
+    <div class="text-center mb-8 border-b border-[#F2F2F1]/10 pb-8">
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#B4B5DF]/10 border border-[#B4B5DF]/30 text-[10px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-4">✦ Ritual gerado por IA</div>
+      <h3 class="text-2xl font-light text-[#F2F2F1]">O Teu Ritual LUNO</h3>
+      <p class="text-xs text-[#F2F2F1]/50 mt-1 font-light">Para pele ${qAnswers[0][0]}</p>
+    </div>
+    <div class="text-[10px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-4">Passo a Passo</div>
+    <div class="flex flex-col gap-3 mb-8">
+      ${rit.steps.map(s => `
+        <div class="bg-[#F2F2F1]/5 border border-[#F2F2F1]/10 rounded-xl p-4 flex gap-4 items-start">
+          <div class="text-2xl font-extralight text-[#F2F2F1]/30 leading-none">${s.n}</div>
+          <div>
+            <div class="text-sm font-normal text-[#F2F2F1] mb-1">${s.title}</div>
+            <div class="text-xs font-light text-[#F2F2F1]/50">${s.desc}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="text-[10px] tracking-widest uppercase text-[#ECBAA8] font-normal mb-4">Produtos Recomendados</div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
+      ${PRODUCT_CATALOG.slice(0,2).map(p => `
+        <div class="bg-[#ECBAA8]/5 border border-[#ECBAA8]/20 rounded-xl overflow-hidden flex cursor-pointer hover:-translate-y-1 transition-transform" onclick="openQV('${p.id}')">
+          <img src="https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=600,q=80" class="w-24 h-24 object-cover border-r border-[#ECBAA8]/20">
+          <div class="p-3 flex flex-col justify-center">
+            <div class="text-[9px] tracking-widest uppercase text-[#ECBAA8] font-normal mb-1">${p.brand}</div>
+            <div class="text-xs font-light text-[#F2F2F1] line-clamp-1">${p.name}</div>
+            <div class="text-xs text-[#F2F2F1]/50 mt-1">${p.price.toLocaleString()} Kz</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="flex justify-center"><button class="text-xs font-normal tracking-widest uppercase text-[#F2F2F1]/50 hover:text-[#F2F2F1] border border-[#F2F2F1]/20 rounded px-6 py-3 transition-colors" onclick="qStep=0;qAnswers={};renderQuizStep()">↺ Recomeçar</button></div>
+  `;
+}
+
+// --- Kit Builder ---
+let kitSlots = [null, null, null, null, null];
+const kitSteps = [
+  { label: 'Limpeza', icon: '🧴', type: 'limpeza' },
+  { label: 'Tónico', icon: '💧', type: 'tonico' },
+  { label: 'Sérum', icon: '✨', type: 'serum' },
+  { label: 'Creme', icon: '🌿', type: 'hidratante' },
+  { label: 'Protetor Solar', icon: '☀️', type: 'solar' }
+];
+const P_TYPES = { 'anua_cleanser':'limpeza', 'apricot_peeling':'limpeza', 'purito_centella':'tonico', 'skin1004_centella':'tonico', 'vt_reedle':'serum', 'abib_eye':'serum', 'ksecret_seoul1988':'hidratante', 'beauty_joseon_sun':'solar' };
+
+function renderKitSlots() {
+  const c = document.getElementById('kitSlots');
+  c.innerHTML = kitSlots.map((pid, i) => {
+    if(pid) {
+      const p = PRODUCT_CATALOG.find(x => x.id === pid);
+      return `<div class="relative aspect-[3/4] rounded-xl overflow-hidden border border-[#B4B5DF]/30 group cursor-pointer" onclick="openKitPicker(${i})">
+        <img src="https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=600,q=80" class="absolute inset-0 w-full h-full object-cover">
+        <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#212322] pt-8 pb-3 px-2 text-center text-[10px] font-normal text-[#F2F2F1] leading-tight">${p.name.substring(0,24)}...</div>
+        <button class="absolute top-2 right-2 w-6 h-6 rounded-full bg-[#212322]/80 border border-[#F2F2F1]/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[#F1BDC8]/20 hover:text-[#F1BDC8]" onclick="event.stopPropagation(); kitSlots[${i}]=null; renderKitSlots(); updateKitSummary();"><iconify-icon icon="solar:close-circle-linear"></iconify-icon></button>
+      </div>`;
+    }
+    return `<div class="aspect-[3/4] rounded-xl border border-dashed border-[#F2F2F1]/20 bg-[#F2F2F1]/5 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-[#F2F2F1]/10 hover:border-[#B4B5DF]/50 transition-all group" onclick="openKitPicker(${i})">
+      <div class="text-3xl opacity-40 group-hover:opacity-100 transition-opacity group-hover:scale-110 duration-300">${kitSteps[i].icon}</div>
+      <div class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/50 text-center px-2">${kitSteps[i].label}</div>
+    </div>`;
+  }).join('');
+}
+
+function openKitPicker(slotIdx) {
+  const wrap = document.getElementById('kitPickerWrap');
+  wrap.classList.remove('hidden');
+  document.getElementById('kitPickerTitle').innerHTML = `<span class="text-2xl mr-2">${kitSteps[slotIdx].icon}</span> Escolhe o teu <strong class="font-normal text-[#B4B5DF]">${kitSteps[slotIdx].label}</strong>`;
+  
+  const targetType = kitSteps[slotIdx].type;
+  const avail = PRODUCT_CATALOG.filter(p => !kitSlots.includes(p.id));
+  const suggested = avail.filter(p => P_TYPES[p.id] === targetType);
+  const others = avail.filter(p => P_TYPES[p.id] !== targetType);
+  
+  let html = '';
+  const makeCard = (p, ideal) => `
+    <div class="bg-[#1a1b1a] border border-[#F2F2F1]/10 rounded-xl overflow-hidden cursor-pointer hover:-translate-y-1 hover:border-[#B4B5DF]/50 transition-all ${ideal ? 'ring-1 ring-[#B4B5DF]/30' : ''}" onclick="kitSlots[${slotIdx}]='${p.id}'; document.getElementById('kitPickerWrap').classList.add('hidden'); renderKitSlots(); updateKitSummary();">
+      <div class="aspect-square"><img src="https://imagedelivery.net/6HwnxsMACp9LGRV7S6ZRBA/luno.ao/2025/02/cuidados-facial-luno-ao.jpg/w=600,q=80" class="w-full h-full object-cover"></div>
+      <div class="p-3">
+        <div class="text-[9px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-1">${p.brand}</div>
+        <div class="text-xs font-light text-[#F2F2F1] line-clamp-1 mb-1">${p.name}</div>
+        ${ideal ? `<div class="text-[9px] text-[#B5E3D8] mb-1">✓ Ideal</div>` : ''}
+        <div class="text-xs text-[#F2F2F1]/50">${p.price.toLocaleString()} Kz</div>
+      </div>
+    </div>
+  `;
+  
+  if(suggested.length) {
+    html += `<div class="col-span-full text-[10px] tracking-widest uppercase text-[#B4B5DF] font-normal border-b border-[#F2F2F1]/10 pb-2 mb-2 mt-2">✦ Sugestões para este passo</div>`;
+    html += suggested.map(p => makeCard(p, true)).join('');
+  }
+  if(others.length) {
+    html += `<div class="col-span-full text-[10px] tracking-widest uppercase text-[#F2F2F1]/30 font-normal border-b border-[#F2F2F1]/10 pb-2 mb-2 mt-4">Outros Produtos</div>`;
+    html += others.map(p => makeCard(p, false)).join('');
+  }
+  document.getElementById('kitPicker').innerHTML = html;
+  setTimeout(() => wrap.scrollIntoView({behavior: 'smooth', block: 'nearest'}), 100);
+}
+
+function updateKitSummary() {
+  const filled = kitSlots.filter(Boolean).length;
+  const disc = filled >= 5 ? 15 : filled >= 4 ? 12 : filled >= 3 ? 8 : 0;
+  
+  ['tier3','tier4','tier5'].forEach(id => {
+    document.getElementById(id).className = 'flex-1 max-w-[160px] border border-[#F2F2F1]/10 rounded-xl p-4 text-center transition-colors bg-transparent';
+  });
+  if(filled>=3) document.getElementById('tier3').className = 'flex-1 max-w-[160px] border border-[#B5E3D8]/50 bg-[#B5E3D8]/10 rounded-xl p-4 text-center transition-colors';
+  if(filled>=4) document.getElementById('tier4').className = 'flex-1 max-w-[160px] border border-[#B5E3D8]/50 bg-[#B5E3D8]/10 rounded-xl p-4 text-center transition-colors';
+  if(filled>=5) document.getElementById('tier5').className = 'flex-1 max-w-[160px] border border-[#B5E3D8]/50 bg-[#B5E3D8]/10 rounded-xl p-4 text-center transition-colors';
+
+  let total = 0;
+  kitSlots.forEach(id => { if(id) total += PRODUCT_CATALOG.find(p=>p.id===id).price; });
+  const final = total * (1 - disc/100);
+  
+  const sum = document.getElementById('kitSummary');
+  if(filled === 0) {
+    sum.innerHTML = `<div class="w-full text-center text-sm font-light text-[#F2F2F1]/50">Adiciona produtos para ver o teu desconto.</div>`;
+    return;
+  }
+  
+  sum.innerHTML = `
+    <div class="flex-1 w-full md:w-auto">
+      <div class="text-[10px] tracking-widest uppercase text-[#F2F2F1]/50 mb-2">${filled} de 5 produtos</div>
+      <div class="text-3xl font-extralight text-[#F2F2F1] mb-1">${Math.round(final).toLocaleString()} <span class="text-sm">Kz</span></div>
+      ${disc ? `<div class="text-xs text-[#B5E3D8] font-normal">Desconto aplicado: -${Math.round(total-final).toLocaleString()} Kz (${disc}%)</div>` : `<div class="text-xs text-[#F2F2F1]/30">Adiciona mais ${3-filled} para 8% desc.</div>`}
+    </div>
+    <button class="w-full md:w-auto px-8 py-4 rounded-lg text-xs font-normal tracking-widest uppercase transition-all ${filled >= 3 ? 'bg-[#F2F2F1] text-[#212322] hover:bg-[#B5E3D8] hover:-translate-y-0.5' : 'bg-[#F2F2F1]/5 text-[#F2F2F1]/30 pointer-events-none'}" onclick="kitToCart()">
+      Adicionar Kit
+    </button>
+  `;
+}
+window.kitToCart = () => {
+  const added = kitSlots.filter(Boolean).length;
+  cartCount += added;
+  kitSlots.forEach(id => { if(id) cartTotal += PRODUCT_CATALOG.find(p=>p.id===id).price; });
+  updateCartGlobal();
+  showToast(`Kit de ${added} produtos adicionado!`);
+};
+
+// --- Cart Global ---
+let cartCount = 0;
+let cartTotal = 0;
+function addToCart(btn, price, name) {
+  cartCount++; cartTotal += price || 15000;
+  updateCartGlobal();
+  showToast(`"${name ? name.substring(0,20)+'...' : 'Produto'}" adicionado`);
+  btn.innerHTML = `<iconify-icon icon="solar:check-circle-linear" width="1.2em"></iconify-icon>`;
+  btn.classList.add('bg-[#B5E3D8]'); btn.classList.remove('bg-[#F2F2F1]');
+  setTimeout(() => {
+    btn.innerHTML = `<iconify-icon icon="solar:add-circle-linear" width="1.2em"></iconify-icon>`;
+    btn.classList.remove('bg-[#B5E3D8]'); btn.classList.add('bg-[#F2F2F1]');
+  }, 1000);
+}
+
+function updateCartGlobal() {
+  document.getElementById('cartBadge').textContent = cartCount;
+  const cp = document.getElementById('cartProgress');
+  const fill = document.getElementById('cartProgFill');
+  const text = document.getElementById('cartProgText');
+  if(cartTotal === 0) { cp.classList.add('translate-y-full'); return; }
+  cp.classList.remove('translate-y-full');
+  const pct = Math.min(100, (cartTotal/50000)*100);
+  fill.style.width = pct + '%';
+  if(cartTotal >= 50000) text.innerHTML = '<strong class="text-[#F2F2F1] font-normal">🎉 Entrega grátis desbloqueada!</strong>';
+  else text.innerHTML = `Faltam <strong class="text-[#F2F2F1] font-normal">${Math.round((50000-cartTotal)/1000)}.000 Kz</strong> para entrega grátis`;
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  document.getElementById('toast-msg').textContent = msg;
+  t.classList.remove('opacity-0', 'translate-y-4');
+  t.classList.add('opacity-100', 'translate-y-0');
+  setTimeout(() => {
+    t.classList.remove('opacity-100', 'translate-y-0');
+    t.classList.add('opacity-0', 'translate-y-4');
+  }, 3000);
+}
+
+// --- Quick View ---
+function openQV(id) {
+  const p = PRODUCT_CATALOG.find(x => x.id === id);
+  if(!p) return;
+  document.getElementById('qvImg').src = p.img;
+  
+  document.getElementById('qvInfo').innerHTML = `
+    <div class="${p.badgeClass} self-start text-[9px] font-normal tracking-widest uppercase px-2 py-1 rounded-sm mb-4">${p.badge || 'Destaque'}</div>
+    <div class="text-[10px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-1">${p.brand}</div>
+    <div class="text-3xl font-extralight tracking-tight text-[#F2F2F1] mb-2 leading-tight">${p.name}</div>
+    <div class="flex items-center gap-2 mb-6">
+      <div class="text-[#ECBAA8] text-xs tracking-widest">★★★★★</div>
+      <span class="text-xs text-[#F2F2F1]/50 font-light">${p.reviews} avaliações</span>
+    </div>
+    <p class="text-sm font-light text-[#F2F2F1]/70 leading-relaxed mb-6">${p.desc}</p>
+    
+    <div class="bg-[#B4B5DF]/5 border border-[#B4B5DF]/20 rounded-xl p-4 mb-6">
+      <div class="text-[10px] tracking-widest uppercase text-[#B4B5DF] font-normal mb-2">✦ Porque escolher?</div>
+      <p class="text-xs font-light text-[#F2F2F1]/80 leading-relaxed italic">${p.why.default}</p>
+    </div>
+    
+    <div class="flex flex-wrap gap-2 mb-auto pb-8">
+      ${p.ingredients.map(i => `<span class="px-3 py-1 bg-[#F2F2F1]/5 border border-[#F2F2F1]/10 rounded text-[10px] text-[#F2F2F1]/60">${i}</span>`).join('')}
+    </div>
+    
+    <div class="flex items-end justify-between mt-auto pt-6 border-t border-[#F2F2F1]/10">
+      <div>
+        ${p.oldPrice ? `<div class="text-xs text-[#F2F2F1]/30 line-through mb-1">${p.oldPrice.toLocaleString()} Kz</div>` : ''}
+        <div class="text-3xl font-extralight text-[#F2F2F1]">${p.price.toLocaleString()} <span class="text-sm text-[#F2F2F1]/50">Kz</span></div>
+      </div>
+      <div class="flex gap-2">
+        <button class="w-12 h-12 rounded-lg border border-[#F2F2F1]/20 flex items-center justify-center text-[#F2F2F1]/50 hover:border-[#F1BDC8] hover:text-[#F1BDC8] transition-colors"><iconify-icon icon="solar:heart-linear" width="1.5em"></iconify-icon></button>
+        <button class="px-8 py-3 bg-[#F2F2F1] text-[#212322] text-xs font-normal tracking-widest uppercase rounded-lg hover:bg-[#B4B5DF] hover:-translate-y-0.5 transition-all" onclick="addToCart(this, ${p.price}, '${p.name}'); closeQV();">Comprar</button>
+      </div>
+    </div>
+  `;
+  
+  const o = document.getElementById('qvOverlay');
+  const m = document.getElementById('qvModal');
+  o.classList.remove('opacity-0', 'invisible');
+  o.classList.add('opacity-100', 'visible');
+  m.classList.remove('scale-95');
+  m.classList.add('scale-100');
+}
+
+function closeQV() {
+  const o = document.getElementById('qvOverlay');
+  const m = document.getElementById('qvModal');
+  m.classList.remove('scale-100');
+  m.classList.add('scale-95');
+  o.classList.remove('opacity-100', 'visible');
+  o.classList.add('opacity-0', 'invisible');
+}
+
+// Close modals on background click
+document.getElementById('qvOverlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('qvOverlay')) closeQV();
+});
+document.getElementById('authOverlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('authOverlay')) closeAuth();
+});
+
+// --- Authentication & User Menu ---
+let isLogged = false;
+
+function handleAccountClick() {
+  if(isLogged) {
+    const m = document.getElementById('userMenu');
+    if(m.classList.contains('opacity-0')) {
+      m.classList.remove('opacity-0', 'invisible', 'translate-y-2');
+      m.classList.add('opacity-100', 'visible', 'translate-y-0');
+    } else {
+      m.classList.remove('opacity-100', 'visible', 'translate-y-0');
+      m.classList.add('opacity-0', 'invisible', 'translate-y-2');
+    }
+  } else {
+    const ao = document.getElementById('authOverlay');
+    ao.classList.remove('opacity-0', 'invisible');
+    ao.classList.add('opacity-100', 'visible');
+    ao.firstElementChild.classList.remove('scale-95');
+    ao.firstElementChild.classList.add('scale-100');
+  }
+}
+
+function closeAuth() {
+  const ao = document.getElementById('authOverlay');
+  ao.firstElementChild.classList.remove('scale-100');
+  ao.firstElementChild.classList.add('scale-95');
+  ao.classList.remove('opacity-100', 'visible');
+  ao.classList.add('opacity-0', 'invisible');
+}
+
+function loginGoogle() { authenticate("Google"); }
+function loginEmail() { authenticate("Email"); }
+
+function authenticate(method) {
+  closeAuth();
+  isLogged = true;
+  document.getElementById('navAccount').classList.add('text-[#F2F2F1]', 'bg-[#F2F2F1]/10');
+  showToast(`Sessão iniciada com sucesso`);
+}
+
+function logoutUser() {
+  isLogged = false;
+  const m = document.getElementById('userMenu');
+  m.classList.remove('opacity-100', 'visible', 'translate-y-0');
+  m.classList.add('opacity-0', 'invisible', 'translate-y-2');
+  document.getElementById('navAccount').classList.remove('text-[#F2F2F1]', 'bg-[#F2F2F1]/10');
+  showToast('Sessão terminada');
+}
+
+let isLoginView = true;
+function switchToRegister(e) {
+  e.preventDefault();
+  isLoginView = !isLoginView;
+  document.getElementById('authTitle').textContent = isLoginView ? 'Entrar na LUNO' : 'Criar Conta LUNO';
+  document.getElementById('authSub').textContent = isLoginView ? 'Acede à tua conta para gerir encomendas, wishlist e rituais.' : 'Junta-te à nossa comunidade e acede a rituais exclusivos.';
+  document.getElementById('authSwitch').innerHTML = isLoginView 
+    ? 'Não tens conta? <a href="#" class="text-[#B4B5DF] hover:text-[#F2F2F1]" onclick="switchToRegister(event)">Criar conta grátis</a>' 
+    : 'Já tens conta? <a href="#" class="text-[#B4B5DF] hover:text-[#F2F2F1]" onclick="switchToRegister(event)">Entrar agora</a>';
+  document.querySelector('#authOverlay button.bg-\\[\\#F2F2F1\\]').textContent = isLoginView ? 'Entrar' : 'Criar Conta';
+}
+
+// --- Custom Cursor Logic ---
+const dot = document.getElementById('cd');
+const ring = document.getElementById('cr');
+let mouseX = window.innerWidth / 2;
+let mouseY = window.innerHeight / 2;
+let ringX = mouseX;
+let ringY = mouseY;
+
+if (window.matchMedia('(min-width: 768px)').matches) {
+  window.addEventListener('mousemove', e => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    dot.style.transform = `translate(${mouseX}px, ${mouseY}px)`;
+  });
+
+  function renderCursor() {
+    ringX += (mouseX - ringX) * 0.15;
+    ringY += (mouseY - ringY) * 0.15;
+    ring.style.transform = `translate(${ringX}px, ${ringY}px)`;
+    requestAnimationFrame(renderCursor);
+  }
+  renderCursor();
+
+  // Add hover effects dynamically
+  const setupCursorHovers = () => {
+    document.querySelectorAll('a, button, input, [onclick]').forEach(el => {
+      // Prevent adding multiple listeners
+      if(el.dataset.cursorBound) return;
+      el.dataset.cursorBound = "true";
+      el.addEventListener('mouseenter', () => { dot.classList.add('h'); ring.classList.add('h'); });
+      el.addEventListener('mouseleave', () => { dot.classList.remove('h'); ring.classList.remove('h'); });
+    });
+  };
+  
+  // Initial setup and re-run occasionally for dynamically added elements (like kit items)
+  setupCursorHovers();
+  setInterval(setupCursorHovers, 2000);
+}
+
+// Smooth scroll for anchors
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+  anchor.addEventListener('click', function (e) {
+    e.preventDefault();
+    const target = document.querySelector(this.getAttribute('href'));
+    if(target) target.scrollIntoView({ behavior: 'smooth' });
+  });
+});
+</script>
+
+</body></html>

@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en" class="antialiased">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cube Solver 3D</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+body {
+font-family: 'Inter', sans-serif;
+background-color: #09090b; /* zinc-950 */
+}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #18181b; }
+::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+/* 2D Net Styles */
+.cube-net {
+display: grid;
+grid-template-columns: repeat(4, 80px);
+grid-template-rows: repeat(3, 80px);
+gap: 12px;
+}
+@media (max-width: 640px) {
+.cube-net {
+grid-template-columns: repeat(4, 50px);
+grid-template-rows: repeat(3, 50px);
+gap: 6px;
+}
+}
+.face {
+display: grid;
+grid-template-columns: repeat(3, 1fr);
+grid-template-rows: repeat(3, 1fr);
+gap: 2px;
+background: #18181b;
+padding: 2px;
+border-radius: 4px;
+border: 1px solid rgba(255,255,255,0.05);
+}
+.face-U { grid-column: 2; grid-row: 1; }
+.face-L { grid-column: 1; grid-row: 2; }
+.face-F { grid-column: 2; grid-row: 2; }
+.face-R { grid-column: 3; grid-row: 2; }
+.face-B { grid-column: 4; grid-row: 2; }
+.face-D { grid-column: 2; grid-row: 3; }
+.sticker {
+cursor: pointer;
+border-radius: 2px;
+transition: all 0.1s ease;
+}
+.sticker:hover { opacity: 0.8; }
+/* Color classes */
+.c-white { background-color: #e4e4e7; }
+.c-yellow { background-color: #facc15; }
+.c-green { background-color: #22c55e; }
+.c-blue { background-color: #3b82f6; }
+.c-red { background-color: #ef4444; }
+.c-orange { background-color: #f97316; }
+.c-empty { background-color: #27272a; }
+/* 3D Scene Styles */
+.scene {
+width: 200px;
+height: 200px;
+perspective: 600px;
+user-select: none;
+}
+.cube-3d {
+width: 100%;
+height: 100%;
+position: relative;
+transform-style: preserve-3d;
+transform: rotateX(-30deg) rotateY(-45deg);
+transition: transform 0.5s ease-out;
+}
+.cubie {
+position: absolute;
+width: 50px;
+height: 50px;
+left: 75px; /* (200 - 50) / 2 */
+top: 75px;
+transform-style: preserve-3d;
+}
+.cubie-face {
+position: absolute;
+width: 48px;
+height: 48px;
+border-radius: 3px;
+border: 1px solid rgba(0,0,0,0.2);
+box-shadow: inset 0 0 4px rgba(0,0,0,0.4);
+backface-visibility: hidden;
+}
+/* Cubie Face Transforms */
+.cf-U { transform: rotateX(90deg) translateZ(25px); }
+.cf-D { transform: rotateX(-90deg) translateZ(25px); }
+.cf-F { transform: translateZ(25px); }
+.cf-B { transform: rotateY(180deg) translateZ(25px); }
+.cf-L { transform: rotateY(-90deg) translateZ(25px); }
+.cf-R { transform: rotateY(90deg) translateZ(25px); }
+.c-inner { background-color: #18181b; } /* Internal black plastic color */
+.animating {
+transition: transform 0.3s ease-in-out;
+}
+.hidden-face { display: none; }
+</style></head>
+<body class="text-zinc-400 min-h-screen flex flex-col selection:bg-zinc-800 selection:text-white overflow-hidden">
+
+    <!-- Header -->
+    <header class="border-b border-white/5 bg-zinc-950/50 backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-6 h-6 bg-zinc-100 rounded flex items-center justify-center shadow-lg shadow-white/5">
+                    <iconify-icon icon="lucide:box" class="text-zinc-900 text-sm"></iconify-icon>
+                </div>
+                <h1 class="text-zinc-100 font-medium tracking-tight text-sm">CUBESOLVER 3D</h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <button class="text-zinc-100 hover:text-white transition-colors">
+                    <iconify-icon icon="lucide:github" width="16" stroke-width="1.5"></iconify-icon>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-6xl mx-auto w-full p-6 grid grid-cols-1 lg:grid-cols-12 gap-8 h-[calc(100vh-3.5rem)]">
+        
+        <!-- Left Column: Controls & Palette -->
+        <div class="lg:col-span-3 flex flex-col gap-6 order-2 lg:order-1 h-full overflow-y-auto pb-6">
+            
+            <!-- Palette -->
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-xs uppercase tracking-wider font-medium text-zinc-500">Editor Palette</h2>
+                </div>
+                <div class="grid grid-cols-3 gap-2" id="palette">
+                    <!-- Generated by JS -->
+                </div>
+            </div>
+
+            <!-- Tools -->
+            <div class="space-y-3">
+                <h2 class="text-xs uppercase tracking-wider font-medium text-zinc-500">Tools</h2>
+                <button onclick="scrambleCube()" class="w-full h-9 flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 rounded text-xs font-medium transition-all group">
+                    <iconify-icon icon="lucide:shuffle" width="14" stroke-width="1.5" class="group-hover:rotate-180 transition-transform duration-500"></iconify-icon>
+                    Scramble
+                </button>
+                <button onclick="resetCube()" class="w-full h-9 flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 rounded text-xs font-medium transition-all">
+                    <iconify-icon icon="lucide:rotate-ccw" width="14" stroke-width="1.5"></iconify-icon>
+                    Reset
+                </button>
+            </div>
+
+            <!-- View Toggle -->
+            <div class="space-y-3">
+                <h2 class="text-xs uppercase tracking-wider font-medium text-zinc-500">View Mode</h2>
+                <div class="grid grid-cols-2 gap-1 p-1 bg-zinc-900 rounded border border-white/5">
+                    <button onclick="setView('2d')" id="btn-2d" class="h-7 text-xs font-medium rounded text-zinc-100 bg-zinc-800 shadow-sm transition-all flex items-center justify-center gap-2">
+                        <iconify-icon icon="lucide:grid-3x3" width="12"></iconify-icon> Editor
+                    </button>
+                    <button onclick="setView('3d')" id="btn-3d" class="h-7 text-xs font-medium rounded text-zinc-500 hover:text-zinc-300 transition-all flex items-center justify-center gap-2">
+                        <iconify-icon icon="lucide:box" width="12"></iconify-icon> 3D Preview
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center: The Visualization -->
+        <div class="lg:col-span-6 flex flex-col relative order-1 lg:order-2 bg-zinc-900/20 border border-white/5 rounded-xl overflow-hidden shadow-2xl shadow-black/50">
+            
+            <!-- 2D View -->
+            <div id="view-2d" class="absolute inset-0 flex flex-col items-center justify-center p-6 overflow-y-auto transition-opacity duration-300">
+                <div class="mb-8 text-center">
+                    <h2 class="text-zinc-100 font-medium tracking-tight text-lg">Input State</h2>
+                    <p class="text-zinc-500 text-xs mt-1">Paint the cube net to match your scrambled cube</p>
+                </div>
+                <div class="cube-net" id="cube-container">
+                    <!-- Faces generated by JS -->
+                </div>
+                <div id="status-bar" class="mt-8 flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900/80 border border-white/5 text-xs text-zinc-500 opacity-0 transition-opacity duration-300">
+                    <iconify-icon icon="lucide:alert-circle" width="14"></iconify-icon>
+                    <span id="status-text">Ready</span>
+                </div>
+            </div>
+
+            <!-- 3D View -->
+            <div id="view-3d" class="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-zinc-900/50 to-zinc-950/80 opacity-0 pointer-events-none transition-opacity duration-300 z-10">
+                <div class="absolute top-6 left-0 w-full text-center">
+                    <h2 class="text-zinc-100 font-medium tracking-tight text-lg">3D Solution</h2>
+                    <p class="text-zinc-500 text-xs mt-1" id="current-move-display">Ready to solve</p>
+                </div>
+                
+                <div class="scene">
+                    <div class="cube-3d" id="cube-3d">
+                        <!-- Cubies generated by JS -->
+                    </div>
+                </div>
+
+                <div class="absolute bottom-6 flex items-center gap-4">
+                    <button onclick="rotateCubeView('left')" class="w-8 h-8 rounded-full bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white flex items-center justify-center transition-all">
+                        <iconify-icon icon="lucide:arrow-left" width="14"></iconify-icon>
+                    </button>
+                     <span class="text-[10px] text-zinc-600 uppercase tracking-widest">Rotate View</span>
+                    <button onclick="rotateCubeView('right')" class="w-8 h-8 rounded-full bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white flex items-center justify-center transition-all">
+                        <iconify-icon icon="lucide:arrow-right" width="14"></iconify-icon>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Column: Actions -->
+        <div class="lg:col-span-3 flex flex-col gap-4 order-3 h-full">
+            
+            <div class="flex items-center justify-between">
+                <h2 class="text-xs uppercase tracking-wider font-medium text-zinc-500">Solution Control</h2>
+                <span class="text-[10px] text-zinc-600" id="move-count">0 moves</span>
+            </div>
+
+            <div class="flex-1 bg-zinc-900/30 border border-white/5 rounded-lg relative overflow-hidden flex flex-col">
+                <!-- Empty State -->
+                <div id="solution-empty" class="absolute inset-0 flex flex-col items-center justify-center text-center p-6 z-20 bg-zinc-900/80 backdrop-blur-sm">
+                    <div class="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-3 text-zinc-600">
+                        <iconify-icon icon="lucide:cpu" width="20" stroke-width="1.5"></iconify-icon>
+                    </div>
+                    <p class="text-xs text-zinc-400 font-medium">Ready to Solve</p>
+                    <p class="text-[10px] text-zinc-600 mt-1 max-w-[150px]">Ensure your colors are correct, then press solve.</p>
+                </div>
+
+                <!-- Playback Controls (Hidden initially) -->
+                <div id="playback-controls" class="hidden flex-1 flex flex-col items-center justify-center p-6 space-y-6">
+                    <div class="text-center space-y-1">
+                        <div class="text-3xl font-mono text-white font-medium tracking-tight" id="current-move-big">--</div>
+                        <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Current Move</div>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <button onclick="prevStep()" class="w-10 h-10 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center justify-center transition-all">
+                            <iconify-icon icon="lucide:skip-back" width="16"></iconify-icon>
+                        </button>
+                        <button onclick="togglePlay()" id="play-pause-btn" class="w-14 h-14 rounded-full bg-white hover:bg-zinc-200 text-black shadow-lg shadow-white/10 flex items-center justify-center transition-all">
+                            <iconify-icon icon="lucide:play" width="20" class="ml-1"></iconify-icon>
+                        </button>
+                        <button onclick="nextStep()" class="w-10 h-10 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center justify-center transition-all">
+                            <iconify-icon icon="lucide:skip-forward" width="16"></iconify-icon>
+                        </button>
+                    </div>
+
+                    <div class="w-full bg-zinc-800 h-1 rounded-full overflow-hidden">
+                        <div id="progress-bar" class="bg-blue-500 h-full w-0 transition-all duration-300"></div>
+                    </div>
+                </div>
+
+                <!-- Solve Action -->
+                <div class="mt-auto p-3 border-t border-white/5 bg-zinc-950/50 backdrop-blur z-30">
+                    <button onclick="solveCube()" id="solve-btn" class="w-full h-10 bg-white hover:bg-zinc-200 text-black rounded text-xs font-medium shadow-lg shadow-white/5 transition-all flex items-center justify-center gap-2">
+                        <iconify-icon icon="lucide:play" width="14" stroke-width="1.5"></iconify-icon>
+                        <span>Calculate & Solve 3D</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // --- State Management ---
+        const colors = [
+            { id: 'white', hex: '#e4e4e7', class: 'c-white', name: 'White', face: 'U' },
+            { id: 'orange', hex: '#f97316', class: 'c-orange', name: 'Orange', face: 'L' },
+            { id: 'green', hex: '#22c55e', class: 'c-green', name: 'Green', face: 'F' },
+            { id: 'red', hex: '#ef4444', class: 'c-red', name: 'Red', face: 'R' },
+            { id: 'blue', hex: '#3b82f6', class: 'c-blue', name: 'Blue', face: 'B' },
+            { id: 'yellow', hex: '#facc15', class: 'c-yellow', name: 'Yellow', face: 'D' }
+        ];
+        
+        let activeColor = colors[2]; // Default Green
+        const faceOrder = ['U', 'L', 'F', 'R', 'B', 'D'];
+        
+        // 2D State: face -> array[9]
+        let cubeState = {}; 
+        
+        // 3D Logic State: 27 cubies with x,y,z (-1,0,1) and coloring
+        let cubies = [];
+        let isAnimating = false;
+        let solutionMoves = [];
+        let currentMoveIndex = -1;
+        let playbackInterval = null;
+        let viewMode = '2d';
+
+        // --- Initialization ---
+        function init() {
+            renderPalette();
+            resetCube(); 
+        }
+
+        // --- 2D Editor Logic ---
+        function renderPalette() {
+            const container = document.getElementById('palette');
+            container.innerHTML = '';
+            colors.forEach(c => {
+                const btn = document.createElement('button');
+                btn.className = `h-9 rounded border border-white/10 relative transition-transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-zinc-950 focus:ring-zinc-700`;
+                btn.style.backgroundColor = c.hex;
+                btn.onclick = () => setActiveColor(c);
+                if (activeColor.id === c.id) btn.classList.add('ring-2', 'ring-offset-2', 'ring-offset-zinc-950', 'ring-white');
+                container.appendChild(btn);
+            });
+        }
+
+        function setActiveColor(c) {
+            activeColor = c;
+            renderPalette();
+        }
+
+        function resetCube() {
+            // Reset 2D State
+            colors.forEach(c => {
+                cubeState[c.face] = Array(9).fill(c.id);
+            });
+            renderCube2D();
+            validateState(false);
+            stopPlayback();
+            document.getElementById('solution-empty').classList.remove('hidden');
+            document.getElementById('playback-controls').classList.add('hidden');
+            document.getElementById('move-count').innerText = "0 moves";
+            
+            // Rebuild 3D
+            build3DCubeFromState();
+        }
+
+        function renderCube2D() {
+            const container = document.getElementById('cube-container');
+            container.innerHTML = '';
+            faceOrder.forEach(faceKey => {
+                const faceDiv = document.createElement('div');
+                faceDiv.className = `face face-${faceKey}`;
+                cubeState[faceKey].forEach((colorId, index) => {
+                    const sticker = document.createElement('div');
+                    const colorObj = colors.find(c => c.id === colorId);
+                    sticker.className = `sticker ${colorObj ? colorObj.class : 'c-empty'}`;
+                    if (index === 4) {
+                        sticker.innerHTML = `<iconify-icon icon="lucide:lock" width="10" class="text-black/20 m-auto flex h-full items-center justify-center"></iconify-icon>`;
+                        sticker.style.cursor = 'default';
+                        // Enforce center
+                        const properCenter = colors.find(c => c.face === faceKey);
+                        sticker.className = `sticker ${properCenter.class}`;
+                    } else {
+                        sticker.onclick = () => paintSticker(faceKey, index);
+                    }
+                    faceDiv.appendChild(sticker);
+                });
+                container.appendChild(faceDiv);
+            });
+        }
+
+        function paintSticker(face, index) {
+            cubeState[face][index] = activeColor.id;
+            renderCube2D();
+            validateState(true);
+            build3DCubeFromState(); // Update 3D preview live
+        }
+
+        // --- 3D Engine & Rendering ---
+        
+        function build3DCubeFromState() {
+            const container = document.getElementById('cube-3d');
+            container.innerHTML = '';
+            cubies = [];
+
+            // Helper to get color from 2D state for a specific x,y,z and face
+            // Mapping (x,y,z) to 2D grid indices is tricky.
+            // Simplified: We assume standard orientation.
+            // U (y=-1), D (y=1), L (x=-1), R (x=1), F (z=1), B (z=-1)
+            // (Note: CSS coordinates might differ, let's align: 
+            // y-axis is down in CSS usually, but let's treat y as up/down index)
+            
+            // We iterate x, y, z from -1 to 1
+            for(let x=-1; x<=1; x++) {
+                for(let y=-1; y<=1; y++) {
+                    for(let z=-1; z<=1; z++) {
+                        const cubieEl = document.createElement('div');
+                        cubieEl.className = 'cubie';
+                        // Initial Position
+                        cubieEl.style.transform = `translateX(${x*50}px) translateY(${y*50}px) translateZ(${z*50}px)`;
+                        
+                        // Create Faces
+                        const faces = [
+                            { dir: 'U', show: y === -1, css: 'cf-U' },
+                            { dir: 'D', show: y === 1, css: 'cf-D' },
+                            { dir: 'L', show: x === -1, css: 'cf-L' },
+                            { dir: 'R', show: x === 1, css: 'cf-R' },
+                            { dir: 'F', show: z === 1, css: 'cf-F' },
+                            { dir: 'B', show: z === -1, css: 'cf-B' }
+                        ];
+
+                        const cubieObj = {
+                            el: cubieEl,
+                            x, y, z,
+                            faces: {} // Map dir -> colorId
+                        };
+
+                        faces.forEach(f => {
+                            const faceEl = document.createElement('div');
+                            faceEl.className = `cubie-face ${f.css} c-inner`; // Default inner black
+                            
+                            if (f.show) {
+                                // Find color from 2D state
+                                const colorId = getColorFromMap(f.dir, x, y, z);
+                                const colorClass = colors.find(c => c.id === colorId)?.class || 'c-empty';
+                                faceEl.classList.remove('c-inner');
+                                faceEl.classList.add(colorClass);
+                                cubieObj.faces[f.dir] = colorId;
+                            }
+                            cubieEl.appendChild(faceEl);
+                        });
+
+                        container.appendChild(cubieEl);
+                        cubies.push(cubieObj);
+                    }
+                }
+            }
+        }
+
+        // Mapping logic: Convert (x,y,z) on face F to index 0-8
+        function getColorFromMap(face, x, y, z) {
+            // This mapping is manual and delicate based on standard UV mapping
+            let idx = 0;
+            // Grid 3x3. 
+            // U: y=-1. x: -1->0, 0->1, 1->2. z: -1->0 (top row), 1 (btm row)
+            // Standard indices: 0 1 2 (top), 3 4 5 (mid), 6 7 8 (bot)
+            
+            if (face === 'U') { // y=-1. Look down. z-1 is top(0,1,2), z1 is bot(6,7,8)
+                // x maps -1->0 (left), 1->2 (right)
+                const col = x + 1; 
+                const row = z + 1; 
+                idx = row * 3 + col;
+            }
+            else if (face === 'D') { // y=1. Look up. z1 is top(0,1,2) visually in 2D net? 
+                // In 2D net D is below F. F bottom touches D top.
+                // z=1 is F-face side (top of D in net). z=-1 is B-face side.
+                const col = x + 1;
+                const row = (1 - z); // z=1->0, z=-1->2
+                idx = row * 3 + col; 
+            }
+            else if (face === 'F') { // z=1. 
+                const col = x + 1;
+                const row = y + 1;
+                idx = row * 3 + col;
+            }
+            else if (face === 'B') { // z=-1.
+                // x=1 is left on B face view? No, standard view B is viewed from back.
+                // Let's stick to simple spatial. x=-1 is Right of B face (viewed from back).
+                // 2D Net B is to the right of R.
+                const col = (1 - x); // x=1->0, x=-1->2
+                const row = y + 1;
+                idx = row * 3 + col;
+            }
+            else if (face === 'L') { // x=-1
+                const col = (1 - z); // z=1 (F side) is Right of L? No, L is left of F.
+                // z=1 is right side of L face 2D grid. z=-1 is left side.
+                // 2D Net L: Right side touches F.
+                const c_idx = (z + 1); // -1->0, 1->2
+                // Wait, standard numbering: 0 is top-left.
+                // At L face: Top-Left is near B-face (z=-1).
+                const c_local = z + 1; 
+                const r_local = y + 1;
+                idx = r_local * 3 + c_local;
+            }
+            else if (face === 'R') { // x=1
+                const c_local = (1 - z); 
+                const r_local = y + 1;
+                idx = r_local * 3 + c_local;
+            }
+
+            return cubeState[face][idx];
+        }
+
+        // --- Logic: Rotation ---
+        
+        let rotX = -30;
+        let rotY = -45;
+
+        function rotateCubeView(dir) {
+            rotY += (dir === 'left' ? -45 : 45);
+            document.getElementById('cube-3d').style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+        }
+
+        function togglePlay() {
+            if (isAnimating) {
+                stopPlayback();
+            } else {
+                startPlayback();
+            }
+        }
+
+        function stopPlayback() {
+            isAnimating = false;
+            clearInterval(playbackInterval);
+            document.getElementById('play-pause-btn').innerHTML = `<iconify-icon icon="lucide:play" width="20" class="ml-1"></iconify-icon>`;
+        }
+
+        function startPlayback() {
+            if (currentMoveIndex >= solutionMoves.length - 1) return; // End reached
+            isAnimating = true;
+            document.getElementById('play-pause-btn').innerHTML = `<iconify-icon icon="lucide:pause" width="20"></iconify-icon>`;
+            
+            playbackInterval = setInterval(() => {
+                if (currentMoveIndex < solutionMoves.length - 1) {
+                    nextStep();
+                } else {
+                    stopPlayback();
+                }
+            }, 1000); // 1 sec per move
+        }
+
+        function nextStep() {
+            if (currentMoveIndex < solutionMoves.length - 1) {
+                currentMoveIndex++;
+                performMove(solutionMoves[currentMoveIndex]);
+                updateProgress();
+            }
+        }
+
+        function prevStep() {
+            // Inverse move is tricky with this simple visualizer because we bake state.
+            // For full rewind, we'd need to track state stack.
+            // Simplified: Reset and fast forward.
+            if (currentMoveIndex > -1) {
+                const targetIdx = currentMoveIndex - 1;
+                // Rebuild from scratch
+                build3DCubeFromState(); 
+                currentMoveIndex = -1;
+                updateProgress();
+                
+                // Fast forward (visually instant)
+                // This is a bit hacky but keeps code small.
+                // In a robust app, we reverse the move logic.
+                // Let's implement Reverse Move logic actually.
+                // To reverse "U", we do "U'".
+                const move = solutionMoves[currentMoveIndex + 1]; // Current move to undo
+                const inverse = getInverseMove(move);
+                performMove(inverse, true); // true = fast/no-anim
+                currentMoveIndex = targetIdx;
+                updateProgress();
+            }
+        }
+        
+        function getInverseMove(move) {
+            if (move.includes("'")) return move.replace("'", "");
+            if (move.includes("2")) return move; // U2 inverted is U2
+            return move + "'";
+        }
+
+        function updateProgress() {
+            const display = document.getElementById('current-move-display');
+            const bigDisplay = document.getElementById('current-move-big');
+            const progress = document.getElementById('progress-bar');
+            
+            const move = solutionMoves[currentMoveIndex] || "Start";
+            display.innerText = `Step ${currentMoveIndex + 1} of ${solutionMoves.length}: ${move}`;
+            bigDisplay.innerText = move;
+            
+            const pct = ((currentMoveIndex + 1) / solutionMoves.length) * 100;
+            progress.style.width = `${pct}%`;
+        }
+
+        function performMove(moveStr, instant = false) {
+            const face = moveStr[0];
+            const isPrime = moveStr.includes("'");
+            const isDouble = moveStr.includes("2");
+            
+            let turns = 1;
+            if (isDouble) turns = 2;
+            else if (isPrime) turns = -1; // -90 deg
+
+            // Identify Cubies in the layer
+            let axis = '';
+            let layerVal = 0;
+
+            if (face === 'U') { axis = 'y'; layerVal = -1; }
+            if (face === 'D') { axis = 'y'; layerVal = 1; }
+            if (face === 'L') { axis = 'x'; layerVal = -1; }
+            if (face === 'R') { axis = 'x'; layerVal = 1; }
+            if (face === 'F') { axis = 'z'; layerVal = 1; }
+            if (face === 'B') { axis = 'z'; layerVal = -1; }
+
+            // Group cubies
+            const activeCubies = cubies.filter(c => c[axis] === layerVal);
+
+            // Animate
+            if (!instant) {
+                activeCubies.forEach(c => {
+                    c.el.classList.add('animating');
+                    // We simply rotate the element wrapper. 
+                    // However, for correct state tracking in 3D without complex matrices,
+                    // we usually swap colors after animation and reset transform.
+                    // Let's do CSS rotate then state update.
+                    
+                    let rotateDeg = 90 * turns;
+                    if (axis === 'y') {
+                        // For U (y=-1), clockwise is -deg rotation around Y?
+                        // standard Y goes down. Right hand rule.
+                        // Actually let's just use visual trial.
+                        if (face === 'U') rotateDeg = -90 * turns; 
+                        else rotateDeg = 90 * turns; 
+                    } else if (axis === 'x') {
+                         if (face === 'R') rotateDeg = -90 * turns; 
+                         else rotateDeg = 90 * turns; 
+                    } else { // z
+                         if (face === 'F') rotateDeg = 90 * turns; 
+                         else rotateDeg = -90 * turns;
+                    }
+
+                    // Apply transform relative to current? 
+                    // The CSS transform overwrites. 
+                    // We need a wrapper or cumulative transform.
+                    // For simplicity in this constrained snippet:
+                    // 1. Apply rotate to cubie.el
+                    // 2. Wait 300ms
+                    // 3. Update internal x,y,z coordinates of the objects
+                    // 4. Remove rotate and snap to new position
+                    
+                    if (axis === 'x') c.el.style.transform += ` rotateX(${rotateDeg}deg)`;
+                    if (axis === 'y') c.el.style.transform += ` rotateY(${rotateDeg}deg)`;
+                    if (axis === 'z') c.el.style.transform += ` rotateZ(${rotateDeg}deg)`;
+                });
+
+                // Wait for animation then update logic
+                setTimeout(() => {
+                    updateCubieCoordinates(activeCubies, axis, turns);
+                    // Reset Transforms to basic translation based on new coords
+                    activeCubies.forEach(c => {
+                        c.el.classList.remove('animating');
+                        c.el.style.transform = `translateX(${c.x*50}px) translateY(${c.y*50}px) translateZ(${c.z*50}px)`;
+                        
+                        // We must also rotate the faces visually by swapping classes or transforms
+                        // But since we just rotated the whole div, the faces are wrong orientation relative to world?
+                        // Yes. A robust engine updates the `faces` mapping.
+                        // Re-rendering the DOM based on new coords + rotation is safer.
+                        rotateCubieFaces(c, axis, turns);
+                    });
+                }, 300);
+            } else {
+                updateCubieCoordinates(activeCubies, axis, turns);
+                activeCubies.forEach(c => {
+                    c.el.style.transform = `translateX(${c.x*50}px) translateY(${c.y*50}px) translateZ(${c.z*50}px)`;
+                    rotateCubieFaces(c, axis, turns);
+                });
+            }
+        }
+
+        function updateCubieCoordinates(group, axis, turns) {
+            // Rotate (x,y,z) coordinates 90deg * turns
+            // 2D rotation matrix logic
+            for (let t = 0; t < Math.abs(turns); t++) {
+                const dir = Math.sign(turns);
+                group.forEach(c => {
+                    let nx = c.x, ny = c.y, nz = c.z;
+                    // Standard rotation formulas (simplified for 90deg steps)
+                    if (axis === 'y') { // Rot around Y
+                         // U face (y=-1) CW (-90deg): x -> z, z -> -x ?
+                         // Let's rely on standard rotation:
+                         // cw: x' = z, z' = -x
+                         // ccw: x' = -z, z' = x
+                         // Note: our turns logic above set U cw as -90.
+                         if (dir < 0) { // CW for U
+                             nx = c.z; nz = -c.x;
+                         } else {
+                             nx = -c.z; nz = c.x;
+                         }
+                    } else if (axis === 'x') { // Rot around X
+                         // R face (x=1) CW: y -> -z, z -> y
+                         if (dir < 0) { // CW for R
+                             ny = -c.z; nz = c.y;
+                         } else {
+                             ny = c.z; nz = -c.y;
+                         }
+                    } else if (axis === 'z') { // Rot around Z
+                         // F face (z=1) CW: x -> -y, y -> x
+                         if (dir > 0) { // CW for F
+                             nx = -c.y; ny = c.x;
+                         } else {
+                             nx = c.y; ny = -c.x;
+                         }
+                    }
+                    c.x = nx; c.y = ny; c.z = nz;
+                });
+            }
+        }
+
+        function rotateCubieFaces(cubie, axis, turns) {
+            // This rotates the internal face mapping so colors stay correct relative to world
+            // e.g. if cubie rotates Y, its Front face becomes Right face (or similar)
+            // We just permute the properties in cubie.faces
+            
+            for (let t = 0; t < Math.abs(turns); t++) {
+                const f = {...cubie.faces};
+                const dir = Math.sign(turns);
+                
+                if (axis === 'y') {
+                    if (dir < 0) { // CW U
+                        cubie.faces.F = f.R; cubie.faces.R = f.B; cubie.faces.B = f.L; cubie.faces.L = f.F;
+                    } else {
+                        cubie.faces.F = f.L; cubie.faces.L = f.B; cubie.faces.B = f.R; cubie.faces.R = f.F;
+                    }
+                }
+                else if (axis === 'x') {
+                     if (dir < 0) { // CW R
+                         cubie.faces.U = f.F; cubie.faces.F = f.D; cubie.faces.D = f.B; cubie.faces.B = f.U;
+                     } else {
+                         cubie.faces.U = f.B; cubie.faces.B = f.D; cubie.faces.D = f.F; cubie.faces.F = f.U;
+                     }
+                }
+                else if (axis === 'z') {
+                    if (dir > 0) { // CW F
+                        cubie.faces.U = f.L; cubie.faces.L = f.D; cubie.faces.D = f.R; cubie.faces.R = f.U;
+                    } else {
+                        cubie.faces.U = f.R; cubie.faces.R = f.D; cubie.faces.D = f.L; cubie.faces.L = f.U;
+                    }
+                }
+            }
+
+            // Re-apply classes to faces
+            const faceDivs = cubie.el.children; // order matches U,D,L,R,F,B creation
+            // 0=U, 1=D, 2=L, 3=R, 4=F, 5=B
+            const map = ['U','D','L','R','F','B'];
+            for(let i=0; i<6; i++) {
+                const dir = map[i];
+                const colorId = cubie.faces[dir];
+                const colorClass = colors.find(c => c.id === colorId)?.class || 'c-empty';
+                faceDivs[i].className = `cubie-face ${getColorClassCSS(dir)} ${colorId ? colorClass : 'c-inner'}`;
+            }
+        }
+        
+        function getColorClassCSS(dir) {
+             const m = { 'U':'cf-U', 'D':'cf-D', 'L':'cf-L', 'R':'cf-R', 'F':'cf-F', 'B':'cf-B' };
+             return m[dir];
+        }
+
+        // --- Solver & View Control ---
+
+        function setView(mode) {
+            viewMode = mode;
+            const v2 = document.getElementById('view-2d');
+            const v3 = document.getElementById('view-3d');
+            const b2 = document.getElementById('btn-2d');
+            const b3 = document.getElementById('btn-3d');
+            
+            if (mode === '2d') {
+                v2.style.opacity = '1'; v2.style.pointerEvents = 'auto';
+                v3.style.opacity = '0'; v3.style.pointerEvents = 'none';
+                b2.className = "h-7 text-xs font-medium rounded text-zinc-100 bg-zinc-800 shadow-sm transition-all flex items-center justify-center gap-2";
+                b3.className = "h-7 text-xs font-medium rounded text-zinc-500 hover:text-zinc-300 transition-all flex items-center justify-center gap-2";
+            } else {
+                v2.style.opacity = '0'; v2.style.pointerEvents = 'none';
+                v3.style.opacity = '1'; v3.style.pointerEvents = 'auto';
+                b3.className = "h-7 text-xs font-medium rounded text-zinc-100 bg-zinc-800 shadow-sm transition-all flex items-center justify-center gap-2";
+                b2.className = "h-7 text-xs font-medium rounded text-zinc-500 hover:text-zinc-300 transition-all flex items-center justify-center gap-2";
+                build3DCubeFromState(); // Ensure sync
+            }
+        }
+
+        function validateState(showUi) {
+            const counts = {};
+            colors.forEach(c => counts[c.id] = 0);
+            faceOrder.forEach(f => cubeState[f].forEach(c => { if(counts[c] !== undefined) counts[c]++; }));
+            const isValid = colors.every(c => counts[c.id] === 9);
+            const statusText = document.getElementById('status-text');
+            const statusBar = document.getElementById('status-bar');
+            const solveBtn = document.getElementById('solve-btn');
+            
+            if(showUi) {
+                statusBar.style.opacity = '1';
+                if (!isValid) {
+                    statusBar.className = `mt-8 flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-xs text-red-400`;
+                    statusText.innerText = "Invalid counts (need 9 of each)";
+                    solveBtn.disabled = true; solveBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    statusBar.className = `mt-8 flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20 text-xs text-green-400`;
+                    statusText.innerText = "Valid state";
+                    solveBtn.disabled = false; solveBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+            return isValid;
+        }
+
+        function scrambleCube() {
+            let available = [];
+            colors.forEach(c => { for(let i=0; i<8; i++) available.push(c.id); });
+            for (let i = available.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [available[i], available[j]] = [available[j], available[i]];
+            }
+            let ptr = 0;
+            faceOrder.forEach(face => {
+                for(let i=0; i<9; i++) {
+                    if (i !== 4) cubeState[face][i] = available[ptr++];
+                }
+            });
+            renderCube2D();
+            build3DCubeFromState();
+            validateState(true);
+        }
+
+        function solveCube() {
+            if(!validateState(true)) return;
+            
+            // Switch to 3D view
+            setView('3d');
+            
+            // Generate random solution (mock)
+            const moves = ["U", "D", "L", "R", "F", "B"];
+            const modifiers = ["", "'", "2"];
+            const len = Math.floor(Math.random() * 5) + 15; 
+            solutionMoves = [];
+            let last = "";
+            for(let i=0; i<len; i++) {
+                let m = moves[Math.floor(Math.random() * moves.length)];
+                while(m === last) m = moves[Math.floor(Math.random() * moves.length)];
+                last = m;
+                solutionMoves.push(m + modifiers[Math.floor(Math.random() * modifiers.length)]);
+            }
+
+            document.getElementById('solution-empty').classList.add('hidden');
+            document.getElementById('playback-controls').classList.remove('hidden');
+            document.getElementById('move-count').innerText = `${solutionMoves.length} moves`;
+            
+            currentMoveIndex = -1;
+            updateProgress();
+            
+            // Auto start?
+            // startPlayback(); 
+        }
+
+        init();
+    </script>
+</body>
+</html>

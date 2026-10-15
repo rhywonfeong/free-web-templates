@@ -1,0 +1,123 @@
+<div class="relative group" style="display: inline-block;">
+  <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+
+  <div class="p-[1px] rounded-[19px] bg-gradient-to-b from-cyan-500/30 via-neutral-800/20 to-cyan-950/40 shadow-2xl">
+    <button id="nexus-btn" type="button" class="relative flex items-center justify-center w-[250px] h-[70px] border-0 p-0 rounded-[18px] overflow-hidden cursor-pointer bg-[#050b11] transition-all duration-300 ease-out active:translate-y-[1px] active:scale-[0.985] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#06b6d4] focus-visible:outline-offset-[5px]" style="box-shadow: 0 22px 44px rgba(4,24,36,0.35), 0 3px 9px rgba(5,10,15,0.4), inset 0 0 0 1px rgba(255,255,255,0.05);">
+            <canvas id="nexus-canvas" aria-hidden="true" class="absolute inset-0 w-full h-full block"></canvas>
+            
+            <span class="relative z-10 pointer-events-none font-sans font-normal text-sm tracking-[0.3em] indent-[0.3em] text-[#e0faff] flex items-center gap-2" style="text-shadow: 0 1px 10px rgba(0,18,25,0.85);">
+                SURGE
+                <iconify-icon icon="solar:arrow-right-linear" width="18" height="18" class="ml-1 opacity-80"></iconify-icon>
+            </span>
+        </button>
+  </div>
+
+  <script>
+    (function() {
+            const btn = document.getElementById('nexus-btn');
+            const canvas = document.getElementById('nexus-canvas');
+            const gl = canvas.getContext('webgl');
+            if (!gl) { btn.style.background = '#06b6d4'; return; }
+
+            const vs = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+            const fs = `
+                precision highp float;
+                uniform vec2 u_res;
+                uniform float u_time, u_level, u_tilt, u_slosh;
+                float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}
+                float noise(vec2 p){
+                    vec2 i=floor(p), f=fract(p);
+                    vec2 u=f*f*(3.0-2.0*f);
+                    return mix(mix(h(i),h(i+vec2(1.,0.)),u.x),mix(h(i+vec2(0.,1.)),h(i+vec2(1.,1.)),u.x),u.y);
+                }
+                float fbm(vec2 p){
+                    float v=0.0; float a=0.5;
+                    for(int i=0;i<4;i++){ v+=a*noise(p); p=p*2.04+vec2(11.3,7.1); a*=0.5; }
+                    return v;
+                }
+                void main(){
+                    vec2 uv = gl_FragCoord.xy / u_res;
+                    float x = uv.x * (u_res.x / u_res.y);
+                    float t = u_time;
+                    float amp = 0.012 + u_slosh * 0.045;
+                    float surf = u_level + u_tilt * (uv.x - 0.5) * 0.34 + amp * sin(x * 5.1 + t * 4.6) + amp * 0.62 * sin(x * 9.7 - t * 6.8 + 1.7);
+                    float d = surf - uv.y;
+                    vec3 col = mix(vec3(0.03, 0.06, 0.1), vec3(0.05, 0.09, 0.15), uv.y);
+                    float inside = smoothstep(0.0, 0.012, d);
+                    vec3 liq = mix(vec3(0.0, 0.9, 1.0), vec3(0.02, 0.15, 0.45), clamp(d/max(u_level,0.001),0.0,1.0));
+                    liq *= 0.8 + 0.42 * fbm(vec2(x * 4.2, (uv.y + t * 0.14) * 4.2));
+                    col = mix(col, liq, inside);
+                    col += vec3(0.4, 0.9, 1.0) * exp(-abs(d) * 80.0) * 0.85;
+                    vec2 e = uv * (1.0 - uv);
+                    col *= 0.55 + 0.45 * pow(e.x * e.y * 16.0, 0.22);
+                    gl_FragColor = vec4(col, 1.0);
+                }
+            `;
+
+            function createShader(gl, type, src) {
+                const s = gl.createShader(type);
+                gl.shaderSource(s, src);
+                gl.compileShader(s);
+                return s;
+            }
+
+            const prog = gl.createProgram();
+            gl.attachShader(prog, createShader(gl, gl.VERTEX_SHADER, vs));
+            gl.attachShader(prog, createShader(gl, gl.FRAGMENT_SHADER, fs));
+            gl.linkProgram(prog);
+            gl.useProgram(prog);
+
+            const buf = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
+            const locP = gl.getAttribLocation(prog, 'p');
+            gl.enableVertexAttribArray(locP);
+            gl.vertexAttribPointer(locP, 2, gl.FLOAT, false, 0, 0);
+
+            const uRes = gl.getUniformLocation(prog, 'u_res');
+            const uTime = gl.getUniformLocation(prog, 'u_time');
+            const uLevel = gl.getUniformLocation(prog, 'u_level');
+            const uTilt = gl.getUniformLocation(prog, 'u_tilt');
+            const uSlosh = gl.getUniformLocation(prog, 'u_slosh');
+
+            let level = 0.56, gulp = 0, slosh = 0.4, tilt = 0, tiltT = 0, lastX = null, last = 0;
+
+            function resize() {
+                const dpr = Math.min(window.devicePixelRatio || 1, 2);
+                const w = Math.floor(btn.clientWidth * dpr), h = Math.floor(btn.clientHeight * dpr);
+                if (canvas.width !== w || canvas.height !== h) {
+                    canvas.width = w; canvas.height = h;
+                    gl.viewport(0, 0, w, h);
+                }
+            }
+
+            btn.addEventListener('mousemove', e => {
+                const rect = btn.getBoundingClientRect();
+                const x = (e.clientX - rect.left) / rect.width;
+                if (lastX !== null) slosh = Math.min(1.4, slosh + Math.abs(x - lastX) * 2.6);
+                lastX = x; tiltT = (x - 0.5) * 2;
+            });
+            btn.addEventListener('mouseleave', () => { lastX = null; tiltT = 0; });
+            btn.addEventListener('click', () => { gulp = 1; slosh = Math.min(1.4, slosh + 0.7); });
+
+            function render(now) {
+                const dt = Math.min(0.05, (now - last) / 1000);
+                last = now;
+                slosh *= Math.exp(-1.5 * dt);
+                gulp *= Math.exp(-1.1 * dt);
+                tilt += (tiltT - tilt) * Math.min(1, dt * 5);
+                level += ((0.56 - 0.36 * gulp) - level) * Math.min(1, dt * 5.5);
+                
+                resize();
+                gl.uniform2f(uRes, canvas.width, canvas.height);
+                gl.uniform1f(uTime, now / 1000);
+                gl.uniform1f(uLevel, level);
+                gl.uniform1f(uTilt, tilt);
+                gl.uniform1f(uSlosh, slosh);
+                gl.drawArrays(gl.TRIANGLES, 0, 3);
+                requestAnimationFrame(render);
+            }
+            requestAnimationFrame(render);
+        })();
+  </script>
+</div>

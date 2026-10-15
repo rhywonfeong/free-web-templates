@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kris Bergen — I think by making.</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.8/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link
+href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&amp;family=Manrope:wght@400;500;600;700&amp;family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&amp;display=swap"
+rel="stylesheet"
+/></head>
+  <body
+    class="bg-[#f3f1eb] text-[#17201d] antialiased selection:bg-[#c8ff3d] selection:text-[#17201d]"
+    style="font-family:Manrope,Arial,sans-serif;"
+  >
+    <div
+      class="fixed inset-0 pointer-events-none z-50"
+      style="background-image:linear-gradient(rgba(23,32,29,.026) 1px,transparent 1px),linear-gradient(90deg,rgba(23,32,29,.022) 1px,transparent 1px);background-size:2rem 2rem;mask-image:linear-gradient(to bottom,black,transparent 82%);"
+    ></div>
+
+    <header
+      class="fixed z-40 top-0 inset-x-0 px-5 py-5 md:px-10 md:py-8 flex items-start justify-between bg-[#f3f1eb]/95 backdrop-blur-sm border-b border-[#17201d]/10"
+    >
+      <a
+        href="#top"
+        class="group flex items-center gap-3"
+        aria-label="Kris Bergen home"
+      >
+        <span
+          class="flex h-9 w-9 items-center justify-center rounded-full border border-[#17201d]/25 text-xs font-semibold tracking-tight transition-transform duration-500 group-hover:rotate-[360deg]"
+        >
+          kb
+        </span>
+        <span
+          class="hidden sm:block text-xs uppercase tracking-[.16em] font-medium"
+        >
+          Kris Bergen
+        </span>
+      </a>
+      <div class="flex items-center gap-5 md:gap-8">
+        <span
+          class="hidden md:flex items-center gap-2 text-xs text-[#17201d]/65"
+        >
+          <span class="h-1.5 w-1.5 rounded-full bg-[#92b90e]"></span>
+          Bellevue, WA
+          <span id="clock">—</span>
+        </span>
+        <a
+          href="#contact"
+          class="group flex items-center gap-2 text-xs uppercase tracking-[.16em] font-medium"
+        >
+          Let’s make something
+          <iconify-icon
+            icon="solar:arrow-right-linear"
+            width="17"
+            stroke-width="1.5"
+            class="transition-transform duration-300 group-hover:translate-x-1"
+          ></iconify-icon>
+        </a>
+      </div>
+    </header>
+
+    <main id="top">
+      <section
+        class="relative min-h-screen overflow-hidden px-5 pt-28 pb-10 md:px-10 md:pt-36"
+      >
+        <div class="absolute inset-0 overflow-hidden" aria-hidden="true">
+          <svg
+            class="absolute left-1/2 top-1/2 h-[88vh] w-[94vw] -translate-x-1/2 -translate-y-1/2 md:h-[105vh]"
+            viewBox="0 0 1200 780"
+            fill="none"
+          >
+            <path
+              d="M236 101V663M247 389L501 102M247 389L530 665"
+              stroke="#17201d"
+              stroke-width="3.5"
+              stroke-linecap="round"
+              opacity=".17"
+            ></path>
+            <path
+              d="M652 102V664M659 385C776 385 849 333 849 242C849 151 777 102 659 102M660 385C793 385 887 431 887 527C887 623 799 665 660 665"
+              stroke="#17201d"
+              stroke-width="3.5"
+              stroke-linecap="round"
+              opacity=".17"
+            ></path>
+            <path
+              id="cable"
+              d="M236 101V663M247 389L501 102M247 389L530 665M652 102V664M659 385C776 385 849 333 849 242C849 151 777 102 659 102M660 385C793 385 887 431 887 527C887 623 799 665 660 665"
+              stroke="#b5e922"
+              stroke-width="2.3"
+              stroke-linecap="round"
+              stroke-dasharray="2440"
+              stroke-dashoffset="2440"
+            ></path>
+            <circle cx="501" cy="102" r="7" fill="#b5e922"></circle>
+            <circle cx="887" cy="527" r="7" fill="#b5e922"></circle>
+          </svg>
+        </div>
+
+        <div
+          class="relative mx-auto flex min-h-[78vh] max-w-7xl flex-col justify-between"
+        >
+          <div class="flex justify-end">
+            <p
+              class="max-w-48 text-right text-xs leading-relaxed text-[#17201d]/60 md:max-w-56"
+            >
+              Senior creative and product design leader. Still close to the
+              work.
+            </p>
+          </div>
+
+          <div class="pb-4">
+            <div class="overflow-hidden">
+              <p
+                class="hero-line text-xs uppercase tracking-[.2em] text-[#17201d]/60"
+              >
+                Ideas → prototypes → experiments → products people love.
+              </p>
+            </div>
+            <h1
+              class="mt-5 max-w-5xl text-[16vw] leading-[.78] tracking-[-.075em] text-[#17201d] sm:text-[13vw] lg:text-[10.5rem]"
+              style="font-family:'Source Serif 4',Georgia,serif;"
+            >
+              <span class="hero-line block">I think</span>
+              <span class="hero-line block pl-[11vw] italic">by making.</span>
+            </h1>
+          </div>
+
+          <div
+            class="flex flex-col gap-6 border-t border-[#17201d]/20 pt-5 md:flex-row md:items-end md:justify-between"
+          >
+            <p class="max-w-md text-sm leading-relaxed text-[#17201d]/70">
+              I lead through making — combining ideas, taste, technology, rapid
+              experimentation and craft to turn possibility into something real.
+            </p>
+            <a
+              href="#work"
+              class="group inline-flex w-fit items-center gap-3 text-xs uppercase tracking-[.16em] font-medium"
+            >
+              Follow the cable
+              <span
+                class="flex h-9 w-9 items-center justify-center rounded-full border border-[#17201d]/25 transition-colors duration-300 group-hover:bg-[#17201d] group-hover:text-[#f3f1eb]"
+              >
+                <iconify-icon
+                  icon="solar:arrow-down-linear"
+                  width="18"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </span>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="work"
+        class="relative bg-[#17201d] px-5 py-20 text-[#f3f1eb] md:px-10 md:py-32"
+      >
+        <div class="mx-auto max-w-7xl">
+          <div
+            class="flex items-center justify-between border-b border-white/15 pb-5"
+          >
+            <p class="text-xs uppercase tracking-[.18em] text-white/55">
+              01 / Things I’ve made
+            </p>
+            <p class="text-xs text-white/55">
+              Big products. Small details. New behaviors.
+            </p>
+          </div>
+
+          <div class="grid gap-12 py-14 md:grid-cols-12 md:py-20">
+            <h2
+              class="md:col-span-5 text-5xl leading-[.92] tracking-tight sm:text-6xl lg:text-7xl"
+              style="font-family:'Source Serif 4',Georgia,serif;"
+            >
+              Things I’ve
+              <br />
+              made.
+            </h2>
+            <div class="md:col-span-6 md:col-start-7 md:pt-4">
+              <p class="max-w-lg text-lg leading-relaxed text-white/72">
+                A selection of work where I’ve helped turn ambiguity into
+                direction, direction into prototypes, and prototypes into
+                products.
+              </p>
+              <div
+                class="mt-12 flex flex-wrap gap-x-8 gap-y-3 text-xs uppercase tracking-[.14em] text-[#c8ff3d]"
+              >
+                <span>Think</span>
+                <span>→</span>
+                <span>Make</span>
+                <span>→</span>
+                <span>See</span>
+                <span>→</span>
+                <span>Learn</span>
+                <span>→</span>
+                <span>Refine</span>
+                <span>→</span>
+                <span>Ship</span>
+              </div>
+            </div>
+          </div>
+
+          <article
+            class="work-card border-t border-white/15 py-7 md:py-9"
+            data-work-slideshow=""
+          >
+            <div class="grid gap-5 md:grid-cols-12 md:items-start">
+              <div class="text-xs text-white/45 md:col-span-2">02 — HBO</div>
+              <div class="md:col-span-7">
+                <h3 class="text-2xl tracking-tight">Microsoft: Copilot</h3>
+                <p class="mt-2 max-w-2xl text-sm leading-relaxed text-white/55">
+                  I’m a Principal Group Design Manager at Microsoft, leading
+                  product design for Microsoft 365 AI experiences. I lead a team
+                  of designers shaping the user experience of AI-powered
+                  products, while staying closely involved in the hands-on work
+                  of product strategy, UX, prototyping, and design. My focus is
+                  on turning emerging AI capabilities into thoughtful, intuitive
+                  experiences that help people get real work done.
+                </p>
+              </div>
+              <div class="flex items-center justify-between md:col-span-3">
+                <span
+                  class="rounded-full border border-white/20 px-3 py-1.5 text-xs text-white/70"
+                >
+                  AI experiences
+                </span>
+                <span
+                  class="flex h-10 w-10 items-center justify-center rounded-full bg-[#c8ff3d] text-[#17201d]"
+                >
+                  <iconify-icon
+                    icon="solar:arrow-up-right-linear"
+                    width="19"
+                    stroke-width="1.5"
+                  ></iconify-icon>
+                </span>
+              </div>
+            </div>
+            <div
+              class="relative mt-7 aspect-[16/9] overflow-hidden bg-[#101715] sm:mt-9"
+            >
+              <img
+                class="work-slide absolute inset-0 h-full w-full object-cover opacity-100 transition-opacity duration-700"
+                data-src="https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&amp;fit=crop&amp;w=1600&amp;q=85"
+                alt="Abstract visualization of AI-powered Microsoft Copilot experiences"
+                loading="lazy"
+              />
+              <img
+                class="work-slide absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"
+                data-src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&amp;fit=crop&amp;w=1600&amp;q=85"
+                alt="Person working with an AI-powered productivity experience"
+                loading="lazy"
+              />
+              <img
+                class="work-slide absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"
+                data-src="https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&amp;fit=crop&amp;w=1600&amp;q=85"
+                alt="Collaborative product strategy session"
+                loading="lazy"
+              />
+              <div class="absolute bottom-4 right-4 flex gap-1.5">
+                <span class="h-1.5 w-6 bg-[#c8ff3d]"></span>
+                <span class="h-1.5 w-1.5 bg-white/60"></span>
+                <span class="h-1.5 w-1.5 bg-white/60"></span>
+              </div>
+            </div>
+          </article>
+          <article
+            class="work-card border-t border-white/15 py-7 md:py-9"
+            data-work-slideshow=""
+          >
+            <div class="grid gap-5 md:grid-cols-12 md:items-start">
+              <div class="text-xs text-white/45 md:col-span-2">
+                03 — Microsoft
+              </div>
+              <div class="md:col-span-7">
+                <h3 class="text-2xl tracking-tight">
+                  HBO: a digital experience built for fans
+                </h3>
+                <p class="mt-2 max-w-2xl text-sm leading-relaxed text-white/55">
+                  Solidifying a unique, ownable digital experience scenario to
+                  deepen fan engagement and influence internal decision makers.
+                </p>
+              </div>
+              <div class="flex items-center justify-between md:col-span-3">
+                <span
+                  class="rounded-full border border-white/20 px-3 py-1.5 text-xs text-white/70"
+                >
+                  Digital experience
+                </span>
+                <span
+                  class="flex h-10 w-10 items-center justify-center rounded-full bg-[#c8ff3d] text-[#17201d]"
+                >
+                  <iconify-icon
+                    icon="solar:arrow-up-right-linear"
+                    width="19"
+                    stroke-width="1.5"
+                  ></iconify-icon>
+                </span>
+              </div>
+            </div>
+            <div
+              class="relative mt-7 aspect-[16/9] overflow-hidden bg-[#101715] sm:mt-9"
+            >
+              <img
+                class="work-slide absolute inset-0 h-full w-full object-cover opacity-100 transition-opacity duration-700"
+                data-src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/184a4b05-0b65-4b48-b820-d1e366e4163a_1600w.png"
+                alt="Orbital Design Language for HBO presentation"
+                loading="lazy"
+              />
+              <img
+                class="work-slide absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"
+                data-src="https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&amp;fit=crop&amp;w=1600&amp;q=85"
+                alt="Cinema screen and audience"
+                loading="lazy"
+              />
+              <img
+                class="work-slide absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"
+                data-src="https://images.unsplash.com/photo-1524985069026-dd778a71c7b4?auto=format&amp;fit=crop&amp;w=1600&amp;q=85"
+                alt="Film browsing experience"
+                loading="lazy"
+              />
+              <div class="absolute bottom-4 right-4 flex gap-1.5">
+                <span class="h-1.5 w-6 bg-[#c8ff3d]"></span>
+                <span class="h-1.5 w-1.5 bg-white/60"></span>
+                <span class="h-1.5 w-1.5 bg-white/60"></span>
+              </div>
+              <p
+                class="absolute bottom-4 left-4 max-w-sm bg-[#101715]/85 px-3 py-2 text-xs leading-relaxed text-white/75 backdrop-blur-sm"
+              >
+                To update these slideshow images, upload your files to project
+                asset storage, then replace the
+                <code class="text-[#c8ff3d]">data-src</code>
+                URL on each image in this card.
+              </p>
+            </div>
+          </article>
+
+          <article
+            class="work-card border-t border-white/15 py-7 md:py-9"
+            data-work-slideshow=""
+          >
+            <div class="grid gap-5 md:grid-cols-12 md:items-start">
+              <div class="text-xs text-white/45 md:col-span-2">
+                02 — Microsoft
+              </div>
+              <div class="md:col-span-7">
+                <h3 class="text-2xl tracking-tight">
+                  Microsoft: M365 Lifecycle
+                </h3>
+                <p class="mt-2 max-w-2xl text-sm leading-relaxed text-white/55">
+                  A framework for delivering value and engagement — helping
+                  Microsoft 365 customers understand the value they’re paying
+                  for, use more apps, and stay with Microsoft longer.
+                </p>
+              </div>
+              <div class="flex items-center justify-between md:col-span-3">
+                <span
+                  class="rounded-full border border-white/20 px-3 py-1.5 text-xs text-white/70"
+                >
+                  Subscription value
+                </span>
+                <span
+                  class="flex h-10 w-10 items-center justify-center rounded-full bg-[#c8ff3d] text-[#17201d]"
+                >
+                  <iconify-icon
+                    icon="solar:arrow-up-right-linear"
+                    width="19"
+                    stroke-width="1.5"
+                  ></iconify-icon>
+                </span>
+              </div>
+            </div>
+            <div
+              class="relative mt-7 aspect-[16/9] overflow-hidden bg-[#101715] sm:mt-9"
+            >
+              <img
+                class="work-slide absolute inset-0 h-full w-full object-cover opacity-100 transition-opacity duration-700"
+                data-src="https://images.unsplash.com/photo-1558655146-d09347e92766?auto=format&amp;fit=crop&amp;w=1600&amp;q=85"
+                alt="Microsoft 365 subscription value and engagement framework"
+                loading="lazy"
+              />
+              <img
+                class="work-slide absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"
+                data-src="https://images.unsplash.com/photo-1559028012-481c04fa702d?auto=format&amp;fit=crop&amp;w=1600&amp;q=85"
+                alt="Microsoft 365 lifecycle experience"
+                loading="lazy"
+              />
+              <img
+                class="work-slide absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"
+                data-src="https://images.unsplash.com/photo-1586717791821-3f44a563fa4c?auto=format&amp;fit=crop&amp;w=1600&amp;q=85"
+                alt="Microsoft 365 value expression interface"
+                loading="lazy"
+              />
+              <div class="absolute bottom-4 right-4 flex gap-1.5">
+                <span class="h-1.5 w-6 bg-[#c8ff3d]"></span>
+                <span class="h-1.5 w-1.5 bg-white/60"></span>
+                <span class="h-1.5 w-1.5 bg-white/60"></span>
+              </div>
+              <p
+                class="absolute bottom-4 left-4 max-w-sm bg-[#101715]/85 px-3 py-2 text-xs leading-relaxed text-white/75 backdrop-blur-sm"
+              >
+                To update these slideshow images, upload your files to project
+                asset storage, then replace the
+                <code class="text-[#c8ff3d]">data-src</code>
+                URL on each image in this card.
+              </p>
+            </div>
+          </article>
+          <article class="work-card border-t border-white/15 py-7 md:py-9">
+            <div class="grid gap-5 md:grid-cols-12 md:items-start">
+              <div class="text-xs text-white/45 md:col-span-2">
+                04 — My Reel
+              </div>
+              <div class="md:col-span-7">
+                <h3 class="text-2xl tracking-tight">My Reel</h3>
+                <p class="mt-2 max-w-2xl text-sm leading-relaxed text-white/55">
+                  A collection of creative work over the years. I am very proud
+                  of the teams and work that impacted each business strategy.
+                </p>
+              </div>
+              <div class="flex items-center justify-between md:col-span-3">
+                <span
+                  class="rounded-full border border-white/20 px-3 py-1.5 text-xs text-white/70"
+                >
+                  Creative reel
+                </span>
+                <a
+                  href="https://www.youtube.com/watch?v=RkAcb5r61os"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Watch My Reel on YouTube"
+                  class="flex h-10 w-10 items-center justify-center rounded-full bg-[#c8ff3d] text-[#17201d]"
+                >
+                  <iconify-icon
+                    icon="solar:arrow-up-right-linear"
+                    width="19"
+                    stroke-width="1.5"
+                  ></iconify-icon>
+                </a>
+              </div>
+            </div>
+            <div
+              class="relative mt-7 aspect-[16/9] overflow-hidden bg-[#101715] sm:mt-9"
+            >
+              <iframe
+                class="absolute inset-0 h-full w-full"
+                src="https://www.youtube.com/embed/RkAcb5r61os"
+                title="My Reel"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowfullscreen=""
+              ></iframe>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="relative overflow-hidden px-5 py-24 md:px-10 md:py-36">
+        <div class="mx-auto grid max-w-7xl gap-12 md:grid-cols-12">
+          <div class="md:col-span-3">
+            <p class="text-xs uppercase tracking-[.18em] text-[#17201d]/55">
+              AI / rapid prototyping
+            </p>
+          </div>
+          <div class="md:col-span-9">
+            <p
+              class="max-w-5xl text-4xl leading-[1.03] tracking-tight sm:text-5xl md:text-6xl"
+              style="font-family:'Source Serif 4',Georgia,serif;"
+            >
+              My hands finally move as fast as my head.
+            </p>
+            <div class="mt-14 grid gap-8 sm:grid-cols-3">
+              <div class="border-t border-[#17201d]/20 pt-4">
+                <span class="text-xs text-[#17201d]/45">01</span>
+                <p class="mt-5 text-sm leading-relaxed">
+                  I’ve always thought through prototypes. AI shortened the
+                  distance between an idea and something real.
+                </p>
+              </div>
+              <div class="border-t border-[#17201d]/20 pt-4">
+                <span class="text-xs text-[#17201d]/45">02</span>
+                <p class="mt-5 text-sm leading-relaxed">
+                  Now I can explore more directions, build working experiences,
+                  test ridiculous ideas and throw most of them away.
+                </p>
+              </div>
+              <div class="border-t border-[#17201d]/20 pt-4">
+                <span class="text-xs text-[#17201d]/45">03</span>
+                <p class="mt-5 text-sm leading-relaxed">
+                  The technology isn’t the interesting part. What it lets me
+                  explore is.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="experiments"
+        class="overflow-hidden bg-[#d9d7cf] px-5 py-20 md:px-10 md:py-28"
+      >
+        <div class="mx-auto max-w-7xl">
+          <div
+            class="flex flex-col justify-between gap-8 border-b border-[#17201d]/20 pb-6 sm:flex-row sm:items-end"
+          >
+            <div>
+              <p class="text-xs uppercase tracking-[.18em] text-[#17201d]/55">
+                03 / The lab
+              </p>
+              <h2
+                class="mt-5 text-5xl tracking-tight sm:text-6xl"
+                style="font-family:'Source Serif 4',Georgia,serif;"
+              >
+                I can’t really stop making things.
+              </h2>
+            </div>
+            <p class="max-w-xs text-sm leading-relaxed text-[#17201d]/65">
+              Apps. Interfaces. AI experiments. Music. Objects. Brands.
+              Prototypes. Weird ideas.
+            </p>
+          </div>
+
+          <div
+            class="experiment-wall grid grid-cols-2 gap-3 py-8 sm:grid-cols-3 md:grid-cols-4 md:gap-5"
+          >
+            <article
+              class="experiment aspect-[4/5] overflow-hidden bg-[#ff614d] p-4 text-[#17201d] transition-transform duration-500 hover:-rotate-2 hover:scale-[1.03] md:p-5"
+            >
+              <div class="flex h-full flex-col justify-between">
+                <span class="text-xs">01 / AI</span>
+                <p class="text-xl leading-[.95] tracking-tight">
+                  A companion that knows when not to talk.
+                </p>
+                <iconify-icon
+                  icon="solar:chat-round-dots-linear"
+                  width="27"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </div>
+            </article>
+            <article
+              class="experiment aspect-[4/5] overflow-hidden bg-[#17201d] p-4 text-[#f3f1eb] transition-transform duration-500 hover:rotate-2 hover:scale-[1.03] md:p-5"
+            >
+              <div class="flex h-full flex-col justify-between">
+                <span class="text-xs text-white/55">02 / TOOL</span>
+                <div class="flex gap-1">
+                  <span class="h-7 w-7 rounded-full bg-[#c8ff3d]"></span>
+                  <span
+                    class="h-7 w-7 rounded-full border border-white/40"
+                  ></span>
+                  <span class="h-7 w-7 rounded-full bg-[#ff614d]"></span>
+                </div>
+                <p class="text-xl leading-[.95] tracking-tight">
+                  Color notes for people who notice color.
+                </p>
+              </div>
+            </article>
+            <article
+              class="experiment aspect-[4/5] overflow-hidden bg-[#e6c5f1] p-4 text-[#17201d] transition-transform duration-500 hover:-rotate-2 hover:scale-[1.03] md:p-5"
+            >
+              <div class="flex h-full flex-col justify-between">
+                <span class="text-xs">03 / SOUND</span>
+                <div class="flex items-end gap-1 h-24">
+                  <span class="w-2 h-9 bg-[#17201d]"></span>
+                  <span class="w-2 h-20 bg-[#17201d]"></span>
+                  <span class="w-2 h-12 bg-[#17201d]"></span>
+                  <span class="w-2 h-24 bg-[#17201d]"></span>
+                  <span class="w-2 h-16 bg-[#17201d]"></span>
+                  <span class="w-2 h-8 bg-[#17201d]"></span>
+                </div>
+                <p class="text-xl leading-[.95] tracking-tight">
+                  A visual instrument for found sounds.
+                </p>
+              </div>
+            </article>
+            <article
+              class="experiment aspect-[4/5] overflow-hidden bg-[#b9dcf6] p-4 text-[#17201d] transition-transform duration-500 hover:rotate-2 hover:scale-[1.03] md:p-5"
+            >
+              <div class="flex h-full flex-col justify-between">
+                <span class="text-xs">04 / OBJECT</span>
+                <div
+                  class="relative mx-auto h-28 w-28 rounded-full border-[.8rem] border-[#17201d] after:absolute after:left-1/2 after:top-1/2 after:h-3 after:w-3 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-full after:bg-[#17201d]"
+                ></div>
+                <p class="text-xl leading-[.95] tracking-tight">
+                  A clock for imperfect time.
+                </p>
+              </div>
+            </article>
+            <article
+              class="experiment hidden aspect-[4/5] overflow-hidden bg-[#f5b928] p-5 text-[#17201d] sm:block"
+            >
+              <div class="flex h-full flex-col justify-between">
+                <span class="text-xs">05 / WEB</span>
+                <p class="text-xl leading-[.95] tracking-tight">
+                  A website that grows when you visit it.
+                </p>
+                <span class="text-4xl">↗</span>
+              </div>
+            </article>
+            <article
+              class="experiment hidden aspect-[4/5] overflow-hidden bg-[#f4f1e9] p-5 text-[#17201d] sm:block"
+            >
+              <div class="flex h-full flex-col justify-between">
+                <span class="text-xs">06 / PLAY</span>
+                <p class="text-xl leading-[.95] tracking-tight">
+                  One button. An unexpectedly good day.
+                </p>
+                <span class="text-5xl">●</span>
+              </div>
+            </article>
+            <article
+              class="experiment hidden aspect-[4/5] overflow-hidden bg-[#839c72] p-5 text-[#17201d] sm:block"
+            >
+              <div class="flex h-full flex-col justify-between">
+                <span class="text-xs">07 / AI</span>
+                <p class="text-xl leading-[.95] tracking-tight">
+                  Making software feel less like software.
+                </p>
+                <iconify-icon
+                  icon="solar:stars-line-duotone"
+                  width="32"
+                  stroke-width="1.5"
+                ></iconify-icon>
+              </div>
+            </article>
+            <article
+              class="experiment hidden aspect-[4/5] overflow-hidden bg-[#584b91] p-5 text-[#f3f1eb] sm:block"
+            >
+              <div class="flex h-full flex-col justify-between">
+                <span class="text-xs text-white/55">08 / UNFINISHED</span>
+                <p class="text-xl leading-[.95] tracking-tight">
+                  An excellent idea I’ll return to soon.
+                </p>
+                <span class="text-xs uppercase tracking-[.16em] text-[#c8ff3d]">
+                  In progress
+                </span>
+              </div>
+            </article>
+          </div>
+          <p
+            class="text-center text-xs uppercase tracking-[.17em] text-[#17201d]/55"
+          >
+            Some become products. Some teach me something. Some are just fun.
+          </p>
+        </div>
+      </section>
+
+      <section class="px-5 py-24 md:px-10 md:py-36">
+        <div class="mx-auto max-w-7xl">
+          <div class="grid gap-12 md:grid-cols-12">
+            <div class="md:col-span-3">
+              <p class="text-xs uppercase tracking-[.18em] text-[#17201d]/55">
+                02 / A little history
+              </p>
+            </div>
+            <div class="md:col-span-8 md:col-start-5">
+              <h2
+                class="text-4xl leading-[1.05] tracking-tight sm:text-5xl"
+                style="font-family:'Source Serif 4',Georgia,serif;"
+              >
+                I’ve been doing this for a while.
+              </h2>
+              <div class="mt-14 space-y-0">
+                <div
+                  class="group grid grid-cols-[5rem_1fr] gap-4 border-t border-[#17201d]/20 py-6 md:grid-cols-[9rem_1fr]"
+                >
+                  <span class="text-xs text-[#17201d]/45">Then</span>
+                  <p class="text-lg">
+                    I’ve spent the last decade at Microsoft helping imagine and
+                    build the future of productivity — across products,
+                    platforms and now AI.
+                  </p>
+                </div>
+                <div
+                  class="group grid grid-cols-[5rem_1fr] gap-4 border-t border-[#17201d]/20 py-6 md:grid-cols-[9rem_1fr]"
+                >
+                  <span class="text-xs text-[#17201d]/45">Along the way</span>
+                  <p class="text-lg">
+                    Before that, I was making things too. Different technology.
+                    Same instinct.
+                  </p>
+                </div>
+                <div
+                  class="group grid grid-cols-[5rem_1fr] gap-4 border-y border-[#17201d]/20 py-6 md:grid-cols-[9rem_1fr]"
+                >
+                  <span class="text-xs text-[#17201d]/45">Now</span>
+                  <p class="text-lg">
+                    See possibility → make it tangible → make it better.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer
+        id="contact"
+        class="bg-[#c8ff3d] px-5 pb-7 pt-20 md:px-10 md:pb-9 md:pt-28"
+      >
+        <div class="mx-auto max-w-7xl">
+          <p class="text-xs uppercase tracking-[.18em] text-[#17201d]/65">
+            What should we make next?
+          </p>
+          <a
+            href="mailto:hello@krisbergen.com"
+            class="group mt-5 inline-flex items-center gap-3 text-[12vw] leading-[.84] tracking-[-.07em] sm:text-[10vw] lg:text-[9rem]"
+            style="font-family:'Source Serif 4',Georgia,serif;"
+          >
+            Let’s make something worth caring about
+            <span
+              class="mb-1 flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#17201d] text-2xl transition-transform duration-300 group-hover:translate-x-2 sm:h-16 sm:w-16"
+            >
+              <iconify-icon
+                icon="solar:arrow-up-right-linear"
+                width="30"
+                stroke-width="1.5"
+              ></iconify-icon>
+            </span>
+          </a>
+          <div
+            class="mt-20 flex flex-col gap-4 border-t border-[#17201d]/30 pt-5 text-xs sm:flex-row sm:justify-between"
+          >
+            <p>© 2026 Kris Bergen · Bellevue, Washington</p>
+            <div class="flex gap-5">
+              <a href="#" class="hover:underline">LinkedIn</a>
+              <a href="#" class="hover:underline">Are.na</a>
+              <a href="#" class="hover:underline">Instagram</a>
+              <a
+                href="https://1drv.ms/p/c/f9cccdf662b6d605/IQAF1rZi9s3MIID5AWwBAAAAAVn1vqh9KbuEKn98vCsQt9Y?e=6nZCGU"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="hover:underline"
+              >
+                Presentation
+              </a>
+            </div>
+            <p class="text-[#17201d]/60">Made as a thinking tool.</p>
+          </div>
+        </div>
+      </footer>
+    </main>
+
+    <script>
+      const cable = document.getElementById('cable');
+      window.addEventListener('load', () => {
+        const length = cable.getTotalLength();
+        cable.style.strokeDasharray = length;
+        cable.style.strokeDashoffset = length;
+        setTimeout(() => {
+          cable.style.transition = 'stroke-dashoffset 2.4s cubic-bezier(.2,.8,.2,1)';
+          cable.style.strokeDashoffset = '0';
+        }, 250);
+
+        document.querySelectorAll('.hero-line').forEach((line, index) => {
+          line.style.opacity = '0';
+          line.style.transform = 'translateY(120%)';
+          line.style.transition = `transform .9s cubic-bezier(.2,.8,.2,1) ${index * 120 + 220}ms, opacity .7s ease ${index * 120 + 220}ms`;
+          setTimeout(() => {
+            line.style.opacity = '1';
+            line.style.transform = 'translateY(0)';
+          }, 80);
+        });
+      });
+
+      const experiments = document.querySelectorAll('.experiment');
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry, index) => {
+          if (entry.isIntersecting) {
+            entry.target.style.opacity = '1';
+            entry.target.style.transform = 'translateY(0) rotate(0)';
+          }
+        });
+      }, { threshold: 0.15 });
+
+      experiments.forEach((item, index) => {
+        item.style.opacity = '0';
+        item.style.transform = 'translateY(2rem) rotate(-2deg)';
+        item.style.transition = `opacity .45s ease ${index * 55}ms, transform .55s cubic-bezier(.2,.8,.2,1) ${index * 55}ms`;
+        observer.observe(item);
+      });
+
+      function updateClock() {
+        const time = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/Los_Angeles',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }).format(new Date());
+        document.getElementById('clock').textContent = time + ' PT';
+      }
+      updateClock();
+      setInterval(updateClock, 30000);
+    </script>
+    <script>
+      document.querySelectorAll('[data-work-slideshow]').forEach((show) => { const slides = Array.from(show.querySelectorAll('.work-slide')); if (!slides.length) return; const load = (slide) => { if (!slide.src) slide.src = slide.dataset.src; }; let active = 0; load(slides[0]); load(slides[1]); setInterval(() => { slides[active].classList.replace('opacity-100', 'opacity-0'); active = (active + 1) % slides.length; load(slides[active]); load(slides[(active + 1) % slides.length]); slides[active].classList.replace('opacity-0', 'opacity-100'); }, 4500); });
+    </script>
+  </body>
+</html>

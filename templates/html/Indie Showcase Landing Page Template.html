@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Explore, play, and support unique indie games crafted by passionate developers.">
+<title>Indie Showcase — Unique Independent Games</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+[data-warp-title] {
+position: relative;
+overflow: hidden;
+isolation: isolate;
+}
+[data-warp-title] > .warp-title-content {
+display: block;
+transform-origin: 50% 100%;
+will-change: transform, filter, opacity, clip-path;
+backface-visibility: hidden;
+}
+[data-warp-title].warp-title-pending > .warp-title-content {
+opacity: 0;
+clip-path: inset(100% -8% 0 -8%);
+filter: blur(16px);
+transform: translate3d(0, 34%, 0) scale3d(1.075, .68, 1) skewY(3deg);
+}
+[data-warp-title].warp-title-reveal > .warp-title-content {
+animation: warp-title-reveal 1.35s cubic-bezier(.16, 1, .3, 1) both;
+}
+@keyframes warp-title-reveal {
+0% {
+opacity: 0;
+clip-path: inset(100% -8% 0 -8%);
+filter: blur(16px);
+transform: translate3d(0, 34%, 0) scale3d(1.075, .68, 1) skewY(3deg);
+}
+38% {
+opacity: 1;
+filter: blur(7px);
+transform: translate3d(0, 8%, 0) scale3d(.985, 1.08, 1) skewY(-1.2deg);
+}
+68% {
+clip-path: inset(-8% -8% -8% -8%);
+filter: blur(1.5px);
+transform: translate3d(0, -1.5%, 0) scale3d(1.012, .988, 1) skewY(.25deg);
+}
+100% {
+opacity: 1;
+clip-path: inset(-8% -8% -8% -8%);
+filter: blur(0);
+transform: translate3d(0, 0, 0) scale3d(1, 1, 1) skewY(0deg);
+}
+}
+@media (prefers-reduced-motion: reduce) {
+[data-warp-title],
+[data-warp-title] > .warp-title-content {
+animation: none !important;
+clip-path: none !important;
+filter: none !important;
+opacity: 1 !important;
+transform: none !important;
+}
+}
+</style>
+<style>
+/* 3D Transform utilities */
+</style>
+<script>
+// Configure Tailwind to include our custom 3D transform utilities
+tailwind.config = {
+theme: {
+extend: {
+// Add any custom theme extensions here if needed
+}
+},
+plugins: [
+function({ addUtilities }) {
+const rotateXUtilities = {};
+const rotateYUtilities = {};
+const rotateZUtilities = {};
+const rotateValues = [0, 5, 10, 15, 20, 30, 45, 75];
+// Generate rotate-x utilities
+rotateValues.forEach((value) => {
+rotateXUtilities[`.rotate-x-${value}`] = {
+'--tw-rotate-x': `${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+if (value !== 0) {
+rotateXUtilities[`.-rotate-x-${value}`] = {
+'--tw-rotate-x': `-${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+}
+});
+// Generate rotate-y utilities
+rotateValues.forEach((value) => {
+rotateYUtilities[`.rotate-y-${value}`] = {
+'--tw-rotate-y': `${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+if (value !== 0) {
+rotateYUtilities[`.-rotate-y-${value}`] = {
+'--tw-rotate-y': `-${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+}
+});
+// Generate rotate-z utilities
+rotateValues.forEach((value) => {
+rotateZUtilities[`.rotate-z-${value}`] = {
+'--tw-rotate-z': `${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+if (value !== 0) {
+rotateZUtilities[`.-rotate-z-${value}`] = {
+'--tw-rotate-z': `-${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+}
+});
+// Perspective utilities
+const perspectiveUtilities = {
+".perspective-none": { perspective: "none" },
+".perspective-dramatic": { perspective: "100px" },
+".perspective-near": { perspective: "300px" },
+".perspective-normal": { perspective: "500px" },
+".perspective-midrange": { perspective: "800px" },
+".perspective-distant": { perspective: "1200px" },
+};
+// Transform style utilities
+const transformStyleUtilities = {
+".transform-style-preserve-3d": { "transform-style": "preserve-3d" },
+".transform-style-flat": { "transform-style": "flat" },
+};
+addUtilities({
+...rotateXUtilities,
+...rotateYUtilities,
+...rotateZUtilities,
+...perspectiveUtilities,
+...transformStyleUtilities,
+});
+}
+]
+};
+</script></head>
+
+  <body class="overflow-x-hidden bg-[#061014] font-['Manrope'] text-[#f3f6f5] antialiased selection:bg-[#8ceaf5] selection:text-[#061014]">
+    <a href="#main-content" class="fixed left-4 top-4 z-[100] -translate-y-24 rounded-full bg-[#8ceaf5] px-5 py-3 text-sm font-medium text-[#061014] transition focus:translate-y-0 focus:outline-none focus:ring-2 focus:ring-white">
+      Skip to content
+    </a>
+
+    <header class="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-[#061014]/70 backdrop-blur-xl">
+      <div class="mx-auto flex h-16 max-w-[96rem] items-center justify-between px-5 sm:px-8 lg:px-12">
+        <a href="#top" class="flex min-h-11 items-center gap-3 rounded-sm focus:outline-none focus:ring-2 focus:ring-[#8ceaf5]">
+          <span class="grid size-7 place-items-center border border-[#8ceaf5]/30 text-[#8ceaf5]">
+            <iconify-icon icon="solar:soundwave-linear" stroke-width="1.5" class="text-lg"></iconify-icon>
+          </span>
+          <span class="text-xs font-medium tracking-[0.24em]">
+            INDIE SHOWCASE
+          </span>
+        </a>
+
+        <nav class="hidden items-center gap-8 text-xs text-slate-400 md:flex" aria-label="Primary navigation">
+          <a href="#models" class="rounded-sm py-3 transition hover:text-white focus:outline-none focus:ring-2 focus:ring-[#8ceaf5]">
+            Games
+          </a>
+          <a href="#services" class="rounded-sm py-3 transition hover:text-white focus:outline-none focus:ring-2 focus:ring-[#8ceaf5]">
+            Genres
+          </a>
+          <a href="#systems" class="rounded-sm py-3 transition hover:text-white focus:outline-none focus:ring-2 focus:ring-[#8ceaf5]">
+            Studios
+          </a>
+          <a href="#support" class="rounded-sm py-3 transition hover:text-white focus:outline-none focus:ring-2 focus:ring-[#8ceaf5]">
+            Support
+          </a>
+        </nav>
+
+        <a href="#reserve" data-magnetic="" class="hidden min-h-11 items-center gap-2 rounded-full border border-[#8ceaf5]/30 bg-white/[0.04] px-5 text-xs font-medium transition hover:border-[#8ceaf5] hover:bg-[#8ceaf5] hover:text-[#061014] focus:outline-none focus:ring-2 focus:ring-[#8ceaf5] active:scale-[0.98] sm:inline-flex">
+          Wishlist
+          <iconify-icon icon="solar:arrow-right-up-linear" stroke-width="1.5" class="text-base"></iconify-icon>
+        </a>
+
+        <button id="menu-button" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="mobile-menu" class="grid size-11 place-items-center border border-white/15 text-white transition hover:border-[#8ceaf5]/60 focus:outline-none focus:ring-2 focus:ring-[#8ceaf5] md:hidden">
+          <iconify-icon icon="solar:hamburger-menu-linear" stroke-width="1.5" class="text-xl"></iconify-icon>
+        </button>
+      </div>
+
+      <nav id="mobile-menu" class="hidden border-t border-white/10 bg-[#061014] px-5 py-5 md:hidden" aria-label="Mobile navigation">
+        <div class="grid gap-1 text-sm text-slate-300">
+          <a href="#models" class="flex min-h-11 items-center border-b border-white/10">
+            Games
+          </a>
+          <a href="#services" class="flex min-h-11 items-center border-b border-white/10">
+            Genres
+          </a>
+          <a href="#systems" class="flex min-h-11 items-center border-b border-white/10">
+            Studios
+          </a>
+          <a href="#support" class="flex min-h-11 items-center border-b border-white/10">
+            Support
+          </a>
+          <a href="#reserve" class="mt-3 flex min-h-11 items-center justify-center rounded-full bg-[#8ceaf5] font-medium text-[#061014]">
+            Wishlist
+          </a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="main-content" class="">
+      <!-- Existing chamber hero -->
+      <section id="top" class="aether-stage relative z-10 isolate" aria-label="Aetherfall cinematic landscape" style="--mx: -0.9244; --my: -1.0000; --scroll: 1.0000; --rock-x: -3.38px; --rock-y: 6.30px; --rock-r: 0.220deg;">
+        <style class="">
+          :root{--aether-ease:cubic-bezier(.2,.7,.2,1)}#top{--mx:0;--my:0;--scroll:0;--rock-x:0px;--rock-y:0px;--rock-r:0deg;height:420svh;background:#7ebbd7}.aether-hero{position:sticky;top:0;width:100%;height:100svh;min-height:560px;overflow:hidden;isolation:isolate;background:#7ebbd7;perspective:calc(1400px - var(--scroll) * 500px);perspective-origin:50% 46%}.aether-scene{position:absolute;inset:-4.5%;transform-style:preserve-3d;pointer-events:none}.aether-layer{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;user-select:none;-webkit-user-drag:none;backface-visibility:hidden;transform-origin:50% 52%;will-change:transform,opacity,filter}.aether-background{z-index:1;opacity:clamp(0,calc((.94 - var(--scroll)) * 2.8),1);transform:translate3d(calc(var(--mx) * -5px),calc(var(--my) * -3px + var(--scroll) * 4px),-90px) scale(calc(1.07 + var(--scroll) * .48));filter:saturate(.96) contrast(1.01) blur(calc(var(--scroll) * 3px))}.aether-midground{z-index:2;opacity:clamp(0,calc((.88 - var(--scroll)) * 3),1);transform:translate3d(calc(var(--mx) * -11px),calc(var(--my) * -7px + var(--scroll) * 10px),10px) scale(calc(1.055 + var(--scroll) * .7));filter:saturate(1.04) blur(calc(var(--scroll) * 4px)) drop-shadow(0 20px 35px rgba(18,44,58,.09))}.aether-isles{z-index:3;top:4%;left:calc(-2% + 300px);right:auto;bottom:auto;width:75%;max-width:1200px;height:auto;object-fit:contain;opacity:clamp(0,calc((.82 - var(--scroll)) * 3.2),1);transform:translate3d(calc(var(--mx) * -16px + var(--rock-x)),calc(var(--my) * -10px + var(--scroll) * 8px + var(--rock-y)),30px) scale(calc(1.045 + var(--scroll) * .86));filter:saturate(1.02) blur(calc(var(--scroll) * 4.5px)) drop-shadow(0 28px 40px rgba(14,38,48,.18))}.aether-rocks{z-index:4;opacity:clamp(0,calc((.76 - var(--scroll)) * 3.4),1);transform:translate3d(calc(var(--mx) * -22px + var(--rock-x)),calc(var(--my) * -14px - var(--scroll) * 18px + var(--rock-y)),75px) scale(calc(1.035 + var(--scroll) * 1.08)) rotate(var(--rock-r));filter:blur(calc(var(--scroll) * 5px)) drop-shadow(0 24px 34px rgba(31,62,68,.19))}.aether-foreground{z-index:5;opacity:clamp(0,calc((.68 - var(--scroll)) * 3.8),1);transform:translate3d(calc(var(--mx) * -32px),calc(var(--my) * -20px - var(--scroll) * 42px),145px) scale(calc(1.025 + var(--scroll) * 1.5));filter:blur(calc(var(--scroll) * 6px)) drop-shadow(0 24px 42px rgba(16,44,48,.17))}.aether-world-two{z-index:6;opacity:clamp(0,calc((var(--scroll) - .44) * 2.35),1);transform:translate3d(calc(var(--mx) * -3px),calc(var(--my) * -2px + (1 - var(--scroll)) * 12px),55px) scale(calc(1.28 - var(--scroll) * .28));filter:blur(calc((1 - var(--scroll)) * 18px)) saturate(calc(.82 + var(--scroll) * .18)) brightness(calc(.82 + var(--scroll) * .18))}.aether-bloom,.aether-atmosphere,.aether-vignette,.aether-grain{position:absolute;inset:0;pointer-events:none}.aether-bloom{z-index:7;left:auto;width:36%;background:radial-gradient(circle at 92% 36%,rgba(255,249,188,.30),rgba(255,176,96,.08) 36%,transparent 70%);mix-blend-mode:screen;opacity:clamp(0,calc((.82 - var(--scroll)) * 1.5),.72);transform:translate3d(calc(var(--mx) * 5px),calc(var(--my) * 3px),0)}.aether-atmosphere{z-index:8;background:linear-gradient(to top,rgba(27,74,81,.09),transparent 28%),linear-gradient(105deg,rgba(88,175,195,.08),transparent 36%,rgba(255,192,118,.10));opacity:clamp(.18,calc(.72 - var(--scroll) * .32),.72)}.aether-vignette{z-index:10;background:radial-gradient(ellipse at 52% 46%,transparent 45%,rgba(3,17,24,.10) 76%,rgba(2,12,18,.24) 120%)}.aether-grain{z-index:11;opacity:.06;mix-blend-mode:soft-light;background-image:url('data:image/svg+xml,%3Csvg viewBox=%220 0 180 180%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22n%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%22.85%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23n)%22 opacity=%22.42%22/%3E%3C/svg%3E');animation:aether-grain .32s steps(2) infinite}.aether-chrome{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;justify-content:space-between;padding:clamp(88px,8vw,120px) clamp(22px,3.3vw,54px) clamp(22px,3.3vw,54px);pointer-events:none;opacity:clamp(0,calc((.46 - var(--scroll)) * 3),1)}.aether-eyebrow{display:flex;align-items:center;gap:12px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:rgba(255,255,255,.78);text-shadow:0 1px 16px rgba(18,45,55,.34)}.aether-eyebrow:before{content:'';width:28px;height:1px;background:currentColor;opacity:.72}.aether-scroll-cue{align-self:flex-end;display:grid;grid-template-columns:auto 1px;gap:14px;align-items:end;font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,255,255,.84);text-shadow:0 1px 12px rgba(13,35,44,.5);transform:translateY(calc(var(--scroll) * -16px));opacity:calc(1 - var(--scroll) * 1.8)}.aether-scroll-line{width:1px;height:60px;overflow:hidden;background:rgba(255,255,255,.30)}.aether-scroll-line:after{content:'';display:block;width:100%;height:38%;background:rgba(255,255,255,.92);animation:aether-descend 1.9s var(--aether-ease) infinite}.aether-loader{position:fixed;inset:0;z-index:100;display:grid;place-items:center;background:#8ec8df;transition:opacity .7s var(--aether-ease),visibility .7s}.aether-loader.is-hidden{opacity:0;visibility:hidden}.aether-loader-mark{width:34px;aspect-ratio:1;border:1px solid rgba(255,255,255,.55);border-top-color:#fff;border-radius:50%;animation:aether-spin .8s linear infinite}@keyframes aether-grain{25%{transform:translate3d(-1.5%,1%,0)}50%{transform:translate3d(1%,-1.5%,0)}75%{transform:translate3d(1.5%,1.2%,0)}}@keyframes aether-descend{from{transform:translateY(-110%)}to{transform:translateY(300%)}}@keyframes aether-spin{to{transform:rotate(1turn)}}@media(max-width:760px){#top{height:340svh}.aether-hero{min-height:480px}.aether-scene{inset:-7%}.aether-layer{object-position:53% center}.aether-isles{top:8%;left:calc(-4% + 300px);width:120%}.aether-world-two{object-position:52% center}.aether-eyebrow{font-size:9px;letter-spacing:.25em}.aether-scroll-cue{display:none}}@media(prefers-reduced-motion:reduce){#top{height:120svh}.aether-hero{perspective:1400px}.aether-background{opacity:1;transform:scale(1.07);filter:saturate(.96) contrast(1.01)}.aether-midground{opacity:1;transform:scale(1.055);filter:saturate(1.04)}.aether-isles{opacity:1;transform:scale(1.045);filter:saturate(1.02)}.aether-rocks{opacity:1;transform:scale(1.035);filter:none}.aether-foreground{opacity:1;transform:scale(1.025);filter:none}.aether-world-two{opacity:0;transform:scale(1.1);filter:none}.aether-chrome{opacity:1}.aether-grain,.aether-scroll-line:after,.aether-loader-mark{animation:none}.aether-scroll-cue{display:none}}
+        </style>
+        <style>
+          .aether-second-title{position:absolute;right:clamp(22px,5vw,76px);top:50%;z-index:21;max-width:min(44rem,72vw);pointer-events:none;text-align:right;color:#fff;opacity:clamp(0,calc((var(--scroll) - .58) * 4),1);transform:translate3d(0,calc(-50% + (1 - var(--scroll)) * 28px),0);text-shadow:0 3px 30px rgba(3,17,24,.35)}.aether-second-kicker{display:block;margin-bottom:18px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,255,255,.72)}.aether-second-title h1{font-size:clamp(3.5rem,8vw,8.5rem);font-weight:600;line-height:.84;letter-spacing:-.055em;text-transform:uppercase}@media(max-width:760px){.aether-second-title{right:22px;max-width:86vw}.aether-second-title h1{font-size:clamp(3.25rem,16vw,5.5rem)}.aether-second-kicker{font-size:9px;letter-spacing:.22em}}@media(prefers-reduced-motion:reduce){.aether-second-title{display:none}}
+        </style>
+        <div class="aether-loader" aria-hidden="true">
+          <span class="aether-loader-mark"></span>
+        </div>
+        <div class="aether-hero">
+          <div class="aether-scene" aria-hidden="true">
+            <img class="aether-layer aether-background" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/f66df6d7-cac8-4456-8543-0ae8ee5b2e9d_3840w.webp" alt="" decoding="async" fetchpriority="high">
+            <img class="aether-layer aether-midground" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/2c493c39-21b4-4384-88ee-ed6ca4f5c2f9_3840w.webp" alt="" decoding="async" fetchpriority="high">
+            <img class="aether-layer aether-isles" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/e5da78b0-2689-4e45-bb46-34f476a3fbf1_1600w.webp" alt="Floating mossy isles with waterfalls" decoding="async">
+            <img class="aether-layer aether-rocks" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b4062d84-a168-4648-a35a-7e3943b078d7_3840w.webp" alt="" decoding="async">
+            <img class="aether-layer aether-foreground" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/a03e8119-1b64-41ca-a1fc-5f5cc2eb3ad1_3840w.webp" alt="" decoding="async" fetchpriority="high">
+            <img class="aether-layer aether-world-two" src="https://cdn.midjourney.com/0aefa95b-c38a-4870-a425-ef60a197c010/0_0.png?w=800&q=80" alt="" decoding="async">
+          </div>
+          <div class="aether-bloom" aria-hidden="true"></div>
+          <div class="aether-atmosphere" aria-hidden="true"></div>
+          <div class="aether-vignette" aria-hidden="true"></div>
+          <div class="aether-grain" aria-hidden="true"></div>
+          <div class="aether-chrome" aria-hidden="true">
+            <div class="aether-eyebrow">Aetherfall / First Light</div>
+            <div class="aether-scroll-cue">
+              <span class="">Enter the valley</span>
+              <span class="aether-scroll-line"></span>
+            </div>
+          </div>
+          <div class="aether-second-title">
+            <span class="aether-second-kicker">Aetherfall / Second Light</span>
+            <h1>
+              Beyond
+              <br>
+              the veil.
+            </h1>
+          </div>
+        </div>
+      </section>
+
+      <!-- Existing character selector -->
+      <section class="relative min-h-[100svh] overflow-hidden border-y border-white/10 bg-[#03090c] px-6 py-24 sm:px-10 lg:px-14 lg:py-32" id="models">
+        <div class="pointer-events-none absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(140,234,245,.12)_1px,transparent_1px),linear-gradient(90deg,rgba(140,234,245,.12)_1px,transparent_1px)] [background-size:5rem_5rem]"></div>
+
+        <div class="relative mx-auto max-w-[92rem]">
+          <h1 class="relative z-10 text-6xl font-semibold uppercase leading-[0.82] tracking-tight text-white sm:text-8xl lg:text-9xl" data-warp-title="">
+            <span class="warp-title-content">
+              <span class="warp-title-content">
+                Choose
+                <span class="block text-right">your journey</span>
+              </span>
+            </span>
+          </h1>
+
+          <div class="relative mt-10 grid min-h-[34rem] items-center lg:grid-cols-[0.8fr_1.2fr]">
+            <div class="relative z-20 max-w-md">
+              <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.22em] text-[#8ceaf5]/60">
+                01 / Games
+              </p>
+              <h2 class="mt-5 text-4xl font-light leading-none tracking-tight sm:text-5xl" data-warp-title="">
+                <span class="warp-title-content">
+                  <span class="warp-title-content">
+                    Choose.
+                    <br>
+                    Play. Discover.
+                  </span>
+                </span>
+              </h2>
+              <p class="mt-6 text-base leading-7 text-slate-400">
+                Explore a curated collection of independent games. Select a
+                genre, visual style, gameplay mechanics, and immerse yourself.
+              </p>
+
+              <ul class="mt-7 space-y-2 font-['Space_Mono'] text-xs uppercase tracking-[0.14em] text-slate-500">
+                <li class="flex items-center gap-3">
+                  <span class="h-px w-5 bg-[#8ceaf5]/60"></span>
+                  8 distinct genres
+                </li>
+                <li class="flex items-center gap-3">
+                  <span class="h-px w-5 bg-[#8ceaf5]/60"></span>
+                  Hand-crafted art styles
+                </li>
+                <li class="flex items-center gap-3">
+                  <span class="h-px w-5 bg-[#8ceaf5]/60"></span>
+                  DRM-free &amp; Cloud saves
+                </li>
+              </ul>
+
+              <a href="#services" data-magnetic="" class="mt-8 inline-flex min-h-11 items-center gap-5 rounded-full border border-white/20 px-6 text-xs font-medium uppercase tracking-[0.14em] transition hover:border-[#8ceaf5] hover:bg-[#8ceaf5] hover:text-[#061014] focus:outline-none focus:ring-2 focus:ring-[#8ceaf5] active:scale-[0.98]">
+                Explore games
+                <iconify-icon icon="solar:arrow-right-linear" stroke-width="1.5" class="text-base"></iconify-icon>
+              </a>
+            </div>
+
+            <div class="relative -mt-12 h-[32rem] lg:-ml-24 lg:h-[42rem]">
+              <div class="absolute left-1/2 top-1/2 size-[28rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#8ceaf5]/10 sm:size-[38rem]"></div>
+              <div class="absolute left-1/2 top-1/2 size-[20rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#8ceaf5]/10 sm:size-[29rem]"></div>
+              <img src="https://cdn.midjourney.com/82c54d8c-ef92-44f9-870c-d445896e6d85/0_2.png?w=800&q=80" alt="Indie game character concept art" class="relative z-10 h-full w-full object-contain drop-shadow-[0_30px_45px_rgba(0,0,0,.8)]" loading="lazy">
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between border-t border-white/10 pt-5 font-['Space_Mono'] text-xs uppercase tracking-[0.18em] text-slate-600">
+            <span>Indie showcase</span>
+            <span>02</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Built to serve -->
+      <section id="services" data-camera="" class="relative isolate flex min-h-[100svh] items-end overflow-hidden bg-[#09171b] px-6 py-16 sm:px-10 lg:px-14 lg:py-20">
+        <img data-camera-media="" src="https://cdn.midjourney.com/54185736-8092-4220-ad87-5087d23bc6d8/0_2.png?w=800&q=80" alt="Persona humanoid service platform in an active laboratory" class="absolute inset-0 h-full w-full scale-[1.04] object-cover opacity-55 will-change-transform" loading="lazy">
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_68%_45%,transparent_0%,rgba(6,16,20,.18)_38%,rgba(6,16,20,.9)_100%)]"></div>
+        <div class="absolute inset-0 bg-gradient-to-t from-[#061014] via-transparent to-[#061014]/50"></div>
+
+        <div class="relative z-10 mx-auto w-full max-w-[92rem] pb-24">
+          <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.22em] text-[#8ceaf5]/70">
+            02 / Game genres and styles
+          </p>
+          <h2 class="mt-5 max-w-5xl text-6xl font-semibold uppercase leading-[0.84] tracking-tight sm:text-8xl lg:text-9xl" data-warp-title="">
+            <span class="warp-title-content">
+              <span class="warp-title-content">
+                Built to
+                <br>
+                play.
+              </span>
+            </span>
+          </h2>
+
+          <div class="mt-8 max-w-xl">
+            <p class="text-base leading-7 text-slate-300">
+              One adaptable platform for diverse experiences—from relaxing
+              puzzle games to intense action rogue-likes, crafted for every
+              player.
+            </p>
+            <a href="#gallery" data-magnetic="" class="mt-7 inline-flex min-h-11 items-center gap-5 rounded-full bg-[#8ceaf5] px-6 text-xs font-medium uppercase tracking-[0.14em] text-[#061014] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-white active:scale-[0.98]">
+              Explore genres
+              <iconify-icon icon="solar:arrow-right-linear" stroke-width="1.5" class="text-base"></iconify-icon>
+            </a>
+          </div>
+        </div>
+
+        <div class="absolute inset-x-0 bottom-0 z-20 overflow-x-auto border-t border-white/15 bg-[#061014]/70 backdrop-blur-md">
+          <div class="mx-auto flex min-w-max max-w-[92rem]">
+            <span class="flex h-16 min-w-40 items-center border-r border-white/10 px-5 font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#8ceaf5]">
+              01 Action
+            </span>
+            <span class="flex h-16 min-w-40 items-center border-r border-white/10 px-5 font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-slate-400">
+              02 Adventure
+            </span>
+            <span class="flex h-16 min-w-40 items-center border-r border-white/10 px-5 font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-slate-400">
+              03 RPG
+            </span>
+            <span class="flex h-16 min-w-40 items-center border-r border-white/10 px-5 font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-slate-400">
+              04 Strategy
+            </span>
+            <span class="flex h-16 min-w-40 items-center border-r border-white/10 px-5 font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-slate-400">
+              05 Puzzle
+            </span>
+            <span class="flex h-16 min-w-40 items-center border-r border-white/10 px-5 font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-slate-400">
+              06 Platformer
+            </span>
+            <span class="flex h-16 min-w-40 items-center border-r border-white/10 px-5 font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-slate-400">
+              07 Rogue-like
+            </span>
+            <span class="flex h-16 min-w-40 items-center px-5 font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-slate-400">
+              08 Simulation
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Face and sensor mechanics -->
+      <section class="min-h-[100svh] overflow-hidden bg-[#f3f6f5] px-6 py-24 text-[#061014] sm:px-10 lg:px-14 lg:py-28">
+        <div class="mx-auto max-w-[92rem]">
+          <div class="grid items-end gap-8 border-t border-[#061014]/15 pt-7 lg:grid-cols-12">
+            <div class="lg:col-span-8">
+              <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.2em] text-[#061014]/55">
+                03 / Gameplay mechanics
+              </p>
+              <h2 class="mt-5 text-5xl font-semibold uppercase leading-[0.88] tracking-tight sm:text-7xl lg:text-8xl" data-warp-title="">
+                <span class="warp-title-content">
+                  <span class="warp-title-content">
+                    Immersive worlds /
+                    <br>
+                    tight controls.
+                  </span>
+                </span>
+              </h2>
+            </div>
+            <p class="max-w-md text-base leading-7 text-slate-600 lg:col-span-4">
+              Layered storytelling meets responsive gameplay systems that keep
+              you engaged from the first click to the final boss.
+            </p>
+          </div>
+
+          <div class="mt-14 grid min-h-[36rem] overflow-hidden border border-[#061014]/10 lg:grid-cols-2">
+            <div class="relative min-h-[28rem] overflow-hidden bg-[#d9dddc]">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/6a18d4d0-5547-45fe-9547-45b3287c56ce_1600w.jpg" alt="Close humanoid profile showing facial sensor systems" class="h-full w-full object-cover object-center" loading="lazy">
+              <div class="absolute left-[7%] top-[18%] flex items-center gap-3 bg-[#f3f6f5]/90 px-4 py-3 backdrop-blur">
+                <span class="size-2 rounded-full bg-[#8ceaf5]"></span>
+                <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.14em]">
+                  Visual style
+                </span>
+              </div>
+              <div class="absolute bottom-[16%] right-[6%] flex items-center gap-3 bg-[#061014]/85 px-4 py-3 text-white backdrop-blur">
+                <span class="size-2 rounded-full bg-[#8ceaf5]"></span>
+                <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.14em]">
+                  Sound design
+                </span>
+              </div>
+            </div>
+
+            <div class="relative min-h-[28rem] overflow-hidden bg-[#cad0cf]">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/706e738d-c98b-4b9c-8a4e-43e8a0f53424_1600w.png" alt="Mechanical face study showing expressive humanoid systems" class="h-full w-full object-cover object-center grayscale" loading="lazy">
+              <div class="absolute inset-y-0 left-0 w-px bg-[#8ceaf5]"></div>
+              <div class="absolute right-[7%] top-[20%] flex items-center gap-3 bg-[#f3f6f5]/90 px-4 py-3 backdrop-blur">
+                <span class="size-2 rounded-full bg-[#80a8ff]"></span>
+                <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.14em]">
+                  Procedural generation
+                </span>
+              </div>
+              <div class="absolute bottom-[15%] left-[7%] flex items-center gap-3 bg-[#061014]/85 px-4 py-3 text-white backdrop-blur">
+                <span class="size-2 rounded-full bg-[#f0a486]"></span>
+                <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.14em]">
+                  Haptic feedback
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Exploded body -->
+      <section id="systems" class="min-h-[100svh] overflow-hidden bg-[#f3f6f5] px-6 py-24 text-[#061014] sm:px-10 lg:px-14 lg:py-28">
+        <div class="mx-auto max-w-[92rem] border-t border-[#061014]/15 pt-7">
+          <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.2em] text-[#061014]/55">
+            04 / Inside the game engine
+          </p>
+          <h2 class="mt-5 text-5xl font-semibold uppercase leading-[0.88] tracking-tight sm:text-7xl lg:text-8xl" data-warp-title="">
+            <span class="warp-title-content">
+              <span class="warp-title-content">
+                Anatomy of
+                <br>
+                a masterpiece.
+              </span>
+            </span>
+          </h2>
+
+          <div class="relative mt-12 min-h-[38rem] overflow-hidden border border-[#061014]/10 bg-white">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b75d6d95-bf54-4a0a-bb7c-4f0e00fc525e_3840w.jpg" alt="Exploded humanoid body with ceramic shell and internal systems" class="absolute inset-0 h-full w-full object-contain" loading="lazy">
+
+            <div class="absolute left-[4%] top-[18%] max-w-48 border-l-2 border-[#8ceaf5] bg-white/90 p-4">
+              <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em]">
+                01 / Game Loop
+              </span>
+              <p class="mt-2 text-xs leading-5 text-slate-500">
+                Engaging mechanics that drive the core experience.
+              </p>
+            </div>
+            <div class="absolute right-[4%] top-[26%] max-w-48 border-l-2 border-[#80a8ff] bg-white/90 p-4">
+              <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em]">
+                02 / Art Direction
+              </span>
+              <p class="mt-2 text-xs leading-5 text-slate-500">
+                Unique visual aesthetics and careful animation.
+              </p>
+            </div>
+            <div class="absolute bottom-[16%] left-[5%] max-w-48 border-l-2 border-[#f0a486] bg-white/90 p-4">
+              <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em]">
+                03 / Soundscape
+              </span>
+              <p class="mt-2 text-xs leading-5 text-slate-500">
+                Immersive audio and dynamic soundtracks.
+              </p>
+            </div>
+            <div class="absolute bottom-[10%] right-[5%] max-w-48 border-l-2 border-[#8ceaf5] bg-white/90 p-4">
+              <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em]">
+                04 / Narrative
+              </span>
+              <p class="mt-2 text-xs leading-5 text-slate-500">
+                Compelling storylines and deep lore.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Specifications -->
+      <section class="min-h-[100svh] bg-[#061014] px-6 py-24 sm:px-10 lg:px-14 lg:py-28">
+        <div class="mx-auto max-w-[92rem]">
+          <div class="border-t border-[#8ceaf5]/20 pt-7">
+            <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.2em] text-[#8ceaf5]/60">
+              05 / Technical features
+            </p>
+            <h2 class="mt-5 text-5xl font-semibold uppercase leading-[0.88] tracking-tight sm:text-7xl lg:text-8xl" data-warp-title="">
+              <span class="warp-title-content">
+                <span class="warp-title-content">Specifications.</span>
+              </span>
+            </h2>
+          </div>
+
+          <div class="mt-14 grid overflow-hidden border border-[#8ceaf5]/20 lg:grid-cols-12">
+            <div class="relative min-h-[38rem] bg-[#09171b] lg:col-span-5">
+              <div class="absolute inset-6 border border-white/10"></div>
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/42013611-20ae-4815-a74a-5a2b22a3a532_1600w.jpg" alt="Full-body Persona humanoid technical render" class="relative h-full min-h-[38rem] w-full object-contain" loading="lazy">
+              <span class="absolute bottom-7 left-7 font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#8ceaf5]/70">
+                V-1.0 / Cross-platform
+              </span>
+            </div>
+
+            <div class="grid sm:grid-cols-2 lg:col-span-7">
+              <article class="border-b border-r border-[#8ceaf5]/15 p-7 sm:p-9">
+                <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#8ceaf5]/60">
+                  01 / Resolution
+                </span>
+                <strong class="mt-12 block text-4xl font-light tracking-tight" data-count="168">
+                  4K UHD
+                </strong>
+              </article>
+              <article class="border-b border-[#8ceaf5]/15 p-7 sm:p-9">
+                <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#8ceaf5]/60">
+                  02 / Framerate
+                </span>
+                <strong class="mt-12 block text-4xl font-light tracking-tight" data-count="62">
+                  120 fps
+                </strong>
+              </article>
+              <article class="border-b border-r border-[#8ceaf5]/15 p-7 sm:p-9">
+                <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#8ceaf5]/60">
+                  03 / Playtime
+                </span>
+                <strong class="mt-12 block text-4xl font-light tracking-tight" data-count="18">
+                  15+ hours
+                </strong>
+              </article>
+              <article class="border-b border-[#8ceaf5]/15 p-7 sm:p-9">
+                <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#8ceaf5]/60">
+                  04 / Input
+                </span>
+                <strong class="mt-12 block text-4xl font-light tracking-tight" data-count="6">
+                  Gamepad
+                </strong>
+              </article>
+              <article class="border-r border-[#8ceaf5]/15 p-7 sm:p-9">
+                <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#8ceaf5]/60">
+                  05 / Multiplayer
+                </span>
+                <strong class="mt-12 block text-4xl font-light tracking-tight">
+                  Local Co-op
+                </strong>
+              </article>
+              <article class="p-7 sm:p-9">
+                <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#8ceaf5]/60">
+                  06 / Platforms
+                </span>
+                <strong class="mt-12 block text-4xl font-light tracking-tight">
+                  PC / Console
+                </strong>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Home companion -->
+      <section class="relative isolate min-h-[100svh] overflow-hidden bg-[#d8c9b9] px-6 py-24 text-[#061014] sm:px-10 lg:px-14 lg:py-28">
+        <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/ede1771d-fef5-40ce-9c0c-602b07c57d6b_3840w.png" alt="Persona assisting a family in a warm modern home" class="absolute inset-0 h-full w-full object-cover opacity-55" loading="lazy">
+        <div class="absolute inset-0 bg-gradient-to-r from-[#f3f6f5]/95 via-[#f3f6f5]/65 to-transparent"></div>
+
+        <div class="relative z-10 mx-auto grid min-h-[72svh] max-w-[92rem] items-center lg:grid-cols-12">
+          <div class="max-w-xl lg:col-span-6">
+            <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.2em] text-[#061014]/55">
+              06 / At home gaming
+            </p>
+            <h2 class="mt-6 text-5xl font-semibold uppercase leading-[0.88] tracking-tight sm:text-7xl lg:text-8xl warp-title-pending" data-warp-title="">
+              <span class="warp-title-content">
+                <span class="warp-title-content">
+                  Couch co-op,
+                  <br>
+                  by design.
+                </span>
+              </span>
+            </h2>
+            <p class="mt-8 max-w-md text-base leading-7 text-slate-700">
+              Indie games support the rhythm of your downtime—ready for quick
+              sessions or marathon playthroughs on the big screen.
+            </p>
+          </div>
+
+          <ol class="mt-12 border-l border-[#061014]/20 lg:col-span-4 lg:col-start-9 lg:mt-0">
+            <li class="border-b border-[#061014]/15 py-6 pl-6">
+              <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#061014]/50">
+                07:00
+              </span>
+              <h3 class="mt-2 text-lg font-medium">Solo campaign</h3>
+            </li>
+            <li class="border-b border-[#061014]/15 py-6 pl-6">
+              <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#061014]/50">
+                10:30
+              </span>
+              <h3 class="mt-2 text-lg font-medium">Online matchmaking</h3>
+            </li>
+            <li class="border-b border-[#061014]/15 py-6 pl-6">
+              <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#061014]/50">
+                15:45
+              </span>
+              <h3 class="mt-2 text-lg font-medium">Split-screen co-op</h3>
+            </li>
+            <li class="py-6 pl-6">
+              <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#061014]/50">
+                22:00
+              </span>
+              <h3 class="mt-2 text-lg font-medium">Speedrun attempts</h3>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- Horizontal product gallery -->
+      <section id="gallery" class="relative bg-[#03090c] lg:h-[500svh]" aria-labelledby="gallery-title">
+        <div class="overflow-hidden px-6 py-24 sm:px-10 lg:sticky lg:top-0 lg:flex lg:h-[100svh] lg:flex-col lg:justify-center lg:px-14 lg:py-20">
+          <div class="mx-auto w-full max-w-[92rem]">
+            <div class="flex items-end justify-between gap-6">
+              <div>
+                <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.2em] text-[#8ceaf5]/60">
+                  07 / Game showcase
+                </p>
+                <h2 id="gallery-title" class="mt-4 text-5xl font-semibold uppercase leading-[0.88] tracking-tight sm:text-7xl warp-title-pending" data-warp-title="">
+                  <span class="warp-title-content">
+                    <span class="warp-title-content">The Indie field.</span>
+                  </span>
+                </h2>
+              </div>
+              <p class="hidden font-['Space_Mono'] text-xs uppercase tracking-[0.18em] text-slate-500 sm:block">
+                Scroll to explore / 08 titles
+              </p>
+            </div>
+          </div>
+
+          <div id="gallery-viewport" class="mt-12 overflow-x-auto lg:overflow-visible">
+            <div id="gallery-track" class="flex w-max gap-5 will-change-transform sm:gap-7">
+              <article class="gallery-card group relative h-[28rem] w-[82vw] max-w-3xl shrink-0 overflow-hidden border border-white/10 bg-[#09171b] sm:h-[32rem] sm:w-[64vw] lg:w-[46vw]">
+                <img src="https://cdn.midjourney.com/797d7204-ad31-4dad-840f-6ccf7899fe64/0_0.png?w=800&q=80" alt="Persona configured for culinary service" class="h-full w-full object-cover transition duration-700 group-hover:scale-[1.03]" loading="lazy">
+                <div class="absolute inset-0 bg-gradient-to-t from-[#061014] via-transparent to-transparent"></div>
+                <div class="absolute bottom-7 left-7">
+                  <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.18em] text-[#8ceaf5]">
+                    01 / Action
+                  </p>
+                  <h3 class="mt-3 text-3xl font-light tracking-tight sm:text-4xl">
+                    Fast-paced combat
+                  </h3>
+                </div>
+              </article>
+
+              <article class="gallery-card group relative h-[28rem] w-[82vw] max-w-3xl shrink-0 overflow-hidden border border-white/10 bg-[#09171b] sm:h-[32rem] sm:w-[64vw] lg:w-[46vw]">
+                <img src="https://cdn.midjourney.com/1388d04a-2235-450d-8b8f-6b81cb10442a/0_2.png?w=800&q=80" alt="Persona configured for education" class="h-full w-full object-cover transition duration-700 group-hover:scale-[1.03]" loading="lazy">
+                <div class="absolute inset-0 bg-gradient-to-t from-[#061014] via-transparent to-transparent"></div>
+                <div class="absolute bottom-7 left-7">
+                  <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.18em] text-[#8ceaf5]">
+                    02 / Adventure
+                  </p>
+                  <h3 class="mt-3 text-3xl font-light tracking-tight sm:text-4xl">
+                    Explore the unknown
+                  </h3>
+                </div>
+              </article>
+
+              <article class="gallery-card group relative h-[28rem] w-[82vw] max-w-3xl shrink-0 overflow-hidden border border-white/10 bg-[#09171b] sm:h-[32rem] sm:w-[64vw] lg:w-[46vw]">
+                <img src="https://cdn.midjourney.com/e1e263bd-c625-40ce-87a0-acf17b28c43f/0_3.png?w=800&q=80" alt="Persona configured for emergency response" class="h-full w-full object-cover transition duration-700 group-hover:scale-[1.03]" loading="lazy">
+                <div class="absolute inset-0 bg-gradient-to-t from-[#061014] via-transparent to-transparent"></div>
+                <div class="absolute bottom-7 left-7">
+                  <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.18em] text-[#8ceaf5]">
+                    03 / RPG
+                  </p>
+                  <h3 class="mt-3 text-3xl font-light tracking-tight sm:text-4xl">
+                    Build your character
+                  </h3>
+                </div>
+              </article>
+
+              <article class="gallery-card group relative h-[28rem] w-[82vw] max-w-3xl shrink-0 overflow-hidden border border-white/10 bg-[#09171b] sm:h-[32rem] sm:w-[64vw] lg:w-[46vw]">
+                <img src="https://cdn.midjourney.com/0877ab0f-7522-4336-a87e-f4fbf2efe556/0_1.png?w=800&q=80" alt="Persona configured for engineering" class="h-full w-full object-cover grayscale transition duration-700 group-hover:scale-[1.03]" loading="lazy">
+                <div class="absolute inset-0 bg-gradient-to-t from-[#061014] via-transparent to-transparent"></div>
+                <div class="absolute bottom-7 left-7">
+                  <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.18em] text-[#8ceaf5]">
+                    04 / Strategy
+                  </p>
+                  <h3 class="mt-3 text-3xl font-light tracking-tight sm:text-4xl">
+                    Master the tactics
+                  </h3>
+                </div>
+              </article>
+
+              <article class="gallery-card group relative h-[28rem] w-[82vw] max-w-3xl shrink-0 overflow-hidden border border-white/10 bg-[#09171b] sm:h-[32rem] sm:w-[64vw] lg:w-[46vw]">
+                <img src="https://cdn.midjourney.com/577a062c-6750-420f-9c33-bcaba6c44339/0_3.png?w=800&q=80" alt="Persona configured for security training" class="h-full w-full object-cover transition duration-700 group-hover:scale-[1.03]" loading="lazy">
+                <div class="absolute inset-0 bg-gradient-to-t from-[#061014] via-transparent to-transparent"></div>
+                <div class="absolute bottom-7 left-7">
+                  <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.18em] text-[#8ceaf5]">
+                    05 / Puzzle
+                  </p>
+                  <h3 class="mt-3 text-3xl font-light tracking-tight sm:text-4xl">
+                    Challenge your mind
+                  </h3>
+                </div>
+              </article>
+
+              <article class="gallery-card group relative h-[28rem] w-[82vw] max-w-3xl shrink-0 overflow-hidden border border-white/10 bg-[#09171b] sm:h-[32rem] sm:w-[64vw] lg:w-[46vw]">
+                <img src="https://cdn.midjourney.com/f2f243ba-dcf2-40f7-bed6-02ef6ea886ab/0_3.png?w=800&q=80" alt="Persona configured for hospitality" class="h-full w-full object-cover transition duration-700 group-hover:scale-[1.03]" loading="lazy">
+                <div class="absolute inset-0 bg-gradient-to-t from-[#061014] via-transparent to-transparent"></div>
+                <div class="absolute bottom-7 left-7">
+                  <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.18em] text-[#8ceaf5]">
+                    06 / Platformer
+                  </p>
+                  <h3 class="mt-3 text-3xl font-light tracking-tight sm:text-4xl">
+                    Precision jumping
+                  </h3>
+                </div>
+              </article>
+
+              <article class="gallery-card group relative h-[28rem] w-[82vw] max-w-3xl shrink-0 overflow-hidden border border-white/10 bg-[#09171b] sm:h-[32rem] sm:w-[64vw] lg:w-[46vw]">
+                <img src="https://cdn.midjourney.com/846dd896-5f49-4e1d-bea9-b6a7b77b3e8c/0_3.png?w=800&q=80" alt="Persona configured for police support" class="h-full w-full object-cover grayscale transition duration-700 group-hover:scale-[1.03]" loading="lazy">
+                <div class="absolute inset-0 bg-gradient-to-t from-[#061014] via-transparent to-transparent"></div>
+                <div class="absolute bottom-7 left-7">
+                  <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.18em] text-[#8ceaf5]">
+                    07 / Rogue-like
+                  </p>
+                  <h3 class="mt-3 text-3xl font-light tracking-tight sm:text-4xl">
+                    Die and retry
+                  </h3>
+                </div>
+              </article>
+
+              <article class="gallery-card group relative h-[28rem] w-[82vw] max-w-3xl shrink-0 overflow-hidden border border-white/10 bg-[#09171b] sm:h-[32rem] sm:w-[64vw] lg:w-[46vw]">
+                <img src="https://cdn.midjourney.com/2d0b0bfb-af52-4c16-8238-b687c05e47f0/0_3.png?w=800&q=80" alt="Persona configured for domestic care" class="h-full w-full object-cover transition duration-700 group-hover:scale-[1.03]" loading="lazy">
+                <div class="absolute inset-0 bg-gradient-to-t from-[#061014] via-transparent to-transparent"></div>
+                <div class="absolute bottom-7 left-7">
+                  <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.18em] text-[#8ceaf5]">
+                    08 / Simulation
+                  </p>
+                  <h3 class="mt-3 text-3xl font-light tracking-tight sm:text-4xl">
+                    Build your world
+                  </h3>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <div class="mx-auto mt-8 h-px w-full max-w-[92rem] bg-white/15">
+            <div id="gallery-progress" class="h-px origin-left scale-x-0 bg-gradient-to-r from-[#8ceaf5] to-[#80a8ff] will-change-transform"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Technology timeline -->
+      <section class="min-h-[100svh] bg-[#f3f6f5] px-6 py-24 text-[#061014] sm:px-10 lg:px-14 lg:py-28">
+        <div class="mx-auto max-w-[92rem]">
+          <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.2em] text-[#061014]/55">
+            08 / Development cycle
+          </p>
+          <div class="mt-6 grid gap-8 lg:grid-cols-12">
+            <h2 class="text-5xl font-semibold uppercase leading-[0.88] tracking-tight sm:text-7xl lg:col-span-8 lg:text-8xl warp-title-pending" data-warp-title="">
+              <span class="warp-title-content">
+                <span class="warp-title-content">
+                  A game that
+                  <br>
+                  evolves.
+                </span>
+              </span>
+            </h2>
+            <p class="max-w-md self-end text-base leading-7 text-slate-600 lg:col-span-4">
+              From early access to final release, indie games grow alongside
+              their community with regular updates and fresh content.
+            </p>
+          </div>
+
+          <div class="relative mt-24 grid gap-0 border-t border-[#061014]/20 sm:grid-cols-2 lg:grid-cols-4" id="dev-cycle-timeline">
+            <div id="dev-timeline-main-line" class="absolute left-0 top-0 h-px w-full origin-left scale-x-0 bg-gradient-to-r from-[#8ceaf5] to-[#80a8ff] will-change-transform"></div>
+
+            <article class="dev-timeline-item relative border-b border-[#061014]/10 py-9 sm:pr-8 lg:border-b-0">
+              <svg class="dev-timeline-line absolute left-[5px] top-1.5 h-10 w-px will-change-[stroke-dashoffset]" viewBox="0 0 1 40" preserveAspectRatio="none">
+                <line x1="0.5" y1="0" x2="0.5" y2="40" stroke="#8ceaf5" stroke-width="2" stroke-dasharray="40" stroke-dashoffset="40" style="stroke-dashoffset: 40;"></line>
+              </svg>
+              <span class="dev-timeline-dot absolute -top-1.5 left-0 size-3 scale-0 opacity-0 rounded-full border-2 border-[#f3f6f5] bg-[#8ceaf5] will-change-transform" style="--dot-color: #8ceaf5;"></span>
+              <div class="dev-timeline-content translate-y-4 opacity-0 will-change-transform">
+                <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#061014]/50">
+                  Year 1 / 01
+                </span>
+                <h3 class="mt-8 text-2xl font-normal tracking-tight">
+                  Alpha Build
+                </h3>
+                <p class="mt-4 text-sm leading-6 text-slate-500">
+                  Core mechanics, prototype art, and fundamental gameplay loop.
+                </p>
+              </div>
+            </article>
+
+            <article class="dev-timeline-item relative border-b border-[#061014]/10 py-9 sm:pl-8 lg:border-b-0">
+              <svg class="dev-timeline-line absolute left-[5px] top-1.5 h-10 w-px will-change-[stroke-dashoffset] sm:left-[37px]" viewBox="0 0 1 40" preserveAspectRatio="none">
+                <line x1="0.5" y1="0" x2="0.5" y2="40" stroke="#8ceaf5" stroke-width="2" stroke-dasharray="40" stroke-dashoffset="40" style="stroke-dashoffset: 40;"></line>
+              </svg>
+              <span class="dev-timeline-dot absolute -top-1.5 left-0 size-3 scale-0 opacity-0 rounded-full border-2 border-[#f3f6f5] bg-[#8ceaf5] sm:left-8 will-change-transform" style="--dot-color: #8ceaf5;"></span>
+              <div class="dev-timeline-content translate-y-4 opacity-0 will-change-transform">
+                <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#061014]/50">
+                  Year 2 / 02
+                </span>
+                <h3 class="mt-8 text-2xl font-normal tracking-tight">
+                  Early Access
+                </h3>
+                <p class="mt-4 text-sm leading-6 text-slate-500">
+                  Community feedback, expanding features, and initial balancing.
+                </p>
+              </div>
+            </article>
+
+            <article class="dev-timeline-item relative border-b border-[#061014]/10 py-9 sm:pr-8 lg:border-b-0 lg:pl-8">
+              <svg class="dev-timeline-line absolute left-[5px] top-1.5 h-10 w-px will-change-[stroke-dashoffset] lg:left-[37px]" viewBox="0 0 1 40" preserveAspectRatio="none">
+                <line x1="0.5" y1="0" x2="0.5" y2="40" stroke="#80a8ff" stroke-width="2" stroke-dasharray="40" stroke-dashoffset="40" style="stroke-dashoffset: 40;"></line>
+              </svg>
+              <span class="dev-timeline-dot absolute -top-1.5 left-0 size-3 scale-0 opacity-0 rounded-full border-2 border-[#f3f6f5] bg-[#80a8ff] lg:left-8 will-change-transform" style="--dot-color: #80a8ff;"></span>
+              <div class="dev-timeline-content translate-y-4 opacity-0 will-change-transform">
+                <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#061014]/50">
+                  Year 3 / 03
+                </span>
+                <h3 class="mt-8 text-2xl font-normal tracking-tight">
+                  Full Release
+                </h3>
+                <p class="mt-4 text-sm leading-6 text-slate-500">
+                  Polished 1.0 version with complete story and optimized
+                  performance.
+                </p>
+              </div>
+            </article>
+
+            <article class="dev-timeline-item relative py-9 sm:pl-8">
+              <svg class="dev-timeline-line absolute left-[5px] top-1.5 h-10 w-px will-change-[stroke-dashoffset] sm:left-[37px]" viewBox="0 0 1 40" preserveAspectRatio="none">
+                <line x1="0.5" y1="0" x2="0.5" y2="40" stroke="#80a8ff" stroke-width="2" stroke-dasharray="40" stroke-dashoffset="40" style="stroke-dashoffset: 40;"></line>
+              </svg>
+              <span class="dev-timeline-dot absolute -top-1.5 left-0 size-3 scale-0 opacity-0 rounded-full border-2 border-[#f3f6f5] bg-[#80a8ff] sm:left-8 will-change-transform" style="--dot-color: #80a8ff;"></span>
+              <div class="dev-timeline-content translate-y-4 opacity-0 will-change-transform">
+                <span class="font-['Space_Mono'] text-xs uppercase tracking-[0.16em] text-[#061014]/50">
+                  Year 4 / 04
+                </span>
+                <h3 class="mt-8 text-2xl font-normal tracking-tight">
+                  Post-Launch
+                </h3>
+                <p class="mt-4 text-sm leading-6 text-slate-500">
+                  Free content updates, DLCs, and long-term community support.
+                </p>
+              </div>
+            </article>
+          </div>
+          <style>
+            @keyframes dev-dot-pulse {
+              0%, 100% { box-shadow: 0 0 0px var(--dot-color); }
+              50% { box-shadow: 0 0 14px var(--dot-color); }
+            }
+            .dev-dot-pulsing {
+              animation: dev-dot-pulse 2s infinite ease-in-out;
+            }
+          </style>
+          <script>
+            (() => {
+              const section = document.getElementById('dev-cycle-timeline');
+              if (!section) return;
+              const mainLine = document.getElementById('dev-timeline-main-line');
+              const items = section.querySelectorAll('.dev-timeline-item');
+              let frameRequested = false;
+              const render = () => {
+                frameRequested = false;
+                const rect = section.getBoundingClientRect();
+                const viewportHeight = window.innerHeight;
+                const start = viewportHeight * 0.9;
+                const end = viewportHeight * 0.2;
+                let progress = (start - rect.top) / (start - end);
+                progress = Math.max(0, Math.min(1, progress));
+                if (mainLine) {
+                  mainLine.style.transform = `scaleX(${progress})`;
+                }
+                const totalItems = items.length;
+                items.forEach((item, index) => {
+                  const itemStart = (index / totalItems) * 0.6;
+                  const itemEnd = itemStart + 0.4;
+                  let itemProgress = (progress - itemStart) / (itemEnd - itemStart);
+                  itemProgress = Math.max(0, Math.min(1, itemProgress));
+                  const dot = item.querySelector('.dev-timeline-dot');
+                  const line = item.querySelector('.dev-timeline-line line');
+                  const content = item.querySelector('.dev-timeline-content');
+                  if (dot) {
+                    let dotProgress = Math.min(1, itemProgress / 0.3);
+                    dot.style.transform = `scale(${dotProgress})`;
+                    dot.style.opacity = dotProgress.toString();
+                    if (dotProgress === 1 && itemProgress < 1) {
+                      dot.classList.add('dev-dot-pulsing');
+                    } else {
+                      dot.classList.remove('dev-dot-pulsing');
+                    }
+                  }
+                  if (line) {
+                    let lineProgress = Math.max(0, Math.min(1, (itemProgress - 0.3) / 0.4));
+                    line.style.strokeDashoffset = (40 - (40 * lineProgress)).toString();
+                  }
+                  if (content) {
+                    let contentProgress = Math.max(0, Math.min(1, (itemProgress - 0.6) / 0.4));
+                    content.style.opacity = contentProgress.toString();
+                    content.style.transform = `translate3d(0, ${(1 - contentProgress) * 16}px, 0)`;
+                  }
+                });
+              };
+              const requestRender = () => {
+                if (!frameRequested) {
+                  frameRequested = true;
+                  requestAnimationFrame(render);
+                }
+              };
+              window.addEventListener('scroll', requestRender, { passive: true });
+              window.addEventListener('resize', requestRender, { passive: true });
+              requestRender();
+            })();
+          </script>
+        </div>
+      </section>
+
+      <!-- FAQ -->
+      <section id="support" class="min-h-[100svh] bg-[#061014] px-6 py-24 sm:px-10 lg:px-14 lg:py-28">
+        <div class="mx-auto grid max-w-[92rem] gap-16 lg:grid-cols-12">
+          <div class="relative min-h-[34rem] lg:col-span-5">
+            <p class="font-['Space_Mono'] text-xs uppercase tracking-[0.2em] text-[#8ceaf5]/60">
+              09 / Questions
+            </p>
+            <h2 class="relative z-10 mt-6 text-5xl font-semibold uppercase leading-[0.88] tracking-tight sm:text-7xl warp-title-pending" data-warp-title="">
+              <span class="warp-title-content">
+                <span class="warp-title-content">
+                  The player
+                  <br>
+                  details.
+                </span>
+              </span>
+            </h2>
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b75d6d95-bf54-4a0a-bb7c-4f0e00fc525e_1600w.jpg" alt="Low-contrast portrait of the Persona humanoid" class="absolute bottom-0 left-0 h-72 w-full object-cover object-top opacity-35 grayscale" loading="lazy">
+          </div>
+
+          <div class="divide-y divide-white/10 border-t border-white/10 lg:col-span-7">
+            <details class="group" open="">
+              <summary class="flex min-h-20 cursor-pointer list-none items-center justify-between gap-5 py-5 text-base text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8ceaf5]">
+                <span class="flex gap-5">
+                  <span class="font-['Space_Mono'] text-xs text-[#8ceaf5]/60">
+                    01
+                  </span>
+                  Where can I buy these games?
+                </span>
+                <iconify-icon icon="solar:add-circle-linear" stroke-width="1.5" class="shrink-0 text-xl transition group-open:rotate-45"></iconify-icon>
+              </summary>
+              <p class="pb-7 pl-9 text-sm leading-7 text-slate-400">
+                You can purchase our featured titles on major digital
+                storefronts including Steam, Epic Games Store, and console
+                marketplaces.
+              </p>
+            </details>
+
+            <details class="group">
+              <summary class="flex min-h-20 cursor-pointer list-none items-center justify-between gap-5 py-5 text-base text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8ceaf5]">
+                <span class="flex gap-5">
+                  <span class="font-['Space_Mono'] text-xs text-[#8ceaf5]/60">
+                    02
+                  </span>
+                  Are there physical editions available?
+                </span>
+                <iconify-icon icon="solar:add-circle-linear" stroke-width="1.5" class="shrink-0 text-xl transition group-open:rotate-45"></iconify-icon>
+              </summary>
+              <p class="pb-7 pl-9 text-sm leading-7 text-slate-400">
+                Yes. We partner with premium distributors to create limited-run
+                physical editions complete with artbooks, soundtracks, and
+                collectibles.
+              </p>
+            </details>
+
+            <details class="group">
+              <summary class="flex min-h-20 cursor-pointer list-none items-center justify-between gap-5 py-5 text-base text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8ceaf5]">
+                <span class="flex gap-5">
+                  <span class="font-['Space_Mono'] text-xs text-[#8ceaf5]/60">
+                    03
+                  </span>
+                  Do these games support modding?
+                </span>
+                <iconify-icon icon="solar:add-circle-linear" stroke-width="1.5" class="shrink-0 text-xl transition group-open:rotate-45"></iconify-icon>
+              </summary>
+              <p class="pb-7 pl-9 text-sm leading-7 text-slate-400">
+                Many of our titles feature built-in mod support and Steam
+                Workshop integration, allowing the community to create and share
+                new content.
+              </p>
+            </details>
+
+            <details class="group">
+              <summary class="flex min-h-20 cursor-pointer list-none items-center justify-between gap-5 py-5 text-base text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8ceaf5]">
+                <span class="flex gap-5">
+                  <span class="font-['Space_Mono'] text-xs text-[#8ceaf5]/60">
+                    04
+                  </span>
+                  What are the system requirements?
+                </span>
+                <iconify-icon icon="solar:add-circle-linear" stroke-width="1.5" class="shrink-0 text-xl transition group-open:rotate-45"></iconify-icon>
+              </summary>
+              <p class="pb-7 pl-9 text-sm leading-7 text-slate-400">
+                Most indie games are highly optimized to run on a wide range of
+                hardware. Minimum and recommended specs are listed on each
+                game's store page.
+              </p>
+            </details>
+
+            <details class="group">
+              <summary class="flex min-h-20 cursor-pointer list-none items-center justify-between gap-5 py-5 text-base text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8ceaf5]">
+                <span class="flex gap-5">
+                  <span class="font-['Space_Mono'] text-xs text-[#8ceaf5]/60">
+                    05
+                  </span>
+                  How often do games get updated?
+                </span>
+                <iconify-icon icon="solar:add-circle-linear" stroke-width="1.5" class="shrink-0 text-xl transition group-open:rotate-45"></iconify-icon>
+              </summary>
+              <p class="pb-7 pl-9 text-sm leading-7 text-slate-400">
+                Developers release regular patches for bug fixes and balance
+                changes, with major content updates occurring on a seasonal
+                roadmap.
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <!-- Final CTA -->
+      <section id="reserve" class="relative isolate min-h-[100svh] overflow-hidden bg-[#061014] px-6 py-24 sm:px-10 lg:px-14">
+        <div class="absolute inset-y-0 right-0 w-full lg:w-[58%]">
+          <img src="https://cdn.midjourney.com/f87a354d-5a3e-455c-88ee-7ff0c9eeea15/0_2.png?w=800&q=80" alt="Extreme close-up of Persona torso mechanics" class="h-full w-full object-cover object-center opacity-60" loading="lazy">
+          <div class="absolute inset-0 bg-gradient-to-r from-[#061014] via-[#061014]/35 to-transparent"></div>
+        </div>
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_70%_50%,rgba(140,234,245,.1),transparent_45%)]"></div>
+
+        <div class="relative z-10 mx-auto grid min-h-[75svh] max-w-[92rem] items-center lg:grid-cols-12">
+          <div class="max-w-3xl lg:col-span-7">
+            <div class="grid size-12 place-items-center rounded-full border border-[#8ceaf5]/30 text-[#8ceaf5]">
+              <iconify-icon icon="solar:stars-minimalistic-linear" stroke-width="1.5" class="text-xl"></iconify-icon>
+            </div>
+            <p class="mt-7 font-['Space_Mono'] text-xs uppercase tracking-[0.22em] text-[#8ceaf5]/60">
+              10 / Start playing
+            </p>
+            <h2 class="mt-7 text-6xl font-semibold uppercase leading-[0.84] tracking-tight sm:text-8xl lg:text-9xl warp-title-pending" data-warp-title="">
+              <span class="warp-title-content">
+                <span class="warp-title-content">
+                  Ready for the
+                  <br>
+                  next level.
+                </span>
+              </span>
+            </h2>
+            <p class="mt-8 max-w-xl text-base leading-7 text-slate-400">
+              Browse our library, add your favorites to your wishlist, and dive
+              into unforgettable independent gaming experiences.
+            </p>
+            <a href="mailto:hello@persona-array.example" data-magnetic="" class="mt-10 inline-flex min-h-12 items-center gap-5 rounded-full bg-[#8ceaf5] px-7 text-xs font-medium uppercase tracking-[0.16em] text-[#061014] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-white active:scale-[0.98]">
+              Wishlist now
+              <iconify-icon icon="solar:arrow-right-linear" stroke-width="1.5" class="text-base"></iconify-icon>
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="border-t border-white/10 bg-[#03090c] px-6 py-10 sm:px-10 lg:px-14">
+      <div class="mx-auto grid max-w-[92rem] gap-8 lg:grid-cols-3 lg:items-center">
+        <a href="#top" class="flex items-center gap-3 text-xs font-medium tracking-[0.24em]">
+          <span class="grid size-7 place-items-center border border-[#8ceaf5]/30 text-[#8ceaf5]">
+            <iconify-icon icon="solar:soundwave-linear" stroke-width="1.5" class="text-lg"></iconify-icon>
+          </span>
+          INDIE SHOWCASE
+        </a>
+
+        <nav class="flex flex-wrap gap-x-5 gap-y-3 font-['Space_Mono'] text-xs uppercase tracking-[0.12em] text-slate-500 lg:justify-center" aria-label="Footer navigation">
+          <a href="#models" class="transition hover:text-white">Games</a>
+          <a href="#systems" class="transition hover:text-white">Studios</a>
+          <a href="#services" class="transition hover:text-white">Genres</a>
+          <a href="#reserve" class="transition hover:text-white">Wishlist</a>
+          <a href="#support" class="transition hover:text-white">Support</a>
+          <a href="#" class="transition hover:text-white">Privacy</a>
+        </nav>
+
+        <div class="font-['Space_Mono'] text-xs uppercase tracking-[0.14em] text-slate-600 lg:text-right">
+          <span class="inline-flex items-center gap-2">
+            <span class="size-1.5 rounded-full bg-[#8ceaf5]"></span>
+            Worldwide availability
+          </span>
+          <p class="mt-2">Indie Showcase © 2026</p>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      (() => {
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const desktop = window.matchMedia('(min-width: 1024px)');
+
+        const menuButton = document.getElementById('menu-button');
+        const mobileMenu = document.getElementById('mobile-menu');
+
+        menuButton.addEventListener('click', () => {
+          const open = menuButton.getAttribute('aria-expanded') === 'true';
+          menuButton.setAttribute('aria-expanded', String(!open));
+          mobileMenu.classList.toggle('hidden', open);
+          menuButton.querySelector('iconify-icon').setAttribute(
+            'icon',
+            open ? 'solar:hamburger-menu-linear' : 'solar:close-square-linear'
+          );
+        });
+
+        mobileMenu.querySelectorAll('a').forEach((link) => {
+          link.addEventListener('click', () => {
+            mobileMenu.classList.add('hidden');
+            menuButton.setAttribute('aria-expanded', 'false');
+            menuButton.querySelector('iconify-icon').setAttribute('icon', 'solar:hamburger-menu-linear');
+          });
+        });
+
+        const cameraSection = document.querySelector('[data-camera]');
+        const cameraMedia = document.querySelector('[data-camera-media]');
+        const gallerySection = document.getElementById('gallery');
+        const galleryTrack = document.getElementById('gallery-track');
+        const galleryProgress = document.getElementById('gallery-progress');
+        const galleryCards = [...document.querySelectorAll('.gallery-card')];
+
+        let targetGallery = 0;
+        let currentGallery = 0;
+        let maxGallery = 0;
+        let frameRequested = false;
+
+        const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+        function measureGallery() {
+          if (!galleryTrack) return;
+          const horizontalPadding = window.innerWidth >= 1024 ? 112 : 48;
+          maxGallery = Math.max(0, galleryTrack.scrollWidth - window.innerWidth + horizontalPadding);
+        }
+
+        function updateTargets() {
+          if (cameraSection && cameraMedia && !reduceMotion) {
+            const rect = cameraSection.getBoundingClientRect();
+            const progress = clamp((window.innerHeight - rect.top) / (window.innerHeight + rect.height), 0, 1);
+            cameraMedia.style.transform = `scale(${1.04 - progress * 0.04}) translate3d(0, ${progress * 1.5}%, 0)`;
+          }
+
+          if (desktop.matches && gallerySection && !reduceMotion) {
+            const rect = gallerySection.getBoundingClientRect();
+            const distance = Math.max(1, gallerySection.offsetHeight - window.innerHeight);
+            const progress = clamp(-rect.top / distance, 0, 1);
+            targetGallery = progress * maxGallery;
+            galleryProgress.style.transform = `scaleX(${progress})`;
+          }
+
+          if (!frameRequested) {
+            frameRequested = true;
+            requestAnimationFrame(render);
+          }
+        }
+
+        function render() {
+          frameRequested = false;
+
+          if (desktop.matches && !reduceMotion) {
+            currentGallery += (targetGallery - currentGallery) * 0.12;
+            galleryTrack.style.transform = `translate3d(${-currentGallery}px,0,0)`;
+
+            const viewportCenter = window.innerWidth / 2;
+            galleryCards.forEach((card) => {
+              const rect = card.getBoundingClientRect();
+              const cardCenter = rect.left + rect.width / 2;
+              const distance = Math.abs(cardCenter - viewportCenter);
+              const normalized = clamp(distance / window.innerWidth, 0, 1);
+              const scale = 1 - normalized * 0.06;
+              const opacity = 1 - normalized * 0.45;
+              card.style.transform = `scale(${scale})`;
+              card.style.opacity = String(opacity);
+            });
+
+            if (Math.abs(targetGallery - currentGallery) > 0.1) {
+              frameRequested = true;
+              requestAnimationFrame(render);
+            }
+          } else {
+            galleryTrack.style.transform = '';
+            galleryCards.forEach((card) => {
+              card.style.transform = '';
+              card.style.opacity = '';
+            });
+          }
+        }
+
+        if (!reduceMotion && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+          document.querySelectorAll('[data-magnetic]').forEach((button) => {
+            button.addEventListener('pointermove', (event) => {
+              const rect = button.getBoundingClientRect();
+              const x = clamp((event.clientX - rect.left - rect.width / 2) * 0.12, -6, 6);
+              const y = clamp((event.clientY - rect.top - rect.height / 2) * 0.12, -6, 6);
+              button.style.transform = `translate3d(${x}px,${y}px,0)`;
+            });
+
+            button.addEventListener('pointerleave', () => {
+              button.style.transform = '';
+            });
+          });
+
+          galleryCards.forEach((card) => {
+            card.addEventListener('pointermove', (event) => {
+              if (!desktop.matches) return;
+              const rect = card.getBoundingClientRect();
+              const rotateY = clamp(((event.clientX - rect.left) / rect.width - 0.5) * 2, -1, 1);
+              const rotateX = clamp(-((event.clientY - rect.top) / rect.height - 0.5) * 2, -1, 1);
+              card.style.transform = `perspective(80rem) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+            });
+          });
+        }
+
+        document.querySelectorAll('details').forEach((detail) => {
+          detail.addEventListener('toggle', () => {
+            if (!detail.open) return;
+            document.querySelectorAll('details').forEach((other) => {
+              if (other !== detail) other.removeAttribute('open');
+            });
+          });
+        });
+
+        measureGallery();
+        updateTargets();
+
+        window.addEventListener('scroll', updateTargets, { passive: true });
+        window.addEventListener('resize', () => {
+          measureGallery();
+          updateTargets();
+        });
+
+        desktop.addEventListener('change', () => {
+          measureGallery();
+          updateTargets();
+        });
+      })();
+    </script>
+
+    <script>
+      (() => {
+        const titles = [...document.querySelectorAll('[data-warp-title]')];
+        if (!titles.length) return;
+
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        titles.forEach((title) => {
+          const content = document.createElement('span');
+          content.className = 'warp-title-content';
+          while (title.firstChild) content.appendChild(title.firstChild);
+          title.appendChild(content);
+
+          if (reducedMotion) return;
+
+          title.classList.add('warp-title-pending');
+
+          let pointerX = 0;
+          let pointerY = 0;
+          let currentX = 0;
+          let currentY = 0;
+          let active = false;
+          let revealed = false;
+          let frame = 0;
+          const phase = Math.random() * Math.PI * 2;
+
+          const renderWarp = (time) => {
+            if (!revealed) {
+              frame = requestAnimationFrame(renderWarp);
+              return;
+            }
+
+            const ambientX = Math.sin(time * 0.00048 + phase) * 0.45;
+            const ambientY = Math.cos(time * 0.00037 + phase) * 0.22;
+            const targetX = active ? pointerX : ambientX;
+            const targetY = active ? pointerY : ambientY;
+            currentX += (targetX - currentX) * (active ? 0.1 : 0.035);
+            currentY += (targetY - currentY) * (active ? 0.1 : 0.035);
+
+            const scaleX = 1 + Math.abs(currentX) * 0.0018;
+            const scaleY = 1 - Math.abs(currentY) * 0.0014;
+            content.style.transform = `translate3d(${currentX * 0.55}px, ${currentY * 0.35}px, 0) scale3d(${scaleX}, ${scaleY}, 1) skewY(${currentX * 0.035}deg)`;
+            frame = requestAnimationFrame(renderWarp);
+          };
+
+          title.addEventListener('pointermove', (event) => {
+            if (event.pointerType === 'touch') return;
+            const rect = title.getBoundingClientRect();
+            pointerX = ((event.clientX - rect.left) / rect.width - 0.5) * 8;
+            pointerY = ((event.clientY - rect.top) / rect.height - 0.5) * 5;
+            active = true;
+          });
+
+          title.addEventListener('pointerleave', () => {
+            active = false;
+          });
+
+          title.addEventListener('animationend', () => {
+            revealed = true;
+            title.classList.remove('warp-title-reveal');
+            content.style.opacity = '1';
+            content.style.clipPath = 'none';
+            content.style.filter = 'none';
+          }, { once: true });
+
+          title._startWarp = () => {
+            requestAnimationFrame(() => {
+              title.classList.remove('warp-title-pending');
+              title.classList.add('warp-title-reveal');
+            });
+            frame = requestAnimationFrame(renderWarp);
+          };
+        });
+
+        if (reducedMotion) return;
+
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting || !entry.target._startWarp) return;
+            entry.target._startWarp();
+            observer.unobserve(entry.target);
+          });
+        }, {
+          threshold: 0.2,
+          rootMargin: '0px 0px -8% 0px'
+        });
+
+        titles.forEach((title) => observer.observe(title));
+      })();
+    </script>
+
+    <script>
+      (()=>{const stage=document.getElementById('top');if(!stage)return;const loader=stage.querySelector('.aether-loader');const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;const coarse=matchMedia('(pointer: coarse)').matches;const state={tx:0,ty:0,x:0,y:0,ts:0,s:0,rockPhase:0,last:performance.now()};const clamp=(n,min,max)=>Math.min(max,Math.max(min,n));const lerp=(a,b,t)=>a+(b-a)*t;function setPointer(clientX,clientY){if(reduced)return;state.tx=clamp((clientX/innerWidth-.5)*2,-1,1);state.ty=clamp((clientY/innerHeight-.5)*2,-1,1)}function readScroll(){const rect=stage.getBoundingClientRect();const travel=Math.max(1,stage.offsetHeight-innerHeight);state.ts=reduced?0:clamp(-rect.top/travel,0,1)}function frame(now){const dt=Math.min(32,now-state.last);state.last=now;const pointerEase=1-Math.pow(.001,dt/1000*3.8);const scrollEase=1-Math.pow(.001,dt/1000*5.2);state.x=lerp(state.x,state.tx,pointerEase);state.y=lerp(state.y,state.ty,pointerEase);state.s=lerp(state.s,state.ts,scrollEase);state.rockPhase+=dt*.00034;stage.style.setProperty('--mx',state.x.toFixed(4));stage.style.setProperty('--my',state.y.toFixed(4));stage.style.setProperty('--scroll',state.s.toFixed(4));stage.style.setProperty('--rock-x',`${(Math.sin(state.rockPhase*.72)*4.2).toFixed(2)}px`);stage.style.setProperty('--rock-y',`${(Math.sin(state.rockPhase)*6.5).toFixed(2)}px`);stage.style.setProperty('--rock-r',`${(Math.sin(state.rockPhase*.55)*.22).toFixed(3)}deg`);requestAnimationFrame(frame)}addEventListener('pointermove',event=>setPointer(event.clientX,event.clientY),{passive:true});addEventListener('pointerleave',()=>{state.tx=0;state.ty=0},{passive:true});addEventListener('touchmove',event=>{if(event.touches[0])setPointer(event.touches[0].clientX,event.touches[0].clientY)},{passive:true});addEventListener('scroll',readScroll,{passive:true});addEventListener('resize',readScroll,{passive:true});const assets=[...stage.querySelectorAll('img')];Promise.all(assets.map(image=>image.decode?image.decode().catch(()=>{}):Promise.resolve())).finally(()=>requestAnimationFrame(()=>loader&&loader.classList.add('is-hidden')));if(coarse){state.tx=.08;state.ty=-.04}readScroll();requestAnimationFrame(frame)})();
+    </script>
+  
+</body></html>

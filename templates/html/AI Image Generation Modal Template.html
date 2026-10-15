@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Image Modal Redesign</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="min-h-screen bg-slate-100 antialiased text-slate-900">
+  <div class="min-h-screen flex items-center justify-center p-4 sm:p-6">
+    <div class="w-full max-w-4xl grid grid-cols-1 xl:grid-cols-[1fr_22rem] gap-6 items-start">
+      
+      <!-- Modal -->
+      <div class="w-full">
+        <div class="overflow-hidden rounded-2xl bg-white shadow-[0_20px_60px_rgba(15,23,42,0.12)] ring-1 ring-slate-200">
+          <!-- Header -->
+          <div class="flex items-center justify-between bg-gradient-to-r from-violet-700 via-purple-600 to-fuchsia-500 px-5 py-4 sm:px-6">
+            <div class="flex items-center gap-3">
+              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-white/12">
+                <i data-lucide="sparkles" class="h-4 w-4 text-white" stroke-width="1.5"></i>
+              </div>
+              <h2 class="text-xl font-semibold tracking-tight text-white">AI Image</h2>
+            </div>
+            <button class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-white/90 transition hover:bg-white/10 hover:text-white" aria-label="Close">
+              <i data-lucide="x" class="h-5 w-5" stroke-width="1.5"></i>
+            </button>
+          </div>
+
+          <!-- Content -->
+          <div class="px-4 py-4 sm:px-6 sm:py-5">
+            <!-- Mode Toggle -->
+            <div class="mb-4">
+              <div class="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1">
+                <button id="modeAiBtn" class="rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition">
+                  AI Image
+                </button>
+                <button id="modeInfoBtn" class="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-500 transition hover:text-slate-700">
+                  Infographic
+                </button>
+              </div>
+            </div>
+
+            <!-- AI Image Mode -->
+            <div id="aiMode" class="space-y-5">
+              <div>
+                <label class="mb-2 block text-lg font-medium text-slate-700">
+                  Describe the image you want to generate <span class="text-rose-500">*</span>
+                </label>
+                <textarea rows="2" class="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base font-normal text-slate-900 outline-none placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-100">A beautiful sunset over mountains with vibrant colors...</textarea>
+              </div>
+
+              <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                <div>
+                  <label class="mb-2 block text-lg font-medium text-slate-700">Image Style</label>
+                  <div class="relative">
+                    <select class="w-full appearance-none rounded-lg border border-slate-300 bg-white px-4 py-3 pr-10 text-base text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100">
+                      <option selected>Natural</option>
+                      <option>Flat Design</option>
+                      <option>3D Render</option>
+                      <option>Illustration</option>
+                    </select>
+                    <i data-lucide="chevrons-up-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" stroke-width="1.5"></i>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-lg font-medium text-slate-700">Image Size</label>
+                  <div class="relative">
+                    <select class="w-full appearance-none rounded-lg border border-slate-300 bg-white px-4 py-3 pr-10 text-base text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100">
+                      <option selected>1024x1024</option>
+                      <option>1024x1792</option>
+                      <option>1792x1024</option>
+                    </select>
+                    <i data-lucide="chevrons-up-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" stroke-width="1.5"></i>
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                <div>
+                  <label class="mb-2 block text-lg font-medium text-slate-700">Image alt text</label>
+                  <input type="text" class="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-lg font-medium text-slate-700">Image file name</label>
+                  <input type="text" class="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Infographic Mode -->
+            <div id="infoMode" class="hidden space-y-5">
+              <div>
+                <label class="mb-2 block text-lg font-medium text-slate-700">Infographic Type</label>
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <button class="flex items-center gap-3 rounded-lg border border-violet-300 bg-violet-50 px-4 py-4 text-left shadow-sm">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-violet-600 ring-1 ring-violet-200">
+                      <i data-lucide="list-ordered" class="h-5 w-5" stroke-width="1.5"></i>
+                    </div>
+                    <span class="text-base font-medium text-slate-900">Step-by-Step</span>
+                  </button>
+
+                  <button class="flex items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-4 text-left hover:border-slate-400">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-50 text-slate-600 ring-1 ring-slate-200">
+                      <i data-lucide="git-compare-arrows" class="h-5 w-5" stroke-width="1.5"></i>
+                    </div>
+                    <span class="text-base font-medium text-slate-900">Comparison</span>
+                  </button>
+
+                  <button class="flex items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-4 text-left hover:border-slate-400">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-50 text-slate-600 ring-1 ring-slate-200">
+                      <i data-lucide="badge-check" class="h-5 w-5" stroke-width="1.5"></i>
+                    </div>
+                    <span class="text-base font-medium text-slate-900">Benefits List</span>
+                  </button>
+
+                  <button class="flex items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-4 text-left hover:border-slate-400">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-50 text-slate-600 ring-1 ring-slate-200">
+                      <i data-lucide="chart-column" class="h-5 w-5" stroke-width="1.5"></i>
+                    </div>
+                    <span class="text-base font-medium text-slate-900">Statistics</span>
+                  </button>
+
+                  <div class="sm:col-span-2 flex justify-center">
+                    <button class="flex w-full items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-4 text-left hover:border-slate-400 sm:w-[calc(50%-0.375rem)]">
+                      <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-50 text-slate-600 ring-1 ring-slate-200">
+                        <i data-lucide="lightbulb" class="h-5 w-5" stroke-width="1.5"></i>
+                      </div>
+                      <span class="text-base font-medium text-slate-900">Tips List</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label class="mb-2 block text-lg font-medium text-slate-700">
+                  Infographic Topic <span class="text-rose-500">*</span>
+                </label>
+                <input type="text" value="How small habits can improve your productivity throughout the day" class="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />
+              </div>
+
+              <div>
+                <label class="mb-1 block text-lg font-medium text-slate-700">Key Points to Include</label>
+                <p class="mb-2 text-sm font-normal text-slate-500">
+                  One point per line. These will appear as the main content of your infographic.
+                </p>
+                <textarea rows="6" class="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-100">Start the day by choosing your top 3 priorities
+Use time blocking to protect focus sessions
+Take short breaks to maintain energy and clarity
+Reduce context switching by batching similar tasks
+End the day with a quick review and plan for tomorrow</textarea>
+              </div>
+
+              <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                <div>
+                  <label class="mb-2 block text-lg font-medium text-slate-700">Image Size</label>
+                  <div class="relative">
+                    <select class="w-full appearance-none rounded-lg border border-slate-300 bg-white px-4 py-3 pr-10 text-base text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100">
+                      <option>1024x1024</option>
+                      <option selected>1024x1792</option>
+                      <option>1792x1024</option>
+                    </select>
+                    <i data-lucide="chevrons-up-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" stroke-width="1.5"></i>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-lg font-medium text-slate-700">Image Style</label>
+                  <div class="relative">
+                    <select class="w-full appearance-none rounded-lg border border-slate-300 bg-white px-4 py-3 pr-10 text-base text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100">
+                      <option>Natural</option>
+                      <option selected>Flat Design</option>
+                      <option>3D Render</option>
+                      <option>Illustration</option>
+                    </select>
+                    <i data-lucide="chevrons-up-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" stroke-width="1.5"></i>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Show only if visual identity exists -->
+              <div id="brandColorsRow" class="flex items-start gap-3">
+                <button id="brandCheckbox" class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-violet-600 bg-violet-600 text-white shadow-sm">
+                  <i data-lucide="check" class="h-3.5 w-3.5" stroke-width="1.5"></i>
+                </button>
+                <label for="brandCheckbox" class="text-base font-normal text-slate-700">
+                  Apply my brand colors to this infographic
+                </label>
+              </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="mt-6 flex justify-end">
+              <button class="w-full rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-500 px-5 py-3 text-lg font-semibold text-white shadow-sm transition hover:brightness-105 sm:w-auto sm:min-w-40">
+                Generate
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Post Image Section -->
+      <div class="w-full rounded-2xl bg-white p-4 shadow-[0_20px_60px_rgba(15,23,42,0.08)] ring-1 ring-slate-200 sm:p-5">
+        <div class="mb-3 flex items-center gap-2">
+          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
+            <i data-lucide="image" class="h-4 w-4" stroke-width="1.5"></i>
+          </div>
+          <h3 class="text-lg font-semibold text-slate-900">Post Image</h3>
+        </div>
+
+        <div class="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+          <img
+            src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80"
+            alt="Generated infographic preview"
+            class="h-80 w-full object-cover"
+          />
+        </div>
+
+        <button id="reopenInfographic" class="mt-3 inline-flex items-center gap-2 text-sm font-medium text-violet-600 hover:text-violet-700">
+          <i data-lucide="refresh-ccw" class="h-4 w-4" stroke-width="1.5"></i>
+          Edit points &amp; regenerate
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    lucide.createIcons();
+
+    const modeAiBtn = document.getElementById('modeAiBtn');
+    const modeInfoBtn = document.getElementById('modeInfoBtn');
+    const aiMode = document.getElementById('aiMode');
+    const infoMode = document.getElementById('infoMode');
+    const reopenInfographic = document.getElementById('reopenInfographic');
+
+    function setMode(mode) {
+      const aiActive = mode === 'ai';
+
+      aiMode.classList.toggle('hidden', !aiActive);
+      infoMode.classList.toggle('hidden', aiActive);
+
+      modeAiBtn.className = aiActive
+        ? 'rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition'
+        : 'rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-500 transition hover:text-slate-700';
+
+      modeInfoBtn.className = !aiActive
+        ? 'rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition'
+        : 'rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-500 transition hover:text-slate-700';
+    }
+
+    modeAiBtn.addEventListener('click', () => setMode('ai'));
+    modeInfoBtn.addEventListener('click', () => setMode('info'));
+    reopenInfographic.addEventListener('click', () => setMode('info'));
+
+    const brandCheckbox = document.getElementById('brandCheckbox');
+    let brandChecked = true;
+
+    brandCheckbox.addEventListener('click', () => {
+      brandChecked = !brandChecked;
+      brandCheckbox.className = brandChecked
+        ? 'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-violet-600 bg-violet-600 text-white shadow-sm'
+        : 'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-transparent shadow-sm';
+
+      brandCheckbox.innerHTML = brandChecked
+        ? '<i data-lucide="check" class="h-3.5 w-3.5" stroke-width="1.5"></i>'
+        : '<i data-lucide="check" class="h-3.5 w-3.5" stroke-width="1.5"></i>';
+
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>

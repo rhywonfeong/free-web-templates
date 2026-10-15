@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script><!--
+=== BRAND SYSTEM DESIGN DECISIONS ===
+Theme: Dark-mode first, modern, immersive
+Color Primary: #f97316
+Color Background Base: #050505
+Color Surface: rgba(255, 255, 255, 0.05)
+Color Success: #10b981
+Color Error: #ef4444
+Color Text Primary: #ffffff
+Color Text Secondary: #a3a3a3
+Typography Headings: Montserrat (Light/300, Normal/400)
+Typography Body: Manrope (Extralight/200, Normal/400)
+UI Style Cards: Glassmorphism, 2rem border-radius
+UI Style Buttons: Fully rounded, subtle glow on hover
+Icons: Solar Linear, 1.5 stroke-width
+=====================================
+-->
+<meta name="brand-tokens" content="theme=dark; color-primary=#f97316; color-bg=#050505; color-surface=rgba(255,255,255,0.05); font-heading=Montserrat; font-body=Manrope; style=glassmorphism; radius-cards=2rem; radius-buttons=full; icons=solar-linear">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Design System &amp; Style Guide - RAYON Academy</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600&family=Montserrat:wght@200;300;400;500&display=swap" rel="stylesheet">
+<style>
+/* Fontes Principais */
+.font-montserrat { font-family: 'Montserrat', sans-serif !important; }
+.font-manrope { font-family: 'Manrope', sans-serif !important; }
+/* Scroll Behavior & Ocultar Barra de Rolagem */
+html {
+scroll-behavior: smooth;
+scrollbar-width: none;
+-ms-overflow-style: none;
+}
+::-webkit-scrollbar {
+display: none;
+width: 0;
+height: 0;
+}
+/* Efeito de fundo estrelado */
+.stars {
+background-image:
+radial-gradient(1px 1px at 20px 30px, #fff, rgba(0,0,0,0)),
+radial-gradient(1px 1px at 40px 70px, #ffffff, rgba(0,0,0,0)),
+radial-gradient(1px 1px at 50px 160px, #ffffff, rgba(0,0,0,0)),
+radial-gradient(1.5px 1.5px at 90px 40px, #ffffff, rgba(0,0,0,0)),
+radial-gradient(1px 1px at 130px 80px, #ffffff, rgba(0,0,0,0));
+background-size: 200px 200px;
+opacity: 0.15;
+}
+/* Custom Checkbox */
+.custom-checkbox input:checked + div {
+background-color: #f97316;
+border-color: #f97316;
+}
+.custom-checkbox input:checked + div svg {
+opacity: 1;
+transform: scale(1);
+}
+/* Custom Slider */
+input[type=range]::-webkit-slider-thumb {
+-webkit-appearance: none;
+height: 16px;
+width: 16px;
+border-radius: 50%;
+background: #f97316;
+cursor: pointer;
+border: 2px solid #050505;
+box-shadow: 0 0 10px rgba(249, 115, 22, 0.4);
+transition: transform 0.2s;
+}
+input[type=range]::-webkit-slider-thumb:hover {
+transform: scale(1.2);
+}
+/* Custom Textarea Scrollbar */
+textarea::-webkit-scrollbar {
+display: block;
+width: 8px;
+}
+textarea::-webkit-scrollbar-track {
+background: rgba(255, 255, 255, 0.05);
+border-radius: 4px;
+}
+textarea::-webkit-scrollbar-thumb {
+background: rgba(249, 115, 22, 0.5);
+border-radius: 4px;
+}
+/* Tooltip Animation */
+.group:hover .tooltip {
+opacity: 1;
+transform: translateY(0);
+visibility: visible;
+}
+</style><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+
+<body class="min-h-screen overflow-x-hidden selection:bg-orange-500/30 antialiased text-white bg-[#050505] w-full relative" id="top">
+    
+    <!-- Background Environment -->
+    <div class="fixed z-0 pointer-events-none top-0 right-0 bottom-0 left-0">
+      <div class="stars absolute inset-0 transform-gpu"></div>
+      <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] blur-[120px] rounded-full bg-orange-900/10 transform-gpu transition-opacity duration-1000"></div>
+    </div>
+
+    <!-- Header -->
+    <header class="sticky top-0 z-50 w-full border-b border-white/[0.05] bg-[#050505]/70 backdrop-blur-2xl shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-4 group cursor-pointer" onclick="window.scrollTo(0,0)">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/bd147458-f9d1-4f69-89ae-a2ee5b77d4e0_320w.png" alt="Logo" class="h-6 w-auto object-contain group-hover:opacity-80 transition-opacity" loading="lazy">
+                <span class="w-px h-6 bg-white/10"></span>
+                <h1 class="text-lg font-manrope font-normal text-neutral-300 tracking-tight hidden sm:block">Design System</h1>
+            </div>
+            
+            <!-- Desktop Nav -->
+            <nav class="hidden md:flex gap-6 lg:gap-8 text-sm font-manrope font-normal text-neutral-400">
+                <a href="#export" class="text-orange-400 hover:text-white transition-colors relative">Prompt Export</a>
+                <a href="#colors" class="hover:text-white transition-colors relative after:absolute after:-bottom-5 after:left-0 after:w-full after:h-px after:bg-orange-500 after:opacity-0 hover:after:opacity-100 after:transition-opacity">Colors</a>
+                <a href="#typography" class="hover:text-white transition-colors relative after:absolute after:-bottom-5 after:left-0 after:w-full after:h-px after:bg-orange-500 after:opacity-0 hover:after:opacity-100 after:transition-opacity">Typography</a>
+                <a href="#components" class="hover:text-white transition-colors relative after:absolute after:-bottom-5 after:left-0 after:w-full after:h-px after:bg-orange-500 after:opacity-0 hover:after:opacity-100 after:transition-opacity">Components</a>
+                <a href="#data-display" class="hover:text-white transition-colors relative after:absolute after:-bottom-5 after:left-0 after:w-full after:h-px after:bg-orange-500 after:opacity-0 hover:after:opacity-100 after:transition-opacity">Data</a>
+            </nav>
+
+            <!-- Mobile Menu Button -->
+            <button class="md:hidden flex items-center justify-center text-neutral-300 hover:text-white transition-colors focus:outline-none bg-white/5 hover:bg-white/10 p-2 rounded-lg border border-white/5">
+                <iconify-icon icon="solar:hamburger-menu-linear" class="text-2xl" stroke-width="1.5"></iconify-icon>
+            </button>
+        </div>
+    </header>
+
+    <main class="relative z-10 max-w-7xl mx-auto px-6 mt-20 space-y-32 pb-32">
+        
+        <!-- Intro -->
+        <section class="space-y-6">
+            <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/5 bg-white/5 text-xs text-neutral-300 font-manrope font-normal tracking-wide backdrop-blur-md hover:bg-white/10 transition-colors cursor-default">
+                <span class="w-2 h-2 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)] animate-pulse"></span>
+                v2.1 Active
+            </div>
+            <h2 class="text-4xl md:text-5xl lg:text-6xl font-light text-white tracking-tight font-montserrat">
+                Brand Style Guide
+            </h2>
+            <p class="text-xl md:text-2xl font-extralight text-neutral-400 font-manrope max-w-3xl leading-relaxed">
+                A single source of truth for RAYON Academy's design language. Modern, immersive, and built for a dark-mode first experience.
+            </p>
+        </section>
+
+        <!-- Prompt/Text Export -->
+        <section id="export" class="space-y-6 relative">
+            <div class="absolute -inset-4 bg-gradient-to-r from-orange-500/10 to-transparent blur-2xl -z-10 rounded-full"></div>
+            <div class="border-b border-orange-500/20 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h3 class="text-2xl font-light text-white tracking-tight font-montserrat">0. Text / Prompt Guide</h3>
+                    <p class="text-sm text-neutral-400 font-manrope mt-2">Copie o texto abaixo para utilizar como prompt de estilo ou documentação pura de design.</p>
+                </div>
+                <button onclick="navigator.clipboard.writeText(document.getElementById('design-txt').value); this.innerHTML='&lt;iconify-icon icon=\'solar:check-circle-linear\'&gt;&lt;/iconify-icon&gt; Copied!'" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/20 rounded-full text-sm font-manrope font-normal transition-all w-full sm:w-auto">
+                    <iconify-icon icon="solar:copy-linear"></iconify-icon>
+                    Copy Text
+                </button>
+            </div>
+            
+            <div class="relative rounded-2xl bg-[#0A0A0A]/80 backdrop-blur-md border border-white/10 p-2 shadow-2xl">
+<textarea id="design-txt" class="w-full h-80 bg-transparent text-neutral-300 font-manrope font-extralight text-sm leading-relaxed p-4 resize-none focus:outline-none focus:ring-0" readonly="">=== DESIGN SYSTEM &amp; BRAND GUIDELINES: RAYON ACADEMY ===
+
+1. TEMA GERAL
+- Estilo: Dark-mode first, moderno, imersivo e limpo.
+- Atmosfera: Fundo escuro (#050505) com efeito de céu estrelado sutil (opacity 0.15) e grandes halos de luz desfocados (blur-120px) em tons de laranja.
+- Efeitos Visuais: Uso intenso de Glassmorphism (fundos translúcidos com backdrop-blur), brilhos sutis (glow) nos elementos primários, e sombras de preenchimento interno (shadow-inner) em campos de formulário.
+
+2. PALETA DE CORES
+- Background Base: #050505 (Preto profundo)
+- Superfícies / Cards: rgba(255, 255, 255, 0.05) ou #0A0A0A com transparência.
+- Cor Primária (Brand): Laranja (#f97316 / Tailwind: orange-500).
+- Gradiente de Destaque: De Branco para Laranja-200 para Laranja-500.
+- Cores Semânticas:
+  * Sucesso: Esmeralda (#10b981)
+  * Erro/Alerta Crítico: Vermelho (#ef4444)
+  * Aviso: Âmbar (#f59e0b)
+  * Texto Primário: Branco (#ffffff)
+  * Texto Secundário: Neutros claros (#a3a3a3 / neutral-400)
+
+3. TIPOGRAFIA
+- Títulos (Headings): Montserrat.
+  * Pesos: Light (300) e Normal (400) - Sempre usar um peso mais fino que o padrão.
+  * Letter-spacing: tracking-tight para textos acima de 20px.
+- Corpo de Texto (Body): Manrope.
+  * Pesos: Extralight (200) e Normal (400).
+  * Estilo: Leading-relaxed (entrelinhas confortáveis).
+
+4. COMPONENTES DE UI
+- Bordas: Arredondamento extremo (border-radius: 2rem ou 32px) para cards grandes; Totalmente arredondado (rounded-full) para botões.
+- Botões Primários: Fundo em gradiente laranja, com anel externo sutil e sombra projetada (glow) da mesma cor.
+- Botões Secundários: Fundo translúcido (white/5) com borda sutil.
+- Ícones: Solar Linear Icons (Iconify), com stroke-width de 1.5.
+- Inputs: Fundo preenchido escuro (#0A0A0A), sombra interna, bordas translúcidas (white/10). 
+
+5. REGRAS PARA DESENVOLVIMENTO
+- Não usar medidas fixas (px ou em) para tamanho de fonte; usar escala relativa (xs, sm, base, lg, xl...).
+- Fontes devem ser chamadas por suas classes específicas e embutidas nos elementos (ex: font-montserrat, font-manrope).
+- Manter bordas de separação finas (border-white/5 ou border-white/10) para criar a estética de vidro.
+</textarea>
+            </div>
+        </section>
+
+        <!-- Color Palette -->
+        <section id="colors" class="space-y-8">
+            <div class="border-b border-white/10 pb-4">
+                <h3 class="text-2xl font-light text-white tracking-tight font-montserrat">1. Color Palette</h3>
+                <p class="text-sm text-neutral-400 font-manrope mt-2">Core colors, backgrounds, and semantic states.</p>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Swatch Base -->
+                <div class="space-y-4 group">
+                    <div class="h-32 rounded-2xl bg-[#050505] border border-white/10 shadow-lg flex items-end p-4 transition-transform group-hover:-translate-y-1"></div>
+                    <div>
+                        <p class="font-manrope font-normal text-white text-base tracking-tight">Background Base</p>
+                        <p class="font-manrope font-extralight text-neutral-500 text-xs mt-1">#050505 • bg-[#050505]</p>
+                    </div>
+                </div>
+
+                <!-- Swatch Surface -->
+                <div class="space-y-4 group">
+                    <div class="h-32 rounded-2xl bg-white/5 border border-white/10 shadow-lg flex items-end p-4 backdrop-blur-sm transition-transform group-hover:-translate-y-1"></div>
+                    <div>
+                        <p class="font-manrope font-normal text-white text-base tracking-tight">Surface / Cards</p>
+                        <p class="font-manrope font-extralight text-neutral-500 text-xs mt-1">rgba(255,255,255,0.05) • bg-white/5</p>
+                    </div>
+                </div>
+
+                <!-- Swatch Primary -->
+                <div class="space-y-4 group">
+                    <div class="h-32 rounded-2xl bg-orange-500 shadow-[0_0_30px_-5px_rgba(249,115,22,0.3)] group-hover:shadow-[0_0_40px_-5px_rgba(249,115,22,0.5)] flex items-end p-4 transition-all group-hover:-translate-y-1"></div>
+                    <div>
+                        <p class="font-manrope font-normal text-white text-base tracking-tight">Primary Brand</p>
+                        <p class="font-manrope font-extralight text-neutral-500 text-xs mt-1">#f97316 • bg-orange-500</p>
+                    </div>
+                </div>
+
+                <!-- Swatch Gradient -->
+                <div class="space-y-4 group">
+                    <div class="h-32 rounded-2xl bg-gradient-to-r from-white via-orange-200 to-orange-500 flex items-end p-4 transition-transform group-hover:-translate-y-1 opacity-90 group-hover:opacity-100"></div>
+                    <div>
+                        <p class="font-manrope font-normal text-white text-base tracking-tight">Highlight Gradient</p>
+                        <p class="font-manrope font-extralight text-neutral-500 text-xs mt-1">Linear Gradient Text</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Semantic Colors -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 pt-4">
+                <div class="space-y-4 group">
+                    <div class="h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center px-4 transition-colors group-hover:border-emerald-500/40">
+                        <iconify-icon icon="solar:check-circle-linear" class="text-emerald-500 text-xl"></iconify-icon>
+                    </div>
+                    <div>
+                        <p class="font-manrope font-normal text-white text-sm tracking-tight">Success</p>
+                        <p class="font-manrope font-extralight text-neutral-500 text-xs mt-1">text-emerald-500</p>
+                    </div>
+                </div>
+                <div class="space-y-4 group">
+                    <div class="h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center px-4 transition-colors group-hover:border-red-500/40">
+                        <iconify-icon icon="solar:danger-circle-linear" class="text-red-500 text-xl"></iconify-icon>
+                    </div>
+                    <div>
+                        <p class="font-manrope font-normal text-white text-sm tracking-tight">Destructive / Error</p>
+                        <p class="font-manrope font-extralight text-neutral-500 text-xs mt-1">text-red-500</p>
+                    </div>
+                </div>
+                <div class="space-y-4 group">
+                    <div class="h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center px-4 transition-colors group-hover:border-amber-500/40">
+                        <iconify-icon icon="solar:info-circle-linear" class="text-amber-500 text-xl"></iconify-icon>
+                    </div>
+                    <div>
+                        <p class="font-manrope font-normal text-white text-sm tracking-tight">Warning / Alert</p>
+                        <p class="font-manrope font-extralight text-neutral-500 text-xs mt-1">text-amber-500</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Typography -->
+        <section id="typography" class="space-y-8">
+            <div class="border-b border-white/10 pb-4">
+                <h3 class="text-2xl font-light text-white tracking-tight font-montserrat">2. Typography</h3>
+                <p class="text-sm text-neutral-400 font-manrope mt-2">Headings use Montserrat. Body uses Manrope. Weights are kept one step lighter than standard.</p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-16">
+                <div class="space-y-10">
+                    <div class="space-y-3 border-l px-4 border-orange-500/50">
+                        <p class="text-xs text-neutral-500 font-manrope tracking-widest uppercase">Heading 1 • Montserrat Light • 6xl / 7xl</p>
+                        <h1 class="text-5xl md:text-6xl lg:text-7xl leading-[1.1] font-light text-white tracking-tight font-montserrat">
+                            Build Your Future
+                        </h1>
+                    </div>
+                    
+                    <div class="space-y-3 border-l px-4 border-white/10">
+                        <p class="text-xs text-neutral-500 font-manrope tracking-widest uppercase">Heading 2 • Montserrat Light • 4xl / 5xl</p>
+                        <h2 class="text-4xl lg:text-5xl font-light text-white tracking-tight font-montserrat">
+                            The methodology
+                        </h2>
+                    </div>
+
+                    <div class="space-y-3 border-l px-4 border-white/10">
+                        <p class="text-xs text-neutral-500 font-manrope tracking-widest uppercase">Heading 3 • Montserrat Light • 3xl</p>
+                        <h3 class="text-2xl md:text-3xl tracking-tight text-white font-montserrat font-light">
+                            Emotional Intelligence
+                        </h3>
+                    </div>
+
+                    <div class="space-y-3 border-l px-4 border-white/10">
+                        <p class="text-xs text-neutral-500 font-manrope tracking-widest uppercase">Heading 4 • Montserrat Normal • xl / 2xl</p>
+                        <h4 class="text-xl md:text-2xl tracking-tight text-white font-montserrat font-normal">
+                            Learning in Practice
+                        </h4>
+                    </div>
+                </div>
+
+                <div class="space-y-10">
+                    <div class="space-y-3 border-l px-4 border-white/10">
+                        <p class="text-xs text-neutral-500 font-manrope tracking-widest uppercase">Lead Paragraph • Manrope Extralight • xl / 2xl</p>
+                        <p class="text-xl md:text-2xl leading-relaxed font-extralight text-neutral-300 font-manrope">
+                            A presencial immersion program designed to help teenagers develop real-world skills and prepare for adulthood.
+                        </p>
+                    </div>
+
+                    <div class="space-y-3 border-l px-4 border-white/10">
+                        <p class="text-xs text-neutral-500 font-manrope tracking-widest uppercase">Body Text • Manrope Normal • base / lg</p>
+                        <p class="text-base md:text-lg leading-relaxed font-normal text-neutral-400 font-manrope">
+                            Forget boring classes. Our program lasts 6 months, the ideal time to develop new habits and absorb content with a methodology developed exclusively to maximize your learning.
+                        </p>
+                    </div>
+
+                    <div class="space-y-3 border-l px-4 border-white/10">
+                        <p class="text-xs text-neutral-500 font-manrope tracking-widest uppercase">Caption / Small • Manrope Normal • sm</p>
+                        <p class="text-sm leading-relaxed font-normal text-neutral-500 font-manrope">
+                            © 2024 RAYON Academy. All rights reserved.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Iconography -->
+        <section id="iconography" class="space-y-8">
+            <div class="border-b border-white/10 pb-4">
+                <h3 class="text-2xl font-light text-white tracking-tight font-montserrat">3. Iconography</h3>
+                <p class="text-sm text-neutral-400 font-manrope mt-2">Using Solar Linear icons. Consistent 1.5 stroke-width across the board.</p>
+            </div>
+            
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                <div class="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/5 hover:border-orange-500/30 transition-all group">
+                    <iconify-icon icon="solar:home-smile-linear" class="text-3xl text-neutral-400 group-hover:text-orange-400 transition-colors" stroke-width="1.5"></iconify-icon>
+                    <span class="text-xs font-manrope font-extralight text-neutral-500 group-hover:text-neutral-300">Home</span>
+                </div>
+                <div class="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/5 hover:border-orange-500/30 transition-all group">
+                    <iconify-icon icon="solar:users-group-two-rounded-linear" class="text-3xl text-neutral-400 group-hover:text-orange-400 transition-colors" stroke-width="1.5"></iconify-icon>
+                    <span class="text-xs font-manrope font-extralight text-neutral-500 group-hover:text-neutral-300">Users</span>
+                </div>
+                <div class="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/5 hover:border-orange-500/30 transition-all group">
+                    <iconify-icon icon="solar:settings-linear" class="text-3xl text-neutral-400 group-hover:text-orange-400 transition-colors" stroke-width="1.5"></iconify-icon>
+                    <span class="text-xs font-manrope font-extralight text-neutral-500 group-hover:text-neutral-300">Settings</span>
+                </div>
+                <div class="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/5 hover:border-orange-500/30 transition-all group">
+                    <iconify-icon icon="solar:document-text-linear" class="text-3xl text-neutral-400 group-hover:text-orange-400 transition-colors" stroke-width="1.5"></iconify-icon>
+                    <span class="text-xs font-manrope font-extralight text-neutral-500 group-hover:text-neutral-300">Document</span>
+                </div>
+                <div class="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/5 hover:border-orange-500/30 transition-all group">
+                    <iconify-icon icon="solar:shield-check-linear" class="text-3xl text-neutral-400 group-hover:text-orange-400 transition-colors" stroke-width="1.5"></iconify-icon>
+                    <span class="text-xs font-manrope font-extralight text-neutral-500 group-hover:text-neutral-300">Security</span>
+                </div>
+                <div class="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/5 hover:border-orange-500/30 transition-all group">
+                    <iconify-icon icon="solar:rocket-linear" class="text-3xl text-neutral-400 group-hover:text-orange-400 transition-colors" stroke-width="1.5"></iconify-icon>
+                    <span class="text-xs font-manrope font-extralight text-neutral-500 group-hover:text-neutral-300">Boost</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Components -->
+        <section id="components" class="space-y-12">
+            <div class="border-b border-white/10 pb-4">
+                <h3 class="text-2xl font-light text-white tracking-tight font-montserrat">4. Components</h3>
+                <p class="text-sm text-neutral-400 font-manrope mt-2">Interactive elements, indicators, and containers.</p>
+            </div>
+
+            <!-- Tabs (NEW) -->
+            <div class="space-y-6">
+                <h4 class="text-lg font-montserrat font-normal tracking-tight text-white">Tabs / Segmented Control</h4>
+                <div class="p-8 rounded-3xl bg-white/[0.02] border border-white/[0.05]">
+                    <div class="inline-flex p-1 space-x-1 bg-[#0A0A0A] border border-white/10 rounded-xl shadow-inner shadow-black/50 overflow-x-auto max-w-full">
+                        <button class="px-5 py-2 text-sm font-manrope font-normal text-white bg-white/10 border border-white/5 rounded-lg shadow-sm transition-all whitespace-nowrap">Preview</button>
+                        <button class="px-5 py-2 text-sm font-manrope font-extralight text-neutral-400 hover:text-white hover:bg-white/5 rounded-lg transition-all whitespace-nowrap">Code</button>
+                        <button class="px-5 py-2 text-sm font-manrope font-extralight text-neutral-400 hover:text-white hover:bg-white/5 rounded-lg transition-all whitespace-nowrap">Guidelines</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="space-y-6">
+                <h4 class="text-lg font-montserrat font-normal tracking-tight text-white">Buttons &amp; Links</h4>
+                <div class="flex flex-wrap items-center gap-8 p-8 rounded-3xl bg-white/[0.02] border border-white/[0.05]">
+                    
+                    <!-- Primary -->
+                    <div class="space-y-4">
+                        <button type="button" class="inline-flex items-center justify-center gap-3 text-base text-white bg-gradient-to-r via-orange-500 to-amber-500 from-orange-600 ring-white/20 ring-1 rounded-full py-3.5 px-8 shadow-[0_0_30px_-5px_rgba(249,115,22,0.4)] hover:shadow-[0_0_50px_-5px_rgba(249,115,22,0.7)] transition-all hover:scale-105 group focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 focus:ring-offset-[#050505]">
+                            <span class="font-manrope font-normal">Primary Action</span>
+                            <iconify-icon icon="solar:arrow-right-linear" class="text-xl group-hover:translate-x-1 transition-transform" stroke-width="1.5"></iconify-icon>
+                        </button>
+                    </div>
+
+                    <!-- Secondary -->
+                    <div class="space-y-4">
+                        <button type="button" class="inline-flex items-center justify-center gap-2 text-base text-white bg-white/[0.05] hover:bg-white/10 border border-white/10 rounded-full py-3 px-6 transition-all group backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-white/20 focus:ring-offset-2 focus:ring-offset-[#050505]">
+                            <span class="font-manrope font-normal">Secondary Action</span>
+                        </button>
+                    </div>
+
+                    <!-- Ghost with Tooltip -->
+                    <div class="space-y-4 relative group">
+                        <button type="button" class="inline-flex items-center justify-center gap-2 transition-colors text-orange-400 hover:text-orange-300 text-base group focus:outline-none focus:ring-2 focus:ring-orange-500/50 rounded-lg px-2 py-1">
+                            <span class="font-manrope font-normal">Ghost Link</span>
+                            <iconify-icon icon="solar:arrow-right-linear" class="text-xl group-hover:translate-x-1 transition-transform"></iconify-icon>
+                        </button>
+                        <!-- Tooltip -->
+                        <div class="tooltip absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-[#0A0A0A] border border-white/10 text-xs font-manrope font-normal text-white rounded-lg shadow-xl opacity-0 invisible translate-y-2 transition-all duration-200 whitespace-nowrap z-10 pointer-events-none">
+                            View all articles
+                            <!-- Arrow -->
+                            <div class="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-[5px] border-transparent border-t-[#0A0A0A]"></div>
+                        </div>
+                    </div>
+
+                    <!-- Disabled -->
+                    <div class="space-y-4">
+                        <button type="button" disabled="" class="inline-flex items-center justify-center gap-2 text-base text-neutral-500 bg-white/[0.02] border border-white/5 rounded-full py-3 px-6 cursor-not-allowed">
+                            <span class="font-manrope font-normal">Disabled State</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Badges & Tags -->
+            <div class="space-y-6">
+                <h4 class="text-lg font-montserrat font-normal tracking-tight text-white">Badges &amp; Tags</h4>
+                <div class="flex flex-wrap items-center gap-4 p-8 rounded-3xl bg-white/[0.02] border border-white/[0.05]">
+                    <!-- Standard -->
+                    <span class="inline-flex items-center px-3 py-1 rounded-full border border-white/10 bg-white/5 text-xs text-neutral-300 font-manrope font-normal tracking-wide backdrop-blur-md">
+                        Standard Tag
+                    </span>
+                    
+                    <!-- Primary -->
+                    <span class="inline-flex items-center px-3 py-1 rounded-full border border-orange-500/20 bg-orange-500/10 text-xs text-orange-400 font-manrope font-normal tracking-wide backdrop-blur-md">
+                        Primary Tag
+                    </span>
+
+                    <!-- Success -->
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 text-xs text-emerald-400 font-manrope font-normal tracking-wide backdrop-blur-md">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
+                        Active
+                    </span>
+
+                    <!-- Warning -->
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-amber-500/20 bg-amber-500/10 text-xs text-amber-400 font-manrope font-normal tracking-wide backdrop-blur-md">
+                        <iconify-icon icon="solar:danger-triangle-linear" class="text-sm"></iconify-icon>
+                        Pending Review
+                    </span>
+
+                    <!-- Error -->
+                    <span class="inline-flex items-center px-3 py-1 rounded-full border border-red-500/20 bg-red-500/10 text-xs text-red-400 font-manrope font-normal tracking-wide backdrop-blur-md">
+                        Declined
+                    </span>
+                </div>
+            </div>
+
+            <!-- Alerts & Feedback -->
+            <div class="space-y-6">
+                <h4 class="text-lg font-montserrat font-normal tracking-tight text-white">Alerts &amp; Feedback</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 rounded-3xl bg-white/[0.02] border border-white/[0.05]">
+                    
+                    <!-- Info Alert -->
+                    <div class="flex gap-4 p-5 rounded-2xl bg-white/[0.03] border border-white/10 backdrop-blur-md">
+                        <div class="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                            <iconify-icon icon="solar:info-circle-linear" class="text-xl text-blue-400"></iconify-icon>
+                        </div>
+                        <div>
+                            <h5 class="text-sm font-manrope font-normal text-white mb-1">Update Available</h5>
+                            <p class="text-xs font-manrope font-extralight text-neutral-400 leading-relaxed">A new module has been added to your dashboard. Check it out now.</p>
+                        </div>
+                    </div>
+
+                    <!-- Warning/Action Alert -->
+                    <div class="flex gap-4 p-5 rounded-2xl bg-orange-500/5 border border-orange-500/20 backdrop-blur-md">
+                        <div class="w-10 h-10 rounded-full bg-orange-500/10 flex items-center justify-center flex-shrink-0">
+                            <iconify-icon icon="solar:bell-linear" class="text-xl text-orange-400"></iconify-icon>
+                        </div>
+                        <div class="w-full">
+                            <h5 class="text-sm font-manrope font-normal text-orange-50 mb-1">Complete your profile</h5>
+                            <p class="text-xs font-manrope font-extralight text-orange-200/70 leading-relaxed mb-3">You are currently at 80% completion.</p>
+                            <button class="text-xs font-manrope font-normal text-orange-400 hover:text-orange-300 transition-colors">Complete now →</button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Cards -->
+            <div class="space-y-6">
+                <h4 class="text-lg font-montserrat font-normal tracking-tight text-white">Cards</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 p-8 rounded-3xl bg-white/[0.02] border border-white/[0.05]">
+                    
+                    <!-- Content Card -->
+                    <div class="relative rounded-[2rem] p-[1px] bg-gradient-to-b from-white/[0.15] to-transparent group cursor-pointer transition-transform hover:-translate-y-1 duration-300">
+                        <div class="relative z-10 bg-[#0A0A0A]/90 backdrop-blur-xl rounded-[31px] h-full p-8 flex flex-col overflow-hidden transition-colors group-hover:bg-[#0A0A0A]/70 shadow-2xl shadow-black/50">
+                            <div class="absolute inset-0 bg-gradient-to-br from-orange-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+                            
+                            <div class="flex items-center justify-between mb-8 relative z-10">
+                                <span class="px-3 py-1.5 rounded-full border border-white/5 bg-white/5 text-xs text-neutral-300 font-manrope font-normal tracking-wide backdrop-blur-md">Module 01</span>
+                                <div class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-neutral-400 group-hover:text-orange-400 group-hover:bg-orange-500/10 group-hover:border-orange-500/20 transition-all duration-500">
+                                    <iconify-icon icon="solar:heart-linear" class="text-2xl" stroke-width="1.5"></iconify-icon>
+                                </div>
+                            </div>
+                            
+                            <h3 class="text-2xl tracking-tight mb-3 text-white font-montserrat font-light">Glassmorphism Card</h3>
+                            <p class="text-sm font-extralight text-neutral-400 font-manrope leading-relaxed">
+                                Used for primary content blocks. Features a subtle inner gradient, thin 1px pseudo-border using padding, and hover states.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Testimonial Card -->
+                    <div class="p-8 rounded-[2rem] border bg-white/[0.03] border-white/[0.08] backdrop-blur-sm flex flex-col justify-between hover:bg-white/[0.05] transition-colors duration-300 cursor-pointer">
+                        <div>
+                            <div class="flex gap-1 mb-6">
+                                <iconify-icon icon="solar:star-bold" class="text-lg text-orange-500 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]"></iconify-icon>
+                                <iconify-icon icon="solar:star-bold" class="text-lg text-orange-500 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]"></iconify-icon>
+                                <iconify-icon icon="solar:star-bold" class="text-lg text-orange-500 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]"></iconify-icon>
+                                <iconify-icon icon="solar:star-bold" class="text-lg text-orange-500 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]"></iconify-icon>
+                                <iconify-icon icon="solar:star-bold" class="text-lg text-orange-500 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]"></iconify-icon>
+                            </div>
+                            <p class="text-lg leading-relaxed mb-8 font-extralight text-neutral-300 font-manrope">"This card style is flatter, used for secondary content like testimonials or simple feature lists."</p>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="w-10 h-10 rounded-full border flex items-center justify-center text-neutral-400 uppercase text-xs bg-neutral-800/50 border-white/10 font-manrope font-normal tracking-wider">JD</div>
+                            <div>
+                                <p class="text-sm text-white font-manrope font-normal">John Doe</p>
+                                <p class="text-xs text-neutral-500 font-manrope font-extralight mt-0.5">Standard User</p>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- Forms -->
+        <section id="forms" class="space-y-6">
+            <div class="border-b border-white/10 pb-4 mb-8">
+                <h3 class="text-2xl font-light text-white tracking-tight font-montserrat">5. Form Elements</h3>
+                <p class="text-sm text-neutral-400 font-manrope mt-2">Inputs, selects, custom controls and interactives.</p>
+            </div>
+
+            <div class="max-w-xl space-y-8 p-8 rounded-3xl bg-white/[0.02] border border-white/[0.05]">
+                
+                <!-- Input Group (Standard) -->
+                <div class="space-y-2">
+                    <label for="email-input" class="block text-sm font-manrope font-normal text-neutral-300 cursor-pointer">Email Address</label>
+                    <div class="relative group">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors group-focus-within:text-orange-500 text-neutral-500">
+                            <iconify-icon icon="solar:letter-linear" class="text-lg"></iconify-icon>
+                        </div>
+                        <input id="email-input" type="email" placeholder="you@example.com" class="w-full bg-[#0A0A0A] border border-white/10 rounded-xl py-3 pl-11 pr-4 text-white font-manrope text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 transition-all placeholder:text-neutral-600 shadow-inner shadow-black/50">
+                    </div>
+                </div>
+
+                <!-- Input Group (Error State) -->
+                <div class="space-y-2">
+                    <label for="password-input" class="block text-sm font-manrope font-normal text-neutral-300 cursor-pointer">Password <span class="text-red-500">*</span></label>
+                    <div class="relative group">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-red-500">
+                            <iconify-icon icon="solar:lock-password-linear" class="text-lg"></iconify-icon>
+                        </div>
+                        <input id="password-input" type="password" value="123" class="w-full bg-[#0A0A0A] border border-red-500/50 rounded-xl py-3 pl-11 pr-11 text-white font-manrope text-sm focus:outline-none focus:ring-1 focus:ring-red-500 focus:border-red-500 transition-all shadow-inner shadow-black/50">
+                        <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-red-500">
+                            <iconify-icon icon="solar:danger-circle-linear" class="text-lg"></iconify-icon>
+                        </div>
+                    </div>
+                    <p class="text-xs font-manrope font-extralight text-red-400 mt-1">Password must be at least 8 characters long.</p>
+                </div>
+
+                <!-- Select Group -->
+                <div class="space-y-2">
+                    <label for="track-select" class="block text-sm font-manrope font-normal text-neutral-300 cursor-pointer">Program Track</label>
+                    <div class="relative group">
+                        <select id="track-select" class="w-full appearance-none bg-[#0A0A0A] border border-white/10 rounded-xl py-3 pl-4 pr-10 text-white font-manrope text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 transition-all cursor-pointer shadow-inner shadow-black/50">
+                            <option value="">Select an option...</option>
+                            <option value="1">Emotional Intelligence</option>
+                            <option value="2">Public Speaking</option>
+                        </select>
+                        <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none transition-transform group-hover:translate-y-0.5">
+                            <iconify-icon icon="solar:alt-arrow-down-linear" class="text-neutral-500 text-lg"></iconify-icon>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="h-px w-full bg-white/5 my-6"></div>
+
+                <!-- Custom Switch / Toggle -->
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="block text-sm font-manrope font-normal text-white">Email Notifications</span>
+                        <span class="block text-xs font-manrope font-extralight text-neutral-500 mt-1">Receive updates about your program</span>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer group">
+                        <input type="checkbox" value="" class="sr-only peer" checked="">
+                        <div class="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500 border border-white/10 hover:bg-white/20 peer-checked:hover:bg-orange-400 transition-colors"></div>
+                    </label>
+                </div>
+
+                <!-- Custom Slider -->
+                <div class="space-y-4 pt-2">
+                    <div class="flex justify-between items-center">
+                        <label for="intensity-slider" class="block text-sm font-manrope font-normal text-white cursor-pointer">Immersion Intensity</label>
+                        <span class="text-xs font-manrope font-normal text-orange-400 bg-orange-500/10 px-2 py-1 rounded-md border border-orange-500/20">Level 50</span>
+                    </div>
+                    <div class="relative pt-1">
+                        <input id="intensity-slider" type="range" min="0" max="100" value="50" class="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:ring-offset-2 focus:ring-offset-[#0A0A0A]">
+                    </div>
+                </div>
+
+                <!-- Checkbox -->
+                <div class="pt-4">
+                    <label class="flex items-start gap-3 cursor-pointer group custom-checkbox">
+                        <input type="checkbox" class="sr-only">
+                        <div class="w-5 h-5 rounded border border-white/20 bg-[#0A0A0A] flex items-center justify-center flex-shrink-0 transition-colors group-hover:border-orange-500/50 mt-0.5 shadow-inner shadow-black/50">
+                            <svg class="w-3.5 h-3.5 text-white opacity-0 transform scale-50 transition-all duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                        </div>
+                        <span class="text-sm font-manrope font-extralight text-neutral-400 select-none leading-relaxed">
+                            I agree to the <a href="#" class="text-orange-400 hover:text-orange-300 underline underline-offset-4 transition-colors">terms and conditions</a> and privacy policy.
+                        </span>
+                    </label>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- Data Display -->
+        <section id="data-display" class="space-y-6">
+            <div class="border-b border-white/10 pb-4 mb-8">
+                <h3 class="text-2xl font-light text-white tracking-tight font-montserrat">6. Data Display</h3>
+                <p class="text-sm text-neutral-400 font-manrope mt-2">Tables, lists, and structured information views.</p>
+            </div>
+
+            <div class="w-full overflow-hidden rounded-3xl bg-white/[0.02] border border-white/[0.05]">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-white/10 bg-white/[0.01]">
+                                <th class="px-6 py-4 text-xs font-manrope font-normal text-neutral-400 uppercase tracking-widest">Student</th>
+                                <th class="px-6 py-4 text-xs font-manrope font-normal text-neutral-400 uppercase tracking-widest">Progress</th>
+                                <th class="px-6 py-4 text-xs font-manrope font-normal text-neutral-400 uppercase tracking-widest">Status</th>
+                                <th class="px-6 py-4 text-xs font-manrope font-normal text-neutral-400 uppercase tracking-widest text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-white/[0.05]">
+                            <tr class="hover:bg-white/[0.04] transition-colors group">
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center font-manrope font-normal text-sm">AS</div>
+                                        <div>
+                                            <p class="text-sm font-manrope font-normal text-white">Alex Santos</p>
+                                            <p class="text-xs font-manrope font-extralight text-neutral-500">alex@example.com</p>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-full max-w-[100px] h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                            <div class="h-full bg-orange-500 w-[75%] rounded-full"></div>
+                                        </div>
+                                        <span class="text-xs font-manrope font-normal text-neutral-400">75%</span>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-[10px] text-emerald-400 font-manrope font-normal uppercase tracking-wider">
+                                        <span class="w-1 h-1 rounded-full bg-emerald-500"></span> Active
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <button class="text-neutral-500 hover:text-orange-400 transition-colors p-1 rounded-md hover:bg-orange-500/10" aria-label="More options">
+                                        <iconify-icon icon="solar:menu-dots-bold" class="text-xl"></iconify-icon>
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr class="hover:bg-white/[0.04] transition-colors group">
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-manrope font-normal text-sm">MR</div>
+                                        <div>
+                                            <p class="text-sm font-manrope font-normal text-white">Maria Rodriguez</p>
+                                            <p class="text-xs font-manrope font-extralight text-neutral-500">maria@example.com</p>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-full max-w-[100px] h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                            <div class="h-full bg-orange-500 w-[100%] rounded-full"></div>
+                                        </div>
+                                        <span class="text-xs font-manrope font-normal text-neutral-400">100%</span>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-neutral-500/10 text-[10px] text-neutral-400 font-manrope font-normal uppercase tracking-wider">
+                                        Completed
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <button class="text-neutral-500 hover:text-orange-400 transition-colors p-1 rounded-md hover:bg-orange-500/10" aria-label="More options">
+                                        <iconify-icon icon="solar:menu-dots-bold" class="text-xl"></iconify-icon>
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Loading States -->
+        <section id="loading-states" class="space-y-6">
+            <div class="border-b border-white/10 pb-4 mb-8">
+                <h3 class="text-2xl font-light text-white tracking-tight font-montserrat">7. Loading States</h3>
+                <p class="text-sm text-neutral-400 font-manrope mt-2">Skeletons and spinners for asynchronous content.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!-- Skeleton Card -->
+                <div class="p-8 rounded-3xl bg-white/[0.02] border border-white/[0.05] space-y-6 animate-pulse">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-full bg-white/10"></div>
+                        <div class="space-y-2 flex-1">
+                            <div class="h-4 bg-white/10 rounded-md w-1/3"></div>
+                            <div class="h-3 bg-white/5 rounded-md w-1/4"></div>
+                        </div>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="h-3 bg-white/5 rounded-md w-full"></div>
+                        <div class="h-3 bg-white/5 rounded-md w-5/6"></div>
+                        <div class="h-3 bg-white/5 rounded-md w-4/6"></div>
+                    </div>
+                </div>
+
+                <!-- Spinners & Indicators -->
+                <div class="p-8 rounded-3xl bg-white/[0.02] border border-white/[0.05] flex flex-col items-center justify-center gap-8">
+                    <div class="flex items-center gap-8">
+                        <iconify-icon icon="solar:spinner-linear" class="text-3xl text-orange-500 animate-spin" stroke-width="1.5"></iconify-icon>
+                        
+                        <div class="flex gap-1.5">
+                            <div class="w-2 h-2 rounded-full bg-white/40 animate-[bounce_1s_infinite_0ms]"></div>
+                            <div class="w-2 h-2 rounded-full bg-white/40 animate-[bounce_1s_infinite_200ms]"></div>
+                            <div class="w-2 h-2 rounded-full bg-white/40 animate-[bounce_1s_infinite_400ms]"></div>
+                        </div>
+                    </div>
+                    <p class="text-xs font-manrope font-extralight text-neutral-500">Wait a moment, processing data...</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-white/[0.05] bg-[#050505] relative z-10">
+        <div class="max-w-7xl mx-auto px-6 py-12 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div class="flex items-center gap-3">
+                <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/bd147458-f9d1-4f69-89ae-a2ee5b77d4e0_320w.png" alt="Logo" class="h-5 w-auto object-contain opacity-50 grayscale" loading="lazy">
+                <span class="text-xs font-manrope font-normal text-neutral-600">Design System v2.1</span>
+            </div>
+            <p class="text-xs font-manrope font-extralight text-neutral-600">
+                Crafted with precision for immersive dark-mode experiences.
+            </p>
+        </div>
+    </footer>
+
+    <!-- Back to Top Button -->
+    <a href="#top" class="fixed bottom-6 right-6 z-50 p-3 rounded-full bg-white/5 border border-white/10 text-neutral-400 hover:text-orange-400 hover:border-orange-500/30 hover:bg-white/10 backdrop-blur-md transition-all shadow-lg flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-orange-500" aria-label="Back to top">
+        <iconify-icon icon="solar:alt-arrow-up-linear" class="text-xl"></iconify-icon>
+    </a>
+
+</body></html>

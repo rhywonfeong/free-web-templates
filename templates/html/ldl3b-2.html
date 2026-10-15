@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full w-full bg-neutral-950 antialiased selection:bg-white/20 selection:text-white">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>LiveDeskLauncher v3b_2</title>
+<!-- PWA Manifest Link -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- Fonts & Icons -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/3/3.1.0/iconify.min.js"></script>
+<!-- Tailwind Configuration (In-memory for single file) -->
+<script>
+tailwind.config = {
+theme: {
+extend: {
+fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+colors: {
+neutral: { 850: '#1f1f1f', 925: '#0f0f0f', 950: '#0a0a0a' } // Custom depths
+}
+}
+}
+}
+</script>
+<style>
+/* Custom Utilities not in Tailwind default */
+html, body { height: 100%; overflow: hidden; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+/* SortableJS Ghost & Drag Styles */
+.sortable-ghost { opacity: 0.2; transform: scale(0.95); }
+.sortable-drag { cursor: grabbing; opacity: 1; transform: scale(1.05); z-index: 50; }
+/* Glassmorphism utility */
+.glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+.glass-hover:hover { background: rgba(255, 255, 255, 0.06); }
+</style></head>
+<body class="text-neutral-300 font-sans text-sm overflow-hidden flex flex-row">
+
+    <!-- APP CONTAINER -->
+    <div x-data="livedesk" class="flex w-full h-full relative" @contextmenu.prevent="handleGlobalContext($event)">
+
+        <!-- SIDEBAR (Workspaces) -->
+        <aside class="w-16 md:w-64 flex-shrink-0 border-r border-white/5 bg-neutral-925 flex flex-col justify-between transition-all duration-300 ease-out z-20">
+            <!-- Workspace Header -->
+            <div class="p-4 border-b border-white/5 flex items-center justify-between">
+                <div class="flex items-center gap-3 overflow-hidden">
+                    <div class="w-8 h-8 rounded bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0 text-white font-semibold text-xs shadow-lg shadow-indigo-500/20">
+                        LD
+                    </div>
+                    <div class="hidden md:flex flex-col">
+                        <span class="text-white font-medium text-xs tracking-tight truncate">LiveDesk</span>
+                        <span class="text-neutral-500 text-[10px] tracking-tight truncate" x-text="currentWorkspace.name"></span>
+                    </div>
+                </div>
+                <!-- Workspace Switcher Trigger -->
+                <button @click="modals.workspaces = true" class="hidden md:flex p-1.5 hover:bg-white/5 rounded text-neutral-400 hover:text-white transition-colors">
+                    <span class="iconify" data-icon="lucide:chevrons-up-down" data-width="14"></span>
+                </button>
+            </div>
+
+            <!-- Navigation / Pages -->
+            <nav class="flex-1 overflow-y-auto no-scrollbar py-4 px-2 space-y-1">
+                <div class="px-2 pb-2 text-[10px] font-medium text-neutral-500 uppercase tracking-wider hidden md:block">Pages</div>
+                
+                <template x-for="page in pages" :key="page.id">
+                    <button 
+                        @click="changePage(page.id)"
+                        @dragover.prevent="handleDragOverPage(page.id)"
+                        @drop.prevent="handleDropOnPage(page.id)"
+                        :class="currentPage === page.id ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/10' : 'text-neutral-400 hover:bg-white/5 hover:text-neutral-200'"
+                        class="w-full flex items-center gap-3 px-3 py-2 rounded-md transition-all group relative">
+                        <span class="iconify text-lg flex-shrink-0" :data-icon="page.icon" data-width="16"></span>
+                        <span class="hidden md:block text-xs font-medium tracking-tight" x-text="page.name"></span>
+                        
+                        <!-- Page active indicator -->
+                        <div x-show="currentPage === page.id" class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-white rounded-r-full"></div>
+                    </button>
+                </template>
+
+                <div class="pt-6 px-2 pb-2 text-[10px] font-medium text-neutral-500 uppercase tracking-wider hidden md:block">Shared</div>
+                <!-- Mock Shared Workspaces List -->
+                <button class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-neutral-400 hover:bg-white/5 hover:text-neutral-200 transition-all">
+                    <span class="iconify" data-icon="lucide:users" data-width="16"></span>
+                    <span class="hidden md:block text-xs font-medium tracking-tight">Team Engineering</span>
+                    <div class="hidden md:flex ml-auto -space-x-1">
+                        <div class="w-4 h-4 rounded-full bg-blue-500 ring-2 ring-neutral-900"></div>
+                        <div class="w-4 h-4 rounded-full bg-green-500 ring-2 ring-neutral-900"></div>
+                    </div>
+                </button>
+            </nav>
+
+            <!-- User / Settings Bottom -->
+            <div class="p-3 border-t border-white/5">
+                <button @click="modals.settings = true" class="w-full flex items-center gap-3 px-2 py-2 rounded-md hover:bg-white/5 transition-colors group">
+                    <img src="https://api.dicebear.com/7.x/initials/svg?seed=User&backgroundColor=262626&textColor=ffffff" class="w-6 h-6 rounded-full ring-1 ring-white/10" alt="User">
+                    <div class="hidden md:flex flex-col items-start">
+                        <span class="text-xs text-neutral-200 font-medium tracking-tight">Demo User</span>
+                        <span class="text-[10px] text-green-500 flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> Online
+                        </span>
+                    </div>
+                    <span class="hidden md:block ml-auto iconify text-neutral-500 group-hover:text-white transition-colors" data-icon="lucide:settings-2" data-width="14"></span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="flex-1 flex flex-col h-full bg-neutral-950 relative overflow-hidden">
+            
+            <!-- Top Bar -->
+            <header class="h-14 flex items-center justify-between px-6 border-b border-white/5 bg-neutral-950/50 backdrop-blur-sm z-10">
+                <div class="flex items-center gap-4">
+                    <h1 class="text-white font-medium text-sm tracking-tight" x-text="getPageName()"></h1>
+                    <!-- Breadcrumb separator -->
+                    <span class="text-neutral-600">/</span>
+                    <span class="text-neutral-500 text-xs tracking-tight" x-text="apps.filter(a => a.pageId === currentPage).length + ' Apps'"></span>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <!-- Search -->
+                    <div class="relative group">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 iconify" data-icon="lucide:search" data-width="14"></span>
+                        <input type="text" placeholder="Search apps..." x-model="searchQuery" 
+                            class="bg-neutral-900/50 border border-white/5 text-xs rounded-full py-1.5 pl-9 pr-4 text-white placeholder-neutral-500 focus:outline-none focus:bg-neutral-900 focus:border-white/10 w-48 transition-all focus:w-64">
+                    </div>
+
+                    <!-- View Toggle -->
+                    <div class="flex bg-neutral-900 rounded-lg p-0.5 border border-white/5">
+                        <button @click="viewMode = 'grid'" :class="viewMode === 'grid' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-500 hover:text-neutral-300'" class="p-1.5 rounded-md transition-all">
+                            <span class="iconify" data-icon="lucide:layout-grid" data-width="14"></span>
+                        </button>
+                        <button @click="viewMode = 'list'" :class="viewMode === 'list' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-500 hover:text-neutral-300'" class="p-1.5 rounded-md transition-all">
+                            <span class="iconify" data-icon="lucide:list" data-width="14"></span>
+                        </button>
+                    </div>
+
+                    <!-- Add Button -->
+                    <button @click="modals.appStore = true" class="bg-white text-black hover:bg-neutral-200 text-xs font-semibold py-1.5 px-3 rounded-full transition-colors flex items-center gap-2">
+                        <span class="iconify" data-icon="lucide:plus" data-width="14"></span>
+                        <span class="hidden sm:inline">Add App</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Scrollable Canvas -->
+            <div class="flex-1 overflow-y-auto overflow-x-hidden p-6 relative" @click.self="selectedAppId = null">
+                
+                <!-- Grid View -->
+                <div x-show="viewMode === 'grid'" 
+                     class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-4" 
+                     id="app-grid">
+                    
+                    <template x-for="app in filteredApps" :key="app.id">
+                        <div :data-id="app.id"
+                             @contextmenu.prevent.stop="openContextMenu($event, app)"
+                             @click="handleAppClick(app)"
+                             class="group relative flex flex-col items-center gap-3 p-4 rounded-xl hover:bg-white/5 transition-all duration-200 cursor-pointer border border-transparent hover:border-white/5 active:scale-95 select-none"
+                             :class="selectedAppId === app.id ? 'bg-white/10 ring-1 ring-white/10' : ''">
+                            
+                            <!-- Icon Renderer -->
+                            <div class="relative w-12 h-12 flex items-center justify-center rounded-xl bg-neutral-900 border border-white/5 shadow-lg shadow-black/20 group-hover:scale-105 transition-transform duration-300">
+                                <template x-if="app.icon.includes(':')">
+                                    <span class="iconify text-2xl text-white/90" :data-icon="app.icon"></span>
+                                </template>
+                                <template x-if="!app.icon.includes(':')">
+                                    <img :src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg" class="w-8 h-8 object-contain" alt="">
+                                </template>
+                            </div>
+
+                            <!-- Label -->
+                            <span class="text-xs text-neutral-300 font-medium tracking-tight text-center truncate w-full group-hover:text-white" x-text="app.title"></span>
+                        </div>
+                    </template>
+
+                    <!-- Add New Placeholder (Grid) -->
+                    <button @click="modals.appStore = true" class="flex flex-col items-center justify-center gap-3 p-4 rounded-xl border border-dashed border-white/10 hover:border-white/20 hover:bg-white/5 transition-all group">
+                        <div class="w-12 h-12 flex items-center justify-center rounded-xl bg-transparent text-neutral-600 group-hover:text-neutral-400">
+                            <span class="iconify" data-icon="lucide:plus" data-width="24"></span>
+                        </div>
+                        <span class="text-xs text-neutral-600 font-medium tracking-tight">Add New</span>
+                    </button>
+                </div>
+
+                <!-- List View -->
+                <div x-show="viewMode === 'list'" class="flex flex-col space-y-1" id="app-list">
+                    <template x-for="app in filteredApps" :key="app.id">
+                        <div :data-id="app.id"
+                             @contextmenu.prevent.stop="openContextMenu($event, app)"
+                             @click="handleAppClick(app)"
+                             class="group flex items-center gap-4 p-2 rounded-lg hover:bg-white/5 border border-transparent hover:border-white/5 transition-colors cursor-pointer select-none">
+                            
+                             <div class="w-8 h-8 flex items-center justify-center rounded-lg bg-neutral-900 border border-white/5">
+                                <template x-if="app.icon.includes(':')">
+                                    <span class="iconify text-lg text-white/90" :data-icon="app.icon"></span>
+                                </template>
+                                <template x-if="!app.icon.includes(':')">
+                                    <img :src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/917d6f93-fb36-439a-8c48-884b67b35381_1600w.jpg" class="w-5 h-5 object-contain" alt="">
+                                </template>
+                            </div>
+                            
+                            <div class="flex-1 min-w-0">
+                                <div class="text-xs font-medium text-neutral-200 truncate group-hover:text-white" x-text="app.title"></div>
+                                <div class="text-[10px] text-neutral-500 truncate" x-text="app.url"></div>
+                            </div>
+
+                            <span class="text-[10px] text-neutral-600 uppercase tracking-wider px-2 py-0.5 rounded border border-white/5 bg-neutral-900" x-text="app.category"></span>
+                        </div>
+                    </template>
+                </div>
+
+            </div>
+        </main>
+
+        <!-- --- MODALS --- -->
+
+        <!-- 1. APP STORE MODAL -->
+        <div x-show="modals.appStore" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div @click.away="modals.appStore = false" class="bg-neutral-900 w-full max-w-2xl h-[80vh] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden">
+                <!-- Header -->
+                <div class="p-5 border-b border-white/5 flex items-center justify-between bg-neutral-900">
+                    <h2 class="text-sm font-semibold text-white tracking-tight flex items-center gap-2">
+                        <span class="iconify text-indigo-500" data-icon="lucide:layout-grid" data-width="18"></span>
+                        App Library
+                    </h2>
+                    <button @click="modals.appStore = false" class="text-neutral-500 hover:text-white"><span class="iconify" data-icon="lucide:x" data-width="18"></span></button>
+                </div>
+                
+                <!-- Content -->
+                <div class="flex-1 flex overflow-hidden">
+                    <!-- Categories -->
+                    <div class="w-48 border-r border-white/5 bg-neutral-925 p-3 overflow-y-auto">
+                        <div class="space-y-1">
+                            <template x-for="cat in appStore.categories" :key="cat">
+                                <button @click="appStore.activeCategory = cat" 
+                                        :class="appStore.activeCategory === cat ? 'bg-white/10 text-white' : 'text-neutral-500 hover:text-neutral-300'"
+                                        class="w-full text-left px-3 py-1.5 rounded-md text-xs font-medium transition-colors" x-text="cat"></button>
+                            </template>
+                        </div>
+                    </div>
+                    <!-- Results -->
+                    <div class="flex-1 p-5 overflow-y-auto bg-neutral-900">
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            <template x-for="storeApp in appStore.getFilteredApps()" :key="storeApp.name">
+                                <button @click="installApp(storeApp)" class="group flex flex-col items-start p-3 rounded-lg border border-white/5 bg-neutral-850 hover:bg-neutral-800 hover:border-white/10 transition-all text-left relative overflow-hidden">
+                                    <div class="w-8 h-8 mb-3 rounded bg-neutral-900 flex items-center justify-center border border-white/5">
+                                        <template x-if="storeApp.icon.includes(':')">
+                                            <span class="iconify text-lg" :data-icon="storeApp.icon"></span>
+                                        </template>
+                                        <template x-if="!storeApp.icon.includes(':')">
+                                            <img :src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/c543a9e1-f226-4ced-80b0-feb8445a75b9_1600w.jpg" class="w-5 h-5 object-contain">
+                                        </template>
+                                    </div>
+                                    <span class="text-xs font-medium text-white block mb-0.5" x-text="storeApp.name"></span>
+                                    <span class="text-[10px] text-neutral-500 block truncate w-full" x-text="storeApp.desc"></span>
+                                    
+                                    <!-- Install Overlay -->
+                                    <div class="absolute inset-0 bg-indigo-600/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[1px]">
+                                        <span class="text-white text-xs font-semibold flex items-center gap-1">
+                                            <span class="iconify" data-icon="lucide:download" data-width="12"></span> Install
+                                        </span>
+                                    </div>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. SETTINGS / BACKUPS MODAL -->
+        <div x-show="modals.settings" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div @click.away="modals.settings = false" class="bg-neutral-900 w-full max-w-md rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
+                <div class="p-5 border-b border-white/5">
+                    <h2 class="text-sm font-semibold text-white tracking-tight">System Settings</h2>
+                </div>
+                <div class="p-5 space-y-6">
+                    
+                    <!-- Backups Section -->
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-xs font-medium text-neutral-400 uppercase tracking-wider">Cloud Backups</h3>
+                            <button @click="createBackup()" class="text-[10px] bg-white text-black px-2 py-1 rounded font-medium hover:bg-neutral-200 transition-colors">Create Now</button>
+                        </div>
+                        <div class="bg-neutral-950 border border-white/5 rounded-lg divide-y divide-white/5 max-h-48 overflow-y-auto">
+                            <template x-for="backup in backups" :key="backup.id">
+                                <div class="p-3 flex items-center justify-between group">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-6 h-6 rounded bg-green-500/10 text-green-500 flex items-center justify-center">
+                                            <span class="iconify" data-icon="lucide:database" data-width="12"></span>
+                                        </div>
+                                        <div>
+                                            <div class="text-xs text-white font-medium" x-text="new Date(backup.timestamp).toLocaleDateString()"></div>
+                                            <div class="text-[10px] text-neutral-500" x-text="new Date(backup.timestamp).toLocaleTimeString() + ' • ' + backup.size"></div>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button @click="restoreBackup(backup.id)" class="p-1 hover:text-indigo-400 text-neutral-500" title="Restore"><span class="iconify" data-icon="lucide:rotate-ccw" data-width="14"></span></button>
+                                        <button class="p-1 hover:text-red-400 text-neutral-500" title="Delete"><span class="iconify" data-icon="lucide:trash" data-width="14"></span></button>
+                                    </div>
+                                </div>
+                            </template>
+                            <div x-show="backups.length === 0" class="p-4 text-center text-xs text-neutral-600">No backups found.</div>
+                        </div>
+                    </div>
+
+                    <!-- Workspaces Mock -->
+                    <div>
+                         <h3 class="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-3">Workspace</h3>
+                         <div class="p-3 rounded-lg border border-white/5 bg-neutral-950 flex items-center justify-between">
+                            <span class="text-xs text-neutral-300">Share Workspace Link</span>
+                            <button class="text-xs text-indigo-400 font-medium hover:underline">Copy Link</button>
+                         </div>
+                    </div>
+                </div>
+                <div class="p-4 bg-neutral-925 border-t border-white/5 text-center">
+                    <button @click="modals.settings = false" class="text-xs text-neutral-400 hover:text-white transition-colors">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- CONTEXT MENU -->
+        <div x-show="contextMenu.visible" 
+             x-transition.opacity.duration.100ms
+             @click.away="contextMenu.visible = false"
+             :style="`top: ${contextMenu.y}px; left: ${contextMenu.x}px`"
+             class="fixed w-40 z-[60] bg-neutral-900 border border-white/10 shadow-xl rounded-lg py-1 flex flex-col">
+            
+            <div class="px-3 py-1.5 border-b border-white/5 mb-1">
+                <span class="text-[10px] text-neutral-500 uppercase tracking-wider font-semibold truncate block" x-text="contextMenu.app?.title"></span>
+            </div>
+            
+            <button @click="editApp(contextMenu.app)" class="flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-indigo-600 hover:text-white transition-colors text-left">
+                <span class="iconify" data-icon="lucide:pencil" data-width="12"></span> Edit
+            </button>
+            <button @click="moveToNextPage(contextMenu.app)" class="flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 hover:text-white transition-colors text-left">
+                <span class="iconify" data-icon="lucide:arrow-right-circle" data-width="12"></span> Move Page
+            </button>
+            <div class="h-px bg-white/5 my-1"></div>
+            <button @click="deleteApp(contextMenu.app.id)" class="flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors text-left">
+                <span class="iconify" data-icon="lucide:trash-2" data-width="12"></span> Uninstall
+            </button>
+        </div>
+
+        <!-- NOTIFICATION TOAST -->
+        <div x-show="toast.visible" 
+             x-transition 
+             class="fixed bottom-6 right-6 z-[70] bg-neutral-900 border border-white/10 shadow-2xl rounded-lg px-4 py-3 flex items-center gap-3">
+            <div class="text-green-500">
+                <span class="iconify" data-icon="lucide:check-circle-2" data-width="16"></span>
+            </div>
+            <span class="text-xs font-medium text-white" x-text="toast.message"></span>
+        </div>
+
+    </div>
+
+    <!-- JAVASCRIPT MODULES & LOGIC -->
+    <script type="module">
+        import Alpine from 'https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/module.esm.js';
+        import Sortable from 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/modular/sortable.esm.js';
+
+        // --- APP STORE MODULE (Simulated ./appstore.js) ---
+        const AppStoreModule = {
+            categories: ['Productivity', 'Development', 'Design', 'Social', 'Utilities'],
+            apps: [
+                { name: 'Linear', desc: 'Issue tracking', icon: 'https://upload.wikimedia.org/wikipedia/commons/9/96/Linear_Logo.svg', category: 'Productivity', url: 'https://linear.app' },
+                { name: 'Figma', desc: 'Design tool', icon: 'lucide:figma', category: 'Design', url: 'https://figma.com' },
+                { name: 'GitHub', desc: 'Code hosting', icon: 'lucide:github', category: 'Development', url: 'https://github.com' },
+                { name: 'Vercel', desc: 'Deployment', icon: 'lucide:triangle', category: 'Development', url: 'https://vercel.com' },
+                { name: 'Notion', desc: 'Workspace', icon: 'https://upload.wikimedia.org/wikipedia/commons/4/45/Notion_app_logo.png', category: 'Productivity', url: 'https://notion.so' },
+                { name: 'Slack', desc: 'Communication', icon: 'lucide:slack', category: 'Social', url: 'https://slack.com' },
+                { name: 'ChatGPT', desc: 'AI Assistant', icon: 'lucide:bot', category: 'Utilities', url: 'https://chat.openai.com' },
+                { name: 'Spotify', desc: 'Music', icon: 'lucide:music', category: 'Utilities', url: 'https://spotify.com' }
+            ],
+            activeCategory: 'Productivity',
+            getFilteredApps() {
+                return this.apps.filter(app => app.category === this.activeCategory);
+            }
+        };
+
+        // --- LIVEDESK CORE LOGIC (Simulated ./livedesk.js) ---
+        function livedesk() {
+            return {
+                // State
+                user: { uid: 'user_123', name: 'Demo User' },
+                currentPage: 'page_home',
+                viewMode: 'grid', // 'grid' | 'list'
+                searchQuery: '',
+                selectedAppId: null,
+                isEditMode: false,
+                currentWorkspace: { id: 'ws_1', name: 'Personal Workspace' },
+                
+                // Data
+                pages: [
+                    { id: 'page_home', name: 'Home', icon: 'lucide:home' },
+                    { id: 'page_dev', name: 'Development', icon: 'lucide:code-2' },
+                    { id: 'page_design', name: 'Design', icon: 'lucide:pen-tool' }
+                ],
+                apps: [
+                    { id: 'app_1', title: 'Linear', url: 'https://linear.app', icon: 'lucide:check-circle', category: 'Productivity', pageId: 'page_home', order: 0 },
+                    { id: 'app_2', title: 'GitHub', url: 'https://github.com', icon: 'lucide:github', category: 'Development', pageId: 'page_dev', order: 0 },
+                    { id: 'app_3', title: 'Vercel', url: 'https://vercel.com', icon: 'lucide:triangle', category: 'Development', pageId: 'page_dev', order: 1 }
+                ],
+                backups: [],
+
+                // UI State
+                modals: {
+                    appStore: false,
+                    settings: false,
+                    workspaces: false
+                },
+                contextMenu: { visible: false, x: 0, y: 0, app: null },
+                toast: { visible: false, message: '' },
+                appStore: AppStoreModule,
+
+                // --- INIT ---
+                init() {
+                    this.loadFromStorage();
+                    this.initSortable();
+                    
+                    // Mock initial backup load
+                    this.listBackups();
+
+                    // PWA Service Worker Registration
+                    if ('serviceWorker' in navigator) {
+                        navigator.serviceWorker.register('/service-worker.js').catch(err => console.log('SW Fail', err));
+                    }
+                },
+
+                // --- SORTABLEJS DRAG & DROP ---
+                initSortable() {
+                    this.$nextTick(() => {
+                        const grid = document.getElementById('app-grid');
+                        const list = document.getElementById('app-list');
+                        
+                        const config = {
+                            animation: 150,
+                            delay: 100, // prevented accidental drag on click
+                            ghostClass: 'sortable-ghost',
+                            dragClass: 'sortable-drag',
+                            group: 'apps', // allows dragging between lists if we had multiple visible
+                            onEnd: (evt) => {
+                                this.handleDragEnd(evt);
+                            }
+                        };
+
+                        if(grid) Sortable.create(grid, config);
+                        if(list) Sortable.create(list, config);
+                    });
+                },
+
+                handleDragEnd(evt) {
+                    const itemEl = evt.item;
+                    const appId = itemEl.getAttribute('data-id');
+                    const newIndex = evt.newIndex;
+                    
+                    // Filter apps for current page to get context
+                    let pageApps = this.apps.filter(a => a.pageId === this.currentPage).sort((a,b) => a.order - b.order);
+                    
+                    // Remove moved app from array representation
+                    const movedApp = this.apps.find(a => a.id === appId);
+                    pageApps = pageApps.filter(a => a.id !== appId);
+                    
+                    // Insert at new position
+                    pageApps.splice(newIndex, 0, movedApp);
+                    
+                    // Update global apps array with new order values
+                    pageApps.forEach((app, index) => {
+                        const globalRef = this.apps.find(a => a.id === app.id);
+                        if(globalRef) globalRef.order = index;
+                    });
+                    
+                    this.saveToStorage();
+                },
+
+                // --- ACTIONS ---
+                get filteredApps() {
+                    let pageApps = this.apps.filter(a => a.pageId === this.currentPage);
+                    if (this.searchQuery) {
+                        pageApps = pageApps.filter(a => a.title.toLowerCase().includes(this.searchQuery.toLowerCase()));
+                    }
+                    return pageApps.sort((a, b) => a.order - b.order);
+                },
+
+                getPageName() {
+                    return this.pages.find(p => p.id === this.currentPage)?.name || 'Unknown';
+                },
+
+                changePage(pageId) {
+                    this.currentPage = pageId;
+                    this.selectedAppId = null;
+                    // Re-init sortable on view change (next tick)
+                    this.initSortable();
+                },
+
+                handleAppClick(app) {
+                    this.selectedAppId = app.id;
+                    // In a real scenario, window.open(app.url, '_blank');
+                    this.showToast(`Launching ${app.title}...`);
+                },
+
+                installApp(storeApp) {
+                    const newApp = {
+                        id: 'app_' + Date.now(),
+                        title: storeApp.name,
+                        url: storeApp.url,
+                        icon: storeApp.icon,
+                        category: storeApp.category,
+                        pageId: this.currentPage,
+                        order: 999 // Add to end
+                    };
+                    this.apps.push(newApp);
+                    this.reorderCurrentPage();
+                    this.saveToStorage();
+                    this.showToast(`${newApp.title} installed`);
+                    this.modals.appStore = false;
+                    this.initSortable();
+                },
+
+                deleteApp(id) {
+                    this.apps = this.apps.filter(a => a.id !== id);
+                    this.contextMenu.visible = false;
+                    this.saveToStorage();
+                    this.showToast('App removed');
+                },
+
+                moveToNextPage(app) {
+                    const currentIndex = this.pages.findIndex(p => p.id === this.currentPage);
+                    const nextIndex = (currentIndex + 1) % this.pages.length;
+                    app.pageId = this.pages[nextIndex].id;
+                    app.order = 999; // append to end
+                    this.contextMenu.visible = false;
+                    this.saveToStorage();
+                    this.showToast(`Moved to ${this.pages[nextIndex].name}`);
+                },
+
+                reorderCurrentPage() {
+                    const pageApps = this.apps.filter(a => a.pageId === this.currentPage).sort((a,b) => a.order - b.order);
+                    pageApps.forEach((a, i) => a.order = i);
+                },
+
+                // --- CONTEXT MENU ---
+                openContextMenu(e, app) {
+                    this.contextMenu.app = app;
+                    this.contextMenu.x = Math.min(e.clientX, window.innerWidth - 170);
+                    this.contextMenu.y = Math.min(e.clientY, window.innerHeight - 150);
+                    this.contextMenu.visible = true;
+                },
+                handleGlobalContext(e) {
+                    // Close if clicking background
+                    if (!e.target.closest('[data-id]')) {
+                        this.contextMenu.visible = false;
+                    }
+                },
+
+                // --- BACKUP SERVERLESS MOCK ---
+                createBackup() {
+                    // Mocking Firebase Function call: backupUserApps(uid)
+                    const backup = {
+                        id: 'bk_' + Date.now(),
+                        timestamp: Date.now(),
+                        size: (JSON.stringify(this.apps).length / 1024).toFixed(1) + 'KB',
+                        data: JSON.parse(JSON.stringify(this.apps))
+                    };
+                    this.backups.unshift(backup);
+                    localStorage.setItem('ldl_backups', JSON.stringify(this.backups));
+                    this.showToast('Backup created successfully');
+                },
+
+                listBackups() {
+                    const stored = localStorage.getItem('ldl_backups');
+                    if (stored) this.backups = JSON.parse(stored);
+                },
+
+                restoreBackup(backupId) {
+                    const backup = this.backups.find(b => b.id === backupId);
+                    if(backup) {
+                        this.apps = JSON.parse(JSON.stringify(backup.data));
+                        this.saveToStorage();
+                        this.showToast('System restored');
+                        this.modals.settings = false;
+                        this.initSortable();
+                    }
+                },
+
+                // --- PERSISTENCE ---
+                saveToStorage() {
+                    localStorage.setItem('ldl_apps', JSON.stringify(this.apps));
+                },
+                loadFromStorage() {
+                    const stored = localStorage.getItem('ldl_apps');
+                    if (stored) this.apps = JSON.parse(stored);
+                },
+
+                showToast(msg) {
+                    this.toast.message = msg;
+                    this.toast.visible = true;
+                    setTimeout(() => this.toast.visible = false, 2500);
+                }
+            }
+        }
+
+        Alpine.data('livedesk', livedesk);
+        Alpine.start();
+    </script>
+    
+    <!-- Service Worker Logic (Mocked for single file) -->
+    <script>
+        // In a real build, this lives in sw.js
+        /*
+        self.addEventListener('install', (e) => {
+            e.waitUntil(caches.open('ldl-v3').then((cache) => cache.addAll(['/', '/index.html'])));
+        });
+        self.addEventListener('fetch', (e) => {
+            e.respondWith(caches.match(e.request).then((response) => response || fetch(e.request)));
+        });
+        */
+    </script>
+</body>
+</html>

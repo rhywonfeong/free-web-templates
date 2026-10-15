@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>u8r.space — Multi-Chain Wallet</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- Ethers.js for ETH interactions -->
+<script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
+<!-- Solana Web3 -->
+<script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+<!-- Dynamic.xyz SDK -->
+<script type="module">
+import { createDynamicClient } from "https://esm.sh/@dynamic-labs-sdk/client@0.0.1-alpha.73";
+import { addEvmExtension } from "https://esm.sh/@dynamic-labs-sdk/evm@0.0.1-alpha.73";
+import { addSvmExtension } from "https://esm.sh/@dynamic-labs-sdk/solana@0.0.1-alpha.73";
+try {
+const client = createDynamicClient({
+environmentId: "520d70a5-5adc-4301-9f8a-e87a4b8b731f",
+metadata: {
+name: "u8r.space",
+url: window.location.origin,
+},
+});
+addEvmExtension(client);
+addSvmExtension(client);
+window.dynamicClient = client;
+window.dynamicReady = true;
+window.dispatchEvent(new CustomEvent('dynamic-ready'));
+} catch (e) {
+console.error("Dynamic init failed:", e);
+window.dynamicFailed = true;
+window.dispatchEvent(new CustomEvent('dynamic-ready'));
+}
+</script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+<body class="bg-neutral-950 text-white font-['Inter'] min-h-screen" style="font-feature-settings: 'cv11', 'ss01';">
+
+<div id="app"></div>
+
+<script>
+// ============================================
+// CONFIGURATION
+// ============================================
+const CHAINS = {
+    ETH: {
+        name: 'Ethereum',
+        symbol: 'ETH',
+        color: '#627EEA',
+        bg: 'rgba(98,126,234,0.1)',
+        border: 'rgba(98,126,234,0.2)',
+        icon: 'Ξ',
+        decimals: 18,
+        chainId: 1,
+        rpcUrl: 'https://eth.llamarpc.com',
+        explorerUrl: 'https://etherscan.io',
+        coingeckoId: 'ethereum'
+    },
+    SOL: {
+        name: 'Solana',
+        symbol: 'SOL',
+        color: '#9945FF',
+        bg: 'rgba(153,69,255,0.1)',
+        border: 'rgba(153,69,255,0.2)',
+        icon: '◎',
+        decimals: 9,
+        rpcUrl: 'https://api.mainnet-beta.solana.com',
+        explorerUrl: 'https://solscan.io',
+        coingeckoId: 'solana'
+    }
+};
+
+let state = {
+    currentPage: 'connect',
+    connected: false,
+    walletType: null,
+    ethAddress: null,
+    solAddress: null,
+    ethBalance: '0',
+    solBalance: '0',
+    ethPrice: 0,
+    solPrice: 0,
+    ethChange: 0,
+    solChange: 0,
+    selectedChain: 'ETH',
+    sendAddress: '',
+    sendAmount: '',
+    sendChain: 'ETH',
+    notification: '',
+    notificationType: 'success',
+    transactions: JSON.parse(localStorage.getItem('u8r_txs') || '[]'),
+    loading: false,
+    loadingMsg: '',
+    ethProvider: null,
+    ethSigner: null,
+    solConnection: null,
+    activeTab: 'assets',
+    sending: false,
+    pricesLoaded: false,
+    dynamicReady: false,
+    dynamicUser: null
+};
+
+// ============================================
+// DYNAMIC.XYZ INTEGRATION & FALLBACKS
+// ============================================
+function waitForDynamic() {
+    return new Promise((resolve, reject) => {
+        if (window.dynamicReady && window.dynamicClient) {
+            resolve(window.dynamicClient);
+            return;
+        }
+        
+        // Timeout prevents hanging if SDK fails to load or is blocked
+        const timer = setTimeout(() => {
+            window.dynamicFailed = true;
+            reject(new Error('Dynamic SDK timeout'));
+        }, 1500);
+
+        window.addEventListener('dynamic-ready', () => {
+            clearTimeout(timer);
+            if (window.dynamicClient) {
+                resolve(window.dynamicClient);
+            } else {
+                window.dynamicFailed = true;
+                reject(new Error('Dynamic initialization failed'));
+            }
+        }, { once: true });
+    });
+}
+
+async function connectWithDynamic(chainHint) {
+    state.loading = true;
+    state.loadingMsg = 'Connecting...';
+    render();
+
+    try {
+        const client = await waitForDynamic();
+        state.dynamicReady = true;
+
+        state.loadingMsg = 'Opening wallet selector...';
+        render();
+
+        if (!client.auth || typeof client.auth.login !== 'function') {
+            throw new Error("Dynamic UI not available. Falling back to native.");
+        }
+
+        const result = await client.auth.login();
+
+        if (result) {
+            state.dynamicUser = result;
+            const wallets = client.wallets?.userWallets || [];
+
+            for (const wallet of wallets) {
+                const chain = wallet.chain;
+                const address = wallet.address;
+
+                if (chain === 'evm' || chain === 'ethereum') {
+                    state.ethAddress = address;
+                    state.walletType = 'evm';
+                    try {
+                        const walletConnector = wallet.connector;
+                        if (walletConnector) {
+                            const provider = new ethers.providers.Web3Provider(walletConnector.getProvider ? await walletConnector.getProvider() : window.ethereum);
+                            state.ethProvider = provider;
+                            state.ethSigner = provider.getSigner();
+                            const balance = await provider.getBalance(address);
+                            state.ethBalance = ethers.utils.formatEther(balance);
+                        }
+                    } catch (e) { console.log('EVM setup:', e.message); }
+                }
+
+                if (chain === 'solana' || chain === 'svm') {
+                    state.solAddress = address;
+                    try {
+                        const connection = new solanaWeb3.Connection(CHAINS.SOL.rpcUrl, 'confirmed');
+                        state.solConnection = connection;
+                        const balance = await connection.getBalance(new solanaWeb3.PublicKey(address));
+                        state.solBalance = (balance / solanaWeb3.LAMPORTS_PER_SOL).toString();
+                    } catch (e) { console.log('SOL setup:', e.message); }
+                }
+            }
+
+            if (state.ethAddress || state.solAddress) {
+                state.connected = true;
+                state.currentPage = 'dashboard';
+                if (state.solAddress && !state.ethAddress) state.selectedChain = 'SOL';
+                saveTx('connect', state.ethAddress ? 'ETH' : 'SOL', 0, 'Wallet Connected');
+                showNotif('Wallet connected!');
+            }
+        }
+    } catch (e) {
+        console.warn('Dynamic connect skipped/failed:', e.message);
+        
+        // Seamless Native Wallet Fallback
+        let success = false;
+        
+        if (chainHint === 'evm' || chainHint === 'both') {
+            success = await connectEVMNative(chainHint === 'both');
+        }
+        
+        if (!success && (chainHint === 'solana' || chainHint === 'both')) {
+            success = await connectSolanaNative(chainHint === 'both');
+        }
+        
+        if (!success && chainHint === 'both') {
+            showNotif('No compatible wallets detected. Install MetaMask or Phantom.', 'error');
+        }
+    }
+
+    state.loading = false;
+    render();
+}
+
+// ============================================
+// NATIVE WALLETS
+// ============================================
+async function connectEVMNative(silent = false) {
+    try {
+        if (!window.ethereum) {
+            throw new Error('No EVM wallet detected. Install MetaMask or another Web3 wallet.');
+        }
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = provider.getSigner();
+        const address = accounts[0];
+
+        state.ethProvider = provider;
+        state.ethSigner = signer;
+        state.ethAddress = address;
+        state.walletType = 'evm';
+        state.connected = true;
+        state.currentPage = 'dashboard';
+
+        const balance = await provider.getBalance(address);
+        state.ethBalance = ethers.utils.formatEther(balance);
+
+        window.ethereum.on('accountsChanged', async (accs) => {
+            if (accs.length === 0) { disconnect(); }
+            else { state.ethAddress = accs[0]; await refreshETHBalance(); render(); }
+        });
+        window.ethereum.on('chainChanged', () => { window.location.reload(); });
+
+        saveTx('connect', 'ETH', 0, 'Wallet Connected');
+        showNotif('EVM wallet connected!');
+        return true;
+    } catch (e) {
+        if (!silent) showNotif(e.message || 'Failed to connect EVM wallet', 'error');
+        return false;
+    }
+}
+
+async function connectSolanaNative(silent = false) {
+    try {
+        const solana = window.solana || window.phantom?.solana;
+        if (!solana) {
+            throw new Error('No Solana wallet detected. Install Phantom or Solflare.');
+        }
+        const resp = await solana.connect();
+        const pubkey = resp.publicKey.toString();
+
+        state.solAddress = pubkey;
+        state.walletType = 'solana';
+        state.connected = true;
+        state.currentPage = 'dashboard';
+        state.selectedChain = 'SOL';
+
+        const connection = new solanaWeb3.Connection(CHAINS.SOL.rpcUrl, 'confirmed');
+        state.solConnection = connection;
+        const balance = await connection.getBalance(new solanaWeb3.PublicKey(pubkey));
+        state.solBalance = (balance / solanaWeb3.LAMPORTS_PER_SOL).toString();
+
+        solana.on('disconnect', () => { disconnect(); });
+        saveTx('connect', 'SOL', 0, 'Wallet Connected');
+        showNotif('Solana wallet connected!');
+        return true;
+    } catch (e) {
+        if (!silent) showNotif(e.message || 'Failed to connect Solana wallet', 'error');
+        return false;
+    }
+}
+
+async function connectEVM() { await connectWithDynamic('evm'); }
+async function connectSolana() { await connectWithDynamic('solana'); }
+
+// ============================================
+// PRICE FETCHING & BALANCES
+// ============================================
+async function fetchPrices() {
+    try {
+        const resp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum,solana&vs_currencies=usd&include_24hr_change=true');
+        const data = await resp.json();
+        state.ethPrice = data.ethereum?.usd || 0;
+        state.solPrice = data.solana?.usd || 0;
+        state.ethChange = data.ethereum?.usd_24h_change || 0;
+        state.solChange = data.solana?.usd_24h_change || 0;
+        state.pricesLoaded = true;
+        render();
+    } catch (e) {
+        console.error('Price fetch error:', e);
+        state.ethPrice = 3500;
+        state.solPrice = 180;
+        state.pricesLoaded = true;
+    }
+}
+
+async function refreshETHBalance() {
+    if (state.ethProvider && state.ethAddress) {
+        try {
+            const balance = await state.ethProvider.getBalance(state.ethAddress);
+            state.ethBalance = ethers.utils.formatEther(balance);
+        } catch (e) { console.error(e); }
+    }
+}
+
+async function refreshSOLBalance() {
+    if (state.solConnection && state.solAddress) {
+        try {
+            const balance = await state.solConnection.getBalance(new solanaWeb3.PublicKey(state.solAddress));
+            state.solBalance = (balance / solanaWeb3.LAMPORTS_PER_SOL).toString();
+        } catch (e) { console.error(e); }
+    }
+}
+
+async function refreshBalances() {
+    state.loading = true;
+    state.loadingMsg = 'Refreshing...';
+    render();
+    await Promise.all([refreshETHBalance(), refreshSOLBalance(), fetchPrices()]);
+    state.loading = false;
+    showNotif('Balances updated');
+}
+
+// ============================================
+// SEND TRANSACTIONS
+// ============================================
+async function sendETH(toAddress, amountETH) {
+    if (!state.ethSigner) return showNotif('EVM wallet not connected', 'error');
+    if (!toAddress || !amountETH || parseFloat(amountETH) <= 0) return showNotif('Invalid address or amount', 'error');
+    if (!ethers.utils.isAddress(toAddress)) return showNotif('Invalid Ethereum address', 'error');
+    if (parseFloat(amountETH) > parseFloat(state.ethBalance)) return showNotif('Insufficient ETH balance', 'error');
+
+    state.sending = true;
+    render();
+
+    try {
+        const tx = await state.ethSigner.sendTransaction({
+            to: toAddress,
+            value: ethers.utils.parseEther(amountETH)
+        });
+
+        showNotif('Transaction submitted! Waiting for confirmation...');
+        saveTx('send', 'ETH', -parseFloat(amountETH), toAddress, tx.hash);
+
+        const receipt = await tx.wait();
+        await refreshETHBalance();
+        state.currentPage = 'dashboard';
+        showNotif(`Sent ${amountETH} ETH — confirmed in block ${receipt.blockNumber}`);
+    } catch (e) {
+        if (e.code === 4001 || e.code === 'ACTION_REJECTED') {
+            showNotif('Transaction rejected by user', 'error');
+        } else {
+            showNotif(e.message?.substring(0, 100) || 'Transaction failed', 'error');
+        }
+    }
+
+    state.sending = false;
+    render();
+}
+
+async function sendSOL(toAddress, amountSOL) {
+    const solana = window.solana || window.phantom?.solana;
+    if (!solana || !state.solAddress) return showNotif('Solana wallet not connected', 'error');
+    if (!toAddress || !amountSOL || parseFloat(amountSOL) <= 0) return showNotif('Invalid address or amount', 'error');
+    if (parseFloat(amountSOL) > parseFloat(state.solBalance)) return showNotif('Insufficient SOL balance', 'error');
+
+    state.sending = true;
+    render();
+
+    try {
+        let toPubkey;
+        try {
+            toPubkey = new solanaWeb3.PublicKey(toAddress);
+        } catch {
+            throw new Error('Invalid Solana address');
+        }
+
+        const connection = state.solConnection || new solanaWeb3.Connection(CHAINS.SOL.rpcUrl, 'confirmed');
+        const fromPubkey = new solanaWeb3.PublicKey(state.solAddress);
+
+        const transaction = new solanaWeb3.Transaction().add(
+            solanaWeb3.SystemProgram.transfer({
+                fromPubkey: fromPubkey,
+                toPubkey: toPubkey,
+                lamports: Math.round(parseFloat(amountSOL) * solanaWeb3.LAMPORTS_PER_SOL)
+            })
+        );
+
+        transaction.feePayer = fromPubkey;
+        const { blockhash } = await connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+
+        const signed = await solana.signTransaction(transaction);
+        const signature = await connection.sendRawTransaction(signed.serialize());
+
+        showNotif('Transaction submitted! Confirming...');
+        saveTx('send', 'SOL', -parseFloat(amountSOL), toAddress, signature);
+
+        await connection.confirmTransaction(signature, 'confirmed');
+        await refreshSOLBalance();
+        state.currentPage = 'dashboard';
+        showNotif(`Sent ${amountSOL} SOL — confirmed!`);
+    } catch (e) {
+        if (e.message?.includes('User rejected')) {
+            showNotif('Transaction rejected by user', 'error');
+        } else {
+            showNotif(e.message?.substring(0, 100) || 'Transaction failed', 'error');
+        }
+    }
+
+    state.sending = false;
+    render();
+}
+
+// ============================================
+// UTILS
+// ============================================
+function disconnect() {
+    try {
+        const solana = window.solana || window.phantom?.solana;
+        if (solana?.isConnected) solana.disconnect();
+    } catch (e) {}
+
+    try {
+        if (window.dynamicClient?.auth) {
+            window.dynamicClient.auth.logout();
+        }
+    } catch (e) {}
+
+    state.connected = false;
+    state.ethAddress = null;
+    state.solAddress = null;
+    state.ethBalance = '0';
+    state.solBalance = '0';
+    state.ethProvider = null;
+    state.ethSigner = null;
+    state.solConnection = null;
+    state.walletType = null;
+    state.dynamicUser = null;
+    state.currentPage = 'connect';
+    render();
+}
+
+function showNotif(msg, type = 'success') {
+    state.notification = msg;
+    state.notificationType = type;
+    render();
+    setTimeout(() => { state.notification = ''; render(); }, 4000);
+}
+
+function saveTx(type, chain, amount, address, hash) {
+    state.transactions.unshift({
+        type, chain, amount, address: address || '',
+        hash: hash || '',
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        id: Math.random().toString(36).substr(2, 9)
+    });
+    state.transactions = state.transactions.slice(0, 50);
+    localStorage.setItem('u8r_txs', JSON.stringify(state.transactions));
+}
+
+function truncAddr(a) { return a ? a.substring(0, 6) + '...' + a.substring(a.length - 4) : ''; }
+
+function coinIcon(sym) {
+    const c = CHAINS[sym];
+    return `<div class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold" style="background:${c.bg};color:${c.color};border:1px solid ${c.border}">${c.icon}</div>`;
+}
+
+function totalUSD() {
+    return (parseFloat(state.ethBalance) * state.ethPrice) + (parseFloat(state.solBalance) * state.solPrice);
+}
+
+function explorerLink(chain, hash) {
+    if (!hash) return '#';
+    if (chain === 'ETH') return `${CHAINS.ETH.explorerUrl}/tx/${hash}`;
+    if (chain === 'SOL') return `${CHAINS.SOL.explorerUrl}/tx/${hash}`;
+    return '#';
+}
+
+function hasWallet(type) {
+    if (type === 'evm') return !!window.ethereum;
+    if (type === 'solana') return !!(window.solana || window.phantom?.solana);
+    return false;
+}
+
+// ============================================
+// RENDER
+// ============================================
+function render() {
+    const app = document.getElementById('app');
+
+    let notifHtml = '';
+    if (state.notification) {
+        const nc = state.notificationType === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400';
+        notifHtml = `<div class="fixed top-4 left-1/2 -translate-x-1/2 sm:left-auto sm:translate-x-0 sm:right-4 z-50 max-w-sm ${nc} border rounded-xl px-4 py-3 text-sm font-medium backdrop-blur-xl shadow-2xl" style="animation:slideIn .3s ease">${state.notification}</div>`;
+    }
+
+    let loadingOverlay = '';
+    if (state.loading) {
+        loadingOverlay = `<div class="fixed inset-0 z-50 bg-neutral-950/80 backdrop-blur-sm flex items-center justify-center">
+            <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 text-center">
+                <div class="w-10 h-10 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p class="text-sm text-neutral-300">${state.loadingMsg}</p>
+            </div>
+        </div>`;
+    }
+
+    // ========================
+    // CONNECT PAGE
+    // ========================
+    if (state.currentPage === 'connect') {
+        const hasEVM = hasWallet('evm');
+        const hasSOL = hasWallet('solana');
+        const dynReady = window.dynamicReady;
+        const dynFailed = window.dynamicFailed;
+
+        app.innerHTML = `${notifHtml}${loadingOverlay}
+        <div class="min-h-screen flex items-center justify-center p-4">
+            <div class="w-full max-w-sm">
+                <div class="text-center mb-8">
+                    <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 mb-5 shadow-lg shadow-violet-500/25">
+                        <iconify-icon icon="solar:wallet-linear" width="28" style="color:white;stroke-width:1.5"></iconify-icon>
+                    </div>
+                    <h1 class="text-2xl font-semibold tracking-tight text-white">u8r<span class="text-neutral-500">.space</span></h1>
+                    <p class="text-sm text-neutral-500 mt-1.5">Connect your wallet to get started</p>
+                    <div class="flex items-center justify-center gap-3 mt-4">
+                        ${coinIcon('ETH')}
+                        ${coinIcon('SOL')}
+                    </div>
+                </div>
+
+                <div class="space-y-3">
+                    <button onclick="connectWithDynamic('both');" class="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-medium text-sm py-3.5 rounded-xl transition-all shadow-lg shadow-violet-500/20 flex items-center justify-center gap-2.5">
+                        <iconify-icon icon="solar:shield-check-linear" width="18" style="color:white;stroke-width:1.5"></iconify-icon>
+                        Connect Wallet
+                        ${dynReady ? '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>' : (dynFailed ? '' : '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>')}
+                    </button>
+
+                    ${dynFailed ? `<p class="text-center text-xs text-neutral-600">Using native Web3 fallbacks</p>` : (dynReady ? `<p class="text-center text-xs text-neutral-600">Powered by Dynamic.xyz — supports 300+ wallets</p>` : `<p class="text-center text-xs text-amber-400/60 animate-pulse">Loading Web3 integration...</p>`)}
+
+                    <div class="flex items-center gap-3 py-1">
+                        <div class="flex-1 h-px bg-neutral-800"></div>
+                        <span class="text-xs text-neutral-600">or connect directly</span>
+                        <div class="flex-1 h-px bg-neutral-800"></div>
+                    </div>
+
+                    <button onclick="connectEVM();" class="w-full bg-neutral-900/50 border border-neutral-800 hover:border-neutral-700 rounded-2xl p-4 flex items-center gap-4 transition-all group ${!hasEVM ? 'opacity-50' : ''}">
+                        <div class="w-11 h-11 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center flex-shrink-0">
+                            <span class="text-lg">🦊</span>
+                        </div>
+                        <div class="text-left flex-1">
+                            <p class="text-sm font-medium text-white group-hover:text-violet-300 transition-colors">MetaMask / EVM</p>
+                            <p class="text-xs text-neutral-500">${hasEVM ? 'Connect Ethereum wallet' : 'Not detected — install MetaMask'}</p>
+                        </div>
+                        <iconify-icon icon="solar:arrow-right-linear" width="18" style="color:rgb(115 115 115);stroke-width:1.5" class="group-hover:translate-x-0.5 transition-transform"></iconify-icon>
+                    </button>
+
+                    <button onclick="connectSolana();" class="w-full bg-neutral-900/50 border border-neutral-800 hover:border-neutral-700 rounded-2xl p-4 flex items-center gap-4 transition-all group ${!hasSOL ? 'opacity-50' : ''}">
+                        <div class="w-11 h-11 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
+                            <span class="text-lg">👻</span>
+                        </div>
+                        <div class="text-left flex-1">
+                            <p class="text-sm font-medium text-white group-hover:text-violet-300 transition-colors">Phantom / Solana</p>
+                            <p class="text-xs text-neutral-500">${hasSOL ? 'Connect Solana wallet' : 'Not detected — install Phantom'}</p>
+                        </div>
+                        <iconify-icon icon="solar:arrow-right-linear" width="18" style="color:rgb(115 115 115);stroke-width:1.5" class="group-hover:translate-x-0.5 transition-transform"></iconify-icon>
+                    </button>
+                </div>
+
+                <div class="mt-6 flex items-start gap-3 bg-neutral-900/30 border border-neutral-800/50 rounded-xl p-3.5">
+                    <iconify-icon icon="solar:shield-check-linear" width="18" style="color:rgb(139 92 246);stroke-width:1.5;flex-shrink:0;margin-top:1px"></iconify-icon>
+                    <p class="text-xs text-neutral-500 leading-relaxed">Non-custodial — we never access your private keys. Your wallet signs all transactions directly.</p>
+                </div>
+
+                ${!hasEVM && !hasSOL && dynFailed ? `
+                <div class="mt-4 bg-amber-500/5 border border-amber-500/10 rounded-xl p-3.5">
+                    <div class="flex items-start gap-3">
+                        <iconify-icon icon="solar:shield-warning-linear" width="18" style="color:rgb(251 191 36);stroke-width:1.5;flex-shrink:0;margin-top:1px"></iconify-icon>
+                        <div>
+                            <p class="text-xs text-amber-400/80 leading-relaxed mb-2">No wallets detected. Install one to continue:</p>
+                            <div class="flex gap-2">
+                                <a href="https://metamask.io/download/" target="_blank" class="text-xs text-amber-400 underline underline-offset-2 hover:text-amber-300">MetaMask</a>
+                                <a href="https://phantom.app/download" target="_blank" class="text-xs text-amber-400 underline underline-offset-2 hover:text-amber-300">Phantom</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>` : ''}
+            </div>
+        </div>`;
+        return;
+    }
+
+    // NAV
+    const navHtml = `
+    <nav class="sticky top-0 z-40 bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-800/50">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 flex items-center justify-between h-14">
+            <div class="flex items-center gap-2">
+                <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-sm shadow-violet-500/20">
+                    <iconify-icon icon="solar:wallet-linear" width="15" style="color:white;stroke-width:1.5"></iconify-icon>
+                </div>
+                <span class="font-semibold text-sm tracking-tight text-white">u8r<span class="text-neutral-500">.space</span></span>
+            </div>
+            <div class="hidden sm:flex items-center gap-1">
+                <button onclick="state.currentPage='dashboard';render();" class="px-3 py-1.5 text-sm rounded-lg transition-all ${state.currentPage === 'dashboard' ? 'text-white bg-neutral-800/50' : 'text-neutral-400 hover:text-white'}">Wallet</button>
+                <button onclick="state.currentPage='send';render();" class="px-3 py-1.5 text-sm rounded-lg transition-all ${state.currentPage === 'send' ? 'text-white bg-neutral-800/50' : 'text-neutral-400 hover:text-white'}">Send</button>
+                <button onclick="state.currentPage='receive';render();" class="px-3 py-1.5 text-sm rounded-lg transition-all ${state.currentPage === 'receive' ? 'text-white bg-neutral-800/50' : 'text-neutral-400 hover:text-white'}">Receive</button>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="refreshBalances();" class="text-neutral-500 hover:text-white transition-colors"><iconify-icon icon="solar:refresh-linear" width="18" style="stroke-width:1.5"></iconify-icon></button>
+                <div class="hidden sm:flex items-center gap-1.5">
+                    ${state.ethAddress ? `<span class="text-xs bg-neutral-800/50 border border-neutral-700/30 rounded-lg px-2 py-1 text-neutral-400">${truncAddr(state.ethAddress)}</span>` : ''}
+                    ${state.solAddress ? `<span class="text-xs bg-neutral-800/50 border border-neutral-700/30 rounded-lg px-2 py-1 text-neutral-400">${truncAddr(state.solAddress)}</span>` : ''}
+                </div>
+                <button onclick="disconnect();" class="text-neutral-500 hover:text-red-400 transition-colors"><iconify-icon icon="solar:logout-2-linear" width="18" style="stroke-width:1.5"></iconify-icon></button>
+            </div>
+        </div>
+    </nav>
+    <div class="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-neutral-950/90 backdrop-blur-xl border-t border-neutral-800/50">
+        <div class="flex items-center justify-around py-2">
+            <button onclick="state.currentPage='dashboard';render();" class="flex flex-col items-center gap-0.5 px-3 py-1 ${state.currentPage === 'dashboard' ? 'text-violet-400' : 'text-neutral-500'}"><iconify-icon icon="solar:wallet-linear" width="20" style="stroke-width:1.5"></iconify-icon><span class="text-xs">Wallet</span></button>
+            <button onclick="state.currentPage='send';render();" class="flex flex-col items-center gap-0.5 px-3 py-1 ${state.currentPage === 'send' ? 'text-violet-400' : 'text-neutral-500'}"><iconify-icon icon="solar:upload-linear" width="20" style="stroke-width:1.5"></iconify-icon><span class="text-xs">Send</span></button>
+            <button onclick="state.currentPage='receive';render();" class="flex flex-col items-center gap-0.5 px-3 py-1 ${state.currentPage === 'receive' ? 'text-violet-400' : 'text-neutral-500'}"><iconify-icon icon="solar:download-linear" width="20" style="stroke-width:1.5"></iconify-icon><span class="text-xs">Receive</span></button>
+        </div>
+    </div>`;
+
+    // ========================
+    // DASHBOARD
+    // ========================
+    if (state.currentPage === 'dashboard') {
+        const total = totalUSD();
+        app.innerHTML = `${notifHtml}${loadingOverlay}${navHtml}
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:pb-8">
+            <div class="bg-gradient-to-br from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-2xl p-6 sm:p-8 mb-6">
+                <p class="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-1">Total Portfolio Value</p>
+                <div class="flex items-baseline gap-3 mb-1">
+                    <h2 class="text-3xl sm:text-4xl font-semibold tracking-tight text-white">$${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h2>
+                    ${state.pricesLoaded ? `<span class="text-sm font-medium ${((parseFloat(state.ethBalance) * state.ethChange + parseFloat(state.solBalance) * state.solChange) >= 0) ? 'text-emerald-400' : 'text-red-400'}">${((parseFloat(state.ethBalance) * state.ethChange + parseFloat(state.solBalance) * state.solChange) >= 0) ? '↑' : '↓'} 24h</span>` : ''}
+                </div>
+                <div class="flex items-center gap-3 mt-2">
+                    ${state.ethAddress ? `<div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-emerald-400"></div><span class="text-xs text-neutral-500">ETH Connected</span></div>` : '<div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-neutral-600"></div><span class="text-xs text-neutral-600">ETH Not connected</span></div>'}
+                    ${state.solAddress ? `<div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-emerald-400"></div><span class="text-xs text-neutral-500">SOL Connected</span></div>` : '<div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-neutral-600"></div><span class="text-xs text-neutral-600">SOL Not connected</span></div>'}
+                </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3 mb-6">
+                <button onclick="state.currentPage='send';render();" class="bg-neutral-900/50 border border-neutral-800 hover:border-neutral-700 rounded-xl p-4 flex flex-col items-center gap-2 transition-all">
+                    <div class="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+                        <iconify-icon icon="solar:upload-linear" width="20" style="color:rgb(139 92 246);stroke-width:1.5"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-medium text-neutral-300">Send</span>
+                </button>
+                <button onclick="state.currentPage='receive';render();" class="bg-neutral-900/50 border border-neutral-800 hover:border-neutral-700 rounded-xl p-4 flex flex-col items-center gap-2 transition-all">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                        <iconify-icon icon="solar:download-linear" width="20" style="color:rgb(52 211 153);stroke-width:1.5"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-medium text-neutral-300">Receive</span>
+                </button>
+                <button onclick="refreshBalances();" class="bg-neutral-900/50 border border-neutral-800 hover:border-neutral-700 rounded-xl p-4 flex flex-col items-center gap-2 transition-all">
+                    <div class="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                        <iconify-icon icon="solar:refresh-linear" width="20" style="color:rgb(96 165 250);stroke-width:1.5"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-medium text-neutral-300">Refresh</span>
+                </button>
+            </div>
+
+            <div class="mb-6">
+                <h3 class="text-sm font-medium text-white mb-3">Assets</h3>
+                <div class="grid gap-3">
+                    <div class="bg-neutral-900/50 border border-neutral-800 rounded-xl p-4 hover:border-neutral-700 transition-all">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                ${coinIcon('ETH')}
+                                <div>
+                                    <p class="text-sm font-medium text-white">Ethereum</p>
+                                    <p class="text-xs text-neutral-500">ETH · $${state.ethPrice.toLocaleString()}</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-sm font-medium text-white">${parseFloat(state.ethBalance).toFixed(6)} ETH</p>
+                                <p class="text-xs text-neutral-500">$${(parseFloat(state.ethBalance) * state.ethPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            </div>
+                        </div>
+                        ${state.ethAddress ? `<div class="mt-3 pt-3 border-t border-neutral-800/50 flex items-center justify-between">
+                            <code class="text-xs text-neutral-500">${truncAddr(state.ethAddress)}</code>
+                            <div class="flex items-center gap-2">
+                                <button onclick="navigator.clipboard.writeText('${state.ethAddress}');showNotif('ETH address copied!');" class="text-neutral-600 hover:text-white transition-colors"><iconify-icon icon="solar:copy-linear" width="14" style="stroke-width:1.5"></iconify-icon></button>
+                                <a href="${CHAINS.ETH.explorerUrl}/address/${state.ethAddress}" target="_blank" class="text-neutral-600 hover:text-white transition-colors"><iconify-icon icon="solar:square-top-down-linear" width="14" style="stroke-width:1.5"></iconify-icon></a>
+                            </div>
+                        </div>` : `<div class="mt-3 pt-3 border-t border-neutral-800/50"><button onclick="connectEVM();" class="text-xs text-violet-400 hover:text-violet-300 transition-colors">Connect EVM wallet →</button></div>`}
+                    </div>
+
+                    <div class="bg-neutral-900/50 border border-neutral-800 rounded-xl p-4 hover:border-neutral-700 transition-all">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                ${coinIcon('SOL')}
+                                <div>
+                                    <p class="text-sm font-medium text-white">Solana</p>
+                                    <p class="text-xs text-neutral-500">SOL · $${state.solPrice.toLocaleString()}</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-sm font-medium text-white">${parseFloat(state.solBalance).toFixed(6)} SOL</p>
+                                <p class="text-xs text-neutral-500">$${(parseFloat(state.solBalance) * state.solPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            </div>
+                        </div>
+                        ${state.solAddress ? `<div class="mt-3 pt-3 border-t border-neutral-800/50 flex items-center justify-between">
+                            <code class="text-xs text-neutral-500">${truncAddr(state.solAddress)}</code>
+                            <div class="flex items-center gap-2">
+                                <button onclick="navigator.clipboard.writeText('${state.solAddress}');showNotif('SOL address copied!');" class="text-neutral-600 hover:text-white transition-colors"><iconify-icon icon="solar:copy-linear" width="14" style="stroke-width:1.5"></iconify-icon></button>
+                                <a href="${CHAINS.SOL.explorerUrl}/account/${state.solAddress}" target="_blank" class="text-neutral-600 hover:text-white transition-colors"><iconify-icon icon="solar:square-top-down-linear" width="14" style="stroke-width:1.5"></iconify-icon></a>
+                            </div>
+                        </div>` : `<div class="mt-3 pt-3 border-t border-neutral-800/50"><button onclick="connectSolana();" class="text-xs text-violet-400 hover:text-violet-300 transition-colors">Connect Solana wallet →</button></div>`}
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <h3 class="text-sm font-medium text-white mb-3">Recent Activity</h3>
+                <div class="bg-neutral-900/50 border border-neutral-800 rounded-2xl overflow-hidden">
+                    ${state.transactions.length === 0 ? `
+                    <div class="flex flex-col items-center py-12 text-neutral-600">
+                        <iconify-icon icon="solar:history-linear" width="28" style="stroke-width:1.5"></iconify-icon>
+                        <p class="text-sm mt-2">No transactions yet</p>
+                    </div>` : state.transactions.slice(0, 15).map(tx => {
+                        const pos = tx.amount >= 0;
+                        const icon = tx.type === 'connect' ? 'solar:plug-circle-linear' : tx.type === 'send' ? 'solar:upload-linear' : 'solar:download-linear';
+                        const ic = tx.type === 'connect' ? 'rgb(139 92 246)' : pos ? 'rgb(52 211 153)' : 'rgb(248 113 113)';
+                        return `<div class="flex items-center justify-between px-4 py-3 border-b border-neutral-800/50 last:border-0">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-lg bg-neutral-800/50 flex items-center justify-center">
+                                    <iconify-icon icon="${icon}" width="16" style="color:${ic};stroke-width:1.5"></iconify-icon>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-white capitalize">${tx.type}</p>
+                                    <p class="text-xs text-neutral-500">${tx.date}${tx.hash ? ` · ${truncAddr(tx.hash)}` : ''}</p>
+                                </div>
+                            </div>
+                            <div class="text-right flex items-center gap-2">
+                                ${tx.amount !== 0 ? `<span class="text-sm font-medium ${pos ? 'text-emerald-400' : 'text-red-400'}">${pos ? '+' : ''}${tx.amount.toFixed(6)} ${tx.chain}</span>` : `<span class="text-xs text-neutral-500">${tx.chain}</span>`}
+                                ${tx.hash ? `<a href="${explorerLink(tx.chain, tx.hash)}" target="_blank" class="text-neutral-600 hover:text-white transition-colors"><iconify-icon icon="solar:square-top-down-linear" width="12" style="stroke-width:1.5"></iconify-icon></a>` : ''}
+                            </div>
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>
+        </div>`;
+        return;
+    }
+
+    // ========================
+    // SEND
+    // ========================
+    if (state.currentPage === 'send') {
+        const sc = state.sendChain;
+        const bal = sc === 'ETH' ? state.ethBalance : state.solBalance;
+        const addr = sc === 'ETH' ? state.ethAddress : state.solAddress;
+        const connected = !!addr;
+
+        app.innerHTML = `${notifHtml}${loadingOverlay}${navHtml}
+        <div class="max-w-md mx-auto px-4 sm:px-6 py-8 pb-24 sm:pb-8">
+            <h2 class="text-xl font-semibold tracking-tight text-white mb-6">Send Crypto</h2>
+            <div class="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-neutral-400 mb-1.5">Network</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        ${['ETH', 'SOL'].map(sym => {
+                            const c = CHAINS[sym];
+                            const sel = state.sendChain === sym;
+                            const conn = sym === 'ETH' ? !!state.ethAddress : !!state.solAddress;
+                            return `<button onclick="state.sendChain='${sym}';render();" class="flex items-center gap-3 p-3 rounded-xl border transition-all ${sel ? 'border-violet-500/50 bg-violet-500/5' : 'border-neutral-700/30 bg-neutral-800/30 hover:border-neutral-600'} ${!conn ? 'opacity-50' : ''}">
+                                ${coinIcon(sym)}
+                                <div class="text-left">
+                                    <p class="text-sm font-medium ${sel ? 'text-white' : 'text-neutral-400'}">${c.name}</p>
+                                    <p class="text-xs text-neutral-500">${conn ? truncAddr(sym === 'ETH' ? state.ethAddress : state.solAddress) : 'Not connected'}</p>
+                                </div>
+                            </button>`;
+                        }).join('')}
+                    </div>
+                </div>
+
+                ${connected ? `
+                <div>
+                    <label class="block text-xs font-medium text-neutral-400 mb-1.5">Recipient Address</label>
+                    <input id="send-addr" type="text" placeholder="${sc === 'ETH' ? '0x...' : 'Solana address...'}" class="w-full bg-neutral-800/50 border border-neutral-700/50 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-violet-500/40 transition-all">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-400 mb-1.5">Amount (${sc})</label>
+                    <input id="send-amt" type="number" step="0.000001" placeholder="0.00" class="w-full bg-neutral-800/50 border border-neutral-700/50 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-violet-500/40 transition-all">
+                    <div class="flex items-center justify-between mt-1.5">
+                        <p class="text-xs text-neutral-500">Available: ${parseFloat(bal).toFixed(6)} ${sc}</p>
+                        <button onclick="document.getElementById('send-amt').value='${parseFloat(bal).toFixed(6)}';" class="text-xs text-violet-400 hover:text-violet-300">Max</button>
+                    </div>
+                </div>
+                <div class="bg-neutral-800/30 rounded-xl p-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-neutral-500">Network Fee</span>
+                        <span class="text-xs text-neutral-400">${sc === 'ETH' ? 'Estimated by wallet' : '~0.000005 SOL'}</span>
+                    </div>
+                    <div class="flex items-center justify-between mt-1">
+                        <span class="text-xs text-neutral-500">USD Value</span>
+                        <span class="text-xs text-neutral-400" id="usd-estimate">$0.00</span>
+                    </div>
+                </div>
+                <button ${state.sending ? 'disabled' : ''} onclick="
+                    const addr=document.getElementById('send-addr').value;
+                    const amt=document.getElementById('send-amt').value;
+                    if('${sc}'==='ETH') sendETH(addr,amt);
+                    else sendSOL(addr,amt);
+                " class="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-medium text-sm py-3 rounded-xl transition-all shadow-lg shadow-violet-500/20 disabled:opacity-50 flex items-center justify-center gap-2">
+                    ${state.sending ? '<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Confirming...' : `Send ${sc}`}
+                </button>
+                ` : `
+                <div class="flex flex-col items-center py-8 text-neutral-500">
+                    <iconify-icon icon="solar:plug-circle-linear" width="32" style="stroke-width:1.5"></iconify-icon>
+                    <p class="text-sm mt-3">No ${CHAINS[sc].name} wallet connected</p>
+                    <button onclick="${sc === 'ETH' ? 'connectEVM()' : 'connectSolana()'};" class="mt-3 text-sm text-violet-400 hover:text-violet-300 transition-colors">Connect ${CHAINS[sc].name} Wallet →</button>
+                </div>`}
+            </div>
+        </div>`;
+
+        const amtInput = document.getElementById('send-amt');
+        const usdEst = document.getElementById('usd-estimate');
+        if (amtInput && usdEst) {
+            amtInput.addEventListener('input', () => {
+                const v = parseFloat(amtInput.value) || 0;
+                const price = sc === 'ETH' ? state.ethPrice : state.solPrice;
+                usdEst.textContent = '$' + (v * price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            });
+        }
+        return;
+    }
+
+    // ========================
+    // RECEIVE
+    // ========================
+    if (state.currentPage === 'receive') {
+        const sc = state.selectedChain;
+        const c = CHAINS[sc];
+        const addr = sc === 'ETH' ? state.ethAddress : state.solAddress;
+        const bal = sc === 'ETH' ? state.ethBalance : state.solBalance;
+        const price = sc === 'ETH' ? state.ethPrice : state.solPrice;
+
+        app.innerHTML = `${notifHtml}${loadingOverlay}${navHtml}
+        <div class="max-w-md mx-auto px-4 sm:px-6 py-8 pb-24 sm:pb-8">
+            <h2 class="text-xl font-semibold tracking-tight text-white mb-6">Receive Crypto</h2>
+
+            <div class="flex gap-3 mb-4">
+                ${['ETH', 'SOL'].map(sym => {
+                    const cc = CHAINS[sym];
+                    const sel = state.selectedChain === sym;
+                    return `<button onclick="state.selectedChain='${sym}';render();" class="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border text-sm transition-all ${sel ? 'border-violet-500/50 bg-violet-500/5 text-white' : 'border-neutral-800 bg-neutral-900/50 text-neutral-400 hover:border-neutral-700'}">
+                        ${coinIcon(sym)}
+                        <span class="font-medium">${cc.name}</span>
+                    </button>`;
+                }).join('')}
+            </div>
+
+            <div class="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-6">
+                ${addr ? `
+                <div class="flex items-center justify-center mb-6">
+                    <div class="w-48 h-48 rounded-2xl flex items-center justify-center bg-white p-3">
+                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(addr)}&bgcolor=ffffff&color=000000&margin=0" alt="QR Code" class="w-full h-full rounded-lg" onerror="this.parentElement.innerHTML='<div class=\\'text-center\\'><iconify-icon icon=\\'solar:qr-code-linear\\' width=\\'56\\' style=\\'color:black;stroke-width:1.5\\'></iconify-icon></div>'">
+                    </div>
+                </div>
+
+                <div class="text-center mb-5">
+                    <p class="text-xs text-neutral-500 mb-1">${c.name} Balance</p>
+                    <p class="text-xl font-semibold text-white">${parseFloat(bal).toFixed(6)} <span class="text-sm text-neutral-400">${sc}</span></p>
+                    <p class="text-xs text-neutral-500">≈ $${(parseFloat(bal) * price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-neutral-400 mb-1.5">${c.name} Address</label>
+                    <div class="flex items-center gap-2 bg-neutral-800/50 rounded-xl px-3 py-2.5 border border-neutral-700/50">
+                        <code class="text-xs text-neutral-300 truncate flex-1 break-all">${addr}</code>
+                        <button onclick="navigator.clipboard.writeText('${addr}');showNotif('${c.symbol} address copied!');" class="text-neutral-500 hover:text-white transition-colors flex-shrink-0">
+                            <iconify-icon icon="solar:copy-linear" width="14" style="stroke-width:1.5"></iconify-icon>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex gap-2 mt-4">
+                    <button onclick="navigator.clipboard.writeText('${addr}');showNotif('Address copied!');" class="flex-1 bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700/30 text-neutral-300 text-sm py-2.5 rounded-xl transition-all flex items-center justify-center gap-2">
+                        <iconify-icon icon="solar:copy-linear" width="16" style="stroke-width:1.5"></iconify-icon>Copy
+                    </button>
+                    <a href="${c.explorerUrl}/${sc === 'ETH' ? 'address' : 'account'}/${addr}" target="_blank" class="flex-1 bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700/30 text-neutral-300 text-sm py-2.5 rounded-xl transition-all flex items-center justify-center gap-2">
+                        <iconify-icon icon="solar:square-top-down-linear" width="16" style="stroke-width:1.5"></iconify-icon>Explorer
+                    </a>
+                </div>
+                ` : `
+                <div class="flex flex-col items-center py-10 text-neutral-500">
+                    <iconify-icon icon="solar:plug-circle-linear" width="32" style="stroke-width:1.5"></iconify-icon>
+                    <p class="text-sm mt-3 mb-3">No ${c.name} wallet connected</p>
+                    <button onclick="${sc === 'ETH' ? 'connectEVM()' : 'connectSolana()'};" class="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-medium text-sm py-2.5 px-6 rounded-xl transition-all shadow-lg shadow-violet-500/20">Connect ${c.name} Wallet</button>
+                </div>`}
+            </div>
+        </div>`;
+        return;
+    }
+}
+
+fetchPrices();
+setInterval(fetchPrices, 60000);
+render();
+
+window.addEventListener('dynamic-ready', () => {
+    state.dynamicReady = true;
+    render();
+});
+</script>
+
+<style>
+@keyframes slideIn { from { opacity: 0; transform: translateY(-8px) } to { opacity: 1; transform: translateY(0) } }
+input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0 }
+input[type="number"] { -moz-appearance: textfield }
+::-webkit-scrollbar { width: 4px } ::-webkit-scrollbar-track { background: transparent } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px }
+</style>
+
+</body>
+</html>

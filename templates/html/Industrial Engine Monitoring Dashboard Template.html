@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+try{if(window.parent&&window.parent!==window){window.parent.promotekit_referral="1fd2949a-d22c-431b-92bf-02d4ad04ee24";window.parent.document.cookie="promotekit_referral=1fd2949a-d22c-431b-92bf-02d4ad04ee24;path=/;domain=.aura.build;max-age=31536000"}}catch(e){}
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECS Monitor | Production Build</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/3/3.1.0/iconify.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+--color-bg: #000000;
+--color-surface: #050505;
+--color-border: #141414; /* Darker, subtler border */
+--color-cyan: #00D4FF;
+--color-red: #FF3B3B;
+--color-amber: #FFB800;
+--color-coral: #FF6B6B;
+--color-text-muted: #525252;
+--color-text-dim: #3A3A3A;
+}
+body {
+font-family: 'Inter', sans-serif;
+background-color: var(--color-bg);
+color: #A0A0A0;
+overflow: hidden;
+}
+.font-mono {
+font-family: 'JetBrains Mono', monospace;
+}
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+width: 4px;
+height: 4px;
+}
+::-webkit-scrollbar-track {
+background: #020202;
+}
+::-webkit-scrollbar-thumb {
+background: #262626;
+border-radius: 0px;
+}
+::-webkit-scrollbar-thumb:hover {
+background: #404040;
+}
+/* Subtle Glows - Reduced opacity for production look */
+.chart-glow {
+filter: drop-shadow(0 0 1px rgba(0, 212, 255, 0.4));
+}
+.text-glow {
+text-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+}
+/* Animations */
+@keyframes pulse-subtle {
+0%, 100% { opacity: 1; }
+50% { opacity: 0.6; }
+}
+.animate-pulse-subtle {
+animation: pulse-subtle 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+/* Utilities */
+.text-[8px] { font-size: 8px; line-height: 10px; }
+.border-subtle { border-color: var(--color-border); }
+/* High Density Sparkline Fills */
+.spark-gradient-cyan {
+fill: url(#gradCyan);
+}
+.spark-gradient-amber {
+fill: url(#gradAmber);
+}
+.spark-gradient-coral {
+fill: url(#gradCoral);
+}
+</style></head>
+<body class="flex flex-col h-screen antialiased selection:bg-[#00D4FF]/20 selection:text-white">
+
+    <!-- 1. Header Bar -->
+    <header class="h-9 flex items-center justify-between px-3 border-b border-subtle bg-[#050505] shrink-0 z-50 select-none">
+        <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+                <span class="iconify text-[#00D4FF]" data-icon="lucide:anchor" data-width="14"></span>
+                <span class="text-[11px] font-semibold tracking-tight text-white uppercase opacity-90">HMNZS Aotearoa <span class="text-[#333] font-light mx-1">/</span> ECS</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 px-1.5 py-0.5 rounded bg-[#0A0A0A] border border-[#141414]">
+                <div class="w-1 h-1 rounded-full bg-green-500 animate-pulse-subtle"></div>
+                <span class="text-[9px] font-mono text-green-500 tracking-wide uppercase">Online</span>
+            </div>
+            <span class="text-[9px] font-mono text-[#525252]">4ms</span>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <div class="flex gap-1.5">
+                <div class="w-1.5 h-1.5 rounded-full bg-[#262626] hover:bg-yellow-500/50 transition-colors"></div>
+                <div class="w-1.5 h-1.5 rounded-full bg-[#262626] hover:bg-green-500/50 transition-colors"></div>
+                <div class="w-1.5 h-1.5 rounded-full bg-[#262626] hover:bg-red-500/50 transition-colors"></div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 2. Menu Bar -->
+    <div class="h-6 bg-[#020202] border-b border-subtle flex items-center px-2 shrink-0 select-none z-40">
+        <div class="flex items-center gap-0.5">
+            <button class="px-2 py-0.5 text-[10px] text-[#525252] hover:text-white hover:bg-[#111] rounded-[1px] transition-colors">File</button>
+            <button class="px-2 py-0.5 text-[10px] text-[#525252] hover:text-white hover:bg-[#111] rounded-[1px] transition-colors">Edit</button>
+            <button class="px-2 py-0.5 text-[10px] text-[#525252] hover:text-white hover:bg-[#111] rounded-[1px] transition-colors">View</button>
+            <button class="px-2 py-0.5 text-[10px] text-[#525252] hover:text-white hover:bg-[#111] rounded-[1px] transition-colors">Analysis</button>
+        </div>
+    </div>
+
+    <!-- 7. NEW: Breadcrumb Strip -->
+    <div class="h-5 bg-[#020202] border-b border-subtle flex items-center px-3 shrink-0 select-none">
+        <div class="flex items-center gap-1.5 text-[9px] font-medium tracking-tight">
+            <span class="text-[#525252]">HMNZS Aotearoa</span>
+            <span class="text-[#333]">></span>
+            <span class="text-[#525252]">Engine Room Main</span>
+            <span class="text-[#333]">></span>
+            <span class="text-[#525252]">Main Turbine A</span>
+            <span class="text-[#333]">></span>
+            <span class="text-[#A0A0A0]">Vibration X-4</span>
+        </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 flex overflow-hidden bg-black">
+        
+        <!-- LEFT PANEL: Navigator -->
+        <aside class="w-[240px] bg-[#020202] border-r border-subtle flex flex-col h-full relative z-10">
+            <!-- Search -->
+            <div class="p-1.5 border-b border-subtle">
+                <div class="relative group">
+                    <span class="absolute left-2 top-1.5 text-[#333] group-focus-within:text-[#00D4FF] transition-colors">
+                        <span class="iconify" data-icon="lucide:search" data-width="10"></span>
+                    </span>
+                    <input type="text" placeholder="Search node..." 
+                        class="w-full bg-[#080808] border border-[#141414] rounded-[2px] pl-6 pr-2 py-1 text-[9px] text-white focus:outline-none focus:border-[#00D4FF]/50 focus:ring-0 placeholder-[#333] font-mono transition-colors">
+                </div>
+            </div>
+
+            <!-- Tree View -->
+            <div class="flex-1 overflow-y-auto p-1 space-y-px">
+                <div class="tree-item relative">
+                    <div class="flex items-center gap-2 p-1 hover:bg-[#0A0A0A] rounded-[2px] cursor-pointer text-[#737373] transition-colors">
+                        <span class="iconify text-[#333]" data-icon="lucide:chevron-down" data-width="10"></span>
+                        <span class="iconify text-[#444]" data-icon="lucide:ship" data-width="10"></span>
+                        <span class="text-[10px] font-medium tracking-tight">HMNZS Aotearoa</span>
+                    </div>
+                    
+                    <div class="ml-1.5 pl-2 border-l border-[#141414] relative">
+                        <div class="tree-item relative">
+                            <div class="flex items-center gap-2 p-1 hover:bg-[#0A0A0A] rounded-[2px] cursor-pointer text-[#737373] mt-px">
+                                <span class="iconify text-[#333]" data-icon="lucide:chevron-down" data-width="10"></span>
+                                <span class="iconify text-[#444]" data-icon="lucide:server" data-width="10"></span>
+                                <span class="text-[10px]">Engine Room Main</span>
+                            </div>
+
+                            <div class="ml-1.5 pl-2 border-l border-[#141414] mt-px space-y-px">
+                                <div class="flex items-center gap-2 p-1 hover:bg-[#0A0A0A] rounded-[2px] cursor-pointer text-[#737373]">
+                                    <span class="iconify opacity-0" data-icon="lucide:chevron-right" data-width="10"></span>
+                                    <span class="iconify text-[#444]" data-icon="lucide:cpu" data-width="10"></span>
+                                    <span class="text-[10px]">Main Turbine A</span>
+                                </div>
+                                
+                                <!-- Selected Item -->
+                                <div class="flex items-center justify-between p-1 bg-[#00D4FF]/5 border-l border-[#00D4FF] cursor-pointer text-[#00D4FF]">
+                                    <div class="flex items-center gap-2">
+                                        <span class="iconify opacity-0" data-icon="lucide:chevron-right" data-width="10"></span>
+                                        <span class="iconify" data-icon="lucide:activity" data-width="10"></span>
+                                        <span class="text-[10px] font-medium">Vibration X-4</span>
+                                    </div>
+                                    <div class="w-1 h-1 bg-[#00D4FF] rounded-full shadow-[0_0_4px_rgba(0,212,255,0.6)]"></div>
+                                </div>
+                                <div class="flex items-center gap-2 p-1 hover:bg-[#0A0A0A] rounded-[2px] cursor-pointer text-[#525252]">
+                                    <span class="iconify opacity-0" data-icon="lucide:chevron-right" data-width="10"></span>
+                                    <span class="iconify text-[#333]" data-icon="lucide:activity" data-width="10"></span>
+                                    <span class="text-[10px]">Vibration X-3 (Ref)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5. Cylinder Selection Widget (Polished) -->
+            <div class="p-3 border-t border-subtle bg-[#020202]">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-1.5">
+                        <span class="iconify text-[#333]" data-icon="lucide:grid" data-width="10"></span>
+                        <span class="text-[9px] font-semibold text-[#525252] tracking-wider uppercase">Cylinders</span>
+                    </div>
+                    <span class="iconify text-[#333] hover:text-white cursor-pointer" data-icon="lucide:more-horizontal" data-width="10"></span>
+                </div>
+                
+                <div class="grid grid-cols-3 gap-1 mb-2">
+                    <!-- Cylinders -->
+                    <button class="relative h-9 bg-[#080808] border border-[#141414] hover:border-[#333] rounded-[2px] flex items-center justify-center group shadow-inner transition-colors">
+                        <span class="text-[9px] font-mono text-[#525252] group-hover:text-white">C1</span>
+                        <div class="absolute top-1 right-1 w-0.5 h-0.5 rounded-full bg-green-500/80"></div>
+                    </button>
+                    <button class="relative h-9 bg-[#080808] border border-[#141414] hover:border-[#333] rounded-[2px] flex items-center justify-center group shadow-inner transition-colors">
+                        <span class="text-[9px] font-mono text-[#525252] group-hover:text-white">C2</span>
+                        <div class="absolute top-1 right-1 w-0.5 h-0.5 rounded-full bg-green-500/80"></div>
+                    </button>
+                    <button class="relative h-9 bg-[#080808] border border-[#141414] hover:border-[#333] rounded-[2px] flex items-center justify-center group shadow-inner transition-colors">
+                        <span class="text-[9px] font-mono text-[#525252] group-hover:text-white">C3</span>
+                        <div class="absolute top-1 right-1 w-0.5 h-0.5 rounded-full bg-[#FFB800]"></div>
+                    </button>
+                    <!-- Active Cylinder -->
+                    <button class="relative h-9 bg-[#00D4FF]/5 border border-[#00D4FF] rounded-[2px] flex items-center justify-center shadow-[0_0_8px_rgba(0,212,255,0.05)]">
+                        <span class="text-[9px] font-mono text-[#00D4FF] font-semibold">C4</span>
+                        <div class="absolute top-1 right-1 w-0.5 h-0.5 rounded-full bg-[#FF3B3B] animate-pulse"></div>
+                    </button>
+                    <button class="relative h-9 bg-[#080808] border border-[#141414] hover:border-[#333] rounded-[2px] flex items-center justify-center group shadow-inner transition-colors">
+                        <span class="text-[9px] font-mono text-[#525252] group-hover:text-white">C5</span>
+                        <div class="absolute top-1 right-1 w-0.5 h-0.5 rounded-full bg-green-500/80"></div>
+                    </button>
+                    <button class="relative h-9 bg-[#080808] border border-[#141414] hover:border-[#333] rounded-[2px] flex items-center justify-center group shadow-inner transition-colors">
+                        <span class="text-[9px] font-mono text-[#525252] group-hover:text-white">C6</span>
+                        <div class="absolute top-1 right-1 w-0.5 h-0.5 rounded-full bg-green-500/80"></div>
+                    </button>
+                </div>
+
+                <button class="w-full py-1 text-[9px] border border-[#141414] bg-[#080808] hover:bg-[#111] hover:text-white text-[#525252] rounded-[2px] transition-colors uppercase tracking-wide">
+                    Overview
+                </button>
+            </div>
+        </aside>
+
+        <!-- CENTER PANEL -->
+        <section class="flex-1 bg-black flex flex-col relative min-w-[600px]">
+            <!-- Chart Header -->
+            <div class="h-9 border-b border-subtle flex items-center justify-between px-3 bg-[#020202]">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-[11px] font-semibold text-[#E5E5E5] tracking-tight">VIB_X4_AXIAL_LOAD</h2>
+                    <span class="px-1 py-px rounded-[1px] bg-green-500/5 text-[8px] font-mono text-green-500 border border-green-500/20">LIVE</span>
+                </div>
+                
+                <div class="flex items-center gap-4">
+                    <!-- 9. Data Quality Indicator -->
+                    <div class="flex items-center gap-1.5" title="Signal Integrity">
+                        <div class="w-1 h-1 rounded-full bg-green-500"></div>
+                        <span class="text-[8px] font-mono text-[#525252]">Quality: 99.2%</span>
+                    </div>
+
+                    <div class="w-px h-3 bg-[#141414]"></div>
+
+                    <div class="flex items-center bg-[#080808] rounded-[2px] border border-[#141414] p-px">
+                        <button class="px-2 py-px text-[9px] font-medium text-[#525252] hover:text-white hover:bg-[#111] rounded-[1px] transition-colors">1H</button>
+                        <button class="px-2 py-px text-[9px] font-medium text-[#0A0A0A] bg-[#00D4FF] shadow-[0_0_8px_rgba(0,212,255,0.2)] rounded-[1px]">4H</button>
+                        <button class="px-2 py-px text-[9px] font-medium text-[#525252] hover:text-white hover:bg-[#111] rounded-[1px] transition-colors">12H</button>
+                        <button class="px-2 py-px text-[9px] font-medium text-[#525252] hover:text-white hover:bg-[#111] rounded-[1px] transition-colors">24H</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Toolbar -->
+            <div class="h-7 border-b border-subtle bg-[#020202] flex items-center justify-between px-3">
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[9px] text-[#525252]">Compare:</span>
+                        <button class="flex items-center gap-1.5 pl-2 pr-1 py-px bg-[#080808] border border-[#141414] rounded-[2px] text-[9px] text-[#A0A0A0] hover:border-[#333] hover:text-white transition-colors group">
+                            Select sensor...
+                            <span class="iconify text-[#333] group-hover:text-white" data-icon="lucide:chevron-down" data-width="10"></span>
+                        </button>
+                        <button class="w-4 h-4 flex items-center justify-center border border-dashed border-[#262626] text-[#525252] hover:text-white hover:border-[#444] rounded-[2px] transition-all" title="Add Comparison [K]">
+                            <span class="iconify" data-icon="lucide:plus" data-width="10"></span>
+                        </button>
+                        <span class="text-[8px] text-[#333] font-mono ml-0.5">[K]</span>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <div class="flex bg-[#080808] border border-[#141414] rounded-[2px] p-px">
+                        <button class="px-2 py-px rounded-[1px] bg-[#141414] text-[8px] text-white">Overlay</button>
+                        <button class="px-2 py-px rounded-[1px] text-[8px] text-[#525252] hover:text-white">Stack</button>
+                    </div>
+                    <div class="w-px h-3 bg-[#141414]"></div>
+                    <div class="flex items-center gap-2 font-mono text-[9px] text-[#525252]">
+                        <span>X: 14:32:05</span>
+                        <span class="text-[#141414]">|</span>
+                        <span>Y: <span class="text-[#00D4FF]">128.4</span> Hz</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. Advanced Main Chart Area (Realistic Waveform & Layout) -->
+            <div class="flex-1 relative bg-black overflow-hidden select-none flex">
+                
+                <!-- 1. Y-Axis Labels (Outside Chart) -->
+                <div class="w-8 border-r border-subtle bg-[#020202] flex flex-col justify-between py-2 text-right pr-1 font-mono select-none z-10">
+                    <div class="text-[8px] text-[#525252] font-semibold">Hz</div>
+                    <div class="text-[8px] text-[#3A3A3A]">200</div>
+                    <div class="text-[8px] text-[#3A3A3A]">150</div>
+                    <div class="text-[8px] text-[#3A3A3A]">100</div>
+                    <div class="text-[8px] text-[#3A3A3A]">50</div>
+                    <div class="text-[8px] text-[#3A3A3A]">0</div>
+                </div>
+
+                <!-- Chart Container -->
+                <div class="flex-1 relative cursor-crosshair group">
+                    <!-- Background Grid -->
+                    <div class="absolute inset-0 z-0 opacity-20 pointer-events-none" 
+                        style="background-image: linear-gradient(#141414 1px, transparent 1px), linear-gradient(90deg, #141414 1px, transparent 1px); background-size: 40px 40px;">
+                    </div>
+
+                    <!-- 10. Floating Legend -->
+                    <div class="absolute top-2 left-2 z-10 p-1.5 rounded-[2px] bg-[#0A0A0A]/60 backdrop-blur-sm border border-[#141414] flex flex-col gap-0.5">
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-2 h-px bg-[#00D4FF]"></div>
+                            <span class="text-[8px] font-mono text-[#A0A0A0]">Primary (X-4)</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-2 h-px bg-[#FF6B6B]"></div>
+                            <span class="text-[8px] font-mono text-[#525252]">Ref (X-3)</span>
+                        </div>
+                    </div>
+
+                    <!-- SVG Chart -->
+                    <svg class="w-full h-full relative z-0" preserveAspectRatio="none" viewBox="0 0 800 300">
+                        <defs>
+                            <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#00D4FF" stop-opacity="0.1"/>
+                                <stop offset="100%" stop-color="#00D4FF" stop-opacity="0"/>
+                            </linearGradient>
+                            <clipPath id="chartClip">
+                                <rect x="0" y="0" width="800" height="300" />
+                            </clipPath>
+                        </defs>
+
+                        <!-- Limit Line -->
+                        <line x1="0" y1="40" x2="800" y2="40" stroke="#FFB800" stroke-width="1" stroke-dasharray="4 4" opacity="0.3"/>
+                        
+                        <!-- 2. Realistic Reference Waveform (Coral - Low Opacity) -->
+                        <path d="M0,150 L5,148 L10,152 L15,145 L20,155 L25,150 L30,148 L35,152 L40,140 L45,160 L50,150 L55,145 L60,155 L65,148 L70,152 L75,150 L80,148 L85,152 L90,145 L95,155 L100,150 L105,140 L110,160 L115,150 L120,145 L125,155 L130,148 L135,152 L140,150 L145,148 L150,152 L155,145 L160,155 L165,150 L170,140 L175,160 L180,150 L185,145 L190,155 L195,148 L200,152 L205,150 L210,148 L215,152 L220,145 L225,155 L230,150 L235,140 L240,160 L245,150 L250,145 L255,155 L260,148 L265,152 L270,150 L275,148 L280,152 L285,145 L290,155 L295,150 L300,140 L305,160 L310,150 L315,145 L320,155 L325,148 L330,152 L335,150 L340,148 L345,152 L350,145 L355,155 L360,150 L365,140 L370,160 L375,150 L380,145 L385,155 L390,148 L395,152 L400,150 L405,148 L410,152 L415,145 L420,155 L425,150 L430,140 L435,160 L440,150 L445,145 L450,155 L455,148 L460,152 L465,150 L470,148 L475,152 L480,145 L485,155 L490,150 L495,140 L500,160 L505,150 L510,145 L515,155 L520,148 L525,152 L530,150 L535,148 L540,152 L545,145 L550,155 L555,150 L560,140 L565,160 L570,150 L575,145 L580,155 L585,148 L590,152 L595,150 L600,148 L605,152 L610,145 L615,155 L620,150 L625,140 L630,160 L635,150 L640,145 L645,155 L650,148 L655,152 L660,150 L665,148 L670,152 L675,145 L680,155 L685,150 L690,140 L695,160 L700,150 L705,145 L710,155 L715,148 L720,152 L725,150 L730,148 L735,152 L740,145 L745,155 L750,150 L755,140 L760,160 L765,150 L770,145 L775,155 L780,148 L785,152 L790,150 L795,148 L800,152" 
+                              fill="none" stroke="#FF6B6B" stroke-width="1" opacity="0.3" vector-effect="non-scaling-stroke" />
+
+                        <!-- 2. Realistic Primary Waveform (Cyan - Dense - Variable) -->
+                        <path d="M0,130 L4,125 L8,135 L12,120 L16,140 L20,115 L24,145 L28,128 L32,132 L36,110 L40,150 L44,125 L48,118 L52,142 L56,122 L60,138 L64,126 L68,134 L72,112 L76,148 L80,128 L84,124 L88,136 L92,120 L96,140 L100,115 L104,145 L108,128 L112,132 L116,110 L120,150 L124,125 L128,118 L132,142 L136,122 L140,138 L144,126 L148,134 L152,112 L156,148 L160,128 L164,124 L168,136 L172,120 L176,140 L180,115 L184,145 L188,128 L192,132 L196,110 L200,150 L204,125 L208,118 L212,142 L216,122 L220,138 L224,126 L228,134 L232,112 L236,148 L240,128 L244,124 L248,136 L252,120 L256,140 L260,115 L264,145 L268,128 L272,132 L276,110 L280,150 L284,125 L288,118 L292,142 L296,122 L300,138 L304,126 L308,134 L312,112 L316,148 L320,128 L324,124 L328,136 L332,120 L336,140 L340,115 L344,145 L348,128 L352,132 L356,110 L360,150 L364,125 L368,118 L372,142 L376,122 L380,138 L384,126 L388,134 L392,112 L396,148 L400,128 L404,124 L408,136 L412,120 L416,140 L420,115 L424,145 L428,128 L432,132 L436,110 L440,150 L444,125 L448,118 L452,142 L456,122 L460,138 L464,126 L468,134 L472,112 L476,148 L480,128 L484,124 L488,136 L492,120 L496,140 L500,115 L504,145 L508,128 L512,132 L516,110 L520,150 L524,125 L528,118 L532,142 L536,122 L540,138 L544,126 L548,134 L552,112 L556,148 L560,128 L564,124 L568,136 L572,120 L576,140 L580,115 L584,145 L588,128 L592,132 L596,110 L600,150 L604,125 L608,118 L612,142 L616,122 L620,138 L624,126 L628,134 L632,112 L636,148 L640,128 L644,124 L648,136 L652,120 L656,140 L660,115 L664,145 L668,128 L672,132 L676,110 L680,150 L684,125 L688,118 L692,142 L696,122 L700,138 L704,126 L708,134 L712,112 L716,148 L720,128 L724,124 L728,136 L732,120 L736,140 L740,115 L744,145 L748,128 L752,132 L756,110 L760,150 L764,125 L768,118 L772,142 L776,122 L780,138 L784,126 L788,134 L792,112 L796,148 L800,128" 
+                              fill="url(#chartGradient)" stroke="#00D4FF" stroke-width="1" class="chart-glow" vector-effect="non-scaling-stroke"/>
+                        
+                        <!-- 12. Peak/Valley Markers -->
+                        <path d="M40,140 L44,146 L36,146 Z" fill="#FFB800" stroke="none" opacity="0.8" /> <!-- Valley -->
+                        <path d="M280,160 L284,166 L276,166 Z" fill="#FFB800" stroke="none" opacity="0.8" transform="translate(0, -20)" /> <!-- Peak (inv) -->
+                        <path d="M520,140 L524,146 L516,146 Z" fill="#00D4FF" stroke="none" transform="rotate(180 520 143)" opacity="0.8" /> <!-- Peak -->
+
+                        <!-- 8. Annotations (Flags) -->
+                        <g transform="translate(200, 100)" class="group cursor-pointer">
+                            <line x1="0" y1="0" x2="0" y2="50" stroke="#FFB800" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>
+                            <path d="M0,0 L10,3 L0,6 Z" fill="#FFB800"/>
+                        </g>
+
+                        <!-- 11. Time Cursor Line -->
+                        <line x1="650" y1="0" x2="650" y2="300" stroke="#333" stroke-width="1" stroke-dasharray="3 3" />
+                        <circle cx="650" cy="135" r="2.5" fill="#00D4FF" class="chart-glow" />
+                    </svg>
+
+                    <!-- 3. Refined Floating Inspector (Opacity reduced, smaller) -->
+                    <div class="absolute top-[80px] left-[660px] bg-[#0A0A0A]/80 backdrop-blur-sm border border-white/5 rounded-[2px] p-2 shadow-xl w-[100px] pointer-events-none z-20">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-[8px] text-[#525252] font-mono">14:32:05</span>
+                            <span class="w-1 h-1 rounded-full bg-[#00D4FF]"></span>
+                        </div>
+                        <div class="text-xs font-mono text-white mb-0.5 tracking-tight">128.4 <span class="text-[8px] text-[#525252]">Hz</span></div>
+                        <div class="flex items-center gap-1 text-[8px] text-green-500">
+                            <span class="iconify" data-icon="lucide:arrow-up-right" data-width="8"></span>
+                            +2.4%
+                        </div>
+                        <div class="mt-1 pt-px border-t border-white/5 text-[8px] text-[#FF6B6B]">
+                            Ref: 122.1
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Y-Axis Buffer -->
+                <div class="w-2 border-l border-subtle bg-[#020202]"></div>
+            </div>
+
+            <!-- 6. Minimap / Overview Bar (Improved Viewport) -->
+            <div class="h-6 w-full bg-[#020202] border-t border-subtle relative overflow-hidden group">
+                <svg class="w-full h-full" preserveAspectRatio="none">
+                    <path d="M0,15 L5,14 L10,16 L15,13 L20,17 L25,14 L30,16 L35,12 L40,18 L45,14 L50,16 L55,13 L60,17 L65,14 L70,16 L75,12 L80,18 L85,14 L90,16 L95,13 L100,17 L105,14 L110,16 L115,12 L120,18 L125,14 L130,16 L135,13 L140,17 L145,14 L150,16 L155,12 L160,18 L165,14 L170,16 L175,13 L180,17 L185,14 L190,16 L195,12 L200,18 L205,14 L210,16 L215,13 L220,17 L225,14 L230,16 L235,12 L240,18 L245,14 L250,16 L255,13 L260,17 L265,14 L270,16 L275,12 L280,18 L285,14 L290,16 L295,13 L300,17 L305,14 L310,16 L315,13 L320,17 L325,14 L330,16 L335,12 L340,18 L345,14 L350,16 L355,13 L360,17 L365,14 L370,16 L375,12 L380,18 L385,14 L390,16 L395,13 L400,17 L405,14 L410,16 L415,12 L420,18 L425,14 L430,16 L435,13 L440,17 L445,14 L450,16 L455,12 L460,18 L465,14 L470,16 L475,13 L480,17 L485,14 L490,16 L495,12 L500,18 L505,14 L510,16 L515,13 L520,17 L525,14 L530,16 L535,13 L540,17 L545,14 L550,16 L555,12 L560,18 L565,14 L570,16 L575,13 L580,17 L585,14 L590,16 L595,12 L600,18 L605,14 L610,16 L615,13 L620,17 L625,14 L630,16 L635,12 L640,18 L645,14 L650,16 L655,13 L660,17 L665,14 L670,16 L675,12 L680,18 L685,14 L690,16 L695,13 L700,17 L705,14 L710,16 L715,13 L720,17 L725,14 L730,16 L735,12 L740,18 L745,14 L750,16 L755,13 L760,17 L765,14 L770,16 L775,12 L780,18 L785,14 L790,16 L795,13 L800,17" 
+                          fill="none" stroke="#262626" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                    
+                    <!-- Viewport Box (More Visible) -->
+                    <g>
+                        <rect x="60%" y="0" width="15%" height="100%" fill="#00D4FF" fill-opacity="0.05" stroke="#00D4FF" stroke-width="1" stroke-opacity="0.5"/>
+                        <!-- Handles -->
+                        <rect x="60%" y="3" width="2" height="18" fill="#00D4FF" opacity="0.5" />
+                        <rect x="75%" y="3" width="2" height="18" fill="#00D4FF" opacity="0.5" transform="translate(-2,0)"/>
+                    </g>
+                </svg>
+                <span class="absolute right-1 bottom-0.5 text-[8px] font-mono text-[#525252] opacity-0 group-hover:opacity-100 transition-opacity">60% - 75%</span>
+            </div>
+
+            <!-- Main Chart Toolbar -->
+            <div class="h-8 border-t border-subtle flex items-center justify-between px-2 bg-[#020202]">
+                <div class="flex items-center gap-1">
+                    <button class="p-1 text-[#525252] hover:text-[#00D4FF] hover:bg-[#00D4FF]/5 rounded-[1px] transition-colors"><span class="iconify" data-icon="lucide:zoom-in" data-width="12"></span></button>
+                    <button class="p-1 text-[#525252] hover:text-[#00D4FF] hover:bg-[#00D4FF]/5 rounded-[1px] transition-colors"><span class="iconify" data-icon="lucide:zoom-out" data-width="12"></span></button>
+                    <button class="p-1 text-[#525252] hover:text-[#00D4FF] hover:bg-[#00D4FF]/5 rounded-[1px] transition-colors"><span class="iconify" data-icon="lucide:move" data-width="12"></span></button>
+                </div>
+                
+                <!-- 1. X-Axis Labels (Time) - Smaller -->
+                <div class="flex-1 flex justify-between px-12 text-[8px] font-mono text-[#3A3A3A]">
+                    <span>10:00</span>
+                    <span>12:00</span>
+                    <span>14:00</span>
+                    <span>16:00</span>
+                    <span>18:00</span>
+                </div>
+
+                <button class="flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-medium text-[#525252] hover:text-white border border-transparent hover:border-[#333] rounded-[1px] transition-all">
+                    <span class="iconify" data-icon="lucide:download" data-width="10"></span> CSV
+                </button>
+            </div>
+            
+            <!-- 4. Enhanced Secondary Charts (High Density Sparklines) -->
+            <div class="h-28 border-t border-subtle grid grid-cols-3 bg-[#020202]">
+                <defs>
+                    <linearGradient id="gradAmber" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FFB800" stop-opacity="0.2"/><stop offset="100%" stop-color="#FFB800" stop-opacity="0"/></linearGradient>
+                    <linearGradient id="gradCyan" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#00FF88" stop-opacity="0.2"/><stop offset="100%" stop-color="#00FF88" stop-opacity="0"/></linearGradient>
+                    <linearGradient id="gradCoral" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FF6B6B" stop-opacity="0.2"/><stop offset="100%" stop-color="#FF6B6B" stop-opacity="0"/></linearGradient>
+                </defs>
+
+                <!-- Chart 1: Temp -->
+                <div class="border-r border-subtle p-2 flex flex-col relative group">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[9px] text-[#737373] font-medium flex items-center gap-1">
+                            <span class="w-1 h-1 rounded-full bg-[#FFB800]"></span> Temperature
+                        </span>
+                        <span class="text-[10px] font-mono text-[#E5E5E5]">42.5°C</span>
+                    </div>
+                    <div class="flex-1 relative">
+                        <svg class="w-full h-full" viewBox="0 0 100 40" preserveAspectRatio="none">
+                            <polygon points="0,40 0,20 5,22 10,18 15,25 20,21 25,23 30,19 35,24 40,20 45,22 50,18 55,25 60,21 65,23 70,19 75,24 80,20 85,22 90,18 95,25 100,21 100,40" class="spark-gradient-amber" stroke="none" />
+                            <polyline points="0,20 5,22 10,18 15,25 20,21 25,23 30,19 35,24 40,20 45,22 50,18 55,25 60,21 65,23 70,19 75,24 80,20 85,22 90,18 95,25 100,21" fill="none" stroke="#FFB800" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                        </svg>
+                    </div>
+                </div>
+                
+                <!-- Chart 2: Pressure -->
+                <div class="border-r border-subtle p-2 flex flex-col relative group">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[9px] text-[#737373] font-medium flex items-center gap-1">
+                            <span class="w-1 h-1 rounded-full bg-[#00FF88]"></span> Pressure
+                        </span>
+                        <span class="text-[10px] font-mono text-[#E5E5E5]">1,024 PSI</span>
+                    </div>
+                    <div class="flex-1 relative">
+                        <svg class="w-full h-full" viewBox="0 0 100 40" preserveAspectRatio="none">
+                            <polygon points="0,40 0,30 5,31 10,29 15,32 20,30 25,31 30,29 35,32 40,30 45,31 50,29 55,32 60,30 65,31 70,29 75,32 80,30 85,31 90,29 95,32 100,30 100,40" class="spark-gradient-cyan" stroke="none" />
+                            <polyline points="0,30 5,31 10,29 15,32 20,30 25,31 30,29 35,32 40,30 45,31 50,29 55,32 60,30 65,31 70,29 75,32 80,30 85,31 90,29 95,32 100,30" fill="none" stroke="#00FF88" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Chart 3: RPM -->
+                <div class="p-2 flex flex-col relative group">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[9px] text-[#737373] font-medium flex items-center gap-1">
+                            <span class="w-1 h-1 rounded-full bg-[#FF6B6B]"></span> RPM
+                        </span>
+                        <span class="text-[10px] font-mono text-[#E5E5E5]">2,400</span>
+                    </div>
+                    <div class="flex-1 relative">
+                        <svg class="w-full h-full" viewBox="0 0 100 40" preserveAspectRatio="none">
+                            <polygon points="0,40 0,10 5,12 10,8 15,15 20,11 25,13 30,9 35,14 40,10 45,12 50,8 55,15 60,11 65,13 70,9 75,14 80,10 85,12 90,8 95,15 100,11 100,40" class="spark-gradient-coral" stroke="none" />
+                            <polyline points="0,10 5,12 10,8 15,15 20,11 25,13 30,9 35,14 40,10 45,12 50,8 55,15 60,11 65,13 70,9 75,14 80,10 85,12 90,8 95,15 100,11" fill="none" stroke="#FF6B6B" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- RIGHT PANEL: Details & Alerts -->
+        <aside class="w-[280px] bg-[#020202] flex flex-col h-full border-l border-subtle z-10">
+            
+            <!-- Sensor Details -->
+            <div class="p-4 border-b border-subtle bg-gradient-to-b from-[#080808] to-transparent">
+                <div class="flex justify-between items-start mb-3">
+                    <div>
+                        <div class="text-[8px] text-[#525252] font-mono uppercase tracking-wider mb-0.5">ID: X4-229</div>
+                        <h1 class="text-[13px] font-bold text-white tracking-tight">Vibration X-4</h1>
+                    </div>
+                    <div class="p-1 rounded-[2px] bg-[#111] border border-[#222]">
+                         <span class="iconify text-[#00D4FF]" data-icon="lucide:activity" data-width="14"></span>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="text-3xl font-mono font-light text-[#00D4FF] text-glow tracking-tighter">128.4<span class="text-sm text-[#525252] ml-1">Hz</span></div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-1 py-2 border-t border-dashed border-[#222]">
+                    <div>
+                        <div class="text-[8px] text-[#525252] uppercase">Min</div>
+                        <div class="text-[10px] font-mono text-[#A0A0A0]">42.1</div>
+                    </div>
+                    <div>
+                        <div class="text-[8px] text-[#525252] uppercase">Max</div>
+                        <div class="text-[10px] font-mono text-[#A0A0A0]">180.2</div>
+                    </div>
+                    <div>
+                        <div class="text-[8px] text-[#525252] uppercase">Avg</div>
+                        <div class="text-[10px] font-mono text-[#A0A0A0]">112.5</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts Section -->
+            <div class="flex-1 flex flex-col overflow-hidden bg-black">
+                <div class="px-3 py-1.5 border-b border-subtle flex items-center justify-between bg-[#020202]">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] font-semibold text-[#D4D4D4] tracking-tight uppercase">Events</span>
+                        <span class="px-1 py-px rounded-full bg-[#141414] text-[8px] font-mono text-[#A0A0A0]">3</span>
+                    </div>
+                    <button class="text-[8px] text-[#525252] hover:text-white transition-colors">CLEAR</button>
+                </div>
+
+                <div class="overflow-y-auto">
+                    <!-- Critical Alert -->
+                    <div class="p-3 border-b border-subtle bg-[#1A0505] hover:bg-[#2A0505] transition-colors cursor-pointer group border-l-[2px] border-l-[#FF3B3B]">
+                        <div class="flex items-start gap-2">
+                            <span class="iconify text-[#FF3B3B] mt-px animate-pulse-subtle" data-icon="lucide:alert-octagon" data-width="12"></span>
+                            <div>
+                                <div class="flex items-center gap-2 mb-0.5">
+                                    <span class="text-[10px] font-bold text-[#FF3B3B] tracking-tight">CRITICAL FAILURE</span>
+                                    <span class="text-[8px] font-mono text-[#525252]">14:30:05</span>
+                                </div>
+                                <p class="text-[9px] text-[#A0A0A0] leading-snug">Hydraulic pressure drop detected in Sector 7 pump assembly.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Warning Alert -->
+                    <div class="p-3 border-b border-subtle bg-[#1A1200] hover:bg-[#261A00] transition-colors cursor-pointer border-l-[2px] border-l-[#FFB800]">
+                        <div class="flex items-start gap-2">
+                            <span class="iconify text-[#FFB800] mt-px" data-icon="lucide:triangle-alert" data-width="12"></span>
+                            <div>
+                                <div class="flex items-center gap-2 mb-0.5">
+                                    <span class="text-[10px] font-medium text-[#FFB800] tracking-tight">WARNING</span>
+                                    <span class="text-[8px] font-mono text-[#525252]">14:15:22</span>
+                                </div>
+                                <p class="text-[9px] text-[#A0A0A0] leading-snug">Temperature threshold approaching max limit.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="p-3 border-t border-subtle bg-[#020202]">
+                <div class="text-[8px] text-[#525252] font-mono uppercase tracking-wider mb-2">Controls</div>
+                <div class="grid grid-cols-2 gap-1.5">
+                    <button class="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-[2px] border border-[#141414] hover:border-[#00D4FF] hover:bg-[#00D4FF]/5 text-[9px] text-[#A0A0A0] hover:text-white transition-all group bg-[#080808]">
+                        <span class="iconify group-hover:text-[#00D4FF]" data-icon="lucide:refresh-cw" data-width="10"></span>
+                        Calibrate
+                    </button>
+                    <button class="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-[2px] border border-[#141414] hover:border-[#00D4FF] hover:bg-[#00D4FF]/5 text-[9px] text-[#A0A0A0] hover:text-white transition-all group bg-[#080808]">
+                        <span class="iconify group-hover:text-[#00D4FF]" data-icon="lucide:file-text" data-width="10"></span>
+                        Report
+                    </button>
+                    <button class="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-[2px] border border-[#141414] hover:border-[#FF3B3B] hover:bg-[#FF3B3B]/10 text-[9px] text-[#A0A0A0] hover:text-white transition-all group col-span-2 bg-[#080808]">
+                        <span class="iconify group-hover:text-[#FF3B3B]" data-icon="lucide:power" data-width="10"></span>
+                        Emergency Stop
+                    </button>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- 8. Status Bar -->
+    <footer class="h-5 bg-[#020202] border-t border-subtle flex items-center justify-between px-3 shrink-0 select-none">
+        <div class="flex items-center gap-3">
+            <div class="flex items-center gap-1.5">
+                <div class="w-1 h-1 rounded-full bg-red-500 animate-pulse"></div>
+                <span class="text-[9px] font-mono text-[#737373]">REC: 4.5M pts</span>
+            </div>
+            <div class="w-px h-2 bg-[#141414]"></div>
+            <span class="text-[9px] font-mono text-[#525252]">Ready</span>
+        </div>
+        
+        <span class="text-[9px] font-mono text-[#525252]">Synced: 2s ago</span>
+
+        <div class="flex items-center gap-2 text-[9px] font-mono text-[#525252]">
+            <span>CPU: 12%</span>
+            <div class="w-px h-2 bg-[#141414]"></div>
+            <span>MEM: 2.4GB</span>
+            <div class="w-px h-2 bg-[#141414]"></div>
+            <span class="text-[#00D4FF]">60 FPS</span>
+        </div>
+    </footer>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

@@ -1,0 +1,1537 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Particle Morph — GPU Engine</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link
+href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap"
+rel="stylesheet"
+/>
+<script type="importmap">
+{ "imports": {
+"three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+"three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script><!-- aura-ga4-start -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2M6V79H761"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-2M6V79H761');
+</script>
+<!-- aura-ga4-end -->
+</head>
+  <body
+    class="bg-black text-white overflow-hidden antialiased select-none"
+    style="font-family:'Inter',system-ui,sans-serif"
+  >
+    <canvas id="scene" class="fixed inset-0 w-full h-full block"></canvas>
+
+    <!-- Header -->
+    <header
+      class="fixed top-0 left-0 right-0 z-20 flex items-center justify-between px-5 py-4 pointer-events-none"
+    >
+      <div class="flex items-center gap-3 pointer-events-auto">
+        <div
+          class="w-8 h-8 rounded-lg bg-white/[0.06] border border-white/10 flex items-center justify-center text-xs font-semibold tracking-tighter backdrop-blur-md"
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <circle cx="12" cy="12" r="3.2" fill="#a5b4fc"></circle>
+            <circle cx="12" cy="4" r="1.3" fill="white" opacity="0.9"></circle>
+            <circle cx="19" cy="8" r="1.1" fill="white" opacity="0.65"></circle>
+            <circle
+              cx="19.5"
+              cy="15.5"
+              r="1"
+              fill="white"
+              opacity="0.5"
+            ></circle>
+            <circle cx="12" cy="20" r="1.2" fill="white" opacity="0.7"></circle>
+            <circle
+              cx="4.5"
+              cy="15.5"
+              r="1"
+              fill="white"
+              opacity="0.5"
+            ></circle>
+            <circle cx="5" cy="8" r="1.1" fill="white" opacity="0.65"></circle>
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm font-medium leading-none">Particle Morph</p>
+          <p class="text-xs text-white/40 mt-1">
+            GPU particle engine · shader simulation
+          </p>
+        </div>
+      </div>
+      <div class="hidden sm:flex items-center gap-2 pointer-events-auto">
+        <div
+          class="px-3 py-1.5 rounded-full bg-white/[0.06] border border-white/10 backdrop-blur-md text-xs text-white/60 flex items-center gap-2"
+        >
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          <span id="fps">60 FPS</span>
+          <span class="text-white/25">·</span>
+          <span id="pcount">250,000 pts</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Shape selector -->
+    <div
+      class="fixed bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 p-1 rounded-2xl bg-white/[0.06] border border-white/10 backdrop-blur-xl max-w-[95vw] overflow-x-auto"
+    >
+      <div id="shapeMore" class="relative pointer-events-auto">
+        <button
+          id="moreShapesBtn"
+          class="flex flex-col items-center gap-1 px-2.5 sm:px-3.5 py-2 rounded-xl text-white/50 hover:text-white transition-colors"
+          aria-haspopup="menu"
+          aria-expanded="false"
+          title="More shapes"
+        >
+          <iconify-icon
+            icon="solar:menu-dots-linear"
+            width="18"
+            stroke-width="1.5"
+          ></iconify-icon>
+          <span class="text-[11px]">More</span>
+        </button>
+        <div
+          id="moreShapesMenu"
+          class="hidden absolute bottom-[calc(100%+10px)] left-1/2 -translate-x-1/2 w-[min(92vw,560px)] rounded-2xl bg-black/70 border border-white/10 backdrop-blur-xl p-1 shadow-2xl"
+        >
+          <div class="grid grid-cols-3 sm:grid-cols-6 gap-1">
+            <button
+              class="shape-btn more-shape-btn flex flex-col items-center gap-1 px-2.5 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+              data-shape="9"
+              role="menuitem"
+            >
+              <iconify-icon
+                icon="solar:alien-linear"
+                width="18"
+                stroke-width="1.5"
+              ></iconify-icon>
+              <span class="text-[11px]">Crazy</span>
+            </button>
+            <button
+              class="more-shape-btn flex flex-col items-center gap-1 px-2.5 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+              data-more-shape="blackhole"
+              role="menuitem"
+            >
+              <iconify-icon
+                icon="solar:black-hole-3-linear"
+                width="18"
+                stroke-width="1.5"
+              ></iconify-icon>
+              <span class="text-[11px]">Black hole</span>
+            </button>
+            <button
+              class="more-shape-btn flex flex-col items-center gap-1 px-2.5 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+              data-more-shape="funny"
+              role="menuitem"
+            >
+              <iconify-icon
+                icon="solar:emoji-funny-square-linear"
+                width="18"
+                stroke-width="1.5"
+              ></iconify-icon>
+              <span class="text-[11px]">Funny</span>
+            </button>
+            <button
+              class="more-shape-btn flex flex-col items-center gap-1 px-2.5 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+              data-more-shape="rainbow"
+              role="menuitem"
+            >
+              <iconify-icon
+                icon="solar:palette-round-linear"
+                width="18"
+                stroke-width="1.5"
+              ></iconify-icon>
+              <span class="text-[11px]">Rainbow</span>
+            </button>
+            <button
+              class="more-shape-btn flex flex-col items-center gap-1 px-2.5 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+              data-more-shape="other"
+              role="menuitem"
+            >
+              <iconify-icon
+                icon="solar:shapes-linear"
+                width="18"
+                stroke-width="1.5"
+              ></iconify-icon>
+              <span class="text-[11px]">Other</span>
+            </button>
+            <button
+              class="more-shape-btn flex flex-col items-center gap-1 px-2.5 py-2 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+              data-more-shape="close"
+              role="menuitem"
+            >
+              <iconify-icon
+                icon="solar:close-circle-linear"
+                width="18"
+                stroke-width="1.5"
+              ></iconify-icon>
+              <span class="text-[11px]">Close</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <button
+        data-shape="0"
+        class="shape-btn flex flex-col items-center gap-1 px-2.5 sm:px-3.5 py-2 rounded-xl text-white/50 hover:text-white transition-colors"
+      >
+        <iconify-icon
+          icon="solar:planet-linear"
+          width="18"
+          stroke-width="1.5"
+        ></iconify-icon>
+        <span class="text-[11px]">Sphere</span>
+      </button>
+      <button
+        data-shape="1"
+        class="shape-btn flex flex-col items-center gap-1 px-2.5 sm:px-3.5 py-2 rounded-xl text-white/50 hover:text-white transition-colors"
+      >
+        <iconify-icon
+          icon="solar:heart-linear"
+          width="18"
+          stroke-width="1.5"
+        ></iconify-icon>
+        <span class="text-[11px]">Heart</span>
+      </button>
+      <button
+        data-shape="2"
+        class="shape-btn flex flex-col items-center gap-1 px-2.5 sm:px-3.5 py-2 rounded-xl text-white/50 hover:text-white transition-colors"
+      >
+        <iconify-icon
+          icon="solar:star-linear"
+          width="18"
+          stroke-width="1.5"
+        ></iconify-icon>
+        <span class="text-[11px]">Star</span>
+      </button>
+      <button
+        data-shape="3"
+        class="shape-btn flex flex-col items-center gap-1 px-2.5 sm:px-3.5 py-2 rounded-xl text-white/50 hover:text-white transition-colors"
+      >
+        <iconify-icon
+          icon="solar:star-fall-linear"
+          width="18"
+          stroke-width="1.5"
+        ></iconify-icon>
+        <span class="text-[11px]">Galaxy</span>
+      </button>
+      <button
+        data-shape="4"
+        class="shape-btn flex flex-col items-center gap-1 px-2.5 sm:px-3.5 py-2 rounded-xl text-white/50 hover:text-white transition-colors"
+      >
+        <iconify-icon
+          icon="solar:atom-linear"
+          width="18"
+          stroke-width="1.5"
+        ></iconify-icon>
+        <span class="text-[11px]">Ring</span>
+      </button>
+      <button
+        data-shape="5"
+        class="shape-btn flex flex-col items-center gap-1 px-2.5 sm:px-3.5 py-2 rounded-xl text-white/50 hover:text-white transition-colors"
+      >
+        <iconify-icon
+          icon="solar:dna-linear"
+          width="18"
+          stroke-width="1.5"
+        ></iconify-icon>
+        <span class="text-[11px]">Helix</span>
+      </button>
+      <button
+        data-shape="6"
+        class="shape-btn flex flex-col items-center gap-1 px-2.5 sm:px-3.5 py-2 rounded-xl text-white/50 hover:text-white transition-colors"
+      >
+        <iconify-icon
+          icon="solar:soundwave-linear"
+          width="18"
+          stroke-width="1.5"
+        ></iconify-icon>
+        <span class="text-[11px]">Wave</span>
+      </button>
+      <button
+        data-shape="7"
+        class="shape-btn flex flex-col items-center gap-1 px-2.5 sm:px-3.5 py-2 rounded-xl text-white/50 hover:text-white transition-colors"
+      >
+        <iconify-icon
+          icon="solar:box-minimalistic-linear"
+          width="18"
+          stroke-width="1.5"
+        ></iconify-icon>
+        <span class="text-[11px]">Cube</span>
+      </button>
+      <button
+        data-shape="8"
+        class="shape-btn flex flex-col items-center gap-1 px-2.5 sm:px-3.5 py-2 rounded-xl text-white/50 hover:text-white transition-colors"
+      >
+        <iconify-icon
+          icon="solar:magnet-linear"
+          width="18"
+          stroke-width="1.5"
+        ></iconify-icon>
+        <span class="text-[11px]">Spiral</span>
+      </button>
+      <div class="w-px h-8 bg-white/10 mx-0.5 self-center"></div>
+      <button
+        id="randomBtn"
+        class="flex flex-col items-center gap-1 px-2.5 sm:px-3.5 py-2 rounded-xl text-indigo-300 hover:text-white transition-colors"
+      >
+        <iconify-icon
+          icon="solar:shuffle-linear"
+          width="18"
+          stroke-width="1.5"
+        ></iconify-icon>
+        <span class="text-[11px]">Random</span>
+      </button>
+    </div>
+
+    <!-- Panel toggle (mobile) -->
+    <button
+      id="panelToggle"
+      class="md:hidden fixed bottom-5 right-4 z-30 w-11 h-11 rounded-full bg-white/[0.08] border border-white/10 backdrop-blur-xl flex items-center justify-center text-white/70"
+    >
+      <iconify-icon
+        icon="solar:tuning-2-linear"
+        width="20"
+        stroke-width="1.5"
+      ></iconify-icon>
+    </button>
+
+    <!-- Control panel -->
+    <aside
+      id="panel"
+      class="hidden md:block fixed z-20 right-4 top-20 w-72 max-h-[calc(100vh-11rem)] overflow-y-auto rounded-2xl bg-white/[0.05] border border-white/10 backdrop-blur-2xl shadow-2xl"
+      style="scrollbar-width:none"
+    >
+      <div
+        class="px-4 py-3.5 border-b border-white/[0.07] flex items-center gap-2"
+      >
+        <iconify-icon
+          icon="solar:tuning-2-linear"
+          width="16"
+          stroke-width="1.5"
+          class="text-white/50"
+        ></iconify-icon>
+        <span
+          class="text-xs font-medium text-white/70 uppercase"
+          style="letter-spacing:0.08em"
+        >
+          Controls
+        </span>
+      </div>
+
+      <div class="p-4 space-y-5">
+        <!-- Particle count -->
+        <div>
+          <p class="text-xs text-white/40 mb-2">Particles</p>
+          <div class="grid grid-cols-3 gap-1 p-1 rounded-lg bg-black/30">
+            <button
+              data-count="100000"
+              class="count-btn text-xs py-1.5 rounded-md text-white/50 transition-colors"
+            >
+              100k
+            </button>
+            <button
+              data-count="250000"
+              class="count-btn text-xs py-1.5 rounded-md text-white/50 transition-colors"
+            >
+              250k
+            </button>
+            <button
+              data-count="500000"
+              class="count-btn text-xs py-1.5 rounded-md text-white/50 transition-colors"
+            >
+              500k
+            </button>
+          </div>
+        </div>
+
+        <!-- Sliders -->
+        <div class="space-y-4">
+          <div>
+            <div class="flex justify-between mb-1.5">
+              <span class="text-xs text-white/40">Particle size</span>
+              <span data-val="size" class="text-xs text-white/60 tabular-nums">
+                0.8
+              </span>
+            </div>
+            <div
+              data-slider="size"
+              data-min="0.3"
+              data-max="3"
+              data-value="0.8"
+              class="relative h-4 flex items-center cursor-pointer touch-none"
+            >
+              <div class="h-1 w-full rounded-full bg-white/10"></div>
+              <div
+                data-fill=""
+                class="absolute left-0 h-1 rounded-full bg-indigo-400/80 pointer-events-none"
+              ></div>
+              <div
+                data-thumb=""
+                class="absolute w-3 h-3 rounded-full bg-white shadow pointer-events-none"
+                style="transform:translateX(-50%)"
+              ></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between mb-1.5">
+              <span class="text-xs text-white/40">Noise strength</span>
+              <span data-val="noise" class="text-xs text-white/60 tabular-nums">
+                0.55
+              </span>
+            </div>
+            <div
+              data-slider="noise"
+              data-min="0"
+              data-max="1.6"
+              data-value="0.55"
+              class="relative h-4 flex items-center cursor-pointer touch-none"
+            >
+              <div class="h-1 w-full rounded-full bg-white/10"></div>
+              <div
+                data-fill=""
+                class="absolute left-0 h-1 rounded-full bg-indigo-400/80 pointer-events-none"
+              ></div>
+              <div
+                data-thumb=""
+                class="absolute w-3 h-3 rounded-full bg-white shadow pointer-events-none"
+                style="transform:translateX(-50%)"
+              ></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between mb-1.5">
+              <span class="text-xs text-white/40">Explosion force</span>
+              <span
+                data-val="explosion"
+                class="text-xs text-white/60 tabular-nums"
+              >
+                1.2
+              </span>
+            </div>
+            <div
+              data-slider="explosion"
+              data-min="0"
+              data-max="3"
+              data-value="1.2"
+              class="relative h-4 flex items-center cursor-pointer touch-none"
+            >
+              <div class="h-1 w-full rounded-full bg-white/10"></div>
+              <div
+                data-fill=""
+                class="absolute left-0 h-1 rounded-full bg-indigo-400/80 pointer-events-none"
+              ></div>
+              <div
+                data-thumb=""
+                class="absolute w-3 h-3 rounded-full bg-white shadow pointer-events-none"
+                style="transform:translateX(-50%)"
+              ></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between mb-1.5">
+              <span class="text-xs text-white/40">Click explosion</span>
+              <span
+                data-val="clickForce"
+                class="text-xs text-white/60 tabular-nums"
+              >
+                3.0
+              </span>
+            </div>
+            <div
+              data-slider="clickForce"
+              data-min="0"
+              data-max="6"
+              data-value="3"
+              class="relative h-4 flex items-center cursor-pointer touch-none"
+            >
+              <div class="h-1 w-full rounded-full bg-white/10"></div>
+              <div
+                data-fill=""
+                class="absolute left-0 h-1 rounded-full bg-indigo-400/80 pointer-events-none"
+              ></div>
+              <div
+                data-thumb=""
+                class="absolute w-3 h-3 rounded-full bg-white shadow pointer-events-none"
+                style="transform:translateX(-50%)"
+              ></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between mb-1.5">
+              <span class="text-xs text-white/40">Transition (s)</span>
+              <span
+                data-val="duration"
+                class="text-xs text-white/60 tabular-nums"
+              >
+                2.6
+              </span>
+            </div>
+            <div
+              data-slider="duration"
+              data-min="0.8"
+              data-max="6"
+              data-value="2.6"
+              class="relative h-4 flex items-center cursor-pointer touch-none"
+            >
+              <div class="h-1 w-full rounded-full bg-white/10"></div>
+              <div
+                data-fill=""
+                class="absolute left-0 h-1 rounded-full bg-indigo-400/80 pointer-events-none"
+              ></div>
+              <div
+                data-thumb=""
+                class="absolute w-3 h-3 rounded-full bg-white shadow pointer-events-none"
+                style="transform:translateX(-50%)"
+              ></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between mb-1.5">
+              <span class="text-xs text-white/40">Idle motion</span>
+              <span data-val="idle" class="text-xs text-white/60 tabular-nums">
+                0.35
+              </span>
+            </div>
+            <div
+              data-slider="idle"
+              data-min="0"
+              data-max="1"
+              data-value="0.35"
+              class="relative h-4 flex items-center cursor-pointer touch-none"
+            >
+              <div class="h-1 w-full rounded-full bg-white/10"></div>
+              <div
+                data-fill=""
+                class="absolute left-0 h-1 rounded-full bg-indigo-400/80 pointer-events-none"
+              ></div>
+              <div
+                data-thumb=""
+                class="absolute w-3 h-3 rounded-full bg-white shadow pointer-events-none"
+                style="transform:translateX(-50%)"
+              ></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between mb-1.5">
+              <span class="text-xs text-white/40">Color hue</span>
+              <span data-val="hue" class="text-xs text-white/60 tabular-nums">
+                0.62
+              </span>
+            </div>
+            <div
+              data-slider="hue"
+              data-min="0"
+              data-max="1"
+              data-value="0.62"
+              class="relative h-4 flex items-center cursor-pointer touch-none"
+            >
+              <div class="h-1 w-full rounded-full bg-white/10"></div>
+              <div
+                data-fill=""
+                class="absolute left-0 h-1 rounded-full bg-indigo-400/80 pointer-events-none"
+              ></div>
+              <div
+                data-thumb=""
+                class="absolute w-3 h-3 rounded-full bg-white shadow pointer-events-none"
+                style="transform:translateX(-50%)"
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Toggles -->
+        <div class="space-y-3 pt-1">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-white/50">Auto rotate</span>
+            <button
+              data-toggle="autorotate"
+              class="tgl w-8 h-[18px] rounded-full bg-white/10 relative transition-colors duration-200"
+            >
+              <span
+                class="knob absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform duration-200"
+              ></span>
+            </button>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-white/50">Bloom</span>
+            <button
+              data-toggle="bloom"
+              class="tgl w-8 h-[18px] rounded-full bg-white/10 relative transition-colors duration-200"
+            >
+              <span
+                class="knob absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform duration-200"
+              ></span>
+            </button>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-white/50">Cursor jelly</span>
+            <button
+              data-toggle="stars"
+              class="tgl w-8 h-[18px] rounded-full bg-white/10 relative transition-colors duration-200"
+            >
+              <span
+                class="knob absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform duration-200"
+              ></span>
+            </button>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-white/50">Cursor attraction</span>
+            <button
+              data-toggle="jelly"
+              class="tgl w-8 h-[18px] rounded-full bg-white/10 relative transition-colors duration-200"
+              aria-label="Toggle cursor jelly"
+            >
+              <span
+                class="knob absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform duration-200"
+              ></span>
+            </button>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-white/50">Bounce</span>
+            <button
+              data-toggle="bounce"
+              class="tgl w-8 h-[18px] rounded-full bg-white/10 relative transition-colors duration-200"
+            >
+              <span
+                class="knob absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform duration-200"
+              ></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-white/40">Loop shapes</span>
+            <button
+              id="loopToggle"
+              class="w-8 h-[18px] rounded-full bg-white/10 relative transition-colors duration-200"
+            >
+              <span
+                class="knob absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform duration-200"
+              ></span>
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-x-2 gap-y-1.5">
+            <label
+              class="flex items-center gap-2 text-xs text-white/50 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                data-shape="0"
+                class="loop-chk w-3.5 h-3.5 accent-indigo-500"
+                checked=""
+              />
+              Sphere
+            </label>
+            <label
+              class="flex items-center gap-2 text-xs text-white/50 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                data-shape="1"
+                class="loop-chk w-3.5 h-3.5 accent-indigo-500"
+                checked=""
+              />
+              Heart
+            </label>
+            <label
+              class="flex items-center gap-2 text-xs text-white/50 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                data-shape="2"
+                class="loop-chk w-3.5 h-3.5 accent-indigo-500"
+                checked=""
+              />
+              Star
+            </label>
+            <label
+              class="flex items-center gap-2 text-xs text-white/50 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                data-shape="3"
+                class="loop-chk w-3.5 h-3.5 accent-indigo-500"
+                checked=""
+              />
+              Galaxy
+            </label>
+            <label
+              class="flex items-center gap-2 text-xs text-white/50 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                data-shape="4"
+                class="loop-chk w-3.5 h-3.5 accent-indigo-500"
+                checked=""
+              />
+              Ring
+            </label>
+            <label
+              class="flex items-center gap-2 text-xs text-white/50 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                data-shape="5"
+                class="loop-chk w-3.5 h-3.5 accent-indigo-500"
+                checked=""
+              />
+              Helix
+            </label>
+            <label
+              class="flex items-center gap-2 text-xs text-white/50 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                data-shape="6"
+                class="loop-chk w-3.5 h-3.5 accent-indigo-500"
+                checked=""
+              />
+              Wave
+            </label>
+            <label
+              class="flex items-center gap-2 text-xs text-white/50 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                data-shape="7"
+                class="loop-chk w-3.5 h-3.5 accent-indigo-500"
+                checked=""
+              />
+              Cube
+            </label>
+            <label
+              class="flex items-center gap-2 text-xs text-white/50 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                data-shape="8"
+                class="loop-chk w-3.5 h-3.5 accent-indigo-500"
+                checked=""
+              />
+              Spiral
+            </label>
+          </div>
+        </div>
+        <div>
+          <span class="text-xs text-white/40 mb-2 block">Custom SVG shape</span>
+          <label
+            class="flex items-center justify-center gap-2 py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-dashed border-white/15 transition-colors text-xs text-white/70 cursor-pointer"
+          >
+            <iconify-icon
+              icon="solar:upload-linear"
+              width="14"
+              stroke-width="1.5"
+            ></iconify-icon>
+            <span id="svgFileName">Upload SVG</span>
+            <input
+              id="svgUpload"
+              type="file"
+              accept=".svg,image/svg+xml"
+              class="hidden"
+            />
+          </label>
+        </div>
+        <div>
+          <span class="text-xs text-white/40 mb-2 block">Export code</span>
+          <div class="grid grid-cols-3 gap-2">
+            <button
+              id="exportJs"
+              class="flex items-center justify-center gap-1 py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 transition-colors text-xs font-medium text-white/70"
+            >
+              <iconify-icon
+                icon="solar:code-linear"
+                width="14"
+                stroke-width="1.5"
+              ></iconify-icon>
+              JS
+            </button>
+            <button
+              id="exportReact"
+              class="flex items-center justify-center gap-1 py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 transition-colors text-xs font-medium text-white/70"
+            >
+              <iconify-icon
+                icon="solar:code-square-linear"
+                width="14"
+                stroke-width="1.5"
+              ></iconify-icon>
+              React
+            </button>
+            <button
+              id="exportHtml"
+              class="flex items-center justify-center gap-1 py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 transition-colors text-xs font-medium text-white/70"
+            >
+              <iconify-icon
+                icon="solar:document-linear"
+                width="14"
+                stroke-width="1.5"
+              ></iconify-icon>
+              HTML
+            </button>
+          </div>
+        </div>
+        <div class="grid grid-cols-3 gap-2 pt-1">
+          <button
+            id="playBtn"
+            class="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-indigo-500/90 hover:bg-indigo-400 transition-colors text-xs font-medium"
+          >
+            <iconify-icon
+              icon="solar:play-linear"
+              width="14"
+              stroke-width="1.5"
+            ></iconify-icon>
+            Morph
+          </button>
+          <button
+            id="boomBtn"
+            class="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 transition-colors text-xs font-medium text-white/70"
+          >
+            <iconify-icon
+              icon="solar:fire-linear"
+              width="14"
+              stroke-width="1.5"
+            ></iconify-icon>
+            Boom
+          </button>
+          <button
+            id="resetBtn"
+            class="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 transition-colors text-xs font-medium text-white/70"
+          >
+            <iconify-icon
+              icon="solar:restart-linear"
+              width="14"
+              stroke-width="1.5"
+            ></iconify-icon>
+            Reset
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <p class="fixed bottom-5 left-5 z-10 hidden lg:block text-xs text-white/25">
+      Drag to orbit · Scroll to zoom · Click a shape to morph
+    </p>
+
+    <script type="module">
+      import * as THREE from 'three';
+      import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+      import { MeshSurfaceSampler } from 'three/addons/math/MeshSurfaceSampler.js';
+      import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+      import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+      import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+      import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
+      import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+      /* ---------- State ---------- */
+      const params = { size: 0.8, noise: 0.55, explosion: 1.2, duration: 2.6, idle: 0.35, hue: 0.62, count: 250000, clickForce: 3 };
+      const defaults = { ...params };
+      let currentShape = 0, targetShape = 0, morphing = false, morphStart = 0;
+      let customSvgText = null;
+      const NUM_SHAPES = 10;
+
+      /* ---------- Renderer / Scene ---------- */
+      const canvas = document.getElementById('scene');
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setSize(innerWidth, innerHeight);
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 200);
+      camera.position.set(0, 0.6, 4.4);
+
+      const controls = new OrbitControls(camera, canvas);
+      controls.enableDamping = true; controls.dampingFactor = 0.06;
+      controls.enablePan = false; controls.minDistance = 2; controls.maxDistance = 12;
+      controls.autoRotate = true; controls.autoRotateSpeed = 0.6;
+
+      /* ---------- Shape samplers ---------- */
+      function sampleSurface(geo, n) {
+        const mesh = new THREE.Mesh(geo);
+        const sampler = new MeshSurfaceSampler(mesh).build();
+        const arr = new Float32Array(n * 3), v = new THREE.Vector3();
+        for (let i = 0; i < n; i++) { sampler.sample(v); arr[i*3] = v.x; arr[i*3+1] = v.y; arr[i*3+2] = v.z; }
+        geo.dispose();
+        return arr;
+      }
+      function sphereShape(n) {
+        const arr = new Float32Array(n * 3), v = new THREE.Vector3();
+        for (let i = 0; i < n; i++) { v.randomDirection().multiplyScalar(1.25); arr[i*3]=v.x; arr[i*3+1]=v.y; arr[i*3+2]=v.z; }
+        return arr;
+      }
+      function heartShape(n) {
+        const arr = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          const t = Math.random() * Math.PI * 2, k = Math.sqrt(Math.random());
+          const x = 16 * Math.pow(Math.sin(t), 3);
+          const y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+          arr[i*3]   = x * k / 11 * 1.05;
+          arr[i*3+1] = y * k / 11 * 1.05 + 0.12;
+          arr[i*3+2] = (Math.random() - 0.5) * 0.32 * (0.4 + 0.6 * k);
+        }
+        return arr;
+      }
+      function starGeom() {
+        const shape = new THREE.Shape();
+        for (let i = 0; i < 10; i++) {
+          const a = (i / 10) * Math.PI * 2 + Math.PI / 2;
+          const r = i % 2 === 0 ? 1.15 : 0.5;
+          const x = Math.cos(a) * r, y = Math.sin(a) * r;
+          i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y);
+        }
+        shape.closePath();
+        const g = new THREE.ExtrudeGeometry(shape, { depth: 0.32, bevelEnabled: false });
+        g.translate(0, 0, -0.16);
+        return g;
+      }
+      function helixShape(n) {
+        const arr = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          const strand = i % 2, t = Math.random();
+          const ang = t * Math.PI * 6 + strand * Math.PI;
+          const g = () => (Math.random() - 0.5) * 0.07;
+          arr[i*3]   = Math.cos(ang) * 0.62 + g();
+          arr[i*3+1] = (t - 0.5) * 2.8 + g();
+          arr[i*3+2] = Math.sin(ang) * 0.62 + g();
+        }
+        return arr;
+      }
+      function waveShape(n) {
+        const arr = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          const x = (Math.random() - 0.5) * 3.4, z = (Math.random() - 0.5) * 3.4;
+          arr[i*3]   = x;
+          arr[i*3+1] = Math.sin(x * 2.1) * Math.cos(z * 2.1) * 0.45 + (Math.random() - 0.5) * 0.05;
+          arr[i*3+2] = z;
+        }
+        return arr;
+      }
+      function cubeShape(n) {
+        const arr = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          const face = Math.floor(Math.random() * 6);
+          let x = (Math.random() - 0.5) * 2, y = (Math.random() - 0.5) * 2, z = (Math.random() - 0.5) * 2;
+          if (face === 0) x = 1; else if (face === 1) x = -1; else if (face === 2) y = 1; else if (face === 3) y = -1; else if (face === 4) z = 1; else z = -1;
+          arr[i*3] = x * 0.95; arr[i*3+1] = y * 0.95; arr[i*3+2] = z * 0.95;
+        }
+        return arr;
+      }
+      function spiralShape(n) {
+        const arr = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          const t = i / n;
+          const ang = t * Math.PI * 18;
+          const r = 0.15 + t * 1.1;
+          const g = () => (Math.random() - 0.5) * 0.05;
+          arr[i*3]   = Math.cos(ang) * r + g();
+          arr[i*3+1] = (t - 0.5) * 2.6 + g();
+          arr[i*3+2] = Math.sin(ang) * r + g();
+        }
+        return arr;
+      }
+      function galaxyShape(n) {
+        const arr = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          const arm = i % 3, r = Math.pow(Math.random(), 0.62) * 1.9;
+          const ang = r * 2.6 + arm * 2.0944 + (Math.random() - 0.5) * 0.45;
+          const s = (2.0 - r) * 0.09;
+          const g = () => (Math.random()+Math.random()+Math.random()-1.5) * s;
+          arr[i*3]   = Math.cos(ang) * r + g();
+          arr[i*3+1] = g() * 1.4;
+          arr[i*3+2] = Math.sin(ang) * r + g();
+        }
+        return arr;
+      }
+      function crazyShape(n) {
+        const arr = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          const t = Math.random() * Math.PI, u = Math.random() * Math.PI * 2;
+          const r = 0.85 + 0.5 * Math.sin(t * 7.0) * Math.cos(u * 5.0) + 0.3 * Math.sin(u * 11.0 + t * 3.0);
+          const jitter = (Math.random() - 0.5) * 0.08;
+          arr[i*3]   = Math.sin(t) * Math.cos(u) * (r + jitter) * 1.35;
+          arr[i*3+1] = Math.cos(t) * (r + jitter) * 1.35;
+          arr[i*3+2] = Math.sin(t) * Math.sin(u) * (r + jitter) * 1.35;
+        }
+        return arr;
+      }
+      function svgShapePoints(svgText, n) {
+        try {
+          const data = new SVGLoader().parse(svgText);
+          const geos = [];
+          data.paths.forEach(p => SVGLoader.createShapes(p).forEach(s => geos.push(new THREE.ShapeGeometry(s, 24))));
+          if (!geos.length) return null;
+          const merged = geos.length > 1 ? mergeGeometries(geos, false) : geos[0];
+          merged.computeBoundingBox();
+          const c = new THREE.Vector3(), sz = new THREE.Vector3();
+          merged.boundingBox.getCenter(c); merged.boundingBox.getSize(sz);
+          merged.translate(-c.x, -c.y, -c.z);
+          const sc = 2.4 / Math.max(sz.x, sz.y, 0.0001);
+          merged.scale(sc, -sc, sc);
+          const arr = sampleSurface(merged, n);
+          for (let i = 0; i < n; i++) arr[i*3+2] += (Math.random() - 0.5) * 0.2;
+          return arr;
+        } catch (e) { return null; }
+      }
+      function buildShapes(n) {
+        return [
+          sphereShape(n),
+          heartShape(n),
+          sampleSurface(starGeom(), n),
+          galaxyShape(n),
+          sampleSurface(new THREE.TorusGeometry(0.95, 0.3, 48, 140), n),
+          helixShape(n),
+          waveShape(n),
+          cubeShape(n),
+          spiralShape(n),
+          (customSvgText && svgShapePoints(customSvgText, n)) || crazyShape(n),
+        ];
+      }
+
+      /* ---------- Shaders ---------- */
+      const NOISE = `
+      vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x,289.0);}
+      vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+      float snoise(vec3 v){
+        const vec2 C=vec2(1.0/6.0,1.0/3.0);const vec4 D=vec4(0.0,0.5,1.0,2.0);
+        vec3 i=floor(v+dot(v,C.yyy));vec3 x0=v-i+dot(i,C.xxx);
+        vec3 g=step(x0.yzx,x0.xyz);vec3 l=1.0-g;vec3 i1=min(g.xyz,l.zxy);vec3 i2=max(g.xyz,l.zxy);
+        vec3 x1=x0-i1+1.0*C.xxx;vec3 x2=x0-i2+2.0*C.xxx;vec3 x3=x0-1.0+3.0*C.xxx;
+        i=mod(i,289.0);
+        vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));
+        float n_=1.0/7.0;vec3 ns=n_*D.wyz-D.xzx;
+        vec4 j=p-49.0*floor(p*ns.z*ns.z);
+        vec4 x_=floor(j*ns.z);vec4 y_=floor(j-7.0*x_);
+        vec4 x=x_*ns.x+ns.yyyy;vec4 y=y_*ns.x+ns.yyyy;vec4 h=1.0-abs(x)-abs(y);
+        vec4 b0=vec4(x.xy,y.xy);vec4 b1=vec4(x.zw,y.zw);
+        vec4 s0=floor(b0)*2.0+1.0;vec4 s1=floor(b1)*2.0+1.0;vec4 sh=-step(h,vec4(0.0));
+        vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+        vec3 p0=vec3(a0.xy,h.x);vec3 p1=vec3(a0.zw,h.y);vec3 p2=vec3(a1.xy,h.z);vec3 p3=vec3(a1.zw,h.w);
+        vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+        p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+        vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0);m=m*m;
+        return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+      }`;
+
+      const vertexShader = NOISE + `
+      uniform float uTime,uProgress,uSize,uNoise,uExplosion,uPixelRatio,uRepel,uIdle,uBounce,uClickForce;
+      uniform float uJelly;
+      uniform float uJellyT;
+      uniform float uFrom[10];uniform float uTo[10];
+      uniform vec3 uPointer;
+      uniform vec3 uClickPos;
+      uniform float uClickTime;
+      attribute vec3 s0,s1,s2,s3,s4,s5,s6,s7,s8,s9,aDir;
+      attribute float aSeed;
+      varying float vBurst,vFade;
+      void main(){
+        vec3 from = s0*uFrom[0]+s1*uFrom[1]+s2*uFrom[2]+s3*uFrom[3]+s4*uFrom[4]+s5*uFrom[5]+s6*uFrom[6]+s7*uFrom[7]+s8*uFrom[8]+s9*uFrom[9];
+        vec3 to   = s0*uTo[0]+s1*uTo[1]+s2*uTo[2]+s3*uTo[3]+s4*uTo[4]+s5*uTo[5]+s6*uTo[6]+s7*uTo[7]+s8*uTo[8]+s9*uTo[9];
+        float delay = aSeed*0.35;
+        float p = clamp((uProgress-delay)/0.65,0.0,1.0);
+        float e = p<0.5 ? 4.0*p*p*p : 1.0-pow(-2.0*p+2.0,3.0)*0.5;
+        vec3 pos = mix(from,to,e);
+        float burst = sin(p*3.14159265);
+        vec3 np = pos*1.15 + uTime*0.18;
+        vec3 n = vec3(snoise(np), snoise(np+vec3(31.4,-12.3,74.2)), snoise(np+vec3(-58.1,44.9,9.7)));
+        pos += n * uNoise * burst;
+        pos += aDir * uExplosion * burst * (0.35+0.65*fract(aSeed*13.7));
+        pos += n * (0.012 + uIdle*0.11) * sin(uTime*0.8+aSeed*6.2831);
+        float bb = abs(sin(uTime*(1.6+fract(aSeed*3.17)*1.4)+aSeed*6.2831));
+        pos.y += uBounce * bb*bb * 0.25 * fract(aSeed*5.3);
+
+        vec3 diff = pos-uPointer;
+        float distP = length(diff);
+        float pull = smoothstep(1.1,0.0,distP) * uRepel;
+        pos -= normalize(diff+0.0001) * pull * 0.55;
+        float excite = pull * pull;
+        pos += n * excite * 0.7;
+        pos.y += sin(uTime*7.0+aSeed*23.0) * excite * 0.22;
+        pos.x += cos(uTime*6.3+aSeed*17.0) * excite * 0.18;
+
+        // Hover jelly: bouncy, springy wobble near cursor
+        float jRange = 1.35;
+        float j = smoothstep(jRange, 0.0, distP) * uJelly;
+        float jt = uTime - uJellyT;
+        float osc = exp(-jt*1.9) * (sin(jt*11.0 + aSeed*9.0) + 0.55*sin(jt*17.0 + aSeed*21.0));
+        vec3 radial = normalize(diff + 0.0001);
+        pos += radial * (0.18 * j * osc);
+        pos += n * (0.14 * j * osc);
+        pos.y += abs(osc) * j * 0.08;
+
+        float dtClick = uTime - uClickTime;
+        float clickWindow = clamp(1.0 - dtClick/1.4, 0.0, 1.0);
+        vec3 diffClick = pos-uClickPos;
+        float distClick = length(diffClick);
+        float clickPull = smoothstep(1.3,0.0,distClick) * clickWindow;
+        pos += normalize(diffClick+0.0001) * clickPull * uClickForce;
+
+        vec4 mv = modelViewMatrix * vec4(pos,1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = max(uSize * uPixelRatio * (0.6+0.8*fract(aSeed*7.31)) * (6.0/-mv.z), 1.0);
+        vBurst = burst;
+        vFade = 0.75+0.25*sin(uTime*1.4+aSeed*40.0);
+      }`;
+
+      const fragmentShader = `
+      uniform float uHue;
+      varying float vBurst,vFade;
+      vec3 hue2rgb(float h){vec3 p=abs(fract(h+vec3(0.0,0.6666667,0.3333333))*6.0-3.0);return clamp(p-1.0,0.0,1.0);}
+      void main(){
+        float d = length(gl_PointCoord-0.5);
+        float a = smoothstep(0.5,0.1,d);
+        vec3 tint = mix(hue2rgb(uHue), vec3(1.0), 0.25);
+        vec3 col = mix(vec3(0.96), tint, 0.45+vBurst*0.5);
+        gl_FragColor = vec4(col, a*vFade*0.9);
+      }`;
+
+      /* ---------- Particle system ---------- */
+      const material = new THREE.ShaderMaterial({
+        vertexShader, fragmentShader,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+        uniforms: {
+          uTime:{value:0}, uProgress:{value:1}, uSize:{value:params.size},
+          uNoise:{value:params.noise}, uExplosion:{value:params.explosion},
+          uIdle:{value:params.idle}, uBounce:{value:0}, uHue:{value:params.hue},
+          uPixelRatio:{value:Math.min(devicePixelRatio,2)},
+          uFrom:{value:[1,0,0,0,0,0,0,0,0,0]}, uTo:{value:[1,0,0,0,0,0,0,0,0,0]},
+          uPointer:{value:new THREE.Vector3(99,99,99)}, uRepel:{value:1},
+          uClickPos:{value:new THREE.Vector3(99,99,99)}, uClickTime:{value:-999},
+          uClickForce:{value:params.clickForce},
+          uJelly:{value:1}, uJellyT:{value:-999}
+        }
+      });
+      let points = null;
+      function buildParticles(n) {
+        if (points) { scene.remove(points); points.geometry.dispose(); }
+        const shapes = buildShapes(n);
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(shapes[0], 3));
+        shapes.forEach((s,i)=>geo.setAttribute('s'+i, new THREE.BufferAttribute(s,3)));
+        const seed = new Float32Array(n), dir = new Float32Array(n*3), v = new THREE.Vector3();
+        for (let i=0;i<n;i++){ seed[i]=Math.random(); v.randomDirection(); dir[i*3]=v.x; dir[i*3+1]=v.y; dir[i*3+2]=v.z; }
+        geo.setAttribute('aSeed', new THREE.BufferAttribute(seed,1));
+        geo.setAttribute('aDir', new THREE.BufferAttribute(dir,3));
+        points = new THREE.Points(geo, material);
+        points.frustumCulled = false;
+        scene.add(points);
+        document.getElementById('pcount').textContent = n.toLocaleString() + ' pts';
+      }
+      buildParticles(params.count);
+
+      /* ---------- Stars ---------- */
+      const starGeo = new THREE.BufferGeometry();
+      {
+        const n = 1400, a = new Float32Array(n*3), v = new THREE.Vector3();
+        for (let i=0;i<n;i++){ v.randomDirection().multiplyScalar(25+Math.random()*45); a[i*3]=v.x; a[i*3+1]=v.y; a[i*3+2]=v.z; }
+        starGeo.setAttribute('position', new THREE.BufferAttribute(a,3));
+      }
+      const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ size:0.09, color:0x9db4ff, transparent:true, opacity:0.5, sizeAttenuation:true }));
+      stars.visible = true;
+      scene.add(stars);
+
+      /* ---------- Postprocessing ---------- */
+      const composer = new EffectComposer(renderer);
+      composer.addPass(new RenderPass(scene, camera));
+      const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.65, 0.55, 0.0);
+      composer.addPass(bloomPass);
+      let bloomOn = true;
+
+      /* ---------- Morphing ---------- */
+      function morphTo(idx) {
+        if (idx === targetShape && !morphing) return;
+        const u = material.uniforms;
+        for (let i=0;i<NUM_SHAPES;i++){ u.uFrom.value[i] = i===targetShape?1:0; u.uTo.value[i] = i===idx?1:0; }
+        currentShape = targetShape; targetShape = idx;
+        u.uProgress.value = 0; morphing = true; morphStart = performance.now();
+        setActiveShape(idx);
+      }
+      function boom() {
+        const u = material.uniforms;
+        for (let i=0;i<NUM_SHAPES;i++) u.uFrom.value[i] = u.uTo.value[i];
+        u.uProgress.value = 0; morphing = true; morphStart = performance.now();
+      }
+      function setActiveShape(idx) {
+        document.querySelectorAll('.shape-btn').forEach(b=>{
+          const on = +b.dataset.shape === idx;
+          b.classList.toggle('bg-white/10', on);
+          b.classList.toggle('text-white', on);
+          b.classList.toggle('text-white/50', !on);
+        });
+      }
+      setActiveShape(0);
+
+      /* ---------- Pointer attraction / click explosion ---------- */
+      const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+      let repelOn = true;
+      let jellyOn = true;
+      function pointerWorldPos(e) {
+        ndc.set((e.clientX/innerWidth)*2-1, -(e.clientY/innerHeight)*2+1);
+        raycaster.setFromCamera(ndc, camera);
+        const r = raycaster.ray, t = Math.max(0, -r.origin.dot(r.direction));
+        return r.origin.clone().addScaledVector(r.direction, t);
+      }
+      addEventListener('pointermove', e => {
+        if (repelOn) {
+          material.uniforms.uPointer.value.copy(pointerWorldPos(e));
+        }
+        if (jellyOn) {
+          // refresh spring impulse while hovering/moving
+          material.uniforms.uJellyT.value = material.uniforms.uTime.value;
+        }
+      });
+      addEventListener('pointerleave', () => {
+        material.uniforms.uPointer.value.set(99,99,99);
+      });
+      addEventListener('pointerdown', e => {
+        const pos = pointerWorldPos(e);
+        material.uniforms.uClickPos.value.copy(pos);
+        material.uniforms.uClickTime.value = material.uniforms.uTime.value;
+      });
+
+      /* ---------- Loop ---------- */
+      const clock = new THREE.Clock();
+      let frames = 0, fpsTime = 0;
+      function tick() {
+        requestAnimationFrame(tick);
+        const dt = clock.getDelta();
+        material.uniforms.uTime.value += dt;
+        if (morphing) {
+          const p = (performance.now() - morphStart) / (params.duration * 1000);
+          material.uniforms.uProgress.value = Math.min(p, 1);
+          if (p >= 1) { morphing = false; material.uniforms.uFrom.value.forEach((_,i)=>material.uniforms.uFrom.value[i]=material.uniforms.uTo.value[i]); }
+        }
+        controls.update();
+        bloomOn ? composer.render() : renderer.render(scene, camera);
+        frames++; fpsTime += dt;
+        if (fpsTime >= 0.5) { document.getElementById('fps').textContent = Math.round(frames/fpsTime) + ' FPS'; frames = 0; fpsTime = 0; }
+      }
+      tick();
+
+      addEventListener('resize', () => {
+        camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
+      });
+
+      /* ---------- UI: sliders ---------- */
+      const sliders = {};
+      document.querySelectorAll('[data-slider]').forEach(el => {
+        const key = el.dataset.slider, min = +el.dataset.min, max = +el.dataset.max;
+        const fill = el.querySelector('[data-fill]'), thumb = el.querySelector('[data-thumb]');
+        const label = document.querySelector(`[data-val="${key}"]`);
+        function set(v) {
+          v = Math.min(max, Math.max(min, v));
+          params[key] = v;
+          const pct = ((v-min)/(max-min))*100;
+          fill.style.width = pct+'%'; thumb.style.left = pct+'%';
+          label.textContent = v.toFixed(v < 10 ? 2 : 0).replace(/0$/,'');
+          applyParam(key, v);
+        }
+        sliders[key] = set;
+        set(+el.dataset.value);
+        let drag = false;
+        const fromEvent = e => { const r = el.getBoundingClientRect(); set(min + ((e.clientX-r.left)/r.width)*(max-min)); };
+        el.addEventListener('pointerdown', e => { drag = true; el.setPointerCapture(e.pointerId); fromEvent(e); });
+        el.addEventListener('pointermove', e => drag && fromEvent(e));
+        el.addEventListener('pointerup', () => drag = false);
+      });
+      function applyParam(key, v) {
+        if (key==='size') material.uniforms.uSize.value = v;
+        if (key==='noise') material.uniforms.uNoise.value = v;
+        if (key==='explosion') material.uniforms.uExplosion.value = v;
+        if (key==='idle') material.uniforms.uIdle.value = v;
+        if (key==='hue') material.uniforms.uHue.value = v;
+        if (key==='clickForce') material.uniforms.uClickForce.value = v;
+      }
+
+      /* ---------- UI: toggles ---------- */
+      const toggleState = { autorotate: true, bloom: true, stars: true, jelly: true, bounce: false };
+      function paintToggle(btn, on) {
+        btn.classList.toggle('bg-indigo-500', on);
+        btn.classList.toggle('bg-white/10', !on);
+        btn.querySelector('.knob').style.transform = on ? 'translateX(14px)' : 'translateX(0)';
+      }
+      document.querySelectorAll('[data-toggle]').forEach(btn => {
+        const key = btn.dataset.toggle;
+        paintToggle(btn, toggleState[key]);
+        btn.addEventListener('click', () => {
+          toggleState[key] = !toggleState[key];
+          paintToggle(btn, toggleState[key]);
+          if (key==='autorotate') controls.autoRotate = toggleState[key];
+          if (key==='bloom') bloomOn = toggleState[key];
+          if (key==='stars') stars.visible = toggleState[key];
+          if (key==='bounce') material.uniforms.uBounce.value = toggleState[key] ? 1 : 0;
+          if (key==='jelly') {
+            jellyOn = toggleState[key];
+            material.uniforms.uJelly.value = jellyOn ? 1 : 0;
+            if (jellyOn) material.uniforms.uJellyT.value = material.uniforms.uTime.value;
+          }
+        });
+      });
+
+      /* ---------- UI: shapes / counts / actions ---------- */
+      document.querySelectorAll('.shape-btn').forEach(b => b.addEventListener('click', () => morphTo(+b.dataset.shape)));
+      function setActiveCount(n) {
+        document.querySelectorAll('.count-btn').forEach(b => {
+          const on = +b.dataset.count === n;
+          b.classList.toggle('bg-white/10', on); b.classList.toggle('text-white', on); b.classList.toggle('text-white/50', !on);
+        });
+      }
+      setActiveCount(params.count);
+      document.querySelectorAll('.count-btn').forEach(b => b.addEventListener('click', () => {
+        const n = +b.dataset.count;
+        if (n === params.count) return;
+        params.count = n; setActiveCount(n); buildParticles(n);
+      }));
+      /* Random morph: small chance to hit the hidden "crazy" shape */
+      function randomMorph() {
+        let next;
+        if (Math.random() < 0.14 && targetShape !== 9) {
+          next = 9;
+        } else {
+          do { next = Math.floor(Math.random()*9); } while (next === targetShape);
+        }
+        morphTo(next);
+      }
+      document.getElementById('playBtn').addEventListener('click', randomMorph);
+      document.getElementById('randomBtn').addEventListener('click', randomMorph);
+      document.getElementById('boomBtn').addEventListener('click', boom);
+      document.getElementById('resetBtn').addEventListener('click', () => {
+        ['size','noise','explosion','duration','idle','hue','clickForce'].forEach(k => sliders[k](defaults[k]));
+        camera.position.set(0, 0.6, 4.4); controls.target.set(0,0,0);
+        morphTo(0);
+      });
+      document.getElementById('panelToggle').addEventListener('click', () => {
+        document.getElementById('panel').classList.toggle('hidden');
+      });
+
+      /* ---------- UI: shape loop ---------- */
+      const loopShapes = new Set([0,1,2,3,4,5,6,7,8]);
+      let loopOn = false, loopTimer = null;
+      document.querySelectorAll('.loop-chk').forEach(c => c.addEventListener('change', () => {
+        c.checked ? loopShapes.add(+c.dataset.shape) : loopShapes.delete(+c.dataset.shape);
+      }));
+      const loopBtn = document.getElementById('loopToggle');
+      function paintLoop() {
+        loopBtn.classList.toggle('bg-indigo-500', loopOn);
+        loopBtn.classList.toggle('bg-white/10', !loopOn);
+        loopBtn.querySelector('.knob').style.transform = loopOn ? 'translateX(14px)' : 'translateX(0)';
+      }
+      function loopStep() {
+        if (!loopOn) return;
+        const list = [...loopShapes].sort((a,b)=>a-b);
+        if (list.length > 0) {
+          const i = list.indexOf(targetShape);
+          morphTo(list[(i + 1) % list.length]);
+        }
+        loopTimer = setTimeout(loopStep, params.duration * 1000 + 1200);
+      }
+      loopBtn.addEventListener('click', () => {
+        loopOn = !loopOn; paintLoop();
+        clearTimeout(loopTimer);
+        if (loopOn) loopStep();
+      });
+      paintLoop();
+
+      /* ---------- UI: custom SVG upload ---------- */
+      document.getElementById('svgUpload').addEventListener('change', e => {
+        const f = e.target.files[0]; if (!f) return;
+        const r = new FileReader();
+        r.onload = () => {
+          customSvgText = r.result;
+          document.getElementById('svgFileName').textContent = f.name;
+          buildParticles(params.count);
+          morphTo(9);
+        };
+        r.readAsText(f);
+      });
+
+      /* ---------- UI: export code ---------- */
+      function download(name, text, type) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([text], { type: type || 'text/plain' }));
+        a.download = name; a.click();
+        URL.revokeObjectURL(a.href);
+      }
+      function configSnippet() {
+        return JSON.stringify({ ...params, shape: targetShape, loopShapes: [...loopShapes].sort((a,b)=>a-b), autoRotate: toggleState.autorotate, bloom: bloomOn, stars: toggleState.stars, bounce: toggleState.bounce, jelly: jellyOn }, null, 2);
+      }
+      document.getElementById('exportJs').addEventListener('click', () => {
+        download('particle-morph.config.js', '// Particle Morph — exported configuration\nexport const particleMorphConfig = ' + configSnippet() + ';\n');
+      });
+      document.getElementById('exportReact').addEventListener('click', () => {
+        const code = "import { useEffect, useRef } from 'react';\n\nexport const particleMorphConfig = " + configSnippet() + ";\n\nexport default function ParticleMorph() {\n  const canvasRef = useRef(null);\n  useEffect(() => {\n    // Initialize your three.js GPU particle scene on canvasRef.current\n    // using particleMorphConfig (size, noise, explosion, duration, idle, hue, count, shape, loopShapes).\n  }, []);\n  return <canvas ref={canvasRef} style={{ position: 'fixed', inset: 0, width: '100%', height: '100%' }} />;\n}\n";
+        download('ParticleMorph.jsx', code);
+      });
+      document.getElementById('exportHtml').addEventListener('click', () => {
+        download('particle-morph.html', '<!DOCTYPE html>\n' + document.documentElement.outerHTML, 'text/html');
+      });
+
+      /* ---------- UI: More shapes (three dots) ---------- */
+      const moreBtn = document.getElementById('moreShapesBtn');
+      const moreMenu = document.getElementById('moreShapesMenu');
+      function closeMoreMenu(){
+        if (!moreMenu) return;
+        moreMenu.classList.add('hidden');
+        moreBtn && moreBtn.setAttribute('aria-expanded','false');
+      }
+      function toggleMoreMenu(){
+        if (!moreMenu) return;
+        const willOpen = moreMenu.classList.contains('hidden');
+        document.querySelectorAll('#shapeMore #moreShapesMenu').forEach(m => m.classList.add('hidden'));
+        if (willOpen) {
+          moreMenu.classList.remove('hidden');
+          moreBtn && moreBtn.setAttribute('aria-expanded','true');
+        } else {
+          closeMoreMenu();
+        }
+      }
+      if (moreBtn && moreMenu) {
+        moreBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMoreMenu(); });
+        moreMenu.addEventListener('click', (e) => {
+          const btn = e.target.closest('button');
+          if (!btn) return;
+          const tag = btn.dataset.moreShape;
+          if (tag === 'close') { closeMoreMenu(); return; }
+          if (tag) {
+            // Just add some shapes: these extra items trigger fun variations on existing morphs
+            if (tag === 'blackhole') {
+              sliders.noise(1.35);
+              sliders.explosion(2.45);
+              sliders.idle(0.15);
+              sliders.hue(0.70);
+              morphTo(8);
+            }
+            if (tag === 'funny') {
+              sliders.noise(1.55);
+              sliders.explosion(1.8);
+              sliders.idle(0.75);
+              sliders.hue(0.12);
+              morphTo(1);
+            }
+            if (tag === 'rainbow') {
+              sliders.noise(0.8);
+              sliders.explosion(1.1);
+              sliders.idle(0.55);
+              sliders.hue(Math.random());
+              morphTo(3);
+            }
+            if (tag === 'other') {
+              sliders.noise(0.95);
+              sliders.explosion(1.35);
+              sliders.idle(0.45);
+              sliders.hue(Math.random());
+              morphTo(Math.floor(Math.random()*9));
+            }
+            closeMoreMenu();
+          }
+        });
+        addEventListener('click', () => closeMoreMenu());
+        addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMoreMenu(); });
+      }
+    </script>
+  </body>
+</html>

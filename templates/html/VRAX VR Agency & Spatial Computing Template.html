@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="en"><head><script id="aura-preview-performance-controller">
+(function() {
+if (window.__auraPreviewPerformanceController) return;
+const nativeRequestAnimationFrame = window.requestAnimationFrame
+? window.requestAnimationFrame.bind(window)
+: function(callback) { return window.setTimeout(function() { callback(Date.now()); }, 16); };
+const nativeCancelAnimationFrame = window.cancelAnimationFrame
+? window.cancelAnimationFrame.bind(window)
+: window.clearTimeout.bind(window);
+const nativeSetInterval = window.setInterval.bind(window);
+let paused = false;
+let nextFrameId = 1;
+const frameRecords = new Map();
+const pausedFrameCallbacks = new Map();
+const style = document.createElement('style');
+style.id = 'aura-preview-performance-style';
+style.textContent = [
+'html[data-aura-preview-paused="true"] *,',
+'html[data-aura-preview-paused="true"] *::before,',
+'html[data-aura-preview-paused="true"] *::after {',
+'  animation-play-state: paused !important;',
+'  transition-duration: 0s !important;',
+'  scroll-behavior: auto !important;',
+'}'
+].join('\n');
+document.head.appendChild(style);
+window.requestAnimationFrame = function(callback) {
+const frameId = nextFrameId++;
+if (paused) {
+pausedFrameCallbacks.set(frameId, callback);
+frameRecords.set(frameId, { paused: true });
+return frameId;
+}
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+return frameId;
+};
+window.cancelAnimationFrame = function(frameId) {
+const record = frameRecords.get(frameId);
+pausedFrameCallbacks.delete(frameId);
+if (record && typeof record.nativeFrameId !== 'undefined') {
+nativeCancelAnimationFrame(record.nativeFrameId);
+}
+frameRecords.delete(frameId);
+};
+window.setInterval = function(callback, delay) {
+const args = Array.prototype.slice.call(arguments, 2);
+return nativeSetInterval(function() {
+if (paused) return;
+callback.apply(this, args);
+}, delay);
+};
+const flushPausedFrames = function() {
+const callbacks = Array.from(pausedFrameCallbacks.entries());
+pausedFrameCallbacks.clear();
+callbacks.forEach(function(entry) {
+const frameId = entry[0];
+const callback = entry[1];
+const nativeFrameId = nativeRequestAnimationFrame(function(timestamp) {
+frameRecords.delete(frameId);
+callback(timestamp);
+});
+frameRecords.set(frameId, { nativeFrameId: nativeFrameId });
+});
+};
+const setPaused = function(nextPaused) {
+const shouldPause = Boolean(nextPaused);
+if (paused === shouldPause) return;
+paused = shouldPause;
+document.documentElement.toggleAttribute('data-aura-preview-paused', paused);
+if (!paused) {
+flushPausedFrames();
+}
+};
+window.__auraPreviewPerformanceController = {
+setPaused: setPaused,
+get paused() {
+return paused;
+}
+};
+window.addEventListener('message', function(event) {
+if (event.source !== window.parent) return;
+if (!event.data || event.data.type !== 'aura-preview-performance-mode') return;
+setPaused(event.data.paused);
+});
+})();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VRAX | VR Game Agency</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+/* 3D Transform utilities */
+</style>
+<script>
+// Configure Tailwind to include our custom 3D transform utilities
+tailwind.config = {
+theme: {
+extend: {
+// Add any custom theme extensions here if needed
+}
+},
+plugins: [
+function({ addUtilities }) {
+const rotateXUtilities = {};
+const rotateYUtilities = {};
+const rotateZUtilities = {};
+const rotateValues = [0, 5, 10, 15, 20, 30, 45, 75];
+// Generate rotate-x utilities
+rotateValues.forEach((value) => {
+rotateXUtilities[`.rotate-x-${value}`] = {
+'--tw-rotate-x': `${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+if (value !== 0) {
+rotateXUtilities[`.-rotate-x-${value}`] = {
+'--tw-rotate-x': `-${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+}
+});
+// Generate rotate-y utilities
+rotateValues.forEach((value) => {
+rotateYUtilities[`.rotate-y-${value}`] = {
+'--tw-rotate-y': `${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+if (value !== 0) {
+rotateYUtilities[`.-rotate-y-${value}`] = {
+'--tw-rotate-y': `-${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+}
+});
+// Generate rotate-z utilities
+rotateValues.forEach((value) => {
+rotateZUtilities[`.rotate-z-${value}`] = {
+'--tw-rotate-z': `${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+if (value !== 0) {
+rotateZUtilities[`.-rotate-z-${value}`] = {
+'--tw-rotate-z': `-${value}deg`,
+transform: `
+translate3d(var(--tw-translate-x, 0), var(--tw-translate-y, 0), var(--tw-translate-z, 0))
+rotateX(var(--tw-rotate-x, 0))
+rotateY(var(--tw-rotate-y, 0))
+rotateZ(var(--tw-rotate-z, 0))
+skewX(var(--tw-skew-x, 0))
+skewY(var(--tw-skew-y, 0))
+scaleX(var(--tw-scale-x, 1))
+scaleY(var(--tw-scale-y, 1))
+`.replace(/\\s+/g, ' ').trim(),
+};
+}
+});
+// Perspective utilities
+const perspectiveUtilities = {
+".perspective-none": { perspective: "none" },
+".perspective-dramatic": { perspective: "100px" },
+".perspective-near": { perspective: "300px" },
+".perspective-normal": { perspective: "500px" },
+".perspective-midrange": { perspective: "800px" },
+".perspective-distant": { perspective: "1200px" },
+};
+// Transform style utilities
+const transformStyleUtilities = {
+".transform-style-preserve-3d": { "transform-style": "preserve-3d" },
+".transform-style-flat": { "transform-style": "flat" },
+};
+addUtilities({
+...rotateXUtilities,
+...rotateYUtilities,
+...rotateZUtilities,
+...perspectiveUtilities,
+...transformStyleUtilities,
+});
+}
+]
+};
+</script></head>
+  <body class="antialiased selection:bg-[#ff5a00] selection:text-white bg-[#f0eee9] text-[#111] overflow-x-hidden" style="font-family:'DM Sans',sans-serif;font-weight:300;">
+    <!-- ============ LAYER 0 : WEBGL GRAIN ============ -->
+    <canvas id="webgl-canvas" class="fixed inset-0 w-full h-full z-0 pointer-events-none" width="2352" height="1528" style="width: 1568px; height: 1019px;"></canvas>
+
+    <!-- ============ LAYER 3 : NAV ============ -->
+    <nav class="fixed top-0 left-0 w-full z-50 mix-blend-difference text-white">
+      <div class="px-5 md:px-10 py-5 flex items-center justify-between">
+        <a href="#" class="text-xl md:text-2xl tracking-tighter" style="font-family:'Archivo Black',sans-serif;">
+          VRAX
+        </a>
+        <div class="hidden md:flex items-center gap-9 text-xs uppercase tracking-[0.2em]" style="font-weight:400;">
+          <a href="#protocol" class="hover:opacity-60 transition-opacity">
+            Protocol
+          </a>
+          <a href="#realities" class="hover:opacity-60 transition-opacity">
+            Realities
+          </a>
+          <a href="#releases" class="hover:opacity-60 transition-opacity">
+            Releases
+          </a>
+          <a href="#system" class="hover:opacity-60 transition-opacity">
+            System
+          </a>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="w-12 h-12 rounded-full border border-white/40 flex items-center justify-center hover:bg-white hover:text-black transition-colors">
+            <iconify-icon icon="solar:magnifer-linear" width="18" style="--iconify-stroke-width:1.5" class=""></iconify-icon>
+          </button>
+          <button class="w-12 h-12 rounded-full border border-white/40 flex items-center justify-center hover:bg-white hover:text-black transition-colors">
+            <iconify-icon icon="solar:cart-large-minimalistic-linear" width="18"></iconify-icon>
+          </button>
+          <button class="w-12 h-12 rounded-full border border-white/40 flex items-center justify-center hover:bg-white hover:text-black transition-colors">
+            <iconify-icon icon="solar:hamburger-menu-linear" width="20"></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- ============ SECTION 1 : STICKY HERO (480vh) ============ -->
+    <section id="sticky-scene-container" class="relative z-10 h-[360vh] md:h-[420vh] lg:h-[480vh]">
+      <div class="sticky top-0 h-screen w-full overflow-hidden bg-[#050505]">
+        <!-- video bg -->
+        <video id="hero-video" class="absolute inset-0 w-full h-full object-cover opacity-70" autoplay="" muted="" loop="" playsinline="" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/generated-videos/2e815afb-cac1-4c01-90e1-cf3810246e35/1780784779900-a666c03e-afbd-428c-bd3a-327e0fd182dd.mp4" style=" transform-origin: 50% 50%;"></video>
+        <div class="absolute inset-0 bg-gradient-to-b from-[#050505]/70 via-transparent to-[#050505]"></div>
+
+        <!-- noise -->
+        <div class="absolute inset-0 opacity-[0.22] mix-blend-overlay pointer-events-none"></div>
+
+        <!-- portal -->
+
+        <!-- curtains -->
+        <img id="curtain-left" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/e50de7d6-9edb-44b7-97b8-c16b51eac922_3840w.png" class="z-20 pointer-events-none w-1/2 h-full object-cover absolute top-0 left-0 blur-sm" alt="curtain left">
+        <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/b39f632f-53b4-4507-8dee-c411a6d98d4f_3840w.png" class="z-20 pointer-events-none w-1/2 h-full object-cover absolute top-0 right-0 blur-sm" alt="curtain right" id="curtain-right">
+
+        <!-- hero content -->
+        <div class="relative z-30 h-full w-full flex flex-col justify-center px-5 md:px-10">
+          <div id="hero-content" class="max-w-6xl" style=" filter: blur(24px);">
+            <div class="flex items-center gap-3 mb-6 text-white/70 text-xs uppercase tracking-[0.35em]" style="font-weight:400;">
+              <span class="w-2 h-2 rounded-full bg-[#ff5a00] inline-block"></span>
+              Spatial Computing Studio · Est. 2019
+            </div>
+            <h1 class="text-white tracking-tight leading-[0.85] text-[15vw] md:text-[11vw]" style="font-family:'DM Serif Display',serif;font-weight:300;">
+              <span class="block overflow-hidden pb-8 pt-4 -mb-8 -mt-4">
+                <span class="anim-title-inner block will-change-[transform,filter]" style=" filter: blur(12px);">
+                  Virtual
+                  <span class="italic text-[#ff5a00]">Worlds</span>
+                </span>
+              </span>
+            </h1>
+            <p class="mt-8 max-w-md text-sm md:text-base text-white/60 leading-relaxed">
+              We architect immersive realities — game systems, haptic language
+              and spatial audio for headsets that blur the line between rendered
+              and real.
+            </p>
+          </div>
+
+          <div id="hero-cta" class="mt-12 flex flex-col md:flex-row md:items-end gap-8 md:gap-16">
+            <a href="#protocol" class="group inline-flex items-center gap-4">
+              <span class="w-16 h-16 rounded-full bg-[#ff5a00] text-white flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
+                <iconify-icon icon="solar:arrow-right-down-linear" width="26"></iconify-icon>
+              </span>
+              <span class="text-white text-2xl md:text-4xl tracking-tight" style="font-family:'DM Serif Display',serif;">
+                Pixels &amp; Presence
+              </span>
+            </a>
+            <div class="flex gap-10 text-white/50 text-xs uppercase tracking-[0.2em]" style="font-weight:400;">
+              <div class="">
+                <div class="text-white text-3xl mb-1" style="font-family:'DM Serif Display',serif;">
+                  48
+                </div>
+                Worlds shipped
+              </div>
+              <div class="">
+                <div class="text-white text-3xl mb-1" style="font-family:'DM Serif Display',serif;">
+                  12M
+                </div>
+                Sessions
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="absolute bottom-6 left-0 w-full z-30 px-5 md:px-10 flex justify-between text-white/40 text-xs uppercase tracking-[0.3em]" style="font-weight: 400;">
+          <span class="">Scroll to enter</span>
+          <span>[ 01 / 06 ]</span>
+        </div>
+        <div class="absolute bottom-0 left-1/2 -translate-x-1/2 z-40 pointer-events-none w-[200%] sm:w-[190%] md:w-[210%] lg:w-[240%] max-w-[1680px] flex justify-center items-end overflow-visible" style="transform-style: preserve-3d; perspective-origin: 50% 100%; perspective: 1400px;">
+          <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/78c7d2f0-4b09-4de7-a582-d9cae7d80f58_1600w.png" alt="Futuristic woman in VR headset" class="w-full object-contain pointer-events-none select-none" style="opacity:1;filter:blur(0px);transform:scale(0.58);transform-origin:center bottom;will-change:transform;backface-visibility:hidden;" id="hero-reveal-img">
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 2 : MARQUEE ============ -->
+    <section class="relative z-10 bg-[#111] border-y border-[#333] overflow-hidden py-6">
+      <div id="marquee" class="flex whitespace-nowrap will-change-transform">
+        <div class="marquee-part flex items-center gap-10 pr-10 text-white text-sm uppercase tracking-widest" style="font-weight:400;">
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Immersion</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:headphones-round-sound-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Spatial Audio</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:hand-shake-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Haptics</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:planet-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Presence</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Realtime</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:eye-scan-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Foveation</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Immersion</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:headphones-round-sound-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Spatial Audio</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:hand-shake-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Haptics</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:planet-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Presence</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Realtime</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:eye-scan-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Foveation</span>
+            <span class="text-white/25 px-4">/</span>
+          </span></div>
+        <div class="marquee-part flex items-center gap-10 pr-10 text-white text-sm uppercase tracking-widest" style="font-weight:400;">
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Immersion</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:headphones-round-sound-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Spatial Audio</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:hand-shake-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Haptics</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:planet-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Presence</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Realtime</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:eye-scan-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Foveation</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Immersion</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:headphones-round-sound-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Spatial Audio</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:hand-shake-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Haptics</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:planet-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Presence</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:gamepad-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Realtime</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="solar:eye-scan-linear" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>Foveation</span>
+            <span class="text-white/25 px-4">/</span>
+          </span></div>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 3 : AURA VR PROTOCOL ============ -->
+    <section id="protocol" class="relative z-10 bg-[#0a0a0c] py-20 md:py-28 px-4 md:px-10">
+      <div class="absolute inset-0 opacity-[0.16] mix-blend-overlay pointer-events-none"></div>
+
+      <div class="relative max-w-[1500px] mx-auto">
+        <div class="gs-reveal flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+          <div class="">
+            <p class="text-[#22d3ee] text-xs uppercase tracking-[0.35em] mb-4" style="font-weight:400;">
+              [ 02 ] Engine
+            </p>
+            <h2 class="text-white text-4xl md:text-6xl tracking-tight leading-none" style="font-family:'DM Serif Display',serif;font-weight:300;">
+              <span class="block overflow-hidden pb-6 pt-4 -mb-6 -mt-4">
+                <span class="anim-title-inner block will-change-[transform,filter]" style="filter: blur(12px);">
+                  VRAX VR Protocol
+                </span>
+              </span>
+            </h2>
+          </div>
+          <p class="text-white/45 text-sm max-w-sm leading-relaxed">
+            Real-time cloth, topology and material authoring — running natively
+            inside the headset runtime.
+          </p>
+        </div>
+
+        <!-- editor shell -->
+        <div class="gs-reveal rounded-sm border border-white/10 bg-[#0d0d10] overflow-hidden">
+          <!-- top bar -->
+          <div class="flex items-center justify-between px-4 py-3 border-b border-white/10">
+            <div class="flex items-center gap-3">
+              <span class="w-2.5 h-2.5 rounded-full bg-[#ff5a00]"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-white/20"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-white/20"></span>
+              <span class="ml-3 text-white/50 text-xs uppercase tracking-[0.2em]" style="font-weight:400;">
+                vrax_runtime / scene_04.vrx
+              </span>
+            </div>
+            <div class="hidden md:flex items-center gap-4 text-white/35 text-xs" style="font-weight:400;">
+              <span>fps 90.0</span>
+              <span class="text-[#22d3ee]">● live</span>
+            </div>
+          </div>
+
+          <div class="flex flex-col lg:flex-row">
+            <!-- sidebar -->
+            <aside class="w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-white/10 p-4 space-y-4">
+              <div class="ed-item aspect-[4/3] border border-dashed border-white/25 flex flex-col items-center justify-center gap-2 text-white/50 hover:border-[#ff5a00] hover:text-[#ff5a00] transition-colors cursor-pointer">
+                <iconify-icon icon="solar:cloud-upload-linear" width="28"></iconify-icon>
+                <span class="text-xs uppercase tracking-[0.2em]" style="font-weight:400;">
+                  Drop mesh
+                </span>
+                <span class="text-xs text-white/25">.fbx · .glb · .usdz</span>
+              </div>
+
+              <div class="ed-item">
+                <p class="text-white/35 text-xs uppercase tracking-[0.25em] mb-3" style="font-weight:400;">
+                  Material library
+                </p>
+                <div class="space-y-1 max-h-64 overflow-y-auto pr-1">
+                  <div class="ed-item group flex items-center gap-3 px-2 py-2 border border-white/10 bg-white/[0.02] hover:border-[#22d3ee]/50 cursor-pointer transition-colors">
+                    <span class="w-7 h-7 shrink-0" style="background:linear-gradient(135deg,#22d3ee,#0b3b45);"></span>
+                    <span class="text-white/70 text-xs flex-1" style="font-weight:400;">
+                      Iridescent Silk
+                    </span>
+                    <span class="text-white/25 text-xs">04</span>
+                  </div>
+                  <div class="ed-item group flex items-center gap-3 px-2 py-2 border border-white/10 bg-white/[0.02] hover:border-[#22d3ee]/50 cursor-pointer transition-colors">
+                    <span class="w-7 h-7 shrink-0" style="background:linear-gradient(135deg,#ff5a00,#3b1400);"></span>
+                    <span class="text-white/70 text-xs flex-1" style="font-weight:400;">
+                      Molten Alloy
+                    </span>
+                    <span class="text-white/25 text-xs">11</span>
+                  </div>
+                  <div class="ed-item group flex items-center gap-3 px-2 py-2 border border-white/10 bg-white/[0.02] hover:border-[#22d3ee]/50 cursor-pointer transition-colors">
+                    <span class="w-7 h-7 shrink-0" style="background:linear-gradient(135deg,#e7e3da,#6d6a63);"></span>
+                    <span class="text-white/70 text-xs flex-1" style="font-weight:400;">
+                      Bio Ceramic
+                    </span>
+                    <span class="text-white/25 text-xs">02</span>
+                  </div>
+                  <div class="ed-item group flex items-center gap-3 px-2 py-2 border border-white/10 bg-white/[0.02] hover:border-[#22d3ee]/50 cursor-pointer transition-colors">
+                    <span class="w-7 h-7 shrink-0" style="background:linear-gradient(135deg,#7c3aed,#140a2b);"></span>
+                    <span class="text-white/70 text-xs flex-1" style="font-weight:400;">
+                      Void Weave
+                    </span>
+                    <span class="text-white/25 text-xs">08</span>
+                  </div>
+                  <div class="ed-item group flex items-center gap-3 px-2 py-2 border border-white/10 bg-white/[0.02] hover:border-[#22d3ee]/50 cursor-pointer transition-colors">
+                    <span class="w-7 h-7 shrink-0" style="background:linear-gradient(135deg,#1f2937,#0a0a0c);"></span>
+                    <span class="text-white/70 text-xs flex-1" style="font-weight:400;">
+                      Carbon Mesh
+                    </span>
+                    <span class="text-white/25 text-xs">17</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="ed-item pt-3 border-t border-white/10 space-y-3">
+                <div class="flex items-center justify-between text-xs text-white/45" style="font-weight:400;">
+                  <span>Simulation</span>
+                  <span class="text-[#22d3ee]">running</span>
+                </div>
+                <div class="h-[3px] w-full bg-white/10">
+                  <div class="h-full bg-[#22d3ee]" style="width:62%"></div>
+                </div>
+              </div>
+            </aside>
+
+            <!-- viewport -->
+            <div class="relative flex-1 min-h-[440px] md:min-h-[560px] bg-[#08080a] overflow-hidden">
+              <canvas id="fabric-canvas" class="absolute inset-0 w-full h-full" width="1884" height="1146"></canvas>
+
+              <!-- grid overlay -->
+              <div class="absolute inset-0 pointer-events-none opacity-[0.18]" style="background-image:linear-gradient(to right,#ffffff14 1px,transparent 1px),linear-gradient(to bottom,#ffffff14 1px,transparent 1px);background-size:44px 44px;"></div>
+
+              <!-- tooltips -->
+              <div class="ed-item absolute top-6 left-6 px-3 py-2 border border-[#22d3ee]/40 bg-black/50 backdrop-blur-sm text-[#22d3ee] text-xs uppercase tracking-[0.2em]" style="font-weight:400;">
+                Topology · Quads
+              </div>
+              <div class="ed-item absolute top-6 right-6 px-3 py-2 border border-white/15 bg-black/50 backdrop-blur-sm text-white/60 text-xs" style="font-weight:400;">
+                Verts 24,576
+              </div>
+              <div class="ed-item absolute bottom-24 right-6 px-3 py-2 border border-white/15 bg-black/50 backdrop-blur-sm text-white/60 text-xs" style="font-weight:400;">
+                Solver · XPBD
+              </div>
+              <div class="ed-item absolute top-1/2 left-8 -translate-y-1/2 flex items-center gap-2 text-white/40 text-xs" style="font-weight:400;">
+                <span class="w-6 h-px bg-[#ff5a00]"></span>
+                anchor_01
+              </div>
+
+              <!-- floating action bar -->
+              <div id="action-bar" class="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-2 border border-white/12 bg-black/60 backdrop-blur-md">
+                <button class="ed-item w-10 h-10 flex items-center justify-center text-[#ff5a00] bg-white/5 hover:bg-white/10 transition-colors">
+                  <iconify-icon icon="solar:cursor-linear" width="18"></iconify-icon>
+                </button>
+                <button class="ed-item w-10 h-10 flex items-center justify-center text-white/55 hover:text-white hover:bg-white/10 transition-colors">
+                  <iconify-icon icon="solar:hand-stars-linear" width="18"></iconify-icon>
+                </button>
+                <button class="ed-item w-10 h-10 flex items-center justify-center text-white/55 hover:text-white hover:bg-white/10 transition-colors">
+                  <iconify-icon icon="solar:layers-minimalistic-linear" width="18"></iconify-icon>
+                </button>
+                <button class="ed-item w-10 h-10 flex items-center justify-center text-white/55 hover:text-white hover:bg-white/10 transition-colors">
+                  <iconify-icon icon="solar:magic-stick-3-linear" width="18"></iconify-icon>
+                </button>
+                <span class="w-px h-6 bg-white/15 mx-1"></span>
+                <button class="ed-item w-10 h-10 flex items-center justify-center text-white/55 hover:text-white hover:bg-white/10 transition-colors">
+                  <iconify-icon icon="solar:settings-linear" width="18"></iconify-icon>
+                </button>
+              </div>
+            </div>
+
+            <!-- right rail -->
+            <div class="hidden xl:block w-64 shrink-0 border-l border-white/10 p-4 space-y-5">
+              <p class="text-white/35 text-xs uppercase tracking-[0.25em]" style="font-weight:400;">
+                Inspector
+              </p>
+              <video class="w-full aspect-video object-cover border border-white/10" data-aura-video-preset="hover" muted="" loop="" playsinline="" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/generated-videos/2e815afb-cac1-4c01-90e1-cf3810246e35/1781947152338-fc31a6ab-23b1-4817-a166-332c89b30f46.mp4"></video>
+              <div class="space-y-3 text-xs text-white/55" style="font-weight:400;">
+                <div class="flex justify-between border-b border-white/8 pb-2">
+                  <span>Stiffness</span>
+                  <span class="text-white">0.84</span>
+                </div>
+                <div class="flex justify-between border-b border-white/8 pb-2">
+                  <span>Damping</span>
+                  <span class="text-white">0.12</span>
+                </div>
+                <div class="flex justify-between border-b border-white/8 pb-2">
+                  <span>Wind</span>
+                  <span class="text-[#22d3ee]">2.40 m/s</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>Substeps</span>
+                  <span class="text-white">8</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 4 : IMMERSIVE REALITIES ============ -->
+    <section id="realities" class="relative z-10 bg-[#f0eee9] py-20 md:py-32 px-5 md:px-10">
+      <div class="max-w-[1500px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10">
+        <!-- left -->
+        <div class="lg:col-span-5 gs-reveal">
+          <p class="text-xs uppercase tracking-[0.35em] text-[#111]/45 mb-6" style="font-weight:400;">
+            [ 03 ] Portfolio
+          </p>
+          <h2 class="text-6xl md:text-8xl leading-[0.82] tracking-tight" style="font-family:'DM Serif Display',serif;font-weight:300;">
+            <span class="block overflow-hidden pb-6 pt-4 -mb-6 -mt-4">
+              <span class="anim-title-inner block will-change-[transform,filter]" style=" filter: blur(12px);">
+                Immersive
+                <br>
+                <span class="italic">— realities</span>
+                <sup class="text-xl align-super" style="font-family:'DM Sans',sans-serif;font-weight:400;">
+                  ©26
+                </sup>
+              </span>
+            </span>
+          </h2>
+          <p class="mt-8 max-w-sm text-sm text-[#111]/55 leading-relaxed">
+            Six years of building headset-native experiences. Every world ships
+            with its own haptic grammar, diegetic UI and spatial mix.
+          </p>
+
+          <div class="mt-10 flex items-center gap-5">
+            <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/9514b2a5-4bce-4359-81d1-abafa526b5ea_320w.png" class="w-16 h-24 object-cover" style="clip-path:polygon(0 0, 100% 0, 100% 80%, 80% 100%, 0 100%);" alt="lead">
+            <div>
+              <p class="text-sm" style="font-weight:400;">Kai Ardent</p>
+              <p class="text-xs text-[#111]/45">Reality Director</p>
+              <div class="mt-3 inline-flex items-baseline gap-1 px-3 py-1 bg-[#111] text-white">
+                <span class="text-xs" style="font-weight:400;">from</span>
+                <span class="text-lg" style="font-family:'DM Serif Display',serif;">
+                  $450
+                </span>
+                <span class="text-xs text-white/50">/hr</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- categories -->
+          <div class="mt-12 border-t border-dashed border-[#111]/25">
+            <a href="#" class="cat group flex items-center gap-4 py-4 border-b border-dashed border-[#111]/25 transition-colors">
+              <span class="num text-xs text-[#ff5a00] opacity-0 -translate-x-2 transition-all duration-300" style="font-weight:400;">
+                [01]
+              </span>
+              <span class="text-2xl md:text-3xl tracking-tight transition-colors" style="font-family:'DM Serif Display',serif;">
+                Neo-Tokyo Drift
+              </span>
+              <iconify-icon icon="solar:arrow-right-up-linear" width="20" class="ml-auto opacity-0 group-hover:opacity-100 text-[#ff5a00] transition-opacity"></iconify-icon>
+            </a>
+            <a href="#" class="cat group flex items-center gap-4 py-4 border-b border-dashed border-[#111]/25 transition-colors">
+              <span class="num text-xs text-[#ff5a00] opacity-0 -translate-x-2 transition-all duration-300" style="font-weight:400;">
+                [02]
+              </span>
+              <span class="text-2xl md:text-3xl tracking-tight transition-colors" style="font-family:'DM Serif Display',serif;">
+                Hardware Rituals
+              </span>
+              <iconify-icon icon="solar:arrow-right-up-linear" width="20" class="ml-auto opacity-0 group-hover:opacity-100 text-[#ff5a00] transition-opacity"></iconify-icon>
+            </a>
+            <a href="#" class="cat group flex items-center gap-4 py-4 border-b border-dashed border-[#111]/25 transition-colors">
+              <span class="num text-xs text-[#ff5a00] opacity-0 -translate-x-2 transition-all duration-300" style="font-weight:400;">
+                [03]
+              </span>
+              <span class="text-2xl md:text-3xl tracking-tight transition-colors" style="font-family:'DM Serif Display',serif;">
+                Deep Field Ops
+              </span>
+              <iconify-icon icon="solar:arrow-right-up-linear" width="20" class="ml-auto opacity-0 group-hover:opacity-100 text-[#ff5a00] transition-opacity"></iconify-icon>
+            </a>
+            <a href="#" class="cat group flex items-center gap-4 py-4 border-b border-dashed border-[#111]/25 transition-colors">
+              <span class="num text-xs text-[#ff5a00] opacity-0 -translate-x-2 transition-all duration-300" style="font-weight:400;">
+                [04]
+              </span>
+              <span class="text-2xl md:text-3xl tracking-tight transition-colors" style="font-family:'DM Serif Display',serif;">
+                Sensory Labs
+              </span>
+              <iconify-icon icon="solar:arrow-right-up-linear" width="20" class="ml-auto opacity-0 group-hover:opacity-100 text-[#ff5a00] transition-opacity"></iconify-icon>
+            </a>
+          </div>
+        </div>
+
+        <!-- right stacked media -->
+        <div class="lg:col-span-7 relative min-h-[520px] md:min-h-[720px] gs-reveal">
+  <div class="absolute top-0 left-0 w-[78%] h-[62%] overflow-hidden z-10" style="clip-path:polygon(20% 0, 100% 0, 100% 100%, 0 100%, 0 20%);">
+    <video class="gs-img-scale w-full h-full object-cover" data-aura-video-preset="loop-in-view" muted="" loop="" playsinline="" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/generated-videos/2e815afb-cac1-4c01-90e1-cf3810246e35/1780784779900-a666c03e-afbd-428c-bd3a-327e0fd182dd.mp4"></video>
+    <span class="absolute bottom-4 left-6 text-white text-xs uppercase tracking-[0.3em]" style="font-weight: 300;">
+              Neo-Tokyo · realtime
+            </span>
+  </div>
+  <div class="z-20 w-[90%] md:w-[62%] h-[45%] md:h-[58%] absolute right-0 bottom-0">
+    <img class="gs-img-scale w-full h-full object-contain" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/eb78780c-58c0-4a0f-8e24-e2d510d7b17e_1600w.png" alt="hardware">
+    <span class="absolute bottom-4 left-6 text-white text-xs uppercase tracking-[0.3em]" style="font-weight: 300;">
+              Hardware · v4
+            </span>
+  </div>
+  <div class="absolute bottom-6 left-2 z-30 hidden md:flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-[#111]/50" style="font-weight: 300;">
+    <iconify-icon icon="solar:planet-linear" width="16" class="text-[#ff5a00]"></iconify-icon>
+    04 active worlds
+  </div>
+</div>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 5 : HORIZONTAL GALLERY (400vh) ============ -->
+    <section id="releases" class="relative z-10 bg-[#050505]" style="height:400vh;">
+      <div class="sticky top-0 h-screen overflow-hidden flex flex-col justify-center">
+        <div class="absolute inset-0 opacity-[0.18] mix-blend-overlay pointer-events-none"></div>
+
+        <div class="relative px-5 md:px-10 mb-8 flex items-end justify-between">
+          <div>
+            <p class="text-[#ff5a00] text-xs uppercase tracking-[0.35em] mb-3" style="font-weight:400;">
+              [ 04 ] Releases
+            </p>
+            <h2 class="text-white text-4xl md:text-6xl tracking-tight leading-none" style="font-family:'DM Serif Display',serif;font-weight:300;">
+              <span class="block overflow-hidden pb-6 pt-4 -mb-6 -mt-4">
+                <span class="anim-title-inner block will-change-[transform,filter]" style=" filter: blur(12px);">
+                  Shipped Worlds
+                </span>
+              </span>
+            </h2>
+          </div>
+          <div class="hidden md:flex items-center gap-3 text-white/40 text-xs uppercase tracking-[0.25em]" style="font-weight:400;">
+            Drag horizon
+            <iconify-icon icon="solar:arrow-right-linear" width="18"></iconify-icon>
+          </div>
+        </div>
+
+        <div id="h-track" class="relative flex gap-6 md:gap-10 px-5 md:px-10 will-change-transform">
+          <!-- cards injected by JS pattern below -->
+          <article class="rel-card group w-[78vw] sm:w-[52vw] lg:w-[34vw] shrink-0">
+            <div class="relative overflow-hidden aspect-[4/5]" style="clip-path:polygon(0 0, 100% 0, 100% 80%, 80% 100%, 0 100%);">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/6f05f770-1a95-449d-8498-9b2b523d565e_1600w.jpg" class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700" alt="Nexus Studio">
+              <span class="absolute top-4 left-4 text-xs uppercase tracking-[0.25em] text-white/70" style="font-weight:400;">
+                01 · 2021
+              </span>
+            </div>
+            <h3 class="mt-5 text-3xl md:text-5xl tracking-tight text-transparent group-hover:text-white transition-colors duration-500" style="font-family:'DM Serif Display',serif;-webkit-text-stroke:1px #ffffff88;">
+              Nexus Studio
+            </h3>
+            <p class="text-white/40 text-xs uppercase tracking-[0.2em] mt-2" style="font-weight:400;">
+              Sandbox / Creation
+            </p>
+          </article>
+
+          <article class="rel-card group w-[78vw] sm:w-[52vw] lg:w-[34vw] shrink-0">
+            <div class="relative overflow-hidden aspect-[4/5]" style="clip-path:polygon(0 0, 100% 0, 100% 80%, 80% 100%, 0 100%);">
+              <video class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700" data-aura-video-preset="hover" muted="" loop="" playsinline="" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/generated-videos/2e815afb-cac1-4c01-90e1-cf3810246e35/1780784779900-a666c03e-afbd-428c-bd3a-327e0fd182dd.mp4"></video>
+              <span class="absolute top-4 left-4 text-xs uppercase tracking-[0.25em] text-white/70" style="font-weight:400;">
+                02 · 2022
+              </span>
+            </div>
+            <h3 class="mt-5 text-3xl md:text-5xl tracking-tight text-transparent group-hover:text-white transition-colors duration-500" style="font-family:'DM Serif Display',serif;-webkit-text-stroke:1px #ffffff88;">
+              Neon Cyberpunk
+            </h3>
+            <p class="text-white/40 text-xs uppercase tracking-[0.2em] mt-2" style="font-weight:400;">
+              Narrative / Open World
+            </p>
+          </article>
+
+          <article class="rel-card group w-[78vw] sm:w-[52vw] lg:w-[34vw] shrink-0">
+            <div class="relative overflow-hidden aspect-[4/5]" style="clip-path:polygon(0 0, 100% 0, 100% 80%, 80% 100%, 0 100%);">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/55b1b6c8-34d3-44ab-8eda-d488b01edad2_1600w.webp" class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700" alt="Tactical Assault">
+              <span class="absolute top-4 left-4 text-xs uppercase tracking-[0.25em] text-white/70" style="font-weight:400;">
+                03 · 2023
+              </span>
+            </div>
+            <h3 class="mt-5 text-3xl md:text-5xl tracking-tight text-transparent group-hover:text-white transition-colors duration-500" style="font-family:'DM Serif Display',serif;-webkit-text-stroke:1px #ffffff88;">
+              Tactical Assault
+            </h3>
+            <p class="text-white/40 text-xs uppercase tracking-[0.2em] mt-2" style="font-weight:400;">
+              Co-op / Simulation
+            </p>
+          </article>
+
+          <article class="rel-card group w-[78vw] sm:w-[52vw] lg:w-[34vw] shrink-0">
+            <div class="relative overflow-hidden aspect-[4/5]" style="clip-path:polygon(0 0, 100% 0, 100% 80%, 80% 100%, 0 100%);">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/1ea6106e-ce62-4da2-b4ea-bd9aac667baa_1600w.png" class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700" alt="Astral Depths">
+              <span class="absolute top-4 left-4 text-xs uppercase tracking-[0.25em] text-white/70" style="font-weight:400;">
+                04 · 2024
+              </span>
+            </div>
+            <h3 class="mt-5 text-3xl md:text-5xl tracking-tight text-transparent group-hover:text-white transition-colors duration-500" style="font-family:'DM Serif Display',serif;-webkit-text-stroke:1px #ffffff88;">
+              Astral Depths
+            </h3>
+            <p class="text-white/40 text-xs uppercase tracking-[0.2em] mt-2" style="font-weight:400;">
+              Exploration / Ambient
+            </p>
+          </article>
+
+          <article class="rel-card group w-[78vw] sm:w-[52vw] lg:w-[34vw] shrink-0">
+            <div class="relative overflow-hidden aspect-[4/5]" style="clip-path:polygon(0 0, 100% 0, 100% 80%, 80% 100%, 0 100%);">
+              <video class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700" data-aura-video-preset="hover" muted="" loop="" playsinline="" src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/generated-videos/2e815afb-cac1-4c01-90e1-cf3810246e35/1781947152338-fc31a6ab-23b1-4817-a166-332c89b30f46.mp4"></video>
+              <span class="absolute top-4 left-4 text-xs uppercase tracking-[0.25em] text-white/70" style="font-weight:400;">
+                05 · 2025
+              </span>
+            </div>
+            <h3 class="mt-5 text-3xl md:text-5xl tracking-tight text-transparent group-hover:text-white transition-colors duration-500" style="font-family:'DM Serif Display',serif;-webkit-text-stroke:1px #ffffff88;">
+              Fabric Engine
+            </h3>
+            <p class="text-white/40 text-xs uppercase tracking-[0.2em] mt-2" style="font-weight:400;">
+              Tooling / Runtime
+            </p>
+          </article>
+
+          <article class="rel-card group w-[78vw] sm:w-[52vw] lg:w-[34vw] shrink-0">
+            <div class="relative overflow-hidden aspect-[4/5]" style="clip-path:polygon(0 0, 100% 0, 100% 80%, 80% 100%, 0 100%);">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/8d35554b-842b-4c37-b161-0159cc04ce0d_1600w.png" class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700" alt="Halcyon Rift">
+              <span class="absolute top-4 left-4 text-xs uppercase tracking-[0.25em] text-white/70" style="font-weight:400;">
+                06 · 2026
+              </span>
+            </div>
+            <h3 class="mt-5 text-3xl md:text-5xl tracking-tight text-transparent group-hover:text-white transition-colors duration-500" style="font-family:'DM Serif Display',serif;-webkit-text-stroke:1px #ffffff88;">
+              Halcyon Rift
+            </h3>
+            <p class="text-white/40 text-xs uppercase tracking-[0.2em] mt-2" style="font-weight:400;">
+              MMO / Persistent
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 6 : SYSTEM ARCHITECTURE / FOOTER ============ -->
+    <section id="system" class="relative z-10 bg-[#050505] pt-20 md:pt-28 pb-10 px-5 md:px-10">
+      <div class="absolute inset-0 opacity-[0.16] mix-blend-overlay pointer-events-none"></div>
+
+      <div class="relative max-w-[1500px] mx-auto">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12">
+          <!-- headline -->
+          <div class="lg:col-span-6 gs-reveal">
+            <p class="text-[#22d3ee] text-xs uppercase tracking-[0.35em] mb-6" style="font-weight:400;">
+              [ 05 ] System architecture
+            </p>
+            <h2 class="text-white text-5xl md:text-7xl leading-[0.85] tracking-tight" style="font-family:'DM Serif Display',serif;font-weight:300;">
+              <span class="block overflow-hidden pb-6 pt-4 -mb-6 -mt-4">
+                <span class="anim-title-inner block will-change-[transform,filter]" style=" filter: blur(12px);">
+                  Built for the
+                  <br>
+                  <span class="italic text-[#ff5a00]">next</span>
+                  headset
+                </span>
+              </span>
+            </h2>
+
+            <div class="mt-12 space-y-0 border-t border-white/12">
+              <a href="#" class="sys group flex items-center justify-between py-6 border-b border-white/12">
+                <span class="text-white/80 text-xl md:text-2xl tracking-tight group-hover:text-white transition-colors" style="font-family:'DM Serif Display',serif;">
+                  Neural Rendering
+                </span>
+                <span class="flex items-center gap-4">
+                  <span class="text-white/30 text-xs uppercase tracking-[0.2em]" style="font-weight:400;">
+                    v3.2
+                  </span>
+                  <iconify-icon icon="solar:arrow-right-up-linear" width="22" class="text-[#ff5a00] opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300"></iconify-icon>
+                </span>
+              </a>
+              <a href="#" class="sys group flex items-center justify-between py-6 border-b border-white/12">
+                <span class="text-white/80 text-xl md:text-2xl tracking-tight group-hover:text-white transition-colors" style="font-family:'DM Serif Display',serif;">
+                  Haptic Sub-systems
+                </span>
+                <span class="flex items-center gap-4">
+                  <span class="text-white/30 text-xs uppercase tracking-[0.2em]" style="font-weight:400;">
+                    v1.8
+                  </span>
+                  <iconify-icon icon="solar:arrow-right-up-linear" width="22" class="text-[#ff5a00] opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300"></iconify-icon>
+                </span>
+              </a>
+              <a href="#" class="sys group flex items-center justify-between py-6 border-b border-white/12">
+                <span class="text-white/80 text-xl md:text-2xl tracking-tight group-hover:text-white transition-colors" style="font-family:'DM Serif Display',serif;">
+                  Spatial Acoustics
+                </span>
+                <span class="flex items-center gap-4">
+                  <span class="text-white/30 text-xs uppercase tracking-[0.2em]" style="font-weight:400;">
+                    v4.0
+                  </span>
+                  <iconify-icon icon="solar:arrow-right-up-linear" width="22" class="text-[#ff5a00] opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300"></iconify-icon>
+                </span>
+              </a>
+            </div>
+          </div>
+
+          <!-- system link panel -->
+          <div class="lg:col-span-6 gs-reveal">
+            <div class="border border-white/12 bg-white/[0.02] p-6 md:p-8">
+              <div class="flex items-start justify-between gap-6">
+                <div>
+                  <p class="text-white text-lg tracking-tight" style="font-family:'DM Serif Display',serif;">
+                    System Link
+                  </p>
+                  <p class="text-white/40 text-xs mt-1" style="font-weight:400;">
+                    Route render load to the VRAX overdrive cluster.
+                  </p>
+                </div>
+                <button id="sys-toggle" class="relative w-14 h-8 shrink-0 rounded-full border border-white/20 bg-white/5 transition-colors duration-300" style="background-color: rgb(255, 90, 0); border-color: rgb(255, 90, 0);">
+                  <span id="sys-knob" class="absolute top-1/2 -translate-y-1/2 left-1 w-6 h-6 rounded-full bg-white/60 transition-all duration-300" style="left: calc(100% - 1.75rem); background: rgb(255, 255, 255);"></span>
+                </button>
+              </div>
+
+              <div class="mt-8">
+                <div class="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-white/45 mb-3" style="font-weight:400;">
+                  <span>Overdrive allocation</span>
+                  <span id="alloc-num" class="text-[#ff5a00]">84%</span>
+                </div>
+                <div class="h-[6px] w-full bg-white/10 overflow-hidden">
+                  <div id="alloc-bar" class="h-full bg-[#ff5a00]" style="width: 84%;"></div>
+                </div>
+              </div>
+
+              <div class="mt-8 grid grid-cols-3 gap-3 text-center">
+                <div class="border border-white/10 py-4">
+                  <p class="text-white text-2xl" style="font-family:'DM Serif Display',serif;">
+                    90
+                  </p>
+                  <p class="text-white/35 text-xs uppercase tracking-[0.15em]" style="font-weight:400;">
+                    Hz
+                  </p>
+                </div>
+                <div class="border border-white/10 py-4">
+                  <p class="text-[#22d3ee] text-2xl" style="font-family:'DM Serif Display',serif;">
+                    12
+                  </p>
+                  <p class="text-white/35 text-xs uppercase tracking-[0.15em]" style="font-weight:400;">
+                    ms
+                  </p>
+                </div>
+                <div class="border border-white/10 py-4">
+                  <p class="text-white text-2xl" style="font-family:'DM Serif Display',serif;">
+                    4K
+                  </p>
+                  <p class="text-white/35 text-xs uppercase tracking-[0.15em]" style="font-weight:400;">
+                    per eye
+                  </p>
+                </div>
+              </div>
+
+              <a href="#" class="mt-8 group flex items-center justify-between px-5 py-4 bg-[#ff5a00] text-white">
+                <span class="text-sm uppercase tracking-[0.2em]" style="font-weight:400;">
+                  Start a project
+                </span>
+                <iconify-icon icon="solar:arrow-right-linear" width="20" class="group-hover:translate-x-1 transition-transform"></iconify-icon>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- footer bottom -->
+      </div>
+    </section>
+    <section id="testimonials" class="relative z-10 bg-[#0a0a0c] py-20 md:py-32 px-5 md:px-10 border-t border-white/10">
+      <div class="max-w-[1500px] mx-auto gs-reveal">
+        <p class="text-[#ff5a00] text-xs uppercase tracking-[0.35em] mb-6" style="font-weight:400;">
+          [ 06 ] Testimonials
+        </p>
+        <h2 class="text-white text-5xl md:text-7xl leading-[0.85] tracking-tight mb-16" style="font-family:'DM Serif Display',serif;font-weight:300;">
+          <span class="block overflow-hidden pb-6 pt-4 -mb-6 -mt-4">
+            <span class="anim-title-inner block will-change-[transform,filter]" style=" filter: blur(12px);">
+              Industry
+              <br>
+              <span class="italic text-[#ff5a00]">Voices</span>
+            </span>
+          </span>
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div class="flex flex-col h-full p-8 border border-white/10 bg-[#0d0d10] hover:border-white/20 transition-colors">
+            <iconify-icon icon="solar:quote-right-bold" width="32" class="text-white/20 mb-6"></iconify-icon>
+            <p class="text-white/80 text-lg leading-relaxed mb-8" style="font-family:'DM Sans',sans-serif;">
+              "VRAX fundamentally redefined our approach to spatial computing.
+              Their fabric engine is a masterclass in optimization."
+            </p>
+            <div class="flex items-center gap-4 mt-auto">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/ec6a5cab-715c-44c6-9cd8-aff440c886f6_320w.webp" class="w-12 h-12 rounded-full object-cover grayscale" alt="avatar">
+              <div>
+                <p class="text-white text-sm" style="font-weight:500;">
+                  Elena Rostova
+                </p>
+                <p class="text-white/40 text-xs uppercase tracking-[0.1em] mt-1">
+                  Lead Architect, NovaSpace
+                </p>
+              </div>
+            </div>
+          </div>
+          <div class="flex flex-col h-full p-8 border border-white/10 bg-[#0d0d10] hover:border-white/20 transition-colors">
+            <iconify-icon icon="solar:quote-right-bold" width="32" class="text-white/20 mb-6"></iconify-icon>
+            <p class="text-white/80 text-lg leading-relaxed mb-8" style="font-family:'DM Sans',sans-serif;">
+              "The haptic sub-systems they delivered for our MMO are
+              unparalleled. It feels less like a game and more like a second
+              reality."
+            </p>
+            <div class="flex items-center gap-4 mt-auto">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/a47fdc81-bd26-49ad-af4d-e2e22283b996_320w.png" class="w-12 h-12 rounded-full object-cover grayscale" alt="avatar">
+              <div>
+                <p class="text-white text-sm" style="font-weight:500;">
+                  Marcus Vane
+                </p>
+                <p class="text-white/40 text-xs uppercase tracking-[0.1em] mt-1">
+                  Director, Halcyon Rift
+                </p>
+              </div>
+            </div>
+          </div>
+          <div class="flex flex-col h-full p-8 border border-white/10 bg-[#0d0d10] hover:border-white/20 transition-colors">
+            <iconify-icon icon="solar:quote-right-bold" width="32" class="text-white/20 mb-6"></iconify-icon>
+            <p class="text-white/80 text-lg leading-relaxed mb-8" style="font-family:'DM Sans',sans-serif;">
+              "We've worked with top-tier agencies before, but VRAX’s attention
+              to foveated rendering and frame-pacing is in a league of its own."
+            </p>
+            <div class="flex items-center gap-4 mt-auto">
+              <img src="https://hoirqrkdgbmvpwutwuwj.supabase.co/storage/v1/object/public/assets/assets/533a16b9-9e5e-49d1-a4ea-83f9178889ff_1600w.png" class="w-12 h-12 rounded-full object-cover grayscale" alt="avatar">
+              <div>
+                <p class="text-white text-sm" style="font-weight:500;">
+                  Sarah Lin
+                </p>
+                <p class="text-white/40 text-xs uppercase tracking-[0.1em] mt-1">
+                  CTO, Nexus Studio
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="relative z-10 bg-[#0a0a0c] py-20 md:py-32 px-5 md:px-10 border-t border-white/10" id="faq">
+      <div class="max-w-[1500px] mx-auto gs-reveal">
+        <p class="text-[#22d3ee] text-xs uppercase tracking-[0.35em] mb-6" style="font-weight:300;">
+          [ 07 ] FAQ
+        </p>
+        <h2 class="text-white text-5xl md:text-7xl leading-[0.85] tracking-tight mb-14" style="font-family:'DM Serif Display',serif;font-weight:200;">
+          <span class="block overflow-hidden pb-6 pt-4 -mb-6 -mt-4">
+            <span class="anim-title-inner block will-change-[transform,filter]" style=" filter: blur(12px);">
+              Frequently
+              <br>
+              <span class="italic text-[#ff5a00]">Asked</span>
+            </span>
+          </span>
+        </h2>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12">
+          <div class="lg:col-span-5">
+            <p class="text-white/45 text-sm max-w-md leading-relaxed">
+              Answers to common questions about engagement models, timelines,
+              and platform targets.
+            </p>
+          </div>
+          <div class="lg:col-span-7">
+            <div class="border border-white/10 bg-[#0d0d10]">
+              <details class="group border-b border-white/10">
+                <summary class="cursor-pointer select-none list-none px-6 py-6 flex items-center justify-between gap-6">
+                  <span class="text-white/80 text-xl md:text-2xl tracking-tight" style="font-family:'DM Serif Display',serif;">
+                    What does VRAX build?
+                  </span>
+                  <span class="w-10 h-10 shrink-0 rounded-full border border-white/15 flex items-center justify-center text-white/60 group-open:text-white group-open:border-white/25 transition-colors">
+                    <i data-lucide="plus" class="w-[18px] h-[18px] group-open:hidden"></i>
+                    <i data-lucide="minus" class="w-[18px] h-[18px] hidden group-open:block"></i>
+                  </span>
+                </summary>
+                <div class="px-6 pb-6 -mt-2 text-white/55 text-sm leading-relaxed" style="font-weight:300;">
+                  We design and ship headset-native experiences: gameplay
+                  systems, diegetic UI, spatial audio, haptics, and realtime
+                  performance tuning across standalone and PC VR.
+                </div>
+              </details>
+
+              <details class="group border-b border-white/10">
+                <summary class="cursor-pointer select-none list-none px-6 py-6 flex items-center justify-between gap-6">
+                  <span class="text-white/80 text-xl md:text-2xl tracking-tight" style="font-family:'DM Serif Display',serif;">
+                    Which platforms do you support?
+                  </span>
+                  <span class="w-10 h-10 shrink-0 rounded-full border border-white/15 flex items-center justify-center text-white/60 group-open:text-white group-open:border-white/25 transition-colors">
+                    <i data-lucide="plus" class="w-[18px] h-[18px] group-open:hidden"></i>
+                    <i data-lucide="minus" class="w-[18px] h-[18px] hidden group-open:block"></i>
+                  </span>
+                </summary>
+                <div class="px-6 pb-6 -mt-2 text-white/55 text-sm leading-relaxed" style="font-weight:300;">
+                  Quest-class standalone, PC VR, and emerging spatial devices.
+                  We scope targets based on performance budgets (GPU/CPU),
+                  tracking constraints, and distribution requirements.
+                </div>
+              </details>
+
+              <details class="group border-b border-white/10">
+                <summary class="cursor-pointer select-none list-none px-6 py-6 flex items-center justify-between gap-6">
+                  <span class="text-white/80 text-xl md:text-2xl tracking-tight" style="font-family:'DM Serif Display',serif;">
+                    How long does a project take?
+                  </span>
+                  <span class="w-10 h-10 shrink-0 rounded-full border border-white/15 flex items-center justify-center text-white/60 group-open:text-white group-open:border-white/25 transition-colors">
+                    <i data-lucide="plus" class="w-[18px] h-[18px] group-open:hidden"></i>
+                    <i data-lucide="minus" class="w-[18px] h-[18px] hidden group-open:block"></i>
+                  </span>
+                </summary>
+                <div class="px-6 pb-6 -mt-2 text-white/55 text-sm leading-relaxed" style="font-weight:300;">
+                  Typical engagements range from 2–4 weeks for a prototype
+                  sprint to 3–6 months for a production release, depending on
+                  content volume and platform matrix.
+                </div>
+              </details>
+
+              <details class="group">
+                <summary class="cursor-pointer select-none list-none px-6 py-6 flex items-center justify-between gap-6">
+                  <span class="text-white/80 text-xl md:text-2xl tracking-tight" style="font-family:'DM Serif Display',serif;">
+                    How do we start?
+                  </span>
+                  <span class="w-10 h-10 shrink-0 rounded-full border border-white/15 flex items-center justify-center text-white/60 group-open:text-white group-open:border-white/25 transition-colors">
+                    <i data-lucide="plus" class="w-[18px] h-[18px] group-open:hidden"></i>
+                    <i data-lucide="minus" class="w-[18px] h-[18px] hidden group-open:block"></i>
+                  </span>
+                </summary>
+                <div class="px-6 pb-6 -mt-2 text-white/55 text-sm leading-relaxed" style="font-weight:300;">
+                  Send a brief to
+                  <a href="mailto:hello@vrax.studio" class="text-[#ff5a00] hover:opacity-80 transition-opacity">
+                    hello@vrax.studio
+                  </a>
+                  . We’ll respond with a scope outline, timeline, and a
+                  production plan aligned to your release goals.
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <footer class="relative z-10 bg-[#050505] pt-24 pb-10 px-5 md:px-10 border-t border-white/10">
+      <div class="max-w-[1500px] mx-auto gs-reveal">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-20">
+          <div class="md:col-span-2">
+            <a href="#" class="text-4xl md:text-5xl tracking-tighter text-white block mb-6" style="font-family:'Archivo Black',sans-serif;">
+              VRAX
+            </a>
+            <p class="text-white/50 text-sm max-w-sm leading-relaxed mb-8">
+              Architecting immersive realities. Game systems, haptic language
+              and spatial audio for the next generation of spatial computing.
+            </p>
+            <div class="flex gap-4">
+              <a href="#" class="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center text-white/70 hover:bg-white hover:text-black transition-colors">
+                <iconify-icon icon="ri:twitter-x-line" width="18"></iconify-icon>
+              </a>
+              <a href="#" class="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center text-white/70 hover:bg-white hover:text-black transition-colors">
+                <iconify-icon icon="ri:discord-fill" width="20"></iconify-icon>
+              </a>
+              <a href="#" class="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center text-white/70 hover:bg-white hover:text-black transition-colors">
+                <iconify-icon icon="ri:github-fill" width="20"></iconify-icon>
+              </a>
+            </div>
+          </div>
+          <div class="">
+            <h4 class="text-white text-xs uppercase tracking-[0.2em] mb-6" style="font-weight:500;">
+              Index
+            </h4>
+            <ul class="space-y-4 text-sm text-white/60">
+              <li>
+                <a href="#protocol" class="hover:text-[#ff5a00] transition-colors">
+                  Protocol
+                </a>
+              </li>
+              <li>
+                <a href="#realities" class="hover:text-[#ff5a00] transition-colors">
+                  Realities
+                </a>
+              </li>
+              <li>
+                <a href="#releases" class="hover:text-[#ff5a00] transition-colors">
+                  Releases
+                </a>
+              </li>
+              <li>
+                <a href="#system" class="hover:text-[#ff5a00] transition-colors">
+                  System Link
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div class="">
+            <h4 class="text-white text-xs uppercase tracking-[0.2em] mb-6" style="font-weight:500;">
+              Connect
+            </h4>
+            <ul class="space-y-4 text-sm text-white/60">
+              <li>
+                <a href="mailto:hello@vrax.studio" class="hover:text-[#ff5a00] transition-colors">
+                  hello@vrax.studio
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-[#ff5a00] transition-colors">
+                  Careers
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-[#ff5a00] transition-colors">
+                  Press Kit
+                </a>
+              </li>
+              <li>
+                <a href="#" class="hover:text-[#ff5a00] transition-colors">
+                  Contact
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div class="pt-8 border-t border-white/12 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 text-white/40 text-xs uppercase tracking-[0.1em]">
+          <p>© 2024 VRAX Studio. All rights reserved.</p>
+          <div class="flex gap-6">
+            <a href="#" class="hover:text-white transition-colors">
+              Privacy Policy
+            </a>
+            <a href="#" class="hover:text-white transition-colors">
+              Terms of Service
+            </a>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <script class="">
+      /* ---------------- MARQUEE CONTENT ---------------- */
+      (function(){
+        const items = [
+          ['solar:gamepad-linear','Immersion'],
+          ['solar:headphones-round-sound-linear','Spatial Audio'],
+          ['solar:hand-shake-linear','Haptics'],
+          ['solar:planet-linear','Presence'],
+          ['solar:gamepad-linear','Realtime'],
+          ['solar:eye-scan-linear','Foveation']
+        ];
+        const html = items.map(([i,t])=>`
+          <span class="flex items-center gap-3 shrink-0">
+            <iconify-icon icon="${i}" width="20" class="text-[#ff5a00]"></iconify-icon>
+            <span>${t}</span>
+            <span class="text-white/25 px-4">/</span>
+          </span>`).join('');
+        document.querySelectorAll('.marquee-part').forEach(p=>p.innerHTML = html + html);
+        gsap.to('#marquee', {xPercent:-50, duration:26, ease:'none', repeat:-1});
+      })();
+
+      /* ---------------- LAYER 0 : WEBGL GRAIN ---------------- */
+      (function(){
+        const canvas = document.getElementById('webgl-canvas');
+        const renderer = new THREE.WebGLRenderer({canvas, alpha:true, antialias:false});
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.5));
+        renderer.setSize(innerWidth, innerHeight);
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+        const uniforms = {uTime:{value:0}, uRes:{value:new THREE.Vector2(innerWidth,innerHeight)}};
+        const mat = new THREE.ShaderMaterial({
+          transparent:true, uniforms,
+          vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position,1.0);}`,
+          fragmentShader:`
+            precision mediump float;
+            uniform float uTime; uniform vec2 uRes; varying vec2 vUv;
+            float rand(vec2 c){return fract(sin(dot(c,vec2(12.9898,78.233)))*43758.5453);}
+            void main(){
+              vec2 p = vUv*uRes*0.45;
+              float g = rand(floor(p)+floor(uTime*24.0));
+              float vig = smoothstep(1.15,0.25,distance(vUv,vec2(0.5)));
+              float a = (g*0.09) * (0.45+0.55*vig);
+              vec3 tint = mix(vec3(0.0), vec3(1.0,0.35,0.0), 0.06*sin(uTime*0.2+vUv.y*3.0)+0.06);
+              gl_FragColor = vec4(tint, a);
+            }`
+        });
+        scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), mat));
+        (function loop(t){ uniforms.uTime.value = t*0.001; renderer.render(scene,camera); requestAnimationFrame(loop); })(0);
+        addEventListener('resize',()=>{ renderer.setSize(innerWidth,innerHeight); uniforms.uRes.value.set(innerWidth,innerHeight); });
+      })();
+
+      /* ---------------- SECTION 3 : FABRIC SIM ---------------- */
+      (function(){
+        const canvas = document.getElementById('fabric-canvas');
+        if(!canvas) return;
+        const renderer = new THREE.WebGLRenderer({canvas, alpha:true, antialias:true});
+        renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(42,1,0.1,100);
+        camera.position.set(0,0.2,4.2);
+
+        const geo = new THREE.PlaneGeometry(4.4,3.0,60,44);
+        const mat = new THREE.MeshStandardMaterial({color:0x0d4d5c, emissive:0x061c22, metalness:0.7, roughness:0.28, wireframe:true, transparent:true, opacity:0.9});
+        const cloth = new THREE.Mesh(geo, mat);
+        cloth.rotation.x = -0.42; cloth.rotation.z = 0.12;
+        scene.add(cloth);
+
+        const solid = new THREE.Mesh(geo.clone(), new THREE.MeshStandardMaterial({color:0x05161c, metalness:0.9, roughness:0.35, side:THREE.DoubleSide, transparent:true, opacity:0.75}));
+        solid.rotation.copy(cloth.rotation); scene.add(solid);
+
+        scene.add(new THREE.AmbientLight(0x22d3ee, 0.35));
+        const l1 = new THREE.PointLight(0x22d3ee, 2.4, 20); l1.position.set(2.5,2,3); scene.add(l1);
+        const l2 = new THREE.PointLight(0x2f6bff, 1.6, 20); l2.position.set(-3,-1.5,2); scene.add(l2);
+        const l3 = new THREE.PointLight(0xff5a00, 0.7, 16); l3.position.set(0,-2.5,2.5); scene.add(l3);
+
+        const base = geo.attributes.position.array.slice();
+        let mx=0,my=0;
+        canvas.addEventListener('pointermove', e=>{
+          const r = canvas.getBoundingClientRect();
+          mx = ((e.clientX-r.left)/r.width-0.5)*2; my = ((e.clientY-r.top)/r.height-0.5)*2;
+        });
+
+        function resize(){
+          const r = canvas.parentElement.getBoundingClientRect();
+          renderer.setSize(r.width, r.height, false);
+          camera.aspect = r.width/r.height; camera.updateProjectionMatrix();
+        }
+        resize(); addEventListener('resize', resize);
+
+        (function anim(t){
+          t*=0.001;
+          const pos = geo.attributes.position.array;
+          for(let i=0;i<pos.length;i+=3){
+            const x = base[i], y = base[i+1];
+            pos[i+2] = Math.sin(x*1.6 + t*1.1)*0.22 + Math.cos(y*2.1 - t*0.8)*0.18 + Math.sin((x+y)*1.2 + t*1.7)*0.09;
+          }
+          geo.attributes.position.needsUpdate = true; geo.computeVertexNormals();
+          solid.geometry.attributes.position.array.set(pos);
+          solid.geometry.attributes.position.needsUpdate = true; solid.geometry.computeVertexNormals();
+          cloth.rotation.y = solid.rotation.y = mx*0.28 + Math.sin(t*0.25)*0.08;
+          cloth.rotation.x = solid.rotation.x = -0.42 + my*0.14;
+          renderer.render(scene,camera);
+          requestAnimationFrame(anim);
+        })(0);
+      })();
+
+      /* ---------------- GSAP ---------------- */
+      gsap.registerPlugin(ScrollTrigger);
+
+      /* HERO 4-STAGE SEQUENCE */
+      gsap.set('#hero-content',{opacity:0, filter:'blur(24px)', y:70});
+      gsap.set('#hero-cta',{opacity:0, y:40});
+
+      const heroTl = gsap.timeline({
+        scrollTrigger:{ trigger:'#sticky-scene-container', start:'top top', end:'bottom bottom', scrub:1 }
+      });
+      heroTl
+        .to('#curtain-left',  {xPercent:-102, ease:'power2.inOut', duration:1.2}, 0)
+        .to('#curtain-right', {xPercent:102,  ease:'power2.inOut', duration:1.2}, 0)
+        .to('#portal', {scale:2.6, opacity:0, ease:'power1.inOut', duration:1.3}, 0.9)
+        .to('#hero-video', {scale:1.12, ease:'none', duration:2.6}, 0)
+        .to('#hero-content', {opacity:1, filter:'blur(0px)', y:0, ease:'power2.out', duration:1.0}, 1.7)
+        .to('#hero-cta', {opacity:1, y:0, ease:'power2.out', duration:0.8}, 2.5);
+
+      /* GENERIC REVEALS */
+      gsap.utils.toArray('.gs-reveal').forEach(el=>{
+        gsap.from(el,{opacity:0, y:60, duration:1.1, ease:'power3.out',
+          scrollTrigger:{trigger:el, start:'top 85%'}});
+      });
+
+      /* EDITOR STAGGER */
+      gsap.from('.ed-item',{opacity:0, y:24, duration:0.7, stagger:0.05, ease:'power2.out',
+        scrollTrigger:{trigger:'#protocol', start:'top 65%'}});
+      gsap.from('#action-bar',{opacity:0, y:30, duration:0.8, ease:'back.out(1.6)',
+        scrollTrigger:{trigger:'#protocol', start:'top 55%'}});
+
+      /* IMAGE SCALE */
+      gsap.utils.toArray('.gs-img-scale').forEach(el=>{
+        gsap.fromTo(el,{scale:1.25},{scale:1, ease:'none',
+          scrollTrigger:{trigger:el, start:'top bottom', end:'bottom top', scrub:true}});
+      });
+
+      /* HORIZONTAL GALLERY */
+      (function(){
+        const track = document.getElementById('h-track');
+        const section = document.getElementById('releases');
+        if(!track) return;
+        const getDist = () => track.scrollWidth - innerWidth + (innerWidth > 768 ? 40 : 20);
+        gsap.to(track,{ x: () => -getDist(), ease:'none',
+          scrollTrigger:{ trigger:section, start:'top top', end:'bottom bottom', scrub:1, invalidateOnRefresh:true }});
+      })();
+
+      /* SYSTEM LINK TOGGLE + PROGRESS */
+      (function(){
+        const btn = document.getElementById('sys-toggle');
+        const knob = document.getElementById('sys-knob');
+        const bar = document.getElementById('alloc-bar');
+        const num = document.getElementById('alloc-num');
+        let on = false;
+        const setState = (state, animate=true) => {
+          on = state;
+          btn.style.backgroundColor = on ? '#ff5a00' : 'rgba(255,255,255,0.05)';
+          btn.style.borderColor = on ? '#ff5a00' : 'rgba(255,255,255,0.2)';
+          knob.style.left = on ? 'calc(100% - 1.75rem)' : '0.25rem';
+          knob.style.background = on ? '#ffffff' : 'rgba(255,255,255,0.6)';
+          const target = on ? 84 : 0;
+          gsap.to(bar,{width:target+'%', duration:animate?0.9:0, ease:'power2.out'});
+          gsap.to({v: parseInt(num.textContent)||0},{v:target, duration:animate?0.9:0, ease:'power2.out',
+            onUpdate(){ num.textContent = Math.round(this.targets()[0].v)+'%'; }});
+        };
+        btn.addEventListener('click',()=>setState(!on));
+        ScrollTrigger.create({trigger:'#system', start:'top 60%', once:true, onEnter:()=>setState(true)});
+      })();
+
+      /* CATEGORY HOVER */
+      document.querySelectorAll('.cat').forEach(c=>{
+        const num = c.querySelector('.num');
+        c.addEventListener('mouseenter',()=>{ c.style.color='#ff5a00'; num.style.opacity=1; num.style.transform='translateX(0)'; });
+        c.addEventListener('mouseleave',()=>{ c.style.color=''; num.style.opacity=0; num.style.transform='translateX(-0.5rem)'; });
+      });
+
+      /* VIDEO PRESETS */
+      document.querySelectorAll('[data-aura-video-preset="hover"]').forEach(v=>{
+        const p = v.closest('.group') || v.parentElement;
+        p.addEventListener('mouseenter',()=>v.play().catch(()=>{}));
+        p.addEventListener('mouseleave',()=>{ v.pause(); v.currentTime = 0; });
+      });
+      const io = new IntersectionObserver(es=>es.forEach(e=>{
+        e.isIntersecting ? e.target.play().catch(()=>{}) : e.target.pause();
+      }),{threshold:0.25});
+      document.querySelectorAll('[data-aura-video-preset="loop-in-view"]').forEach(v=>io.observe(v));
+
+      /* SMOOTH ANCHORS */
+      document.querySelectorAll('a[href^="#"]').forEach(a=>{
+        a.addEventListener('click',e=>{
+          const t = document.querySelector(a.getAttribute('href'));
+          if(t && a.getAttribute('href').length>1){ e.preventDefault(); t.scrollIntoView({behavior:'smooth'}); }
+        });
+      });
+
+      if (window.lucide) lucide.createIcons();
+      addEventListener('load',()=>ScrollTrigger.refresh());
+    </script>
+
+    <script>
+      (function(){
+        if(typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
+
+        var section = document.getElementById('sticky-scene-container');
+        var model = document.getElementById('hero-reveal-img');
+        var heroContent = document.getElementById('hero-content');
+        var title = heroContent ? heroContent.querySelector('h1') : null;
+        var titleInner = heroContent ? heroContent.querySelector('.anim-title-inner') : null;
+        var eyebrow = heroContent ? heroContent.querySelector('.flex.items-center') : null;
+        var description = heroContent ? heroContent.querySelector('p') : null;
+        var heroCta = document.getElementById('hero-cta');
+        var heroFooter = section ? section.querySelector('.absolute.bottom-6.left-0') : null;
+        var video = document.getElementById('hero-video');
+        var curtainLeft = document.getElementById('curtain-left');
+        var curtainRight = document.getElementById('curtain-right');
+        var modelStage = model ? model.parentElement : null;
+
+        if(!section || !model || !modelStage || !heroContent || !titleInner) return;
+
+        ScrollTrigger.getAll().forEach(function(trigger){
+          if(trigger.trigger === section) trigger.kill(true);
+        });
+        gsap.killTweensOf([model, heroContent, title, titleInner, eyebrow, description, heroCta, heroFooter, video, curtainLeft, curtainRight]);
+
+        gsap.set(heroContent, {opacity:1, y:0, filter:'none'});
+        gsap.set(title, {opacity:1});
+        gsap.set(model, {opacity:1, filter:'none', transformOrigin:'50% 100%', force3D:true, willChange:'transform'});
+        gsap.set(modelStage, {transformStyle:'preserve-3d'});
+
+        var mm = gsap.matchMedia();
+        mm.add({
+          desktop:'(min-width: 1024px)',
+          tablet:'(min-width: 768px) and (max-width: 1023px)',
+          mobile:'(max-width: 767px)',
+          reduce:'(prefers-reduced-motion: reduce)'
+        }, function(context){
+          var conditions = context.conditions;
+          var isDesktop = conditions.desktop;
+          var isTablet = conditions.tablet;
+          var reduced = conditions.reduce;
+          var baseScale = isDesktop ? 0.68 : (isTablet ? 0.72 : 0.74);
+          var startY = isDesktop ? 8 : (isTablet ? 7 : 5);
+          var endY = isDesktop ? -1 : 0;
+          var perspective = isDesktop ? 1400 : (isTablet ? 1200 : 900);
+          var dollyZ = isDesktop ? 460 : (isTablet ? 350 : 280);
+          var videoScale = isDesktop ? 1.14 : (isTablet ? 1.1 : 1.06);
+          var videoY = isDesktop ? -3 : (isTablet ? -2 : -1);
+          var titleBlur = isDesktop ? 8 : (isTablet ? 4 : 0);
+
+          gsap.set(modelStage, {perspective:perspective, perspectiveOrigin:'50% 100%'});
+
+          if(reduced){
+            gsap.set(model, {scale:baseScale, z:dollyZ, yPercent:endY, opacity:1});
+            gsap.set(titleInner, {y:'0%', scale:1, opacity:1, filter:'none'});
+            gsap.set([eyebrow, description, heroCta, heroFooter], {opacity:1, y:0, filter:'none'});
+            gsap.set(video, {scale:1, yPercent:0});
+            gsap.set(curtainLeft, {xPercent:-102});
+            gsap.set(curtainRight, {xPercent:102});
+            return;
+          }
+
+          gsap.set(model, {scale:baseScale, z:0, yPercent:startY, opacity:1});
+          gsap.set(titleInner, {y:'105%', scale:1.04, opacity:0, filter:'blur(' + titleBlur + 'px)'});
+          gsap.set([eyebrow, description], {opacity:0, y:isDesktop ? 24 : 16});
+          gsap.set(heroCta, {opacity:0, y:isDesktop ? 30 : 20});
+          gsap.set(heroFooter, {opacity:0, y:10});
+          gsap.set(video, {scale:1, yPercent:0, transformOrigin:'50% 50%', force3D:true});
+
+          var timeline = gsap.timeline({
+            defaults:{ease:'none'},
+            scrollTrigger:{
+              trigger:section,
+              start:'top top',
+              end:'bottom bottom',
+              scrub:isDesktop ? 0.9 : 0.65,
+              invalidateOnRefresh:true
+            }
+          });
+
+          timeline
+            .to(curtainLeft, {xPercent:-102, duration:0.8, ease:'power2.inOut'}, 0)
+            .to(curtainRight, {xPercent:102, duration:0.8, ease:'power2.inOut'}, 0)
+            .to(video, {scale:videoScale, yPercent:videoY, duration:1.9}, 0)
+            .to(model, {z:dollyZ, yPercent:endY, duration:1.9}, 0)
+            .to(titleInner, {y:'0%', scale:1, opacity:1, filter:'blur(0px)', duration:0.7, ease:'power2.out'}, 1.95)
+            .to([eyebrow, description], {opacity:1, y:0, duration:0.55, stagger:0.12, ease:'power2.out'}, 2.62)
+            .to(heroCta, {opacity:1, y:0, duration:0.55, ease:'power2.out'}, 2.86)
+            .to(heroFooter, {opacity:1, y:0, duration:0.4, ease:'power2.out'}, 3.02);
+
+          return function(){
+            timeline.kill();
+          };
+        });
+
+        ScrollTrigger.refresh();
+      })();
+    </script>
+
+    <script>
+      (function(){
+        if(typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
+        gsap.utils.toArray('.anim-title-inner').forEach(function(el) {
+          if (el.closest('#hero-content')) return;
+          gsap.fromTo(el,
+            { y: '100%', filter: 'blur(12px)' },
+            { y: '0%', filter: 'blur(0px)', duration: 1.2, ease: 'power3.out', scrollTrigger: { trigger: el.closest('h2') || el.parentElement, start: 'top 85%' } }
+          );
+        });
+      })();
+    </script>
+  
+</body></html>
